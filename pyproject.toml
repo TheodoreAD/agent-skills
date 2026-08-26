@@ -1,0 +1,21 @@
+[project]
+name = "agent-skills"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.39.10",
+  "invoke-stubs @ git+https://github.com/TheodoreAD/invoke-stubs",
+  "pytest",
+  "ruff",
+  "shellcheck-py",
+  "shfmt-py",
+  "dprint-py",
+  "actionlint-py",
+  "act-bin",
+]

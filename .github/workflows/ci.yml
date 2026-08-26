@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+      - run: ./bootstrap-repo-tasks.sh
+      - run: inv dev-env.setup
+      - run: inv quality.check
+      # No-ops cleanly ("nothing to do") in a repo with no tests/integration directory, which is
+      # every freshly generated one — so this file stays byte-identical to the template's copy.
+      - run: inv test.integration

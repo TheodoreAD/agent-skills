@@ -1,0 +1,24 @@
+{
+  "$schema": "https://dprint.dev/schemas/v0.json",
+  "lineWidth": 120,
+  "markdown": {
+    "textWrap": "always",
+    "lineWidth": 100
+  },
+  "excludes": [
+    ".vscode",
+    "uv.lock",
+    // Helm chart templates are Go templates, not YAML — `{{- include ... }}` at a value position
+    // is a parse error to any real YAML parser, dprint's pretty_yaml included. A chart's own
+    // Chart.yaml and values.yaml are plain YAML and stay formatted; only templates/ is exempt.
+    "**/templates/*.yaml",
+    "**/templates/*.yml"
+  ],
+  "plugins": [
+    "https://plugins.dprint.dev/json-0.23.0.wasm",
+    "https://plugins.dprint.dev/toml-0.7.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.22.1.wasm",
+    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.6.0.wasm",
+    "https://plugins.dprint.dev/dockerfile-0.4.1.wasm"
+  ]
+}

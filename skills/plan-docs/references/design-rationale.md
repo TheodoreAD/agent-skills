@@ -140,6 +140,44 @@ that's genuinely done — asking first whenever there's real doubt, since deleti
 that git history only partially undoes (it recovers the file, not the judgment call that nothing in
 it still mattered).
 
+### Why retrieval is a command, not a directory of retired plans
+
+Backlog.md keeps completed work in a `completed/` directory, and the opposite rule was settled with
+the user on 2026-08-29: a retired plan is deleted, everywhere, and git history is the archive. What
+the user named as the thing that makes that comfortable is retrieval — "deleted" and "unfindable"
+are the same state until one command separates them — so `plans.py archive` was built the same day.
+Four choices in it are load-bearing:
+
+- **The deletion commits are the index** (`git log --diff-filter=D --name-only -- plans/`). Nothing
+  is maintained, nothing can drift out of date, and a plan deleted by a session that never heard of
+  this skill is still found. A `completed/` directory is a second working set that has to be curated
+  forever; this is a query over what git already recorded.
+- **The content search is git's pickaxe over every version, not a grep of final states.** The
+  passage someone comes back for is often the one edited _out_ of a plan before it landed, which no
+  search of the deletion blob would ever return.
+- **Nothing is restored to the working tree.** The content comes back on stdout. A resurrected file
+  carrying a stale `status` is precisely the permanent archive this convention rejects; if the work
+  is live again it earns a new plan file, dated today.
+- **Each row leads with the plan's `## Migrated to` destinations.** The honest answer to "where did
+  that go" is usually a docs page, not the deleted file — the retrieval command and the migration
+  section are one mechanism seen from either end, which is also why the section is committed
+  separately (above).
+
+Two traps hit while building it, both silent:
+
+- **A phrase in a plan has been reflowed by the repo's formatter**, so a literal pickaxe search for
+  anything longer than two words misses a file that plainly contains it. The words are joined with
+  `[[:space:]]+` under `--pickaxe-regex` instead.
+- **Python counts `\x1c`–`\x1f` as whitespace.** A record separator leading `git log --format`
+  output is eaten by an ordinary `.strip()`, after which the first commit header parses as a
+  filename and the newest retirement in every repo goes missing. The separator has to be detected
+  _inside_ the line, not at its start.
+
+And one case that looks identical to a retirement and is not: a plan **moved** from a repo to the
+store leaves a deletion commit behind exactly like a retired one. `archive` cross-checks every hit
+against the plans that exist now and marks those rows `still live`, because handing back a stale
+copy of a file that is live elsewhere is worse than returning nothing.
+
 ### Why the sibling-repo check is a step and not a nicety
 
 Confirmed 2026-08-26, retiring a scaffolding plan: its tuned basedpyright profile had since moved to

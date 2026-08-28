@@ -30,6 +30,7 @@ python3 $P backlog                      # the same, across every repo on the mac
 python3 $P tags --tag DEFERRED          # anchored, across every plan this repo can see
 python3 $P set-status <file> planned    # refuses if the gate for that status fails
 python3 $P refs <file>                  # inbound references, before retiring
+python3 $P archive --search <words>     # a retired plan, back out of git history
 python3 $P move <file> --to store       # a repo switching where it keeps plans
 python3 $P scan                         # no private name reaches a repo you publish
 python3 $P repos --search <words>       # what each repo is for, to route a plan by
@@ -307,8 +308,9 @@ picking one is part of the first retirement, not a reason to skip it.
 On reaching `landed`, `abandoned`, or an old `superseded by ...`: `plans/` is a working set that
 empties out — but nothing genuinely costly to work out gets silently dropped. Deleting the file
 takes it off the working set, not out of the repository: the drafting commits, its final state and
-the `## Migrated to` commit all stay reachable through git. That is what makes the deletion cheap,
-and it is why a plan is only ever kept in version control.
+the `## Migrated to` commit all stay reachable through git, and `python3 $P archive` is how they are
+read back — see "Getting a retired plan back" below. That is what makes the deletion cheap, and it
+is why a plan is only ever kept in version control.
 
 **A store-held plan retires exactly like a repo-held one, and is deleted the same way.** The usage
 docs and design rationale still go into the repo the plan is _about_ — updating a repo's own docs is
@@ -375,6 +377,35 @@ Code contracts and verification logs are usually the bulk of the deletable volum
      but must say _retired_, so a reader knows not to go looking.
 6. **Run the repo's gate again before committing the reference fixes.** Editing many
    comments/docstrings in one pass is exactly what quietly trips a line-length rule.
+
+## Getting a retired plan back
+
+Deleting a plan is only cheap because the file is still in the repository, and that is only true in
+practice if getting one back is a single command rather than an archaeology session:
+
+```shell
+python3 $P archive                      # every plan deleted from this repo's plans/, newest first
+python3 $P archive --search "<phrase>"  # only the ones whose content ever contained it
+python3 $P archive --show <file>        # print one back, as it stood the moment before deletion
+python3 $P archive --file <file>        # one plan's whole lifecycle: drafting, landing, retirement
+python3 $P archive --all                # every repo on the machine, plus the store's own history
+```
+
+Each row carries the plan's final `status` and its `## Migrated to` destinations, which are usually
+the real answer — the content is in a doc somewhere, and only the reasoning that had no home is in
+the deleted file itself. Nothing is written and no file is restored: a retired plan comes back on
+stdout, and if the work is live again it earns a new plan file rather than a resurrected one.
+
+Three things worth knowing before trusting a result:
+
+- **`--search` matches across line breaks**, so a phrase the formatter has since reflowed is still
+  found. It also searches every version of every retired plan, not just the final one — so a passage
+  cut two commits before the deletion still matches, and `--show` will not contain it. Use `--file`
+  to find the commit that did, and read that one with `git show <sha>:<path>`.
+- **A plan that moved between the repo and the store is not retired**, though its old location's
+  history says it was deleted. Those rows say `still live` and name where it is; go read that file.
+- **A store with no git repository archives nothing.** `archive` says so in its header when it finds
+  one. Fix it with `python3 $P install` _before_ retiring anything held there.
 
 ## Migrating a legacy single plan file
 

@@ -224,13 +224,16 @@ considered and rejected).
      no trigger. Nothing watches the named repo, so the queue is discovered only when someone thinks
      to look, and a plan waiting on a repo that has been ready for days is indistinguishable from
      one waiting on a repo that is still busy. Cheap to close: for each `depends_on` plan the
-     current repo has (`rg -l 'depends_on' plans/`), check that repo's tree and recent commits, and
-     report the ones whose blocker is gone as ready rather than blocked. Confirmed 2026-08-29: nine
-     skill edits parked five hours earlier were already unblocked, and were found only because the
-     user asked what plans needed other repos — the harvest that created the queue had not scheduled
-     anything to drain it. Verify against the working tree, not the plan's prose: the same check
-     that day read "surgery finished" from a clean `git status` and a landed plan, then found two
-     modified files a few minutes later.
+     current repo has, check that repo's tree and recent commits, and report the ones whose blocker
+     is gone as ready rather than blocked. Anchor the match — `rg -l '^depends_on:' plans/`, not a
+     bare `rg -l 'depends_on'`, which also hits a plan whose body tabulates a data schema having a
+     field of that name, and a false positive here reads exactly like a real queue entry. That was
+     caught by the "run one of them" rule above, applied to this bullet on the run that added it.
+     Confirmed 2026-08-29: nine skill edits parked five hours earlier were already unblocked, and
+     were found only because the user asked what plans needed other repos — the harvest that created
+     the queue had not scheduled anything to drain it. Verify against the working tree, not the
+     plan's prose: the same check that day read "surgery finished" from a clean `git status` and a
+     landed plan, then found two modified files a few minutes later.
    - **Work handed off to another session, and what it blocks here.** This user runs parallel
      sessions, so "another session is doing X, don't touch it" is a routine instruction — and it
      creates state no other check finds: not a process, not git state, not CI, not an unkept

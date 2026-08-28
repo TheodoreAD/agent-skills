@@ -122,6 +122,11 @@ Two failure modes to handle correctly:
 - **A generic hit.** A work repo named `tools` or `settings` matches ordinary English. Put that one
   name in the config's `[private] ignore` list — never widen `public_roots`, which silences a whole
   organisation's worth of names to fix one word.
+- **Writing about a hit reintroduces it.** A plan explaining what leaked, a rationale page using a
+  real name as an example, a commit message quoting the offending line — each puts the term straight
+  back into the tree the scan just cleared. Measured three times in one session, 2026-08-29, each
+  caught by `--mode staged` before the commit. Reference the thing by where it lives — the commits
+  and the `scan --mode history` command that print it — not by quoting it.
 - **A hit in pushed history.** `--mode history` scans every commit. Redacting the working tree does
   not remove anything from a published repo; purging history means a force-push and a support
   request, and it is the user's call, not an edit to make quietly. Report it, name the commits,

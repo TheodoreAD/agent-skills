@@ -51,7 +51,12 @@ finding the source repo.
    mechanism instead so its own record stays accurate — it will call the same CLI underneath.
 
 7. **Verify, don't assume.** `skills ls -g --json` lists each installed skill with the agents that
-   can see it.
+   can see it. **If the skill ships a `scripts/` directory, run one of its documented commands from
+   the installed path** — the listing says a skill is installed, not that its files arrived.
+   Confirmed live 2026-08-29: a skill whose `SKILL.md` (and a rule deployed into the always-loaded
+   instructions file) told every session to run `python3 ~/.agents/skills/<name>/scripts/<file>` was
+   installed from a commit that predated `scripts/`, so the documented path did not exist on the
+   machine while both documents insisted it did. Nothing failed until something ran it.
 
    [PITFALL: **That listing is not sufficient evidence on its own, and neither is the installer's
    summary.** Measured 2026-08-27: installing for Claude Code alongside any universal agent prints

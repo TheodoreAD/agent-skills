@@ -189,6 +189,13 @@ considered and rejected).
      reaches nothing until it is pushed and re-installed, so `agent-skills` is a repo the session
      touched and it is the one most likely to be forgotten — the edit felt done when it was
      committed. Check its ahead-count too, and report it with the rest.
+   - **Paths this session told other sessions to run.** A rule written into an always-loaded
+     instructions file, or a `SKILL.md` command block, names a path on this machine — usually an
+     installed copy, not the checkout the session was editing. Run one of them. Confirmed
+     2026-08-29: a session deployed a `~/AGENTS.md` rule pointing at
+     `~/.agents/skills/<name>/scripts/<file>` while the installed skill still had no `scripts/`
+     directory, so a machine-wide rule instructed every future session to run a file that did not
+     exist. The checkout worked perfectly throughout, which is why nothing surfaced it.
    - **CI, for anything this session pushed.** A green local gate is not a green CI run. Use a
      bounded waiter (`gh run watch <id> --exit-status`), never a hand-rolled `until` loop.
    - **Shared stores outside any repo.** `$RESEARCH_HOME` clones, caches, anything the session added

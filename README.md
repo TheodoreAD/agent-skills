@@ -29,7 +29,7 @@ read the file directly.
 | [`db-defaults`](skills/db-defaults/)                         | Adding local persistence to a Python project — cache, relational, OLAP, documents, full-text or vector search, job queue, pub/sub, blobs, time series — and you want the default pick rather than an evaluation | Opinionated but general |
 | [`invoke-task-conventions`](skills/invoke-task-conventions/) | Adding, renaming or reviewing an `inv <namespace>.<task>`, and weighing what a rename actually costs across docs, CI and other repos                                                                            | Opinionated but general |
 | [`mcp-server-shipping`](skills/mcp-server-shipping/)         | Building, installing or registering a personal MCP server — entry point, `uv tool install` from git instead of PyPI, `claude mcp add` scope                                                                     | Opinionated but general |
-| [`plan-docs`](skills/plan-docs/)                             | Capturing an idea, drafting a design, or tracking work-in-progress in a repo's `plans/` directory, and retiring a plan once it lands                                                                            | Opinionated but general |
+| [`plan-docs`](skills/plan-docs/)                             | Capturing an idea, drafting a design, or tracking work-in-progress in a repo's `plans/` directory — or, for a work repo that can't hold one, in the store outside it — and retiring a plan once it lands        | Opinionated but general |
 | [`polite-mcp-conventions`](skills/polite-mcp-conventions/)   | Working in the `*-polite-mcp` repos — confirming before a first live mutating action against a real account, batching per-item decisions                                                                        | Personal                |
 | [`python-conventions`](skills/python-conventions/)           | Writing or reviewing Python and wanting one settled answer per design question — data modeling, dates/times, settings, guard clauses, tests, exceptions, async, HTTP                                            | Opinionated but general |
 | [`research-library`](skills/research-library/)               | Reaching for reference material — before fetching from the web, when cloning a vendor repo, or when refreshing the shared `$RESEARCH_HOME` library                                                              | Opinionated but general |
@@ -40,7 +40,10 @@ read the file directly.
 **Scope** says how much of the skill is a convention anyone can adopt versus a personal preference:
 _general_ is portable as written, _opinionated but general_ picks one defensible convention out of
 several and commits to it, and _personal_ depends on how one particular machine or repo family is
-set up. Nothing here reaches outside the repo you are working in.
+set up. Nothing here reaches off the machine. Three skills do read or write outside the repo you are
+working in, and each declares it: `research-library` (`$RESEARCH_HOME`), `plan-docs` (`$PLANS_HOME`,
+for work repos that can't hold their own plans) and `session-bash-audit` (Claude Code's own
+transcripts).
 
 ## Layout
 

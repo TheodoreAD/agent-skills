@@ -52,3 +52,29 @@ failing mysteriously.
 
 The README's **Scope** column records how portable each skill is. Keep it accurate when a skill
 changes; a skill that quietly grows a personal dependency is worse than one that declares it.
+
+## This repo is published: never name a client in it
+
+**No file here — skill, plan, commit message, test fixture — may name an employer, client, internal
+project, work repo, work email address or ticket prefix.** This repo is public on GitHub and
+installed by strangers via `npx skills add`. Anything committed is published the moment it is
+pushed, and a push cannot be taken back by an edit.
+
+Write about that work by its shape instead: "a work root with a `<project>/<repo>` hierarchy", "a
+client repo under review pressure", "work root A". Every measurement in this repo's plans is
+expressible that way — the counts and the structure are the evidence, the names never were.
+
+The check is mechanical, so run it rather than reading for it:
+
+```shell
+python3 skills/plan-docs/scripts/plans.py scan --mode staged   # before every commit
+python3 skills/plan-docs/scripts/plans.py scan                 # whole working tree
+```
+
+It derives the forbidden terms from the machine's own project roots, so nothing has to be listed
+here — which is the point: a list of clients is itself the thing that must not be in a public repo.
+Fixtures use invented names (`client.com-bitbucket`, `github.com-acme`) for the same reason.
+
+Confirmed live 2026-08-28: a plan committed here listed six employer/client root directory names and
+one client's internal project path, and was pushed. The rule and the scanner both exist because that
+happened.

@@ -112,14 +112,23 @@ plan's durable content has exactly three legitimate final homes:
 
 1. **The executed code itself** — for changes that need no further explanation beyond what the code
    and its own comments already carry.
-2. **`docs/*.md`** — for anything usage-facing, i.e. how a person or agent uses the result.
-3. **`contributing/*.md`** — for design rationale and hard-won gotchas. Some repos already have
-   exactly this bucket (e.g. `contributing/verify.md`/`contributing/cli-allowlist.md` in the repo
-   this skill was authored in — "every gotcha the first implementation pass hit," read before
-   re-deriving or "simplifying" something that was already a deliberate tradeoff). If a repo doesn't
-   yet have a `contributing/` convention, a plan's rationale can still go in a `docs/` section or a
-   code comment, whichever fits — the requirement is _somewhere durable_, not this exact directory
-   name.
+2. **Usage docs** — anything about how a person or agent uses the result. A `docs/` tree in repos
+   that have one.
+3. **Design rationale** — settled decisions, rejected alternatives and hard-won gotchas. Some repos
+   have exactly this bucket as a `contributing/` tree (e.g. `contributing/verify.md`,
+   `contributing/cli-allowlist.md` in the repo this skill was authored in — "every gotcha the first
+   implementation pass hit," read before re-deriving or "simplifying" something that was already a
+   deliberate tradeoff). Others put it in a package's own `references/`, a `docs/` section, or a
+   code comment.
+
+**`SKILL.md` names these three by role rather than by path, and that wording is load-bearing.** It
+said `docs/` and `contributing/` literally until 2026-08-28, in eleven places including its own
+`description` frontmatter — which meant the convention silently assumed one repo's layout. The
+failure showed up the moment the skill was published from a repo that has neither directory, by a
+deliberate decision to keep rationale in each skill's own `references/`: the retirement procedure
+named two destinations that did not exist, and retiring anything there would have had to either
+invent them or ignore the instruction. Naming roles costs nothing and travels; naming paths
+described one family's directory names to every consumer.
 
 Once a plan's content is genuinely in one of those three homes, the plan file has no remaining job.
 Git history is the fallback permanent record for the _file_ itself, if anyone ever needs to dig up
@@ -130,6 +139,31 @@ the destination explicitly, fix any references that would otherwise dangle, and 
 that's genuinely done — asking first whenever there's real doubt, since deletion is a one-way door
 that git history only partially undoes (it recovers the file, not the judgment call that nothing in
 it still mattered).
+
+### Why the sibling-repo check is a step and not a nicety
+
+Confirmed 2026-08-26, retiring a scaffolding plan: its tuned basedpyright profile had since moved to
+a sibling repo's own rationale page, which had **reversed two of the plan's conclusions** on better
+evidence. Migrating the plan's version verbatim would have restated both as current, in a second
+location, reading as authoritative. The general shape — a plan that designed something later
+extracted elsewhere is describing a decision another repo now owns and keeps current — is why step 1
+of the retirement procedure says to check the owning repo before writing anything.
+
+### Why `## Migrated to` is committed before the deletion
+
+Because git records it nowhere otherwise. A commit that both adds the section and deletes the file
+shows, in its own diff, only the removal; the added text is never part of any tree that survives.
+Anyone later asking "where did this plan's content go?" reads the deletion commit and finds nothing
+— which is precisely the question the section exists to answer. Two commits, in order, and the
+answer is permanently in history.
+
+### Why the quality gate applies to markdown
+
+Recurring CI failures in the repos using this convention were audited on 2026-08-23. After one-off
+causes were fixed, **every remaining recurring failure was a doc-only commit that skipped the gate**
+— a `plans/*.md`, `AGENTS.md` or `SKILL.md` line-wrap reflow a formatter would have fixed locally.
+Agent sessions treat "just markdown" as exempt; formatters do not. The rule in `SKILL.md` is stated
+as an imperative with no exception clause for that reason.
 
 ### Worked example: retiring this repo's own first three landed plans
 

@@ -61,6 +61,14 @@ finding the source repo.
    healthy. Check the link itself (`ls -l ~/.claude/skills`); if it is missing, point it at the hub
    (`ln -s ~/.agents/skills ~/.claude/skills`).]
 
+**Renaming or deleting a skill needs a second step.** Installing is additive: the CLI adds and
+updates what the source publishes and never removes what it no longer does, so a renamed skill stays
+installed under its old name indefinitely, alongside the new one. Measured 2026-08-28 renaming one
+skill — a reinstall of the whole repo reported eleven skills for ten sources, and the stale one was
+still loadable, with its old description still competing for triggers. That is worse than clutter:
+the duplicate is precisely the trigger contention the section below says to design against. After a
+rename or deletion, run `skills remove -g --skill <old-name> -y` and re-check the count.
+
 **Iterating without a push per edit.** The CLI accepts a local path as a first-class source, so
 `skills add ../my-skills --skill <name>` installs the working tree as-is. Use it while drafting;
 push before treating the change as done, or the next install from the remote silently reverts it.

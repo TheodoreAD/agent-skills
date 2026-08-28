@@ -178,22 +178,32 @@ considered and rejected).
      consumer it changed but never swept. "I'll report when it lands" in the last message is a
      promise the harvest has to either keep or retract.
 
-6. **Harvest report**, ordered so the reader can stop early only at their own risk: least urgent
-   first, most urgent last, because the final lines are what a skimmed report actually retains.
-   - **Settled** — verified green/clean, no action. Say what was checked, so "fine" is a measurement
-     and not an impression.
-   - **Persisted this pass** — routine routings as one-liners (memory / plan / docs / dropped), plus
-     any cost worth naming, e.g. what an addition did to an always-loaded file's size.
-   - **Decisions waiting** — documented, not urgent. Name plans that must be decided _together_.
-   - **Risks carried** — known and written down. For each, the falsifier: what observation would
-     show the reasoning was wrong.
-   - **Needs action now** — dangling state, and anything the user alone can decide (a push, a
-     destructive cleanup). Last, and specific.
-   - Ends with a one-line verdict: "safe to compact" or "not yet — needs a decision on X."
+6. **Improve the skill on every run — this is not optional, and not only for friction.** The skill
+   is actively dogfooded: each invocation is also a test of it, and the author has said catching and
+   fixing issues immediately is the point. So before writing the report, ask explicitly: _did this
+   run show the skill to be wrong, incomplete, or unhelpful anywhere?_ Signals, in rough order of
+   how often they are missed:
+   - The user's invocation supplied behavior the skill lacks (see the third trigger below).
+   - A step ran and produced nothing of value, or the run's best finding came from something no step
+     asked for. Both mean the procedure is mis-aimed, and the second is the easier to overlook
+     because the finding still got made.
+   - A step was skipped as inapplicable — was that judgment right, or is the step written too
+     narrowly?
+   - Anything the user had to say twice, or ask about after the fact.
+   - The skill contradicted itself, or an instruction turned out ambiguous when applied.
 
-   Fix what is cheap and unambiguous rather than only reporting it — kill the orphaned loops, write
-   the lost measurement into the plan that owns it — and report it as done. Reserve the report's
-   last zone for what genuinely needs the user. Anything outward-facing (a push) still gets asked.
+   Default to editing the source now, not filing it for later; a deferred skill fix is a skill fix
+   that does not happen. Keep the change small and additive. If a run genuinely surfaces nothing,
+   say so in the report in one line — an explicit "no skill changes needed this run" is the evidence
+   the check happened, and it should be the exception rather than the norm while the skill is young.
+
+   **Committing and deploying the skill edit.** Commit it locally without asking — it is reversible,
+   reviewable as a diff, and pausing for approval mid-run is what makes the fix get dropped. Pushing
+   and re-installing is outward-facing and always asked, because that is the step that changes what
+   other sessions and machines load. Confirmed 2026-08-28: `Bash(git commit:*)` and
+   `Bash(git push:*)` are both allowlisted on this machine, so no permission prompt guards either —
+   the discipline is entirely instruction-side, deliberately (see `~/AGENTS.md`, "Proposing an
+   enforcement mechanism for agent behavior"). Do not read the absence of a prompt as permission.
 
 7. **On friction, ask — then self-update the skill, not just this session.** Three triggers:
    - A candidate doesn't clearly fit any routing filter in step 2 (e.g. arguably both plan-specific
@@ -213,9 +223,29 @@ considered and rejected).
    friction doesn't recur. Resolving it for one session only defeats the point of a shared
    convention skill.
 
-   **Do the fold-back before the final report**, not after, and say in that report which of the two
-   destinations was updated (this skill's source, or the always-loaded instructions file). A harvest
-   whose whole subject is "what would be lost" should not end by losing its own lesson.
+   **Do the fold-back before the final report**, not after — which is why both skill steps sit ahead
+   of it — and say in that report which destination was updated (this skill's source, or the
+   always-loaded instructions file). A harvest whose whole subject is "what would be lost" should
+   not end by losing its own lesson.
+
+8. **Harvest report**, last, and ordered so the reader can stop early only at their own risk: least
+   urgent first, most urgent last, because the final lines are what a skimmed report actually
+   retains.
+   - **Settled** — verified green/clean, no action. Say what was checked, so "fine" is a measurement
+     and not an impression.
+   - **Persisted this pass** — routine routings as one-liners (memory / plan / docs / dropped), plus
+     any cost worth naming, e.g. what an addition did to an always-loaded file's size.
+   - **Skill changes** — what step 6 changed, or one line saying it found nothing.
+   - **Decisions waiting** — documented, not urgent. Name plans that must be decided _together_.
+   - **Risks carried** — known and written down. For each, the falsifier: what observation would
+     show the reasoning was wrong.
+   - **Needs action now** — dangling state, and anything the user alone can decide (a push, a
+     re-install, a destructive cleanup). Last, and specific.
+   - Ends with a one-line verdict: "safe to compact" or "not yet — needs a decision on X."
+
+   Fix what is cheap and unambiguous rather than only reporting it — kill the orphaned loops, write
+   the lost measurement into the plan that owns it — and report it as done. Reserve the report's
+   last zone for what genuinely needs the user. Anything outward-facing (a push) still gets asked.
 
 Everything this harvest writes into a repo — a `plans/*.md` entry, an `AGENTS.md` addition, a
 `docs/`/`contributing/` page, a skill's own source — goes through that repo's quality gate
@@ -225,8 +255,8 @@ one recurring CI-failure cause across these repos (confirmed 2026-08-23).
 
 ## Self-update mechanics
 
-Resolving friction (step 6) means editing the skill's _source_, not whatever copy is in front of the
-current session:
+Resolving friction (steps 6–7) means editing the skill's _source_, not whatever copy is in front of
+the current session:
 
 - The running copy — `~/.agents/skills/session-harvest/` (or a project-local
   `.agents/skills/session-harvest/`) — is a plain file copy dropped there at install time.
@@ -242,11 +272,16 @@ current session:
   escalation process itself. Not a rewrite. Rationale for _why_ a resolution was made a particular
   way goes in `references/rationale.md` instead, matching the split already used for the rest of
   this skill.
-- Run that repo's quality gate, then tell the user what changed and that it's a durable convention
-  update worth a commit — don't commit it unasked. The edit only reaches other projects once it is
-  pushed and re-installed (`npx skills add TheodoreAD/agent-skills --skill session-harvest`), since
-  the installer clones from the remote; say so rather than leaving the user thinking a local edit
-  took effect.
+- Run that repo's quality gate, then commit — locally, without asking, per step 7. Its own
+  `tests/unit/test_skill_layout.py` is part of that gate and enforces real limits (the description
+  cap among them), so run it rather than eyeballing the frontmatter. Then tell the user what
+  changed.
+- **Say plainly that a committed edit still reaches nothing.** The installer clones from the remote,
+  so the change takes effect only once it is pushed _and_ re-installed
+  (`npx skills add TheodoreAD/agent-skills --skill session-harvest`) — including for other projects
+  on the same machine, whose `~/.agents/skills/` copy is now stale against the source. Ask before
+  that step, and verify afterwards by diffing the installed copy against the source rather than
+  trusting the installer's output.
 
 ## Full rationale
 

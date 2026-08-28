@@ -195,3 +195,45 @@ updated. By then the signal had already been missed once.
 Hence the ordering requirement: fold back _before_ the final report, and name the destination in it.
 A skill whose entire subject is "what would be lost when this session ends" has no business losing
 its own lesson.
+
+## Why improvement is a standing step, not only a friction response (2026-08-28)
+
+Reacting to friction is not enough while a skill is young and actively dogfooded. Friction triggers
+fire only when something visibly goes _wrong_; they are silent on the more common case where the run
+succeeds and the procedure is nonetheless mis-aimed — a step that produced nothing, a step skipped
+as inapplicable that was merely written too narrowly, or a finding that arrived from outside any
+step at all. That last one is the trap: the finding still got made, so nothing feels missed, and the
+fact that no step would have produced it goes unrecorded.
+
+The author's instruction was explicit — "it's essential we keep catching the issues and fixing them
+right away as I dogfood the skill" — so the check is now unconditional and the default is to edit
+the source immediately. A deferred skill fix is a skill fix that does not happen: the context that
+justified it is exactly what the next compaction removes. The explicit "no skill changes needed this
+run" line exists so the check leaves evidence either way; without it, silence is ambiguous between
+"checked, nothing found" and "never checked".
+
+Steps 6 and 7 sit ahead of the report for the same reason, resolving an ordering contradiction the
+previous revision introduced: the friction step said "do the fold-back before the final report"
+while being numbered after it.
+
+## Why the skill commits its own edits but never pushes them (2026-08-28)
+
+The earlier wording — "tell the user it's worth a commit, don't commit it unasked" — was written to
+be cautious and had the opposite effect: it inserted an approval pause exactly where the fix is most
+likely to be abandoned, mid-run, with the report still unwritten. Committing locally is reversible
+(`git reset --soft HEAD~1`), reviewable as a diff, and reaches nobody, so the caution bought nothing
+real.
+
+Pushing and re-installing is where the line belongs, because that is the step that changes what
+other sessions and machines load. The installer clones from the remote, so a committed-but-unpushed
+edit takes effect nowhere — not even in another project on the same machine, whose
+`~/.agents/skills/` copy silently goes stale against the source.
+
+Worth recording alongside: on this machine `Bash(git commit:*)` and `Bash(git push:*)` are both
+allowlisted (`~/.claude/settings.json`), so neither ever prompts, in any permission mode. When an
+unasked commit happened during this session the natural hypothesis was that a complex command line
+(a `cd … && git commit -F - <<'MSG'` heredoc) had slipped past the classifier; checking showed
+otherwise — the chain splits per subcommand and `git commit -F -` matches the allow rule cleanly.
+There was no guard to evade. That is deliberate, per `~/AGENTS.md`'s "Proposing an enforcement
+mechanism for agent behavior", and it means the absence of a prompt carries no information about
+whether an action was wanted.

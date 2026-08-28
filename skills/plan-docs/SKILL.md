@@ -1,6 +1,6 @@
 ---
 name: plan-docs
-description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including for a bug, idea, or risk turned up incidentally by other work, not just a deliberate planning request), choosing or advancing its status, retiring a landed/abandoned plan once its durable content has a permanent home elsewhere in the repo, migrating a repo's legacy monolithic plan file (PLAN.md, DESIGN.md, ...) onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead."
+description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including for a bug, idea, or risk turned up incidentally by other work, not just a deliberate planning request), choosing or advancing its status, retiring a landed/abandoned plan once its durable content has a permanent home elsewhere in the repo, migrating a repo's legacy monolithic plan file (PLAN.md, DESIGN.md, ...) onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file is allowed to live: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME), routed per repo by config rather than guessed, and a repo can be switched between the two or read both while it moves."
 ---
 
 # Structured, stateful plan files
@@ -12,14 +12,81 @@ working set, not a permanent archive.
 Rationale, prior art, and worked examples:
 [`references/design-rationale.md`](references/design-rationale.md).
 
+## Run the script, don't re-derive it
+
+[`scripts/plans.py`](scripts/plans.py) (stdlib, read-only unless stated) owns every mechanical step
+below: which directory a plan goes in, creating it with correct frontmatter, the status index, the
+anchored tag greps, the promotion and deletion gates, inbound references. Run it instead of opening
+files to work the answer out — the file reads are the expensive part, and each command below is one
+of them.
+
+```shell
+P=~/.agents/skills/plan-docs/scripts/plans.py
+
+python3 $P where                        # which directories this repo reads and writes
+python3 $P new <topic>                  # today's file, right directory, frontmatter filled in
+python3 $P list                         # status-grouped index + open-tag counts per file
+python3 $P tags --tag DEFERRED          # anchored, across every plan this repo can see
+python3 $P set-status <file> planned    # refuses if the gate for that status fails
+python3 $P refs <file>                  # inbound references, before retiring
+python3 $P move <file> --to store       # a repo switching where it keeps plans
+```
+
+## Where a plan file goes
+
+A plan normally lives in the repo it describes. That is unavailable in most employer and client
+repos — a `plans/` directory is not yours to add there — so there are three routes, and which one a
+repo uses is **configuration, never a judgement call made per session**:
+
+| route     | plans live in                                       | for                                    |
+| --------- | --------------------------------------------------- | -------------------------------------- |
+| **repo**  | `<repo>/plans/`, committed with the code            | a repo you own                         |
+| **store** | `$PLANS_HOME/<repo's path under the projects root>` | a repo that can't hold its own plans   |
+| **both**  | reads both, writes one                              | a repo mid-switch, in either direction |
+
+The store mirrors each repo's path at whatever depth it sits, so a `<root>/<project>/<repo>` clone
+gets `<store>/<root>/<project>/<repo>` — no slug, no collision between two clients' `api`. The path
+is computed from the repo root, not from the working directory.
+
+**`where` exiting 3 is a question, not a failure.** It means no rule covers this repo. Ask the user
+which route it should use, then record the answer in `~/.config/plan-docs/config.toml` —
+`python3 $P config init` writes a commented skeleton. Never pick a side silently: guessing "repo"
+writes a directory into someone else's repository, and guessing "store" hides the plan somewhere the
+user never named.
+
+```toml
+projects_root = "~/projects"
+store = "~/plans"
+default = "store" # omit it and an unmatched repo asks instead
+
+[roots]
+"github.com-personal" = "repo" # longest matching prefix wins
+
+[repos] # an exact repo entry beats any root entry
+"github.com-acme/legacy-api" = { mode = "both", write = "store" }
+```
+
+### Environment assumptions
+
+`$PLANS_HOME` (default `~/plans`) is the store; `projects_root` (default `~/projects`) is the root
+the mirrored paths are relative to; `$PLAN_DOCS_CONFIG` overrides the config location. Nothing
+installs any of it — `python3 $P init-store` creates the store as a **local git repository with no
+remote**, which is the whole design: local history is the benefit, and one personal remote
+accumulating several clients' internal architecture is the outcome to avoid. Adding a remote is a
+per-root decision against that employer's actual policy, never a convenience. Never symlink the
+store, or a subtree of it, into a work repo — that puts the content back inside the tree repo-scoped
+agent reads walk. Treat it as unbacked-up unless something was arranged deliberately.
+
 ## Creating a plan
 
-New idea → `plans/YYYY-MM-DD-topic.md` (date = today, topic = kebab-case, one file per topic):
+`python3 $P new <topic>` — kebab-case topic, one file per topic. It writes `YYYY-MM-DD-topic.md` in
+the route's write directory with the frontmatter already correct:
 
 ```yaml
 ---
 status: idea
 updated: YYYY-MM-DD
+repo: <origin URL> # store-held plans only — location no longer names the repo
 ---
 ```
 
@@ -38,6 +105,11 @@ fixed" instead of a plan file, invisible to anything scanning `plans/` for open 
 **Run the repo's quality gate before every `plans/*.md` commit** — create, update, or retirement.
 "Just markdown" is not an exemption: formatters reflow prose, and doc-only commits that skipped the
 gate are the single most common cause of red CI in repos using this convention.
+
+A store-held plan is committed to the **store's** git repository instead, and no work repo's gate
+applies to it. Commit it there anyway, in the same session that wrote it: the store's history is the
+only record that plan has, and an uncommitted file in a directory nobody browses is the same as no
+plan at all.
 
 ## Tags
 
@@ -62,13 +134,14 @@ also contains source.
 **Tag the claim, not the section.** One tag per discrete, individually-extractable fact. A tag
 scoped to "everything below this heading" can't be migrated mechanically, which is the whole point.
 
-**A tag opens its own line**, starting a paragraph or immediately following a list marker, and greps
-for it are anchored. Otherwise a bare `rg '\[DEFERRED:'` matches every prose _mention_ of a tag, and
-any document discussing this convention reports a false backlog:
+**A tag opens its own line**, starting a paragraph or immediately following a list marker. Searches
+for it must be anchored the same way — a bare `rg '\[DEFERRED:'` matches every prose _mention_ of a
+tag, so any document discussing this convention reports a false backlog. `plans.py tags` is the
+anchoring, applied across every directory the repo's route reads:
 
 ```shell
-rg '^\s*[-*]?\s*\[DEFERRED:' plans/          # the repo's whole backlog, no file opened
-rg '^\s*[-*]?\s*\[NEEDS CLARIFICATION:' plans/<file>.md
+python3 $P tags --tag DEFERRED               # the whole backlog, no file opened
+python3 $P tags --file <file>.md             # one plan, all five tags
 ```
 
 Tag at status transitions, not while drafting — those are the moments someone is already reading
@@ -78,11 +151,13 @@ above.
 ## Promoting a plan
 
 **Promote in place, in the same file — never split into a second file for the same topic.** Resolve
-every `NEEDS CLARIFICATION` first (the gate: that grep must come back empty), then set
-`status: planned` and rewrite the body as `## Context` → `## Design` (numbered subsections, one per
+every `NEEDS CLARIFICATION` first, then `python3 $P set-status <file> planned` — it runs that gate
+and refuses while any remain, so a refusal is the answer, not an obstacle to route around with
+`--force`. Rewrite the body as `## Context` → `## Design` (numbered subsections, one per
 file/component touched, rationale inline) → `## Files touched` → `## Verification`.
 
-As work proceeds, bump `status` again; the sections don't change:
+As work proceeds, bump `status` again with the same command (it also stamps `updated`); the sections
+don't change:
 
 - `in-progress` — actively being built.
 - `blocked on <reason>` — stalled on something external, with the reason in the status line itself,
@@ -139,16 +214,17 @@ Code contracts and verification logs are usually the bulk of the deletable volum
 2. **A plan carrying live unfinished work is not deletable.** Run the deletion gate and move
    everything it finds into a plan that stays, before going further:
    ```shell
-   rg '^\s*[-*]?\s*\[DEFERRED:|^\s*[-*]?\s*\[UNVERIFIED:' plans/<file>.md
+   python3 $P tags --file <file>.md --tag DEFERRED
+   python3 $P tags --file <file>.md --tag UNVERIFIED
    ```
    Prefer appending to an existing open plan that already owns the concern over spawning a new file.
    On an untagged legacy plan, grep prose instead
    (`deferred|not yet|follow-up|TODO|known
    limitation`) and read what it finds.
-3. **Grep inbound references before starting, not after.** The count decides whether this is one
-   commit or several. Grep the **whole repo** — code comments and docstrings cite plan paths too —
-   and match on the bare filename, not the full `plans/` path, since short-form references are easy
-   to miss.
+3. **Find inbound references before starting, not after** — `python3 $P refs <file>.md`. The count
+   decides whether this is one commit or several. It searches the **whole repo** (code comments and
+   docstrings cite plan paths too) plus the store, on the bare filename rather than the full
+   `plans/` path, since short-form references are the easy miss.
 4. **Add a `## Migrated to` section** naming each destination, and name what you deliberately did
    _not_ migrate and why. **Commit this addition on its own, before deleting the file** —
    add-and-delete in one commit means the section is never recorded in history at all, which defeats

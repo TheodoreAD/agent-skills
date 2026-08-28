@@ -1,6 +1,6 @@
 ---
 name: plan-docs
-description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including for a bug, idea, or risk turned up incidentally by other work, not just a deliberate planning request), choosing or advancing its status, retiring a landed/abandoned plan once its durable content has a permanent home elsewhere in the repo, migrating a repo's legacy monolithic plan file (PLAN.md, DESIGN.md, ...) onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file is allowed to live: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME), routed per repo by config rather than guessed, and a repo can be switched between the two or read both while it moves."
+description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally, not just a deliberate planning request), choosing or advancing its status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, migrating a repo's legacy monolithic plan file (PLAN.md, DESIGN.md, ...) onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file is allowed to live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME), routed per repo by config; an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
 ---
 
 # Structured, stateful plan files
@@ -30,6 +30,11 @@ python3 $P tags --tag DEFERRED          # anchored, across every plan this repo 
 python3 $P set-status <file> planned    # refuses if the gate for that status fails
 python3 $P refs <file>                  # inbound references, before retiring
 python3 $P move <file> --to store       # a repo switching where it keeps plans
+python3 $P scan                         # no private name reaches a repo you publish
+python3 $P repos --search <words>       # what each repo is for, to route a plan by
+python3 $P new <topic> --unscoped       # an idea with no repo yet
+python3 $P graduate <file> --to <repo>  # …once it has one
+python3 $P install                      # set the machine up; uninstall undoes it
 ```
 
 ## Where a plan file goes
@@ -66,16 +71,84 @@ default = "store" # omit it and an unmatched repo asks instead
 "github.com-acme/legacy-api" = { mode = "both", write = "store" }
 ```
 
-### Environment assumptions
+### Environment assumptions, and setting them up
 
 `$PLANS_HOME` (default `~/plans`) is the store; `projects_root` (default `~/projects`) is the root
-the mirrored paths are relative to; `$PLAN_DOCS_CONFIG` overrides the config location. Nothing
-installs any of it — `python3 $P init-store` creates the store as a **local git repository with no
-remote**, which is the whole design: local history is the benefit, and one personal remote
-accumulating several clients' internal architecture is the outcome to avoid. Adding a remote is a
-per-root decision against that employer's actual policy, never a convenience. Never symlink the
-store, or a subtree of it, into a work repo — that puts the content back inside the tree repo-scoped
-agent reads walk. Treat it as unbacked-up unless something was arranged deliberately.
+the mirrored paths are relative to; `$PLAN_DOCS_CONFIG` overrides the config location.
+
+`python3 $P install` is the whole setup and is idempotent: it writes the config skeleton if there
+isn't one (never over an existing one), creates the store as a **local git repository with no
+remote**, creates the repo-less area, then reports what it could not do for you — a store with no
+git identity, an unset `PLANS_HOME`. `python3 $P uninstall` reverses it: it removes the config but
+**keeps the store**, because the store is the only copy of those plans; deleting it takes
+`--purge-store --force` and a deliberate decision.
+
+The no-remote default is the design, not an oversight: local history is the benefit, and one
+personal remote accumulating several clients' internal architecture is the outcome to avoid. Adding
+a remote is a per-root decision against that employer's actual policy, never a convenience. Never
+symlink the store, or a subtree of it, into a work repo — that puts the content back inside the tree
+repo-scoped agent reads walk. Treat it as unbacked-up unless something was arranged deliberately.
+
+## Never let a client's identity reach a repo you publish
+
+The store exists because work repos can't hold plans. The mirror image of that is the rule that
+matters more: **a plan committed to a repo you publish must not name the client, employer, project
+or repo it came from.** Not the org, not the internal project name, not the work email address, not
+the ticket prefix. A plan about work for someone else can still be written — describe the shape ("a
+work root with a `<project>/<repo>` hierarchy", "a client repo under review pressure") and keep the
+specifics in the store, where they belong.
+
+**Run `python3 $P scan` before committing to any repo that is or might become public**, and
+`--mode staged` immediately before the commit itself. It exits non-zero on a hit. The terms come
+from the machine — every root, project and repo name under `projects_root` that is not under a
+`public_roots` entry, plus `[private] extra` — so a newly cloned client is covered with nothing to
+maintain, and the list itself never has to be written into a public repo.
+
+Two failure modes to handle correctly:
+
+- **A generic hit.** A work repo named `tools` or `settings` matches ordinary English. Put that one
+  name in the config's `[private] ignore` list — never widen `public_roots`, which silences a whole
+  organisation's worth of names to fix one word.
+- **A hit in pushed history.** `--mode history` scans every commit. Redacting the working tree does
+  not remove anything from a published repo; purging history means a force-push and a support
+  request, and it is the user's call, not an edit to make quietly. Report it, name the commits,
+  stop.
+
+Confirmed live 2026-08-28: this repo had already published a plan whose measurement table listed six
+employer/client root directory names, plus one client's internal `<project>/<repo>` path — written
+by an agent with no rule telling it not to, into a repo whose own README advertises it as public.
+
+## Plans that belong to no repo yet
+
+An idea, task or exploration that has not earned a repo goes to `$PLANS_HOME/_unscoped/`:
+
+```shell
+python3 $P new <topic> --unscoped     # works anywhere, including outside any git repo
+python3 $P list --unscoped            # the repo-less backlog
+python3 $P graduate <file> --to <path inside the new repo>
+```
+
+`graduate` routes the file through the destination repo's own rule — into its committed `plans/`, or
+into that repo's store directory — and stamps the `repo:` frontmatter when the destination is the
+store. Do it the moment the repo appears, not later: an unscoped plan whose work has moved into a
+repo is a plan nobody will find again.
+
+## Which repo does a plan belong to?
+
+When content could plausibly belong to more than one repo, don't grep repos to decide, and don't
+guess:
+
+```shell
+python3 $P repos --search "<the words the plan is about>"
+```
+
+It prints every repo under the projects root with its route and a one-line description — the
+config's `[about]` entry, else that repo's README first line — ranked by the search words. Take the
+top two or three and put them to the user as `AskUserQuestion` options with those descriptions as
+the option text: an informed guess to confirm, not an open question. Record a better description
+with `python3 $P describe <repo> "<what belongs there>"` whenever a README's own line turns out to
+be a poor answer. That listing names work repos, so it is for choosing a destination — never paste
+it into a repo you publish.
 
 ## Creating a plan
 

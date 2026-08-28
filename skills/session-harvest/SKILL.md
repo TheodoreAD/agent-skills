@@ -177,6 +177,15 @@ considered and rejected).
    - **Work the session promised but never verified** — a test tier it added to but never ran, a
      consumer it changed but never swept. "I'll report when it lands" in the last message is a
      promise the harvest has to either keep or retract.
+   - **Work handed off to another session, and what it blocks here.** This user runs parallel
+     sessions, so "another session is doing X, don't touch it" is a routine instruction — and it
+     creates state no other check finds: not a process, not git state, not CI, not an unkept
+     promise, but a dependency this session is stopped on and deliberately not solving. Name it in
+     the report with what it blocks, so the handoff cannot fall between the two sessions. Do **not**
+     re-probe the handed-off thing to report its status; that is the instruction being violated one
+     call at a time. Confirmed 2026-08-28: a session finished its work, could not push because the
+     ssh agent was empty after a reboot, was told another session owned that — and the only
+     remaining record of the blocked push was the harvest report.
 
 6. **Improve the skill on every run — this is not optional, and not only for friction.** The skill
    is actively dogfooded: each invocation is also a test of it, and the author has said catching and

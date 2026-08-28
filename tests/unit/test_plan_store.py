@@ -50,7 +50,17 @@ class Workspace:
 def make_repo(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True)
     subprocess.run(["git", "remote", "add", "origin", f"git@example.com:x/{path.name}.git"], cwd=path, check=True)
+    return path
+
+
+def commit(repo: Path, name: str, text: str) -> Path:
+    path = repo / name
+    path.write_text(text, encoding="utf-8")
+    subprocess.run(["git", "add", name], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", f"add {name}"], cwd=repo, check=True)
     return path
 
 
@@ -321,10 +331,193 @@ def test_config_init_writes_a_skeleton_and_never_overwrites(ws):
     assert ws.config.read_text() == 'default = "store"\n'
 
 
-def test_init_store_creates_a_git_repo_with_no_remote(ws):
+# --------------------------------------------------------------------------------------------
+# confidentiality
+
+
+def test_private_terms_stop_at_the_repo_boundary(ws):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    # Directory names *inside* a work repo are not identities — collecting them is what turns the
+    # gate into noise nobody reads.
+    (ws.client / "src").mkdir()
+    (ws.client / "internal-service").mkdir()
+    terms = plans.private_terms(plans.load_config())
+    assert "client.com-bitbucket" in terms
+    assert "team" in terms  # the project level of the clone path identifies the client too
+    assert "internal-service" not in terms
+    assert "src" not in terms
+    assert "agent-skills" not in terms  # public root
+    assert "github.com-personal" not in terms
+
+
+def test_private_terms_honour_extra_and_ignore(ws):
+    write_config(
+        ws,
+        'default = "store"\npublic_roots = ["github.com-personal"]\n'
+        '[private]\nextra = ["someone@client.example"]\nignore = ["client.com-bitbucket"]\n',
+    )
+    terms = plans.private_terms(plans.load_config())
+    assert "someone@client.example" in terms
+    assert "client.com-bitbucket" not in terms
+
+
+def test_scan_fails_on_a_private_name_in_the_tree_and_passes_when_clean(ws, capsys):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    clean = commit(ws.personal, "notes.md", "nothing sensitive here\n")
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 0
+
+    clean.write_text("we mirror ~/projects/client.com-bitbucket/team/api here\n", encoding="utf-8")
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 1
+    assert "client.com-bitbucket" in capsys.readouterr().out
+
+
+def test_scan_catches_an_untracked_file(ws):
+    # The file most likely to carry a fresh leak is the one written a second ago, before any add.
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    (ws.personal / "draft.md").write_text("notes on client.com-bitbucket/team/api\n", encoding="utf-8")
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 1
+
+
+def test_scan_history_finds_what_the_working_tree_no_longer_shows(ws, capsys):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    commit(ws.personal, "leak.md", "client.com-bitbucket runs this\n")
+    commit(ws.personal, "leak.md", "redacted\n")
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 0  # tree is clean now
+    assert plans.main(["scan", "--mode", "history", "--path", str(ws.personal)]) == 1
+    assert "client.com-bitbucket" in capsys.readouterr().out
+
+
+def test_scan_lists_its_terms_without_scanning(ws, capsys):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    assert plans.main(["scan", "--list-terms", "--path", str(ws.personal)]) == 0
+    assert "client.com-bitbucket" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------------------------
+# repo-less plans, and graduating them
+
+
+def test_new_unscoped_needs_no_repo_at_all(ws, capsys):
+    write_config(ws, "")
+    loose = ws.home / "not-a-repo"
+    loose.mkdir()
+    assert plans.main(["new", "half-an-idea", "--unscoped", "--path", str(loose)]) == 0
+    created = Path(capsys.readouterr().out.splitlines()[0].split(": ", 1)[1])
+    assert created.parent == ws.store / "_unscoped"
+    assert plans.parse_frontmatter(created.read_text())["status"] == "idea"
+
+
+def test_unscoped_plans_are_listed_separately(ws, capsys):
     write_config(ws, 'default = "store"\n')
-    assert plans.main(["init-store", "--path", str(ws.client)]) == 0
+    plans.main(["new", "half-an-idea", "--unscoped", "--path", str(ws.client)])
+    plans.main(["new", "repo-scoped", "--path", str(ws.client)])
+    capsys.readouterr()
+
+    plans.main(["list", "--unscoped", "--path", str(ws.client)])
+    unscoped = capsys.readouterr().out
+    assert "half-an-idea" in unscoped
+    assert "repo-scoped" not in unscoped
+
+    plans.main(["list", "--path", str(ws.client)])
+    scoped = capsys.readouterr().out
+    assert "repo-scoped" in scoped
+    assert "half-an-idea" not in scoped
+
+
+def test_graduate_moves_an_idea_into_its_new_repo(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plans.main(["new", "grown-up", "--unscoped", "--path", str(ws.personal)])
+    source = next((ws.store / "_unscoped").glob("*-grown-up.md"))
+    capsys.readouterr()
+
+    assert plans.main(["graduate", source.name, "--to", str(ws.personal), "--path", str(ws.personal)]) == 0
+    assert not source.exists()
+    assert (ws.personal / "plans" / source.name).is_file()
+
+
+def test_graduate_into_a_store_routed_repo_stamps_the_origin(ws, capsys):
+    write_config(ws, 'default = "store"\n')
+    plans.main(["new", "grown-up", "--unscoped", "--path", str(ws.client)])
+    source = next((ws.store / "_unscoped").glob("*-grown-up.md"))
+    capsys.readouterr()
+
+    plans.main(["graduate", source.name, "--to", str(ws.client), "--path", str(ws.client)])
+    landed = ws.store / "client.com-bitbucket" / "team" / "api" / source.name
+    assert plans.parse_frontmatter(landed.read_text())["repo"] == "git@example.com:x/api.git"
+
+
+# --------------------------------------------------------------------------------------------
+# repo knowledge
+
+
+def test_repos_describes_each_repo_and_flags_the_private_ones(ws, capsys):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    (ws.personal / "README.md").write_text("# agent-skills\n\nPublished Agent Skills.\n", encoding="utf-8")
+    plans.main(["repos", "--path", str(ws.personal)])
+    out = capsys.readouterr().out
+    assert "Published Agent Skills." in out  # the README's first real line, not a grep
+    assert "public" in out
+    assert "work" in out
+
+
+def test_describe_overrides_the_readme_and_survives_a_rewrite(ws, capsys):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    (ws.personal / "README.md").write_text("# x\n\nStale one-liner.\n", encoding="utf-8")
+    assert plans.main(["describe", "github.com-personal/agent-skills", "The real thing."]) == 0
+    assert plans.main(["describe", "github.com-personal/agent-skills", "The corrected thing."]) == 0
+    capsys.readouterr()
+
+    plans.main(["repos", "--path", str(ws.personal)])
+    out = capsys.readouterr().out
+    assert "The corrected thing." in out
+    assert "Stale one-liner." not in out
+    assert out.count("The") >= 1
+    assert plans.load_config().about["github.com-personal/agent-skills"] == "The corrected thing."
+
+
+def test_repos_search_ranks_by_description(ws, capsys):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    plans.main(["describe", "github.com-personal/agent-skills", "Agent Skills, published"])
+    plans.main(["describe", "client.com-bitbucket/team/api", "Billing service"])
+    capsys.readouterr()
+    plans.main(["repos", "--search", "billing", "--path", str(ws.personal)])
+    out = capsys.readouterr().out
+    assert "client.com-bitbucket/team/api" in out
+    assert "agent-skills" not in out
+
+
+# --------------------------------------------------------------------------------------------
+# install / uninstall
+
+
+def test_install_is_idempotent_and_sets_the_store_up(ws, capsys):
+    assert plans.main(["install", "--path", str(ws.personal)]) == 0
+    assert ws.config.is_file()
     assert (ws.store / ".git").is_dir()
     assert (ws.store / "README.md").is_file()
-    remotes = subprocess.run(["git", "remote"], cwd=ws.store, capture_output=True, text=True, check=True)
-    assert remotes.stdout.strip() == ""
+    assert (ws.store / "_unscoped").is_dir()
+    edited = ws.config.read_text() + '\ndefault = "store"\n'
+    ws.config.write_text(edited, encoding="utf-8")
+
+    capsys.readouterr()
+    assert plans.main(["install", "--path", str(ws.personal)]) == 0
+    assert ws.config.read_text() == edited  # never clobbers a config that already exists
+
+
+def test_uninstall_keeps_the_store_unless_told_twice(ws, capsys):
+    write_config(ws, 'default = "store"\n')
+    plans.main(["new", "keep-me", "--unscoped", "--path", str(ws.client)])
+    capsys.readouterr()
+
+    assert plans.main(["uninstall", "--path", str(ws.client)]) == 0
+    assert not ws.config.exists()
+    assert ws.store.is_dir()
+
+    write_config(ws, 'default = "store"\n')
+    # A store holding plans is their only copy: --purge-store alone must not delete it.
+    assert plans.main(["uninstall", "--purge-store", "--path", str(ws.client)]) == 1
+    assert ws.store.is_dir()
+
+    write_config(ws, 'default = "store"\n')
+    assert plans.main(["uninstall", "--purge-store", "--force", "--path", str(ws.client)]) == 0
+    assert not ws.store.exists()

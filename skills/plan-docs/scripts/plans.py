@@ -16,7 +16,11 @@ also take `--json`) so an agent can act on the answer without opening a file.
     plans.py set-status <file> planned  # runs the promotion gate first
     plans.py move <file> --to store     # a repo switching where it keeps plans
     plans.py refs <file>                # inbound references, before a retirement
-    plans.py init-store                 # create the store as a local git repo, no remote
+    plans.py scan                       # no client's identity in a repo you publish
+    plans.py repos --search auth        # what each repo is for, to route a plan by
+    plans.py new <topic> --unscoped     # an idea with no repo yet
+    plans.py graduate <file> --to <repo>  # ... once it has one
+    plans.py install / uninstall        # set this machine up, or undo it
 
 Exit codes: 0 ok, 1 error, 2 argparse usage, 3 needs-decision — no rule matched the repo, so the
 agent must ask the user rather than pick a side.
@@ -28,6 +32,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -37,6 +42,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 NEEDS_DECISION = 3
+
+# Plans that belong to no repo yet live here, under the store. Underscore-prefixed so it can never
+# collide with a mirrored root directory.
+UNSCOPED_DIR = "_unscoped"
+
+# Terms shorter than this are dropped from the confidentiality scan: a three-letter directory name
+# matches half the English language and the resulting noise is what makes a gate get ignored.
+MIN_PRIVATE_TERM = 4
+
+# How deep under the projects root a git repo can sit. Measured on this author's machine: repos
+# appear at depth 1 and 2 (a Bitbucket-style <project>/<repo> hierarchy); 3 leaves headroom.
+MAX_REPO_DEPTH = 3
 
 MODES = ("repo", "store", "both")
 TAG_NAMES = ("NEEDS CLARIFICATION", "DECISION", "PITFALL", "DEFERRED", "UNVERIFIED")
@@ -67,6 +84,11 @@ store = "~/plans"
 # answer is boring — `default = "store"` is the usual choice on a machine with client work.
 # default = "store"
 
+# Roots whose contents may be NAMED in a repo you publish. Everything under every other root —
+# the root, its projects, its repo names — is treated as confidential by `plans.py scan`.
+# Defaults to the roots that keep their plans in-repo, which is usually the same set.
+public_roots = ["github.com-personal"]
+
 [roots]
 # "github.com-personal" = "repo"
 
@@ -74,6 +96,18 @@ store = "~/plans"
 # A repo that has stopped storing plans inside itself: writes go to the store, the plans already
 # committed in the repo stay readable.
 # "github.com-acme/legacy-api" = { mode = "both", write = "store" }
+
+[private]
+# Anything else that must never reach a published repo and is not a directory name: work email
+# addresses, client product codenames, internal hostnames, ticket prefixes.
+extra = []
+# Names too generic to gate on — a work repo called "tools" would otherwise flag every mention of
+# the word. Only add a name whose leaking would tell a reader nothing.
+ignore = []
+
+# What each repo is for — lets a plan be routed without grepping the repos. Only needed where a
+# repo's README does not already say it in its first line. `plans.py describe <repo> "<text>"`.
+[about]
 """
 
 STORE_README = """\
@@ -130,6 +164,22 @@ class Config:
     default: Rule | None
     roots: dict[str, Rule]
     repos: dict[str, Rule]
+    public_roots: tuple[str, ...]
+    private_extra: tuple[str, ...]
+    private_ignore: tuple[str, ...]
+    about: dict[str, str]
+
+    @property
+    def unscoped(self) -> Path:
+        """Plans that belong to no repo yet. Underscore-prefixed so it can't collide with a root."""
+        return self.store / UNSCOPED_DIR
+
+    def public_root_names(self) -> tuple[str, ...]:
+        """Roots whose contents may be named in a published repo. Falls back to the roots configured
+        to keep their plans in-repo, since a repo trusted to hold its own plans is one you own."""
+        if self.public_roots:
+            return self.public_roots
+        return tuple(sorted(name for name, rule in self.roots.items() if rule.write == "repo"))
 
 
 def config_path() -> Path:
@@ -211,7 +261,26 @@ def load_config() -> Config:
         default=None if default is None else parse_rule(default, "default"),
         roots=_rules(raw, "roots"),
         repos=_rules(raw, "repos"),
+        public_roots=_strings(raw.get("public_roots"), "public_roots"),
+        private_extra=_strings(_table(raw, "private").get("extra"), "private.extra"),
+        private_ignore=_strings(_table(raw, "private").get("ignore"), "private.ignore"),
+        about={str(key): str(value) for key, value in _table(raw, "about").items()},
     )
+
+
+def _table(raw: dict[str, object], key: str) -> dict[str, object]:
+    block = raw.get(key, {})
+    if not isinstance(block, dict):
+        raise PlanError(f"[{key}] must be a table")
+    return {str(name): value for name, value in block.items()}  # pyright: ignore[reportUnknownVariableType]
+
+
+def _strings(value: object, key: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):  # pyright: ignore[reportUnknownVariableType]
+        raise PlanError(f"{key} must be a list of strings")
+    return tuple(str(item) for item in value)  # pyright: ignore[reportUnknownVariableType]
 
 
 # --------------------------------------------------------------------------------------------
@@ -360,12 +429,16 @@ def read_plan(path: Path, where: str) -> PlanFile:
     )
 
 
+def plans_in(directory: Path, where: str) -> list[PlanFile]:
+    if not directory.is_dir():
+        return []
+    return [read_plan(path, where) for path in sorted(directory.glob("*.md")) if path.name != "README.md"]
+
+
 def plan_files(routing: Routing) -> list[PlanFile]:
     found: list[PlanFile] = []
     for where, directory in routing.read_dirs():
-        if not directory.is_dir():
-            continue
-        found.extend(read_plan(path, where) for path in sorted(directory.glob("*.md")) if path.name != "README.md")
+        found.extend(plans_in(directory, where))
     return found
 
 
@@ -396,6 +469,142 @@ def open_tags(path: Path, tag: str) -> list[tuple[int, str]]:
         if match and match.group(1) == tag:
             hits.append((number, line.strip()))
     return hits
+
+
+# --------------------------------------------------------------------------------------------
+# confidentiality
+
+
+def repo_paths(cfg: Config) -> list[str]:
+    """Every git repo under the projects root, as a path relative to it.
+
+    Stops descending the moment a `.git` is found, so a repo's own internal directory names never
+    leak into the walk — collecting `src`, `tests` and `.venv` as if they identified a client is
+    what makes a confidentiality gate noisy enough to be ignored.
+    """
+    if not cfg.projects_root.is_dir():
+        return []
+    found: list[str] = []
+
+    def visit(path: Path, depth: int) -> None:
+        if depth > MAX_REPO_DEPTH:
+            return
+        if (path / ".git").exists():
+            found.append(path.relative_to(cfg.projects_root).as_posix())
+            return
+        for child in sorted(path.iterdir()):
+            if child.is_dir() and not child.name.startswith("."):
+                visit(child, depth + 1)
+
+    visit(cfg.projects_root, 0)
+    return found
+
+
+def private_terms(cfg: Config) -> list[str]:
+    """Every name that must not appear in a repo you publish, derived from the machine itself.
+
+    A hard-coded list would have to live somewhere, and the only places available are a published
+    repo (the thing being protected) or a file nobody updates. Deriving from the directory layout
+    instead means a new client root is covered the moment it is cloned, with nothing to maintain:
+    every path component under a non-public root — the root, its projects, its repo names — is a
+    name that identifies work that is not yours to disclose.
+    """
+    public = set(cfg.public_root_names())
+    terms: set[str] = set()
+    if cfg.projects_root.is_dir():
+        terms.update(
+            path.name
+            for path in cfg.projects_root.iterdir()
+            if path.is_dir() and path.name not in public and not path.name.startswith(".")
+        )
+    for rel in repo_paths(cfg):
+        parts = rel.split("/")
+        if parts[0] not in public:
+            terms.update(parts)
+    terms.update(cfg.private_extra)
+    terms.difference_update(cfg.private_ignore)
+    return sorted(term for term in terms if len(term) >= MIN_PRIVATE_TERM)
+
+
+def scan_text(text: str, terms: list[str]) -> list[tuple[int, str, str]]:
+    """(line number, term, line) for every private term appearing in the text, case-insensitively."""
+    if not terms:
+        return []
+    pattern = re.compile("|".join(re.escape(term) for term in sorted(terms, key=len, reverse=True)), re.IGNORECASE)
+    hits: list[tuple[int, str, str]] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        match = pattern.search(line)
+        if match:
+            hits.append((number, match.group(0), line.strip()))
+    return hits
+
+
+def scan_targets(root: Path, mode: str) -> list[tuple[str, str]]:
+    """(label, text) pairs to scan: the tracked working tree, the staged diff, or all of history."""
+    if mode == "staged":
+        return [("(staged diff)", git(["diff", "--cached"], root) or "")]
+    if mode == "history":
+        return [("(history)", git(["log", "--all", "-p"], root) or "")]
+    # Tracked *and* untracked-not-ignored: a plan file written a moment ago is exactly the thing
+    # being scanned for, and it is not tracked yet.
+    listed = git(["ls-files", "--cached", "--others", "--exclude-standard"], root) or ""
+    pairs: list[tuple[str, str]] = []
+    for name in listed.splitlines():
+        path = root / name
+        try:
+            pairs.append((name, path.read_text(encoding="utf-8")))
+        except (OSError, UnicodeDecodeError):
+            continue  # binary or unreadable: nothing greppable in it anyway
+    return pairs
+
+
+# --------------------------------------------------------------------------------------------
+# repo knowledge
+
+
+@dataclass
+class RepoInfo:
+    rel: str
+    path: Path
+    route: str
+    about: str
+    public: bool
+
+
+def repo_summary(path: Path) -> str:
+    """One line describing a repo, from its README's first real sentence — cheap and good enough.
+
+    Deliberately not a grep of the repo: the point is to spend one small read per repo, not to
+    search them. A repo whose README says nothing useful gets an [about] entry in the config.
+    """
+    for name in ("README.md", "readme.md", "AGENTS.md"):
+        candidate = path / name
+        if not candidate.is_file():
+            continue
+        for line in candidate.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith(("#", "---", "<!--", "[!", "|", "```")):
+                return stripped[:160]
+    return ""
+
+
+def known_repos(cfg: Config) -> list[RepoInfo]:
+    """Every git repo under the projects root, with its route and a one-line description."""
+    public = set(cfg.public_root_names())
+    found: list[RepoInfo] = []
+    for rel in repo_paths(cfg):
+        path = cfg.projects_root / rel
+        rule, _ = _match_rule(cfg, rel)
+        found.append(
+            RepoInfo(
+                rel=rel,
+                path=path,
+                route=rule.write if rule else "unrouted",
+                about=cfg.about.get(rel) or repo_summary(path),
+                public=rel.split("/")[0] in public,
+            )
+        )
+    return found
 
 
 # --------------------------------------------------------------------------------------------
@@ -442,6 +651,8 @@ def cmd_new(args: argparse.Namespace) -> int:
     if not TOPIC_RE.match(args.topic):
         raise PlanError(f"topic {args.topic!r} must be kebab-case: lowercase letters, digits and single hyphens")
     cfg = load_config()
+    if args.unscoped:
+        return write_plan(cfg.unscoped, args.topic, args.status, "unscoped", None, cfg)
     routing = resolve(args.path, cfg)
     if args.to is None:
         require_ok(routing)
@@ -452,31 +663,44 @@ def cmd_new(args: argparse.Namespace) -> int:
             raise PlanError(f"cannot write to {args.to!r} for this repo: {routing.reason or 'no such directory'}")
         target, where = routing.dirs[args.to], args.to
 
-    path = target / f"{today()}-{args.topic}.md"
+    origin = None
+    if where == "store" and routing.repo_root:
+        # The store's directory tree encodes the clone path; the origin URL is the identity that
+        # survives the clone being moved or renamed, so that is what the file itself records.
+        origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
+    return write_plan(target, args.topic, args.status, where, origin, cfg)
+
+
+def write_plan(target: Path, topic: str, status: str, where: str, repo: str | None, cfg: Config) -> int:
+    path = target / f"{today()}-{topic}.md"
     if path.exists():
         raise PlanError(f"{path} already exists — update it in place rather than opening a second file")
 
-    lines = ["---", f"status: {args.status}", f"updated: {today()}"]
-    if where == "store":
-        # The store's directory tree encodes the clone path; the origin URL is the identity that
-        # survives the clone being moved or renamed, so that is what the file itself records.
-        origin = git(["remote", "get-url", "origin"], routing.repo_root) if routing.repo_root else None
-        lines.append(f"repo: {origin or routing.rel}")
+    lines = ["---", f"status: {status}", f"updated: {today()}"]
+    if repo:
+        lines.append(f"repo: {repo}")
     lines += ["---", "", "## Context", "", "## Open questions", "", "## Recommended direction", ""]
 
     target.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
     print(f"created: {path}")
     print(f"where:   {where}")
-    if where == "store" and not (cfg.store / ".git").is_dir():
-        print(f"note:    {cfg.store} is not a git repository yet — plans.py init-store")
+    if where in {"store", "unscoped"} and not (cfg.store / ".git").is_dir():
+        print(f"note:    {cfg.store} is not a git repository yet — plans.py install")
+    if where == "unscoped":
+        print("note:    belongs to no repo yet — plans.py graduate <file> --to <repo> when it does")
     return 0
 
 
 def cmd_list(args: argparse.Namespace) -> int:
     cfg = load_config()
-    routing = require_ok(resolve(args.path, cfg))
-    plans = plan_files(routing)
+    if args.unscoped:
+        sources = [("unscoped", cfg.unscoped)]
+        plans = plans_in(cfg.unscoped, "unscoped")
+    else:
+        routing = require_ok(resolve(args.path, cfg))
+        sources = routing.read_dirs()
+        plans = plan_files(routing)
     if args.status:
         plans = [plan for plan in plans if plan.status.startswith(args.status)]
 
@@ -498,8 +722,8 @@ def cmd_list(args: argparse.Namespace) -> int:
         )
         return 0
 
-    for where, path in routing.read_dirs():
-        print(f"read:    {where:<6} {path}{'' if path.is_dir() else ' (does not exist)'}")
+    for where, path in sources:
+        print(f"read:    {where:<8} {path}{'' if path.is_dir() else ' (does not exist)'}")
     if not plans:
         print("\n(no plan files)")
         return 0
@@ -615,6 +839,197 @@ def cmd_refs(args: argparse.Namespace) -> int:
     return 0
 
 
+def list_terms(cfg: Config, terms: list[str]) -> int:
+    for term in terms:
+        print(term)
+    print(f"\n{len(terms)} private term(s) derived from {cfg.projects_root}")
+    return 0
+
+
+def cmd_scan(args: argparse.Namespace) -> int:
+    """Refuse to let a client's identity reach a repo that gets published."""
+    cfg = load_config()
+    terms = private_terms(cfg)
+    if args.list_terms:
+        return list_terms(cfg, terms)
+    root = repo_root_of(args.path)
+    if root is None:
+        raise PlanError(f"{args.path} is not inside a git repository")
+    if not terms:
+        print("terms:   none derived — set public_roots (and [private] extra) in the config first")
+        print(f"config:  {cfg.path}")
+        return 1
+
+    tally: Counter[str] = Counter()
+    hits = 0
+    for label, text in scan_targets(root, args.mode):
+        for number, term, line in scan_text(text, terms):
+            if hits < args.samples:
+                print(f"{label}:{number}: [{term}] {line[:160]}")
+            tally[term.lower()] += 1
+            hits += 1
+    if hits > args.samples:
+        print(f"... {hits - args.samples} more (raise --samples to see them)")
+    print(f"\n{hits} hit(s) over {args.mode}, against {len(terms)} private term(s) from {cfg.projects_root}")
+    for term, count in tally.most_common(10):
+        print(f"  {count:>5}  {term}")
+    if hits:
+        print("\nEach names work that is not yours to disclose. Redact before committing. A term that")
+        print("is a generic English word rather than an identity belongs in the config's")
+        print("[private] ignore list — never widen public_roots to silence it.")
+        print("A hit already in pushed history is a purge decision for the user, not an edit.")
+    return 1 if hits else 0
+
+
+def cmd_repos(args: argparse.Namespace) -> int:
+    """What each repo is for, so a plan's destination is an informed question, not a grep."""
+    cfg = load_config()
+    repos = known_repos(cfg)
+    if args.search:
+        needles = [word.lower() for word in args.search.split()]
+        scored = [(sum(word in f"{r.rel} {r.about}".lower() for word in needles), r) for r in repos]
+        repos = [repo for score, repo in sorted(scored, key=lambda pair: -pair[0]) if score]
+    if args.public_only:
+        repos = [repo for repo in repos if repo.public]
+    repos = repos[: args.limit]
+
+    if args.json:
+        print(
+            json.dumps(
+                [{"rel": r.rel, "route": r.route, "about": r.about, "public": r.public} for r in repos],
+                indent=2,
+            )
+        )
+        return 0
+    if not repos:
+        print("(no repos matched)")
+        return 0
+    width = max(len(repo.rel) for repo in repos)
+    for repo in repos:
+        flag = "public" if repo.public else "work"
+        print(f"{repo.rel.ljust(width)}  {repo.route:<9} {flag:<6} {repo.about}")
+    print(f"\n{len(repos)} repo(s). Offer the top few as AskUserQuestion options; never guess silently.")
+    if any(not repo.public for repo in repos):
+        print("Rows marked `work` name repos that are not yours to disclose — this listing is for")
+        print("choosing a destination, never for pasting into a repo you publish.")
+    return 0
+
+
+def cmd_describe(args: argparse.Namespace) -> int:
+    """Record what a repo is for, when its README does not say it well enough to route by."""
+    cfg = load_config()
+    if not cfg.exists:
+        raise PlanError(f"no config at {cfg.path} — run: plans.py install")
+    text = cfg.path.read_text(encoding="utf-8")
+    entry = f'"{args.repo}" = {json.dumps(args.about)}'
+    lines = text.splitlines()
+    if "[about]" in lines:
+        index = lines.index("[about]")
+        lines = [line for line in lines if not line.startswith(f'"{args.repo}" =')]
+        index = lines.index("[about]")
+        lines.insert(index + 1, entry)
+    else:
+        lines += ["", "# What each repo is for — used to route a plan without grepping the repos.", "[about]", entry]
+    cfg.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"described: {args.repo}")
+    print(f"config:    {cfg.path}")
+    return 0
+
+
+def cmd_graduate(args: argparse.Namespace) -> int:
+    """Move an unscoped plan into the repo that now exists for it."""
+    cfg = load_config()
+    plan = next((p for p in plans_in(cfg.unscoped, "unscoped") if p.path.name == Path(args.file).name), None)
+    if plan is None:
+        candidate = Path(args.file)
+        if not candidate.is_file():
+            raise PlanError(f"no plan named {args.file!r} in {cfg.unscoped}")
+        plan = read_plan(candidate.resolve(), "unscoped")
+
+    routing = require_ok(resolve(Path(args.to), cfg))
+    target = routing.write_dir
+    destination = target / plan.path.name
+    if destination.exists():
+        raise PlanError(f"{destination} already exists")
+
+    text = plan.path.read_text(encoding="utf-8")
+    if routing.rule and routing.rule.write == "store" and "repo" not in parse_frontmatter(text):
+        origin = git(["remote", "get-url", "origin"], routing.repo_root) if routing.repo_root else None
+        text = text.replace("\nupdated:", f"\nrepo: {origin or routing.rel}\nupdated:", 1)
+    target.mkdir(parents=True, exist_ok=True)
+    destination.write_text(text, encoding="utf-8")
+    plan.path.unlink()
+    print(f"graduated: {plan.path.name}")
+    print(f"to:        {destination}")
+    print(f"route:     {routing.rule.write if routing.rule else '?'} ({routing.source})")
+    return 0
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    """Everything this skill needs on a machine, idempotently: config, store, unscoped area."""
+    cfg = load_config()
+    if not cfg.path.exists():
+        cfg.path.parent.mkdir(parents=True, exist_ok=True)
+        cfg.path.write_text(CONFIG_SKELETON, encoding="utf-8")
+        print(f"created:     {cfg.path}")
+    else:
+        print(f"exists:      {cfg.path}")
+
+    cfg.store.mkdir(parents=True, exist_ok=True)
+    cfg.unscoped.mkdir(parents=True, exist_ok=True)
+    if not (cfg.store / ".git").is_dir():
+        if git(["init", "-q"], cfg.store) is None:
+            raise PlanError(f"git init failed in {cfg.store}")
+        print(f"initialized: {cfg.store} (git, no remote)")
+    else:
+        print(f"exists:      {cfg.store}")
+    readme = cfg.store / "README.md"
+    if not readme.exists():
+        readme.write_text(STORE_README, encoding="utf-8")
+        print(f"created:     {readme}")
+
+    remotes = git(["remote"], cfg.store)
+    if remotes:
+        print(f"WARNING:     the store has remote(s) configured: {remotes.split()}")
+        print("             one personal remote holding several clients' material is the outcome")
+        print("             this store exists to avoid — check that this was deliberate")
+    if not git(["config", "user.email"], cfg.store):
+        print("todo:        the store has no git identity and cannot commit —")
+        print("             git -C <store> config user.name/user.email")
+    if not os.environ.get("PLANS_HOME"):
+        print(f"todo:        PLANS_HOME is unset; the default {cfg.store} is in use. Export it from")
+        print("             your shell profile so everything else on the machine agrees.")
+    if not args.quiet:
+        print("\nnext:        plans.py where   (in a repo)   /   plans.py new <topic> --unscoped")
+    return 0
+
+
+def cmd_uninstall(args: argparse.Namespace) -> int:
+    """Undo `install`. The store is never removed silently — it is the only copy of those plans."""
+    cfg = load_config()
+    if cfg.path.exists():
+        if args.keep_config:
+            print(f"kept:        {cfg.path}")
+        else:
+            cfg.path.unlink()
+            print(f"removed:     {cfg.path}")
+    else:
+        print(f"absent:      {cfg.path}")
+
+    held = [path for path in cfg.store.rglob("*.md") if path.name != "README.md"] if cfg.store.is_dir() else []
+    if not args.purge_store:
+        print(f"kept:        {cfg.store} ({len(held)} plan file(s)) — pass --purge-store to delete it")
+        return 0
+    if held and not args.force:
+        raise PlanError(
+            f"{cfg.store} still holds {len(held)} plan file(s); this is their only copy. "
+            "Move what matters out first, or re-run with --force to delete them."
+        )
+    shutil.rmtree(cfg.store)
+    print(f"removed:     {cfg.store} ({len(held)} plan file(s) deleted)")
+    return 0
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     path = config_path()
     if args.action == "path":
@@ -640,28 +1055,6 @@ def cmd_config(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_init_store(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    _ = args
-    cfg.store.mkdir(parents=True, exist_ok=True)
-    if not (cfg.store / ".git").is_dir():
-        if git(["init", "-q"], cfg.store) is None:
-            raise PlanError(f"git init failed in {cfg.store}")
-        print(f"initialized: {cfg.store} (git, no remote)")
-    else:
-        print(f"exists:      {cfg.store}")
-    readme = cfg.store / "README.md"
-    if not readme.exists():
-        readme.write_text(STORE_README, encoding="utf-8")
-        print(f"created:     {readme}")
-    remotes = git(["remote"], cfg.store)
-    if remotes:
-        print(f"WARNING:     this store has remote(s) configured: {remotes.split()}")
-        print("             a single personal remote holding several clients' material is the")
-        print("             outcome this store is designed to avoid — check that this was deliberate")
-    return 0
-
-
 # --------------------------------------------------------------------------------------------
 
 
@@ -684,11 +1077,13 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("topic", help="kebab-case topic, e.g. store-routing")
     new.add_argument("--status", default="idea", help="frontmatter status (default: idea)")
     new.add_argument("--to", choices=("repo", "store"), help="override the configured write target")
+    new.add_argument("--unscoped", action="store_true", help="an idea with no repo yet; needs no repo at all")
     new.set_defaults(func=cmd_new)
 
     listing = add("list", "status-grouped index of this repo's plans, with open-tag counts")
     listing.add_argument("--status", help="only plans whose status starts with this")
     listing.add_argument("--json", action="store_true")
+    listing.add_argument("--unscoped", action="store_true", help="the repo-less plans instead of this repo's")
     listing.set_defaults(func=cmd_list)
 
     tags = add("tags", "anchored search for the five plan-docs tags")
@@ -713,12 +1108,44 @@ def build_parser() -> argparse.ArgumentParser:
     refs.add_argument("file", help="plan path or bare filename")
     refs.set_defaults(func=cmd_refs)
 
+    scan = add("scan", "fail if a private name reaches a repo you publish")
+    scan.add_argument(
+        "--mode", choices=("tree", "staged", "history"), default="tree", help="what to scan (default: tree)"
+    )
+    scan.add_argument("--samples", type=int, default=40, help="how many hit lines to print (default: 40)")
+    scan.add_argument("--list-terms", action="store_true", help="print the derived terms and stop")
+    scan.set_defaults(func=cmd_scan)
+
+    repos = add("repos", "what each repo is for, to route a plan by")
+    repos.add_argument("--search", help="rank by these words appearing in the path or description")
+    repos.add_argument("--public-only", action="store_true", help="only repos under a public root")
+    repos.add_argument("--limit", type=int, default=40)
+    repos.add_argument("--json", action="store_true")
+    repos.set_defaults(func=cmd_repos)
+
+    describe = add("describe", "record what a repo is for, in the config")
+    describe.add_argument("repo", help="path relative to projects_root, e.g. github.com-personal/agent-skills")
+    describe.add_argument("about", help="one line: what belongs in that repo")
+    describe.set_defaults(func=cmd_describe)
+
+    graduate = add("graduate", "move an unscoped plan into the repo that now exists for it")
+    graduate.add_argument("file", help="plan filename in the unscoped area, or a path")
+    graduate.add_argument("--to", required=True, help="a path inside the destination repo")
+    graduate.set_defaults(func=cmd_graduate)
+
+    install = add("install", "set this machine up: config, store, unscoped area")
+    install.add_argument("--quiet", action="store_true")
+    install.set_defaults(func=cmd_install)
+
+    uninstall = add("uninstall", "undo install; never deletes plans without being told twice")
+    uninstall.add_argument("--keep-config", action="store_true", help="leave the config file in place")
+    uninstall.add_argument("--purge-store", action="store_true", help="also delete the store directory")
+    uninstall.add_argument("--force", action="store_true", help="allow --purge-store to delete plan files")
+    uninstall.set_defaults(func=cmd_uninstall)
+
     config = add("config", "show, locate or create the routing config")
     config.add_argument("action", choices=("show", "path", "init"), nargs="?", default="show")
     config.set_defaults(func=cmd_config)
-
-    store = add("init-store", "create the store as a local git repository with no remote")
-    store.set_defaults(func=cmd_init_store)
 
     return parser
 

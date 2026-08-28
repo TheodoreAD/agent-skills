@@ -143,8 +143,8 @@ Done 2026-08-28, all green:
 - Real-corpus read-only run of `list`, `tags --tag DECISION` and `refs` over this repo's own four
   plans: correct statuses, correct per-file tag counts, both inbound references to
   `2026-08-28-cross-repo-plan-store.md` found.
-- `where` against a real depth-3 work clone (root/project/repo) resolves to the mirrored store
-  path, confirming the depth measurement above is actually handled.
+- `where` against a real depth-3 work clone (root/project/repo) resolves to the mirrored store path,
+  confirming the depth measurement above is actually handled.
 - This machine's config and store created: `default = "store"`, `github.com-personal = "repo"`,
   `~/plans` initialized as git with no remote and one commit.
 

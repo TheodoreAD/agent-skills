@@ -171,7 +171,18 @@ considered and rejected).
    - **Git state, every repo the session touched** — not just the primary one. Dirty tree, unpushed
      commits (`git log origin/<branch>..HEAD`), and whether the remote moved under you. An unpushed
      commit is the most common real loose end, and a session that ends with one usually believes it
-     pushed.
+     pushed. **Check that the `git fetch` actually succeeded before trusting either answer**: on
+     this machine a fetch needs the Zenity SSH-passphrase dialog, which fails with
+     `Permission denied (publickey)` when nobody is at the keyboard — and a failed fetch leaves
+     `origin/<branch>` exactly where it was, so the ahead-count still prints a plausible number
+     computed against a stale ref. Same silent-by-construction shape as the CI loop above: the wrong
+     answer and the right one are indistinguishable. Read the fetch's exit code, and when it failed
+     say how old the ref is (`git log -1 --format=%cr origin/<branch>`) rather than reporting the
+     count flat. Confirmed 2026-08-28.
+   - **Sibling repos this skill itself wrote to.** A skill self-update (step 6) commits locally and
+     reaches nothing until it is pushed and re-installed, so `agent-skills` is a repo the session
+     touched and it is the one most likely to be forgotten — the edit felt done when it was
+     committed. Check its ahead-count too, and report it with the rest.
    - **CI, for anything this session pushed.** A green local gate is not a green CI run. Use a
      bounded waiter (`gh run watch <id> --exit-status`), never a hand-rolled `until` loop.
    - **Work the session promised but never verified** — a test tier it added to but never ran, a

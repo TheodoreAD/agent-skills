@@ -123,7 +123,13 @@ considered and rejected).
      2026-08-23: two cross-repo rules routed to `~/AGENTS.md` while the (since retired) leanness
      pass was actively cutting it from 30 sections and adding admission rules of its own — now
      permanent in `contributing/global-agents-md.md` ("Admitting a new rule"); both candidates were
-     parked in that plan instead of appended, and were decided at its close.
+     parked in that plan instead of appended, and were decided at its close. **When the destination
+     is a _different repo_ that is mid-restructure, the queue is a plan in the current repo carrying
+     `depends_on: [<that-repo>]`** — you cannot park a `[NEEDS CLARIFICATION: ...]` in a plan you
+     are not in, and holding the candidate in the session is how it is lost. Confirmed 2026-08-29: a
+     session produced nine evidence-backed edits owed to two skills in `agent-skills` while that
+     repo was undergoing surgery; they went to a `depends_on`-tagged plan in the project that found
+     them, with the evidence attached, so the edits can be made in one pass later.
    - **Already covered → skip.** If an existing memory file or doc already says this, don't write a
      duplicate — check first.
    - **Meta-conventions about how to build things in this ecosystem (e.g. "skills should do X by
@@ -185,6 +191,12 @@ considered and rejected).
      committed. Check its ahead-count too, and report it with the rest.
    - **CI, for anything this session pushed.** A green local gate is not a green CI run. Use a
      bounded waiter (`gh run watch <id> --exit-status`), never a hand-rolled `until` loop.
+   - **Shared stores outside any repo.** `$RESEARCH_HOME` clones, caches, anything the session added
+     to a location no `git status` covers. The failure is a half-finished convention rather than a
+     missing file — a clone without its `SOURCE.md`, or one that failed partway — and it is
+     invisible to every other check here precisely because the store is not version-controlled.
+     Cheap to verify (does each new entry exist, and does it carry whatever metadata that store's
+     convention requires), and nothing else will.
    - **Work the session promised but never verified** — a test tier it added to but never ran, a
      consumer it changed but never swept. "I'll report when it lands" in the last message is a
      promise the harvest has to either keep or retract.

@@ -321,6 +321,69 @@ overrides repo discovery entirely. Its own guidance — issues belong in the pro
 when the project is yours — is the argument for keeping this a parallel path rather than a
 replacement.
 
+### Why the confidentiality gate derives its terms instead of listing them
+
+The rule is easy to state — a published repo must not name a client — and useless without a check,
+because the agent writing the plan is the one that does not know it is doing something wrong.
+Measured 2026-08-28: this skill's own plan file, written by an agent, tabulated six employer/client
+root directory names and one client's internal `<project>/<repo>` path, and was committed and pushed
+to a repo whose README advertises it as public.
+
+A checked-in list of forbidden names cannot be the answer: the only places to put it are the public
+repo being protected — where the list is itself the disclosure — or a file somewhere that nobody
+updates when a new client arrives. Deriving the terms from the machine's directory layout solves
+both. Every root, project and repo name under `projects_root` that is not under a `public_roots`
+entry is a name that identifies work that is not the author's to disclose, a fresh clone is covered
+the moment it lands, and there is nothing to maintain.
+
+Two details are what make it usable rather than ignored:
+
+- **The walk stops at the first `.git`.** The first implementation collected three levels of
+  directory names blindly and swept up `src`, `tests`, `dist`, `.venv` from inside work repos —
+  producing 81 hits on a clean tree, all noise. A repo's internal structure identifies nobody.
+- **Generic repo names get an ignore list, not a wider `public_roots`.** A work repo called `tools`
+  or `settings` matches ordinary English. Ignoring that one name costs almost nothing; adding its
+  root to `public_roots` would silence every other name in that organisation at the same time.
+
+`--mode history` exists because the working tree is the wrong place to look once something has been
+pushed: a redaction commit fixes the file and changes nothing about what is published. The scanner
+reports; whether to rewrite published history is a force-push and a support request, and that is the
+user's decision, not an edit an agent should make quietly.
+
+### Why repo-less plans live in the store, under one reserved directory
+
+An idea that has not earned a repo is exactly the thing this convention used to lose: `plans/`
+belongs to a repo, so an exploration with no repo had nowhere to go but a chat scratchpad. It goes
+in the store, in `_unscoped/`. Underscore-prefixed because every other directory in the store is a
+mirrored project root, and a reserved name that cannot collide with one is worth more than a
+prettier one. `--unscoped` deliberately needs no git repo at all — the idea may well be had
+somewhere that isn't a checkout.
+
+`graduate` is the other half, and the reason the unscoped area does not become a graveyard: when the
+repo finally exists, one command routes the file through that repo's own rule and stamps its
+provenance. Without it, the plan stays in the repo-less pile while the work moves into a repo, and
+nobody finds it again.
+
+### Why repo descriptions are metadata, not a search
+
+Deciding which repo a piece of content belongs to by grepping candidate repos is the expensive,
+unreliable way: it costs a lot of reads and answers "where is this word mentioned", which is not the
+question. One line per repo — its README's first real line, overridable by an `[about]` entry — is
+enough to rank candidates, and cheap enough to compute for every repo on the machine at once.
+
+The output is deliberately not a decision. It is the input to an `AskUserQuestion` with two or three
+concrete options, so the user confirms an informed guess instead of answering an open question. The
+listing itself names work repos, which makes it exactly the kind of content the confidentiality rule
+above is about — for choosing a destination, never for pasting into a repo.
+
+### Why `uninstall` will not delete the store
+
+`install` and `uninstall` are asymmetric on purpose. The config is derived, cheap, and rewritable,
+so `uninstall` removes it. The store holds the only copy of every plan for every repo that could not
+keep its own — no remote, by design — so deleting it is not the inverse of creating it. It takes
+`--purge-store`, and a store that still holds plan files takes `--force` on top of that. An
+uninstall that silently emptied it would be the single most destructive thing this skill could do.
+
 ## Prior art
 
 Checked how established communities solve "dated proposal document with a lifecycle" before settling

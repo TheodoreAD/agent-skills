@@ -307,30 +307,39 @@ The question this section used to open with — discovery or relocation — is s
 `[DECISION:]` under "Recommended direction" records it and what answered it. What follows is what is
 still open.
 
-[NEEDS CLARIFICATION: how much does per-repo plan history actually buy? Worth interrogating rather
-than assuming, because `plan-docs` **deletes** plans on retirement and migrates their durable
-content to `contributing/`/`docs/`. What the repo's history therefore preserves is the drafting
-process plus the retirement commit — not the plan as a living document. If the durable value is
-already in `contributing/`, the historical argument for per-repo storage is weaker than it feels,
-and the answer may change the whole decision.]
+[DECISION: **a retired plan is deleted, everywhere, and git history is the archive.** Settled with
+the user 2026-08-29, against Backlog.md's opposite position. Two things make it safe. Deleting takes
+a file off the working set, not out of the repository — the drafting commits, the file's final state
+and the `## Migrated to` commit all stay reachable, and what makes them findable is a search command
+rather than a directory of stale files. And the destination question was miscast: the
+`docs`/design-rationale contributions land in the origin repo whether or not the plan lived there,
+because they are real contributions to that repo. The plan could have been a Jira ticket and the
+repo's docs would still need updating. So a store-held plan is not a special case needing its own
+retention rule — its durable half goes to the repo it is about, and the rest goes where every
+deleted plan's reasoning goes, into git history.
 
-[NEEDS CLARIFICATION: does adopting an existing tool make sense here at all, or only its model?
-`~/AGENTS.md` says to check for a maintained external project before authoring from scratch. The
-honest reading of the survey: the one project that solves this problem (tasks.md) is 7 stars and
-five months old, and the two mature ones (git-bug, beads) both reject markdown-in-the-tree, which is
-the property this repo's whole convention is built on. Adopting either means abandoning `plan-docs`.
-Adopting tasks.md means depending on an unadopted npm package for something the family already has a
-working convention for. Borrowing the workspace-discovery model and writing the aggregator here is
-the third option and probably the right one — but it should be an explicit decision, not a default.
-Settled in part below: the aggregator, if written, ships inside `plan-docs`. What is still open is
-whether it should exist at all rather than the discovery gap being lived with.]
+This also answers what per-repo history buys, which was a second open question here: the retrieval
+path for exactly this. It is why deletion costs little, and it is the argument that would collapse
+if plans were ever stored somewhere without version control.]
 
-[NEEDS CLARIFICATION: does a cross-repo plan get one file or one per repo? A plan that can't land
-without `repo-tasks` changing has real content for both repos. Options: single file in the repo that
-owns the outcome plus `depends_on` (today's shape, already specified and unused); a stub in each
-affected repo pointing at the owner; or the aggregator resolving `depends_on` into a
-"blocked-by/blocking" view so no second file is ever needed. The third preserves one-file-per-topic,
-which `plan-docs` insists on for good reason.]
+[DEFERRED: **searching git history for a retired plan.** Raised by the user 2026-08-29 as the thing
+that makes the deletion rule comfortable, and it is a `plans.py` command, not a new tool: find plan
+files deleted from `plans/` (`git log --diff-filter=D`), search every retired plan's content by
+keyword (`git log -S`), and print the `git show <sha>^:<path>` that brings one back — across every
+repo the walker already knows plus the store's own history. Nothing depends on it existing before
+the rule takes effect, since git already holds everything; it is the ergonomics of getting it out.]
+
+[DECISION: **borrow the model, adopt nothing.** Settled 2026-08-29 by the aggregator existing:
+`plans.py backlog` is the discovery layer, stdlib, ~130 lines, and it took the workspace-discovery
+model from tasks.md and the source_repo/hydration model from beads without either dependency.
+`~/AGENTS.md`'s "check for a maintained external project first" is satisfied by the survey above,
+not bypassed: the one project that solves this problem is 7 stars and five months old, and the two
+mature ones reject markdown-in-the-tree, which is the property the whole convention rests on.]
+
+[DECISION: **a cross-repo plan stays one file.** Settled 2026-08-29 by the same command: `backlog`
+renders `depends_on` as blocked-by edges, so the repo being waited on sees the wait without a stub
+file of its own. That was the third of the three options weighed here, and it is the one that
+preserves one-file-per-topic.]
 
 [NEEDS CLARIFICATION: is a tracker in the loop at all? The user raised continuously mirroring a
 tracker (GitHub Issues) down to markdown. gh-issue-sync and git-bug's bridges both prove it works,
@@ -338,7 +347,25 @@ but both make the remote authoritative and the markdown a mirror, which inverts 
 It also fails the offline case that `power-user-linux-setup`'s
 `plans/2026-08-23-github-issues-plan-lifecycle.md` already flagged. Decide whether a tracker is (a)
 not involved, (b) an inbox only, or (c) the store — `(b)` is what the issues plan already leans
-toward and is compatible with everything above.]
+toward and is compatible with everything above.
+
+Explicitly held open 2026-08-29: the user wants more time on it. Three inputs have arrived since the
+question was written, and they narrow it rather than answer it. **(c) is effectively dead**: the
+store's "local git, no remote, ever by default" decision exists so that no single personal remote
+accumulates several employers' internal architecture, and an issue is a remote — a tracker could
+only ever hold the personal family's plans, which is one of the eight project roots. **The strongest
+argument for a tracker is spent**: "one place that answers what is pending across everything" is
+what `backlog` now does, locally and offline, across all of them. And **an issue body is the one
+capture surface `scan` cannot reach** — the gate reads the tree, the index and history, while
+nothing inspects a body before `gh issue create`, and the content most likely to be captured
+off-machine is friction noticed while working in a client repo.
+
+What still argues for (b) is one thing and it is real: capture from somewhere this machine's tree is
+not reachable — a cloud session, a container, another machine, a phone — where `$PLANS_HOME` does
+not exist either, so `--unscoped` is no answer. The shape that keeps that and removes the leak class
+is an inbox restricted to the personal family's _own tooling_ (a skill bug, an `~/AGENTS.md` rule
+that misfired), never to anything observed in a work repo, carrying a pointer plus evidence rather
+than design content, and closed the moment triage turns it into a plan file.]
 
 [DECISION: **The aggregator ships inside the skill, as `skills/plan-docs/scripts/`, written against
 the standard library only.** Settled with the user 2026-08-28: no new software is being planned
@@ -368,13 +395,6 @@ section: a status is well-formed if it matches the vocabulary exactly or opens w
 `superseded by`, since the vocabulary is open-ended at the end and never at the start. First real
 run found exactly the two the tally predicted — `done`, and the free-form status paragraph. This
 forecloses nothing: enforcement can still be added later on top of the same check.]
-
-[NEEDS CLARIFICATION: does a retired plan get deleted or kept? `plan-docs` deletes after migrating
-durable content; Backlog.md's manifesto takes the opposite position and keeps every completed item
-as "durable project history". This was not previously treated as an open question at all, and it
-interacts with the history question above: if retirement stopped deleting, the argument for per-repo
-storage strengthens considerably, because the repo's history would then hold the plan itself rather
-than only its drafting.]
 
 [DECISION: **retirement destinations are stated as roles, not as paths.** `SKILL.md` named
 `contributing/` and `docs/` in eleven places — the layout of the repo the convention used to live

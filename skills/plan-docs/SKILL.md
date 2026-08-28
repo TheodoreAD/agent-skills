@@ -305,7 +305,17 @@ picking one is part of the first retirement, not a reason to skip it.
 ## Retiring a plan
 
 On reaching `landed`, `abandoned`, or an old `superseded by ...`: `plans/` is a working set that
-empties out — but nothing genuinely costly to work out gets silently dropped.
+empties out — but nothing genuinely costly to work out gets silently dropped. Deleting the file
+takes it off the working set, not out of the repository: the drafting commits, its final state and
+the `## Migrated to` commit all stay reachable through git. That is what makes the deletion cheap,
+and it is why a plan is only ever kept in version control.
+
+**A store-held plan retires exactly like a repo-held one, and is deleted the same way.** The usage
+docs and design rationale still go into the repo the plan is _about_ — updating a repo's own docs is
+an ordinary contribution, available even where adding a `plans/` directory is not, and it would be
+owed just the same if the planning had happened in a tracker instead. What is left after that
+migration is reasoning that belongs to nobody but you, and it stays in the store's git history,
+which is why the store is a git repository at all.
 
 **Triage the file's content by lifecycle first.** Split by what each passage _is_, never by how long
 the file is: a long file that is all one lifecycle stays one file, while a short one mixing several

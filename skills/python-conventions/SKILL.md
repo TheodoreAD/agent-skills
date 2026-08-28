@@ -42,9 +42,41 @@ just confirm what you'd already do, weight the ones that don't.
   `NamedTuple` (drop-in positional-tuple compatibility, or a small closed record where order _is_
   the meaning — never past ~3 fields), `msgspec` (once Pydantic overhead is a _measured_
   bottleneck), `TypedDict` (value must genuinely stay a plain dict, not become an object).
+- **The NamedTuple clause's third condition — zero validation or behavioural needs — is the one that
+  bites, and "past ~3 fields" is the weaker test.** A two-field `Quantity(amount, unit)` looks like
+  a textbook NamedTuple and is a bug: it inherits tuple ordering, so comparing `Quantity(5, "ml")`
+  against `Quantity(300, "mg")` with `<` returns `True` instead of raising, silently succeeding
+  across incompatible units. Free tuple ordering is a hazard, not a convenience, for any value type
+  whose comparisons carry a precondition.
+- Alternative, project-wide: **if a project uses Pydantic for anything, it uses Pydantic for
+  everything.** A legitimate substitute for the split above, not a divergence from it, and it cuts
+  both ways — it also makes "no Pydantic anywhere" a real answer, rather than letting the dependency
+  arrive one convenient module at a time. Take it when a project already has Pydantic at its
+  boundary and would otherwise run two record idioms, leaving an agent to guess which to mimic; the
+  split's own reasoning (measured plain-attribute-access cost, dependency weight) is what you are
+  trading away, so decide once, at the top of the project, not per module.
 - Model default: **overrides.** Left alone, a model mixes Pydantic/dataclass/TypedDict/NamedTuple
   inconsistently across a codebase depending on what it last saw — there's no strong single default
   instinct here to confirm.
+
+### Pydantic traps a dataclass never had
+
+Three measured against pydantic 2.13.5, all of which bite a project migrating dataclasses → Pydantic
+or following the all-or-nothing alternative above.
+
+- **`model_copy(update=...)` performs no validation** — its own docstring says so. A frozen model
+  copied with `update=` accepts a naive datetime, or a cross-field violation, that every other
+  construction path rejects. This is a genuine regression from `dataclasses.replace`, which
+  revalidates, and it hits mechanically at every `replace()` call site being ported. Use the
+  revalidating helper in the snippet, not `model_copy`.
+- **Lax mode coerces `float` into `Decimal`.** For any field that is `Decimal` _because_ floats are
+  unacceptable, the default silently removes the guarantee. `Annotated[Decimal, Strict()]` restores
+  it and keeps the metadata in the annotation where the rest of it lives.
+- **Config belongs in the class declaration.** `class Q(BaseModel, frozen=True)` is verified
+  equivalent to `model_config = ConfigDict(frozen=True)`, composes with other keywords, and reads on
+  the line that names the class rather than as an attribute assignment that looks like data.
+- Model default: **overrides.** `model_copy(update=...)` reads as the obvious `replace` equivalent
+  and is the natural first reach; nothing about the call site suggests validation was skipped.
 
 ## Dates, times, and timezones
 
@@ -60,6 +92,17 @@ just confirm what you'd already do, weight the ones that don't.
   Normalising on the way in is what makes every later comparison mean elapsed time. Measured live
   2026-08-27 in `ingesta`, where both failures were real and neither was visible by reading the
   code.
+- The canonical spelling, for a project that has Pydantic:
+
+  ```python
+  Utc = Annotated[datetime, AwareDatetime, AfterValidator(lambda v: v.astimezone(UTC))]
+  ```
+
+  Verified: it normalises an aware non-UTC datetime and rejects a naive one, on every construction
+  path the model has. That is the whole rule above as one reusable annotation, and it replaces the
+  hand-maintained `object.__setattr__` normalisation a frozen dataclass needs at each field. Without
+  Pydantic, the equivalent is still a `__post_init__` doing both halves explicitly — reject naive,
+  then `astimezone(UTC)` — never one or the other.
 - Resolving a local wall time: `fold` (PEP 495) is the whole API, and each case needs a stated
   policy rather than whatever `replace(tzinfo=...)` happens to do. Detect by comparing **offsets,
   not datetimes** — intra-zone comparison ignores `fold`, so the datetimes compare equal either way.
@@ -283,6 +326,35 @@ just confirm what you'd already do, weight the ones that don't.
 - Model default: **partial.** Models write async syntax correctly; the specific choice of
   `TaskGroup` over `gather`, and the sync/async tool-function boundary FastMCP imposes, aren't
   something a model infers without being told the framework's actual dispatch mechanism.
+
+### AnyIO as the async API
+
+For a project whose async surface is more than one fan-out — a store, a bot, a service — write
+against **AnyIO** rather than `asyncio` directly, and run it **on the asyncio backend**. All four
+points confirmed at source.
+
+- **The reason is safety and structure, not portability.** A task group cannot orphan a task the way
+  a dropped `create_task` handle can; cancellation propagates through cancel scopes instead of being
+  reimplemented per call site; and one set of primitives replaces choosing between
+  `gather`/`wait`/`as_completed`/`wait_for` with their differing cancellation semantics. The
+  portability argument is the weakest one and should not be the headline — stdlib
+  `asyncio.TaskGroup` already gives the fan-out case above most of the structure, so the AnyIO
+  decision is about the rest of the surface.
+- **asyncio is the backend to be on; trio is a separate choice most projects should decline.** The
+  ecosystem is asyncio: SQLAlchemy's async support is asyncio-specific (its `util/concurrency.py`
+  uses `asyncio.Lock`/`asyncio.Runner` and greenlet, and "trio" appears nowhere in the library), as
+  are `asyncpg` and Starlette. AnyIO's full API is available on asyncio, so this costs nothing.
+- **The pytest plugin parametrizes over installed backends only.** The `anyio_backend` fixture uses
+  `get_available_backends()`, which returns backends that actually import (AnyIO ≥ 4.12) — so with
+  trio absent, every test runs once, on asyncio. Pinning the fixture is a one-line statement of
+  intent, not a fix. Worth knowing both halves, because the docs' phrase "all supported backends"
+  reads as "all backends that exist".
+- **Don't** install `pytest-asyncio` alongside it — AnyIO's own docs call out the conflict in auto
+  mode, and AnyIO's plugin ships with AnyIO, so there is nothing extra to install.
+- Bridging a synchronous entrypoint (a CLI) to an async layer: `asyncer`'s `runnify` is the small
+  wrapper for exactly that, over hand-rolled `asyncio.run` plumbing at each command.
+- Model default: **overrides.** A model reaches for bare `asyncio` by default and treats AnyIO as a
+  trio-compatibility library, which inverts the actual reason to adopt it.
 
 ## HTTP client, sessions, timeouts, and retry/backoff
 

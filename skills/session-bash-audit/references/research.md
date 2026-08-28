@@ -24,6 +24,7 @@ meant to be.
 - [`pgrep -f` matches the harness's own wrapper (2026-08-25)](#pgrep--f-matches-the-harnesss-own-wrapper-2026-08-25)
 - [Shell backgrounding can be killed before the command runs (2026-08-26)](#shell-backgrounding-can-be-killed-before-the-command-runs-2026-08-26)
 - [`rg -r` is `--replace`, not `--recursive` (2026-08-27)](#rg--r-is---replace-not---recursive-2026-08-27)
+- [`git -C <own repo>` is the ban on `cd` wearing the recommended flag (2026-08-29)](#git--c-own-repo-is-the-ban-on-cd-wearing-the-recommended-flag-2026-08-29)
 - [Open / to re-measure](#open--to-re-measure)
 
 ## Baseline 2026-08-24
@@ -385,6 +386,37 @@ exact flag did not prevent three slips in three days, two of them in a session w
 the rule that morning. Worth carrying into the next mode comparison — it is one data point against
 "write the rule and the behaviour follows", and for detection over instruction where the failure is
 silent.
+
+## `git -C <own repo>` is the ban on `cd` wearing the recommended flag (2026-08-29)
+
+Noticed by the user correcting a session mid-task — "you don't need cd, you're in this repo" — after
+it had been addressing its own repo as `git -C /home/.../power-user-linux-setup ...` for most of a
+session. Added as a `git-C-own-repo` PATTERNS tag (same path normalisation `_cd_tag` already uses;
+cross-repo `git -C` is the recommended shape and is deliberately not tagged) and measured
+immediately.
+
+Two days, 2,077 calls, all `claude-opus-5`:
+
+| tag              | share | count |
+| ---------------- | ----- | ----- |
+| `cd-own-repo`    | 1%    | 14    |
+| `git-C-own-repo` | 4%    | 89    |
+
+Per session it ranges from 0% to **18%** — the worst was not the session that got corrected (5%).
+
+**The interesting part is the ratio.** `~/AGENTS.md` bans `cd` into the session's own repo and
+agents comply: 14 occurrences in two days. The same instruction then recommends `git -C <path>` as
+the directory-scoping option for a _cross-repo_ step, and agents reach for it against their own repo
+six times as often as they ever ran the banned `cd`. The rule taught half the lesson: it named the
+shape to avoid and, in the next breath, handed over a flag that reproduces it without tripping the
+prohibition.
+
+That makes this a rule-wording finding rather than an allowlist or mode one — the fix belongs in the
+rule's own source, as a clause on the existing Bash rule rather than a new one. The cost is small
+per call (a redundant absolute path) but it is exactly the confusion the user reported: nothing in
+`git -C /long/path/... status` says whether that path is where the session already is.
+
+Expectation registered as `zero`, so the next `--compare` run judges it.
 
 ## Open / to re-measure
 

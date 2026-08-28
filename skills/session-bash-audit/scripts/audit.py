@@ -104,6 +104,19 @@ def _cd_tag(cmd: str, project: str) -> set[str]:
     return {"cd-own-repo"} if target.replace("/", "-").replace(".", "-") == project else {"cd-other"}
 
 
+def _git_c_tag(cmd: str, project: str) -> set[str]:
+    """`git -C <path>` where <path> is the session's own repo — the directory it is already in.
+
+    Same normalisation as _cd_tag: Claude Code slugs a project directory by its absolute path with
+    `/` and `.` turned into `-`. Cross-repo `git -C` is the recommended shape and is not tagged.
+    """
+    m = re.search(r"\bgit\s+-C\s+(\S+)", strip_heredoc(cmd))
+    if not m:
+        return set()
+    target = m.group(1).replace("~", str(Path.home())).replace("$HOME", str(Path.home())).rstrip("/")
+    return {"git-C-own-repo"} if target.replace("/", "-").replace(".", "-") == project else set()
+
+
 def short_project(project: str) -> str:
     """`-home-u-projects-github-com-personal-repo-tasks` -> `repo-tasks` (best effort)."""
     for marker in ("-github-com-personal-", "-projects-"):
@@ -184,6 +197,7 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
 def classify(call: Call) -> None:
     call.tags |= _chain_tags(call.cmd)
     call.tags |= _cd_tag(call.cmd, call.project)
+    call.tags |= _git_c_tag(call.cmd, call.project)
     for name, (pred, _) in PATTERNS.items():
         if pred(call.cmd):
             call.tags.add(name)
@@ -262,6 +276,7 @@ RATE_COLUMNS = [
     "cat-view",
     "heredoc",
     "cd-own-repo",
+    "git-C-own-repo",
     "git-mutating-in-chain",
 ]
 
@@ -277,6 +292,7 @@ EXPECTATIONS: dict[str, str] = {
     "cat-view": "down",
     "heredoc": "down",
     "cd-own-repo": "zero",
+    "git-C-own-repo": "zero",
     "git-mutating-in-chain": "down",
     "git-C-mutating": "zero",
 }
@@ -431,7 +447,17 @@ def report(calls: list[Call], samples: int) -> None:
         print(f"[{c.model[:12]}] {c.cmd[:160]!r}\n    -> {c.result[:120]!r}")
 
 
-CHAIN_TAGS = ("chain2", "chain3", "chain4", "chain5", "cd-and-cmd", "cd-own-repo", "cd-other", "git-mutating-in-chain")
+CHAIN_TAGS = (
+    "chain2",
+    "chain3",
+    "chain4",
+    "chain5",
+    "cd-and-cmd",
+    "cd-own-repo",
+    "cd-other",
+    "git-C-own-repo",
+    "git-mutating-in-chain",
+)
 SAMPLE_TAGS = (
     "git-C-mutating",
     "git-mutating-in-chain",
@@ -439,6 +465,7 @@ SAMPLE_TAGS = (
     "head/tail",
     "exit-masked",
     "cd-own-repo",
+    "git-C-own-repo",
     "sed-n",
     "cat-view",
 )

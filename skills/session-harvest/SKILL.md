@@ -188,7 +188,15 @@ considered and rejected).
      reports `tail`'s exit, not git's, so the very check meant to catch a stale ref reads clean
      while the fetch is failing. Confirmed 2026-08-28, and again 2026-08-29 by this bullet failing
      to prevent it. When it is the empty-agent case, the machine's own diagnostic names the fix
-     (`inv ssh.check` on this machine) — do not reach for `ssh-add`.
+     (`inv ssh.check` on this machine) — do not reach for `ssh-add`, and apply that fix as a
+     per-call environment prefix rather than an `export`, which does not survive to the next Bash
+     call. **Then check who wrote the unpushed commits before recommending a push.** Where sessions
+     run in parallel the ahead-count is not necessarily this session's work, and "you have two
+     unpushed commits, push them" publishes another session's unfinished history under a
+     recommendation that reads as routine. Name which are this session's and which are not, and let
+     the user decide. Confirmed 2026-08-29: two commits from a parallel session appeared in the
+     ahead-count between one push and the next, and asking rather than pushing was the only thing
+     that surfaced them.
    - **Sibling repos this skill itself wrote to.** A skill self-update (step 6) commits locally and
      reaches nothing until it is pushed and re-installed, so `agent-skills` is a repo the session
      touched and it is the one most likely to be forgotten — the edit felt done when it was

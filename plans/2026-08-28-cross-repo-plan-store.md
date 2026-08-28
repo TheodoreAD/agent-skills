@@ -360,15 +360,14 @@ shape the four options were being weighed against — one declared environment a
 needs no new registration mechanism, and PULSE needs no config entry: it already exports
 `PLANS_HOME` and installs the skill, which is all it does.]
 
-[NEEDS CLARIFICATION: **should the status vocabulary be validated, and by what?** The measured tally
-above found `done` where `landed` is defined, and one free-form status paragraph. A per-repo gate
-cannot catch this, because drift is only visible across repos. Options: the aggregator warns (cheap,
-no enforcement); each repo's `quality.check` validates its own frontmatter against the vocabulary
-(catches it at commit time, but needs the vocabulary shipped somewhere every repo can read — which
-is the ownership question above); or nothing, and drift is accepted as harmless. Note that whichever
-is chosen has to survive the vocabulary itself being open-ended — `blocked on
-<reason>` and
-`superseded by <path>` are prefixes, not literals.]
+[DECISION: **the aggregator reports status drift; nothing enforces it.** Taken 2026-08-29, the
+cheapest of the three options weighed here — a per-repo `quality.check` validating frontmatter would
+need the vocabulary shipped to every repo, which is the ownership problem again, and accepting drift
+silently loses the one signal the measurement above produced. `backlog` prints a `status drift`
+section: a status is well-formed if it matches the vocabulary exactly or opens with `blocked on` or
+`superseded by`, since the vocabulary is open-ended at the end and never at the start. First real
+run found exactly the two the tally predicted — `done`, and the free-form status paragraph. This
+forecloses nothing: enforcement can still be added later on top of the same check.]
 
 [NEEDS CLARIFICATION: does a retired plan get deleted or kept? `plan-docs` deletes after migrating
 durable content; Backlog.md's manifesto takes the opposite position and keeps every completed item
@@ -396,6 +395,21 @@ research-library skill, a README can advertise a feature that was never implemen
 returns 403 to WebFetch on both the `medium.com/@jbpoley` and `jbpoley.medium.com` forms, and
 freedium.cfd does not resolve. It is named as the fallback design below, so if the relocation branch
 goes live, the article needs reading by some other route first.]
+
+## What is built
+
+**`plans.py backlog` landed 2026-08-29** — the discovery layer this plan recommends, as a new
+command over the walker the store plan already built. It reads both possible plan directories for
+every repo under the projects root (not only the ones a rule routes, so an unrouted repo's plans are
+still found), groups by status, prints per-file open-tag counts and family-wide totals, renders
+`depends_on` as blocked-by edges, and reports status drift. `--all` includes the terminal statuses,
+`--tag` filters to one open tag, `--json` for anything programmatic. Five tests in
+`tests/unit/test_plan_store.py` cover the span, the unrouted repo, the edges, the drift and the
+filter.
+
+First real run, 2026-08-29: 70 plans across 6 locations, and both predicted drifts surfaced — the
+`done` status and the free-form status paragraph — which is what the tally above said an aggregator
+would catch on its first run.
 
 ## Recommended direction
 

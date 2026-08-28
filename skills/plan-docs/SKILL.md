@@ -26,6 +26,7 @@ P=~/.agents/skills/plan-docs/scripts/plans.py
 python3 $P where                        # which directories this repo reads and writes
 python3 $P new <topic>                  # today's file, right directory, frontmatter filled in
 python3 $P list                         # status-grouped index + open-tag counts per file
+python3 $P backlog                      # the same, across every repo on the machine
 python3 $P tags --tag DEFERRED          # anchored, across every plan this repo can see
 python3 $P set-status <file> planned    # refuses if the gate for that status fails
 python3 $P refs <file>                  # inbound references, before retiring
@@ -150,6 +151,31 @@ python3 $P graduate <file> --to <path inside the new repo>
 into that repo's store directory — and stamps the `repo:` frontmatter when the destination is the
 store. Do it the moment the repo appears, not later: an unscoped plan whose work has moved into a
 repo is a plan nobody will find again.
+
+## What is open everywhere
+
+A `plans/` directory answers "what is open here". Nothing in the convention answers "what is open
+across everything" — and a plan filed in one repo about another is invisible from the repo it
+concerns. `backlog` is that view; ownership does not move, and nothing is written:
+
+```shell
+python3 $P backlog                    # every open plan, every repo, grouped by status
+python3 $P backlog --tag DEFERRED     # only plans carrying that open tag
+python3 $P backlog --all              # include landed, abandoned and superseded
+```
+
+It reads both possible directories for every repo under the projects root, whether or not the config
+routes that repo yet — the repo nobody has routed is exactly the one whose plans would otherwise
+stay unseen. Two things it reports that no per-repo command can:
+
+- **`depends_on` as a blocked-by view.** Each plan naming a sibling repo is listed under that repo,
+  so a session working there sees what is waiting on it.
+- **Status drift.** A status outside the vocabulary — `done` where `landed` is defined, or a
+  free-form paragraph where an enum belongs — is only visible across repos, since each repo's own
+  gate sees one repo. Both were found on this command's first real run, 2026-08-29.
+
+Like `repos`, its output names work repos: use it to decide what to work on, never paste it into a
+repo you publish.
 
 ## Which repo does a plan belong to?
 

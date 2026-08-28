@@ -268,6 +268,91 @@ def test_move_relocates_and_stamps_the_repo_field(ws, capsys):
 
 
 # --------------------------------------------------------------------------------------------
+# the cross-repo view
+
+
+def plan(directory: Path, name: str, front: str, body: str = "") -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    path.write_text(f"---\n{front}\n---\n\n## Context\n{body}", encoding="utf-8")
+    return path
+
+
+def test_backlog_spans_repos_and_hides_finished_plans(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-open.md", "status: idea\nupdated: 2026-01-01")
+    plan(
+        ws.store / "client.com-bitbucket" / "team" / "api",
+        "2026-01-02-shipped.md",
+        "status: landed\nupdated: 2026-01-02",
+    )
+
+    assert plans.main(["backlog", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "2026-01-01-open.md" in out
+    assert "2026-01-02-shipped.md" not in out  # terminal statuses are not open work
+
+    plans.main(["backlog", "--all", "--path", str(ws.personal)])
+    assert "2026-01-02-shipped.md" in capsys.readouterr().out
+
+
+def test_backlog_sees_a_repo_no_routing_rule_covers(ws, capsys):
+    """Discovery must not depend on the config being complete — the unrouted repo is exactly the one
+    whose backlog would otherwise stay invisible."""
+    write_config(ws, "")
+    plan(ws.personal / "plans", "2026-01-01-orphan.md", "status: idea\nupdated: 2026-01-01")
+    assert plans.main(["where", "--path", str(ws.personal)]) == plans.NEEDS_DECISION
+    capsys.readouterr()
+
+    assert plans.main(["backlog", "--path", str(ws.personal)]) == 0
+    assert "2026-01-01-orphan.md" in capsys.readouterr().out
+
+
+def test_backlog_turns_depends_on_into_blocked_by_edges(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(
+        ws.personal / "plans",
+        "2026-01-01-waiting.md",
+        "status: idea\nupdated: 2026-01-01\ndepends_on: [repo-tasks, scaffoldapy]",
+    )
+    assert plans.main(["backlog", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "repo-tasks <- github.com-personal/agent-skills/2026-01-01-waiting.md" in out
+    assert "scaffoldapy <- github.com-personal/agent-skills/2026-01-01-waiting.md" in out
+
+
+def test_backlog_reports_status_drift_no_single_repo_can_see(ws, capsys):
+    """`done` where `landed` is defined, and prose where an enum belongs. Each repo's own gate sees
+    one repo, so this is the only place either can surface."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-drifted.md", "status: done\nupdated: 2026-01-01")
+    plan(
+        ws.store / "client.com-bitbucket" / "team" / "api",
+        "2026-01-02-prose.md",
+        "status: idea — hooks still unadopted, re-measure later\nupdated: 2026-01-02",
+    )
+    plan(ws.personal / "plans", "2026-01-03-fine.md", "status: blocked on the upstream API\nupdated: 2026-01-03")
+
+    assert plans.main(["backlog", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "status drift (2)" in out
+    assert "'done'" in out
+    assert "hooks still unadopted" in out
+    assert "2026-01-03-fine.md" in out  # a reason after `blocked on` is the vocabulary, not drift
+
+
+def test_backlog_filters_by_tag(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-deferred.md", "status: idea\nupdated: 2026-01-01", "\n[DEFERRED: later]\n")
+    plan(ws.personal / "plans", "2026-01-02-clean.md", "status: idea\nupdated: 2026-01-02")
+
+    assert plans.main(["backlog", "--tag", "DEFERRED", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "2026-01-01-deferred.md" in out
+    assert "2026-01-02-clean.md" not in out
+
+
+# --------------------------------------------------------------------------------------------
 # tags and the status gates
 
 

@@ -114,12 +114,13 @@ already has function/tool-calling eval primitives to build the cold-routing simu
 and its YAML test-matrix format is lower-boilerplate than DeepEval's pytest classes even though
 DeepEval is pytest-native and this repo already uses pytest.
 
-[NEEDS CLARIFICATION: mechanism for the cold check — a live Agent/Task call each test run (real
-token cost, needs a budget/cadence decision — every `inv ai.install-skills` run? CI only?
-manual/on-demand only, matching the family's stated aversion to auto-triggered mutation/cost) vs. a
-direct Anthropic API call from a plain script/pytest test (same cost question, different plumbing)
-vs. attempting to actually get `claude plugin eval`/`skill-creator` access via `/feedback` and using
-Anthropic's own gated tool once available.]
+[NEEDS CLARIFICATION: mechanism for the cold check — a live Agent/Task call each run vs. a direct
+Anthropic API call from a plain script or test (same token cost, different plumbing) vs. getting
+`claude plugin eval`/`skill-creator` access and using Anthropic's own gated tool once available.
+Cadence is the other half and is nearly settled by the cost: on demand, never on install and never
+on every CI run, matching the family's stated aversion to auto-triggered spend. "Every install" was
+an option when PULSE's `inv ai.install-skills` was the deploy path for skills authored in the same
+repo; it is not one now that installs happen through the `skills` CLI from a published remote.]
 
 [NEEDS CLARIFICATION: where do the 3 positive/negative/edge prompts per skill live — inline
 frontmatter, a sibling eval file per skill, or one shared corpus file?]

@@ -323,16 +323,10 @@ honest reading of the survey: the one project that solves this problem (tasks.md
 five months old, and the two mature ones (git-bug, beads) both reject markdown-in-the-tree, which is
 the property this repo's whole convention is built on. Adopting either means abandoning `plan-docs`.
 Adopting tasks.md means depending on an unadopted npm package for something the family already has a
-working convention for. Borrowing the workspace-discovery model and implementing an `inv plans.*`
-aggregator is the third option and probably the right one — but it should be an explicit decision,
-not a default.]
-
-[NEEDS CLARIFICATION: where does the aggregator's config live, and how does it find the repos? The
-tasks.md model is "a directory whose immediate children are repos", which maps exactly onto
-`~/projects/github.com-personal/`. Alternatives: an explicit list in `setup.toml`, or a scan for
-`plans/` directories under the projects root. The scan needs no registration and picks up a new repo
-for free; the explicit list is reviewable and can't surprise. This repo already deploys machine-wide
-config, so either is available.]
+working convention for. Borrowing the workspace-discovery model and writing the aggregator here is
+the third option and probably the right one — but it should be an explicit decision, not a default.
+Settled in part below: the aggregator, if written, ships inside `plan-docs`. What is still open is
+whether it should exist at all rather than the discovery gap being lived with.]
 
 [NEEDS CLARIFICATION: does a cross-repo plan get one file or one per repo? A plan that can't land
 without `repo-tasks` changing has real content for both repos. Options: single file in the repo that
@@ -360,13 +354,17 @@ not an oversight. Precedent already exists in the same repo: `session-bash-audit
 is stdlib-only and invoked as `python3 $S/scripts/audit.py`.]
 
 [NEEDS CLARIFICATION: **what tells the script which directories to walk?** The script is portable;
-"where this user's repos live" is not. Options: a positional argument the `SKILL.md` shows being
-called with a path; an env var, the way `research-library` declares `$RESEARCH_HOME`; or discovery
-by scanning the parent of the current repo for siblings that have a `plans/`, which is how tasks.md
-finds a workspace. The `research-library` precedent is the strongest — that skill became publishable
-precisely by _declaring_ its one environment assumption instead of assuming PULSE had provided it,
-and the same shape applies here. Decide before the script is written, since it determines whether
-PULSE needs any config entry at all.]
+"where this user's repos live" is not. Four options, in rough order of how well they survive being
+installed on someone else's machine: a positional argument the `SKILL.md` shows being called with a
+path; an env var, the way `research-library` declares `$RESEARCH_HOME`; discovery by scanning the
+parent of the current repo for siblings that have a `plans/`, which is how tasks.md finds a
+workspace and needs no registration at all; or a list supplied by whatever installed the skill,
+which for this machine means a `setup.toml` entry — reviewable and unsurprising, but it makes the
+script useless to anyone without that installer, which is the coupling the skills move just undid.
+The `research-library` precedent is the strongest: that skill became publishable precisely by
+_declaring_ its one environment assumption rather than assuming an installer had provided it, and
+the same shape applies here. Whichever is chosen determines whether PULSE needs a config entry at
+all, so decide before the script is written.]
 
 [NEEDS CLARIFICATION: **should the status vocabulary be validated, and by what?** The measured tally
 above found `done` where `landed` is defined, and one free-form status paragraph. A per-repo gate
@@ -384,6 +382,29 @@ as "durable project history". This was not previously treated as an open questio
 interacts with the history question above: if retirement stopped deleting, the argument for per-repo
 storage strengthens considerably, because the repo's history would then hold the plan itself rather
 than only its drafting.]
+
+[NEEDS CLARIFICATION: **`plan-docs`' retirement procedure names destinations this repo does not
+have.** It routes a settled decision or a confirmed pitfall to `contributing/`, and usage-facing
+content to `docs/` — in eleven places across `SKILL.md`, including the `description` frontmatter
+itself, the `[DECISION:]`/`[PITFALL:]` tag table, the triage table, and steps 1, 3 and 4 of the
+retirement procedure. This repo has neither directory, deliberately: its `AGENTS.md` puts rationale
+in each skill's own `references/`, and the decoupling plan settled "no `contributing/` tree in
+`agent-skills`" as a decision rather than an omission. So the convention, as written, assumes the
+layout of the repo it used to live in. Found 2026-08-28 while auditing these plans for exactly that
+kind of leftover.
+
+(The skill's one citation of a named sibling repo — `repo-tasks/contributing/type-checking.md` — is
+_not_ part of this problem and should stay. It is dated evidence for a rule, which this repo's
+`AGENTS.md` explicitly asks for; a stranger learns the rule without needing the file to exist.)
+
+Three ways out, and this is the one open question here that blocks retiring anything in this repo
+rather than merely shaping a future tool: state the destinations as _roles_ (design rationale, usage
+docs) and let each repo map them onto whatever it has; keep the literal paths but add this repo's
+`skills/<name>/references/` as the third named destination; or admit a `contributing/` here after
+all and reverse that decision. The first is the smallest change to the skill and the most portable
+for anyone who installs it — a consumer repo has no obligation to have `contributing/` either — and
+it is the only one that does not make `plan-docs` describe one family's directory names to every
+consumer.]
 
 [UNVERIFIED: Markdown Projects, git-issues, TrackDown, TODO.md, gh-issue-sync, imdone and Dendron's
 multi-vault behaviour were assessed at web-search/README depth only. tasks.md, beads and Backlog.md

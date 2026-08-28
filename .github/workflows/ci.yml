@@ -5,11 +5,20 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege: nothing here writes anything back to the repo, and the default token grant is
+# broader than that. persist-credentials: false for the same reason — this job does not push, and
+# the default leaves the job's token in .git/config for every later step to read. Both are what
+# zizmor's excessive-permissions and artipacked audits ask for, and both run in `inv quality.check`.
+permissions:
+  contents: read
+
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v9.0.0
       - run: ./bootstrap-repo-tasks.sh
       - run: inv dev-env.setup

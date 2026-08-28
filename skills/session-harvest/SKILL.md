@@ -184,7 +184,11 @@ considered and rejected).
      computed against a stale ref. Same silent-by-construction shape as the CI loop above: the wrong
      answer and the right one are indistinguishable. Read the fetch's exit code, and when it failed
      say how old the ref is (`git log -1 --format=%cr origin/<branch>`) rather than reporting the
-     count flat. Confirmed 2026-08-28.
+     count flat. Run the fetch on its own, unpiped: `git fetch origin 2>&1 | tail -3; echo $?`
+     reports `tail`'s exit, not git's, so the very check meant to catch a stale ref reads clean
+     while the fetch is failing. Confirmed 2026-08-28, and again 2026-08-29 by this bullet failing
+     to prevent it. When it is the empty-agent case, the machine's own diagnostic names the fix
+     (`inv ssh.check` on this machine) — do not reach for `ssh-add`.
    - **Sibling repos this skill itself wrote to.** A skill self-update (step 6) commits locally and
      reaches nothing until it is pushed and re-installed, so `agent-skills` is a repo the session
      touched and it is the one most likely to be forgotten — the edit felt done when it was
@@ -216,6 +220,16 @@ considered and rejected).
      call at a time. Confirmed 2026-08-28: a session finished its work, could not push because the
      ssh agent was empty after a reboot, was told another session owned that — and the only
      remaining record of the blocked push was the harvest report.
+   - **Whether a finding is already owned, before reporting it as new.** A sweep that reaches back
+     through history or across repos surfaces things this session did not cause, and on a machine
+     running parallel sessions the likeliest explanation for a real finding is that someone else
+     already found it. Check before escalating: the sibling repos' recent commits
+     (`git log --oneline -10`) and their open plans. Report an already-owned finding as _confirmed
+     still open_ and name the plan that owns it — never as a discovery, and never by acting on it.
+     Confirmed 2026-08-29: a confidentiality scan returned 55 hits in published history and was
+     minutes from being reported as urgent, when another session had already rewritten both
+     histories, force-pushed, opened a support request for the residue, and written all of it into a
+     plan. Several probing calls, and nearly a duplicate alarm, for work that was done.
 
 6. **Improve the skill on every run — this is not optional, and not only for friction.** The skill
    is actively dogfooded: each invocation is also a test of it, and the author has said catching and

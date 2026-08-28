@@ -244,6 +244,83 @@ that said otherwise. Neither was a `plans/*.md` retirement in the formal sense �
 file to delete — but both are the same underlying failure mode as a stale plan reference: prose
 asserting something about the repo's state that stopped being true, with nothing forcing a revisit.
 
+## Where a plan lives: the repo, or the store outside it
+
+The convention's original assumption — a plan can be committed to the repo it describes — holds for
+repos you own and fails for everything else. Measured 2026-08-28 across one working machine: of
+eight project roots, seven were employer or client work, and **no repo outside the personal root had
+a `plans/` directory at all**. Those sessions still planned; the planning just evaporated, because
+adding a `plans/` directory to a large repo under review pressure is not available.
+
+The store (`$PLANS_HOME`, default `~/plans`) is the parallel path for exactly those repos. It is not
+a migration: repos that can hold their own plans keep holding them, and nothing moves.
+
+### Why the route is configuration, not a heuristic
+
+The tempting rule — "if the repo already has `plans/`, write there; otherwise use the store" — is
+wrong on the case that matters most: a **new** repo you own has no `plans/` yet and would route its
+first plan out of the repo forever. Keying off a root prefix (`github.com-personal/*` → repo) is
+right for the common case but has to be overridable per repo, in both directions: a personal repo
+that shouldn't carry plans, a client repo that welcomes them. That is a config file, and the
+resulting shape — exact repo entry, then longest root prefix, then a default — is the smallest thing
+that expresses all four cases.
+
+`both` exists because switching is a state, not an instant. A repo that stops storing plans inside
+itself still has committed plans to read (`{ mode = "both", write = "store" }`), and one adopting
+in-repo plans still has store-held ones (`{ mode = "both", write = "repo" }`). Without it, a switch
+silently orphans half the corpus.
+
+### Why an unmatched repo asks instead of defaulting
+
+Decided with the user 2026-08-28: with no matching rule and no `default`, `plans.py where` exits 3
+and the agent asks. Both silent answers are bad in a way the user cannot see — guessing `repo`
+creates a directory inside someone else's repository (turning up in their `git status`, possibly in
+a PR), and guessing `store` files the plan somewhere the user never named and will not think to
+look. A one-question round trip on the first plan in a new repo is cheaper than either, and the
+answer is written to config, so it is asked exactly once per repo.
+
+### Why the store mirrors the clone path
+
+`<store>/<repo's path under the projects root>`, at whatever depth the repo sits. The existing root
+directory names already encode host and organisation, so there is nothing to invent: no slug
+function, no origin-URL parsing, and no collision when two clients each have a repo called `api`.
+Depth matters — three of the eight measured roots hold repos at depth 2 (Bitbucket's project/repo
+hierarchy, a grouping directory), so any fixed `<root>/<repo>` rule is wrong for them. The path is
+computed from `git rev-parse --show-toplevel`, never from the working directory, so working in a
+subdirectory lands in the same place as working at the root.
+
+A store-held plan additionally carries `repo:` frontmatter holding the **origin URL**, not the path:
+the path is already the file's own location, so repeating it would be a second copy of the same
+fact, while the origin URL is the identity that survives the clone being moved or renamed.
+
+### Why the store is a local git repository with no remote
+
+Local history is the entire benefit and carries no disclosure risk. A single personal remote
+accumulating several employers' internal architecture, ticket references and code excerpts is the
+specific outcome to design against, and it is what happens by default if a remote is ever added
+casually — so `init-store` never adds one and warns if one exists. Pushing is a per-root decision
+against that employer's actual policy. The store is also never symlinked into a work repo, for the
+same reason `research-library` forbids it: that would put the content back inside the tree that
+repo-scoped agent reads walk.
+
+### Why the mechanics are a script rather than instructions
+
+Everything routing touches is deterministic — a path computation, a frontmatter rewrite, an anchored
+grep, two gates that are a grep returning empty. Written as prose for an agent to carry out, each
+costs file reads and gets the anchoring subtly wrong; written as `scripts/plans.py`, each is one
+command whose output is the answer. The gates in particular are worth having in code:
+`set-status …
+planned` refusing while a `[NEEDS CLARIFICATION:` remains is the convention enforcing
+itself, rather than depending on the agent remembering to run the grep it was told about.
+
+`beads` reached the same shape independently and is the closest precedent found:
+`bd init
+--contributor` routes planning issues to a store outside the repo (`~/.beads-planning`)
+specifically so experimental work never appears in a PR to a repo you don't own, and `BEADS_DIR`
+overrides repo discovery entirely. Its own guidance — issues belong in the project's git history
+when the project is yours — is the argument for keeping this a parallel path rather than a
+replacement.
+
 ## Prior art
 
 Checked how established communities solve "dated proposal document with a lifecycle" before settling

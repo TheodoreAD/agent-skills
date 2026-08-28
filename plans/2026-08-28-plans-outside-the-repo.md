@@ -128,10 +128,28 @@ root names and one client's internal `<project>/<repo>` path — in a repo whose
 as public. Confirmed 2026-08-28 by `scan --mode history`, which found exactly those commits. The
 rule now lives in this repo's `AGENTS.md` and in the skill; the scanner is what makes it hold.]
 
-[DEFERRED: the published history itself. Redacting the working tree does not unpublish `d3bc2f8`;
-purging it means a force-push on a public repo (and the same question in `power-user-linux-setup`,
-where committed SSH key filenames carry four work email addresses). That is the user's decision,
-tracked here until it is made.]
+[DECISION: **purge the published history in both repos, rather than redacting forward only.**
+Settled with the user 2026-08-28. The content is other people's identities, not the author's own,
+and a public repo's history is as readable as its tip.]
+
+[DEFERRED: the purge itself, blocked on ssh access this machine only regains after a restart. What
+is already done: the unpushed commits were rewritten 2026-08-28 (`git filter-branch --tree-filter`
+over `a4be538^..HEAD`, backup in `refs/original/`), verified three ways — the client project path
+that was never public has zero occurrences above the pushed tip, no private name appears in any
+added line, and the old and new HEAD trees are identical, so history changed and content did not.
+What remains here: one full-history pass over `d3bc2f8`, which also clears the removal lines a range
+rewrite necessarily leaves behind, then a force-push and a GitHub Support request to purge cached
+views. `power-user-linux-setup` owns its own half — see its
+`plans/2026-08-28-published-history-purge.md`, which carries the branch list, the two traps this
+first pass hit, and the note that `git-filter-repo` should arrive through `setup.toml` rather than
+as a one-off install.]
+
+[PITFALL: a **range** rewrite does not remove the text from `git log -p`. The commits above the
+range keep the private strings as `-` lines, because their parents still contain them — measured
+here: 33 history hits remained after a clean range rewrite, every one traceable to the pushed commit
+or to a removal line deleting it. Only rewriting the commit that introduced the text clears both.
+And `--prune-empty` kept the redaction commit alive, because a formatter reflow had left it a
+two-line diff, so its message now describes a redaction its diff no longer contains.]
 
 ### 3b. Plans with no repo yet — `_unscoped/` and `graduate`
 

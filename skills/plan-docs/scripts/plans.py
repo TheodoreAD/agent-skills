@@ -17,6 +17,7 @@ also take `--json`) so an agent can act on the answer without opening a file.
     plans.py set-status <file> planned  # runs the promotion gate first
     plans.py move <file> --to store     # a repo switching where it keeps plans
     plans.py refs <file>                # inbound references, before a retirement
+    plans.py archive --search <words>   # a retired plan, back out of git history
     plans.py scan                       # no client's identity in a repo you publish
     plans.py repos --search auth        # what each repo is for, to route a plan by
     plans.py new <topic> --unscoped     # an idea with no repo yet
@@ -684,6 +685,237 @@ def known_repos(cfg: Config) -> list[RepoInfo]:
 
 
 # --------------------------------------------------------------------------------------------
+# retired plans
+#
+# Retirement deletes the file, and git history is the archive. That is only a cheap trade if
+# getting a retired plan back is one command rather than an archaeology session, which is what
+# this section is: the deletion commits, a content search across them, and the `git show` that
+# prints the file as it was the moment before it went.
+
+
+# `git log --name-only` interleaves commit headers with the paths they touched, so the header's
+# fields are joined by a separator no path can contain — which is also how the two line kinds are
+# told apart. Not a leading record separator: Python counts \x1c-\x1f as whitespace, so `git()`'s
+# own `.strip()` eats one off the front of the output and the first commit parses as a path.
+UNIT = "\x1f"
+
+# ERE metacharacters. A search phrase is escaped with these before it reaches git's pickaxe, which
+# takes POSIX extended regex, not Python's.
+ERE_SPECIAL = re.compile(r"([.^$*+?()\[\]{}|\\])")
+
+MIGRATED_RE = re.compile(r"^#{2,}\s+migrated to\b", re.IGNORECASE)
+HEADING_RE = re.compile(r"^#{1,6}\s")
+BULLET_RE = re.compile(r"^([-*]|\d+[.)])\s")
+
+# How much of a `## Migrated to` entry a listing row shows before eliding it.
+TARGET_WIDTH = 110
+
+
+@dataclass(frozen=True)
+class Source:
+    """One git history that can hold retired plans: a repo's own `plans/`, or the store's mirror."""
+
+    where: str
+    root: Path
+    prefix: str  # directory inside that root where plans live, trailing slash included
+
+
+@dataclass
+class Retired:
+    """A plan file as of the commit that deleted it."""
+
+    repo: str
+    where: str
+    root: Path
+    path: str
+    sha: str
+    date: str
+    subject: str
+    status: str = ""
+    migrated: tuple[str, ...] = ()
+    live: str = ""  # set when a file of this name exists now: moved, not retired
+
+    @property
+    def name(self) -> str:
+        return self.path.rsplit("/", 1)[-1]
+
+    @property
+    def restore(self) -> str:
+        # `^` is the commit before the deletion, which is the last one that still had the file.
+        return f"git -C {self.root} show {self.sha[:12]}^:{self.path}"
+
+
+def is_git_repo(path: Path) -> bool:
+    return path.is_dir() and git(["rev-parse", "--git-dir"], path) is not None
+
+
+def archive_sources(cfg: Config, routing: Routing | None) -> list[Source]:
+    """Which histories to search: this repo's route, or every repo on the machine plus the store."""
+    if routing is None:
+        found = [Source("repo", cfg.projects_root / rel, "plans/") for rel in repo_paths(cfg)]
+        return [*found, Source("store", cfg.store, "")]
+    found = []
+    for where, _ in routing.read_dirs():
+        if where == "repo" and routing.repo_root is not None:
+            found.append(Source("repo", routing.repo_root, "plans/"))
+        elif where == "store" and routing.rel is not None:
+            found.append(Source("store", cfg.store, f"{routing.rel}/"))
+    return found
+
+
+def source_label(cfg: Config, source: Source, path: str) -> str:
+    """Which repo a retired plan belonged to, whichever history it turned up in."""
+    if source.where == "store":
+        return path.rsplit("/", 1)[0] if "/" in path else UNSCOPED_DIR
+    try:
+        return source.root.resolve().relative_to(cfg.projects_root.resolve()).as_posix()
+    except (ValueError, OSError):
+        return source.root.name
+
+
+def is_plan_path(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    return path.endswith(".md") and name != "README.md"
+
+
+def deleted_plans(cfg: Config, source: Source) -> list[Retired]:
+    """Every plan file deleted from one history, newest deletion first, one entry per path.
+
+    A path deleted, restored and deleted again keeps only the latest deletion — that is the commit
+    whose parent holds the file's final state, and the earlier one is reachable from `--file`.
+    """
+    pathspec = source.prefix or "."
+    out = git(
+        ["log", "--diff-filter=D", "--name-only", f"--format=%H{UNIT}%as{UNIT}%s", "--", pathspec],
+        source.root,
+    )
+    found: list[Retired] = []
+    seen: set[str] = set()
+    sha = date = subject = ""
+    for line in (out or "").splitlines():
+        if UNIT in line:
+            sha, _, rest = line.partition(UNIT)
+            date, _, subject = rest.partition(UNIT)
+            continue
+        path = line.strip()
+        if not path or not sha or not is_plan_path(path) or path in seen:
+            continue
+        seen.add(path)
+        found.append(
+            Retired(
+                repo=source_label(cfg, source, path),
+                where=source.where,
+                root=source.root,
+                path=path,
+                sha=sha,
+                date=date,
+                subject=subject,
+            )
+        )
+    return found
+
+
+def pickaxe_paths(source: Source, phrase: str) -> set[str]:
+    """Paths whose content ever gained or lost `phrase`, as git's pickaxe reports them.
+
+    The words are joined by a whitespace class rather than searched literally: plan prose is
+    reflowed by the repo's formatter, so any phrase long enough to be worth searching for has
+    probably been split across a line break somewhere in its history.
+    """
+    pattern = "[[:space:]]+".join(ERE_SPECIAL.sub(r"\\\1", word) for word in phrase.split())
+    if not pattern:
+        return set()
+    out = git(
+        ["log", "--pickaxe-regex", f"-S{pattern}", "--name-only", "--format=", "--", source.prefix or "."],
+        source.root,
+    )
+    return {line.strip() for line in (out or "").splitlines() if line.strip()}
+
+
+def migrated_targets(text: str) -> tuple[str, ...]:
+    """The `## Migrated to` entries — where a retired plan's content actually went.
+
+    Continuation lines are folded back into the entry above them: every plan in a repo with a
+    formatter has its bullets wrapped, and a listing that prints each wrapped line as its own
+    destination reads as though the content went to twice as many places as it did.
+    """
+    lines = text.splitlines()
+    start = next((index for index, line in enumerate(lines) if MIGRATED_RE.match(line)), None)
+    if start is None:
+        return ()
+    found: list[str] = []
+    current = ""
+    for line in lines[start + 1 :]:
+        if HEADING_RE.match(line):
+            break
+        stripped = line.strip()
+        if stripped and not BULLET_RE.match(stripped):
+            current = f"{current} {stripped}".strip()
+            continue
+        if current:
+            found.append(current)
+        current = BULLET_RE.sub("", stripped, count=1) if stripped else ""
+    if current:
+        found.append(current)
+    return tuple(found)
+
+
+def fill_details(entry: Retired) -> Retired:
+    """The plan's final state: its status, and what it says it was migrated to. One blob read."""
+    text = git(["show", f"{entry.sha}^:{entry.path}"], entry.root)
+    if text is None:
+        return entry
+    entry.status = parse_frontmatter(text).get("status", "")
+    entry.migrated = migrated_targets(text)
+    return entry
+
+
+def plan_pathspec(source: Source, name: str) -> str:
+    """Where one plan file sits in a history. The store searched whole has no prefix to anchor on,
+    so the name is matched at any depth — git's own `*` spans `/` in a pathspec."""
+    return f"{source.prefix}{name}" if source.prefix else f"*/{name}"
+
+
+def plan_history(source: Source, name: str) -> list[tuple[str, str, str]]:
+    """Every commit that touched one plan path, newest first: (sha, date, subject)."""
+    out = git(["log", f"--format=%H{UNIT}%as{UNIT}%s", "--", plan_pathspec(source, name)], source.root)
+    found: list[tuple[str, str, str]] = []
+    for line in (out or "").splitlines():
+        sha, _, rest = line.partition(UNIT)
+        date, _, subject = rest.partition(UNIT)
+        found.append((sha, date, subject))
+    return found
+
+
+def retired_plans(cfg: Config, sources: list[Source], search: str | None) -> list[Retired]:
+    found: list[Retired] = []
+    for source in sources:
+        entries = deleted_plans(cfg, source)
+        if search and entries:
+            matched = pickaxe_paths(source, search)
+            entries = [entry for entry in entries if entry.path in matched]
+        found.extend(entries)
+    found.sort(key=lambda entry: (entry.date, entry.name), reverse=True)
+    return found
+
+
+def live_plans(cfg: Config, routing: Routing | None) -> dict[str, Path]:
+    """Plan files that exist right now, by filename — the same scope the archive is searched at."""
+    if routing is None:
+        return {plan.path.name: plan.path for _, plan in family_plans(cfg)}
+    return {plan.path.name: plan.path for plan in plan_files(routing)}
+
+
+def mark_live(cfg: Config, routing: Routing | None, entries: list[Retired]) -> None:
+    """Flag entries whose filename exists now — a plan moved between repo and store, not retired."""
+    live = live_plans(cfg, routing)
+    for entry in entries:
+        current = live.get(entry.name)
+        if current is not None:
+            entry.live = str(current)
+
+
+# --------------------------------------------------------------------------------------------
 # commands
 
 
@@ -1022,6 +1254,156 @@ def cmd_refs(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_archive(args: argparse.Namespace) -> int:
+    """Retired plans, read back out of git history.
+
+    Retirement deletes the file everywhere, which is only a cheap rule because the file is still in
+    the repository — this is the command that makes that true in practice rather than in principle.
+    Nothing is written, and a plan is never restored to the working tree: what comes back is its
+    content on stdout, which is what a session actually needs.
+    """
+    cfg = load_config()
+    routing = None if args.all else require_ok(resolve(args.path, cfg))
+    sources = archive_sources(cfg, routing)
+
+    if args.show:
+        return show_retired(cfg, routing, sources, args.show)
+    if args.file:
+        return show_lifecycle(cfg, sources, args.file)
+
+    entries = retired_plans(cfg, sources, args.search)
+    shown = [fill_details(entry) for entry in entries[: args.limit]]
+    mark_live(cfg, routing, shown)
+    if args.json:
+        print(json.dumps([_retired_payload(entry) for entry in shown], indent=2))
+        return 0
+
+    _print_sources(cfg, sources, everywhere=routing is None)
+    if not shown:
+        scope = f" containing {args.search!r}" if args.search else ""
+        print(f"\n(no retired plan{scope} in the histories above)")
+        return 0
+
+    _print_retired_rows(shown)
+    counted = f"{len(shown)} of {len(entries)}" if len(shown) < len(entries) else str(len(entries))
+    print(f"\n{counted} retired plan(s)")
+    print("archive --show <file> prints one back; --file <file> its whole lifecycle")
+    _warn_if_private(cfg, shown)
+    return 0
+
+
+def _print_sources(cfg: Config, sources: list[Source], *, everywhere: bool) -> None:
+    """The histories being searched. `--all` is summarised rather than listed: one line per repo is
+    dozens of lines of work-repo paths before the first result."""
+    store = next((source for source in sources if source.where == "store"), None)
+    if everywhere:
+        print(f"scope:   every repo under {cfg.projects_root} ({len(sources) - (store is not None)})")
+    else:
+        for source in sources:
+            if source.where == "repo":
+                print(f"repo:    {source.root}/{source.prefix}")
+    if store is not None:
+        state = "" if is_git_repo(store.root) else "  (not a git repository — nothing here is recoverable)"
+        print(f"store:   {store.root}/{store.prefix}{state}")
+
+
+def _warn_if_private(cfg: Config, entries: list[Retired]) -> None:
+    """Same caution `backlog` and `repos` carry: these rows name repos that are not yours to name."""
+    public = set(cfg.public_root_names())
+    if any(entry.repo.split("/")[0] not in public and entry.repo != UNSCOPED_DIR for entry in entries):
+        print("Rows outside a public root name repos that are not yours to disclose — this listing is")
+        print("for finding your own reasoning again, never for pasting into a repo you publish.")
+
+
+def _print_retired_rows(entries: list[Retired]) -> None:
+    name_width = max(len(entry.name) for entry in entries)
+    status_width = max(len(entry.status or "?") for entry in entries)
+    for entry in entries:
+        print(
+            f"\n{entry.date}  {entry.name.ljust(name_width)}  {(entry.status or '?').ljust(status_width)}"
+            f"  {entry.repo} ({entry.where})"
+        )
+        for target in entry.migrated[:3]:
+            elided = target if len(target) <= TARGET_WIDTH else target[: TARGET_WIDTH - 1] + "…"
+            print(f"    migrated to: {elided}")
+        if entry.live:
+            print(f"    still live:  {entry.live} — moved, not retired")
+        else:
+            print(f"    {entry.restore}")
+
+
+def _retired_payload(entry: Retired) -> dict[str, object]:
+    return {
+        "repo": entry.repo,
+        "where": entry.where,
+        "root": str(entry.root),
+        "path": entry.path,
+        "name": entry.name,
+        "deleted": entry.date,
+        "sha": entry.sha,
+        "subject": entry.subject,
+        "status": entry.status,
+        "migrated_to": list(entry.migrated),
+        "live": entry.live,
+        "restore": entry.restore,
+    }
+
+
+def _match_retired(cfg: Config, sources: list[Source], name: str) -> list[Retired]:
+    wanted = Path(name).name
+    return [entry for entry in retired_plans(cfg, sources, None) if entry.name == wanted]
+
+
+def show_retired(cfg: Config, routing: Routing | None, sources: list[Source], name: str) -> int:
+    """Print a retired plan's final content — the state of the file the moment before it went."""
+    wanted = Path(name).name
+    matches = _match_retired(cfg, sources, wanted)
+    # A plan moved from a repo to the store left a deletion commit behind exactly like a retired one.
+    # Printing that old copy would hand back a stale version of a file that is live somewhere else.
+    mark_live(cfg, routing, matches)
+    matches = [entry for entry in matches if not entry.live]
+    if not matches:
+        current = live_plans(cfg, routing).get(wanted)
+        if current is not None:
+            raise PlanError(f"{wanted} is not retired — it is still on the working set at {current}")
+        searched = ", ".join(f"{source.root}/{source.prefix}" for source in sources)
+        raise PlanError(f"no retired plan named {wanted!r} in {searched}")
+    if len(matches) > 1:
+        listed = ", ".join(f"{entry.repo} ({entry.date})" for entry in matches)
+        raise PlanError(f"{wanted!r} was retired in more than one place — run with --path there: {listed}")
+
+    entry = fill_details(matches[0])
+    text = git(["show", f"{entry.sha}^:{entry.path}"], entry.root)
+    if text is None:
+        raise PlanError(f"git could not read {entry.path} from {entry.sha}^ in {entry.root}")
+    print(f"plan:    {entry.path}")
+    print(f"repo:    {entry.repo} ({entry.where})")
+    print(f"deleted: {entry.sha[:12]} {entry.date} {entry.subject}")
+    print(f"restore: {entry.restore}")
+    print(f"\n{text}")
+    return 0
+
+
+def show_lifecycle(cfg: Config, sources: list[Source], name: str) -> int:
+    """Every commit that touched one plan, in each history that has it — drafting to retirement."""
+    wanted = Path(name).name
+    retired = _match_retired(cfg, sources, wanted)
+    total = 0
+    for source in sources:
+        commits = plan_history(source, wanted)
+        if not commits:
+            continue
+        print(f"\n{source.root}/{plan_pathspec(source, wanted)}")
+        for sha, date, subject in commits:
+            print(f"  {sha[:12]}  {date}  {subject}")
+        total += len(commits)
+        for entry in retired:
+            if entry.root == source.root:
+                print(f"  retired here — {entry.restore}")
+    print(f"\n{total} commit(s) touching {wanted}")
+    return 0
+
+
 def list_terms(cfg: Config, terms: list[str]) -> int:
     for term in terms:
         print(term)
@@ -1297,6 +1679,15 @@ def build_parser() -> argparse.ArgumentParser:
     refs = add("refs", "inbound references to a plan, across the repo and the store")
     refs.add_argument("file", help="plan path or bare filename")
     refs.set_defaults(func=cmd_refs)
+
+    archive = add("archive", "retired plans, read back out of git history")
+    archive.add_argument("--search", help="only plans whose content ever contained this phrase")
+    archive.add_argument("--file", help="one plan's whole lifecycle: every commit that touched it")
+    archive.add_argument("--show", metavar="FILE", help="print a retired plan's final content")
+    archive.add_argument("--all", action="store_true", help="every repo on the machine, plus the whole store")
+    archive.add_argument("--limit", type=int, default=40, help="how many to list (default: 40)")
+    archive.add_argument("--json", action="store_true")
+    archive.set_defaults(func=cmd_archive)
 
     scan = add("scan", "fail if a private name reaches a repo you publish")
     scan.add_argument(

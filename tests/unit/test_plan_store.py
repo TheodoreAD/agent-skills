@@ -623,3 +623,132 @@ def test_uninstall_keeps_the_store_unless_told_twice(ws, capsys):
     write_config(ws, 'default = "store"\n')
     assert plans.main(["uninstall", "--purge-store", "--force", "--path", str(ws.client)]) == 0
     assert not ws.store.exists()
+
+
+# --------------------------------------------------------------------------------------------
+# retired plans
+#
+# The convention deletes a retired plan outright and calls git history the archive. That is only a
+# safe rule while the retrieval path works, so these are the tests that keep the rule honest.
+
+PLAN_NAME = "2026-08-20-store-routing.md"
+
+RETIRED_PLAN = """\
+---
+status: landed
+updated: 2026-08-20
+---
+
+## Context
+
+The store mirrors
+each repo's path rather than slugging it, so two clients' `api` never collide.
+
+## Migrated to
+
+- skills/plan-docs/references/design-rationale.md — why the path is mirrored rather than slugged,
+  and what the two rejected layouts were
+"""
+
+
+def commit_plan(repo: Path, rel: str, text: str, message: str) -> Path:
+    path = repo / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    subprocess.run(["git", "add", "--", rel], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", message], cwd=repo, check=True)
+    return path
+
+
+def retire_plan(repo: Path, rel: str) -> None:
+    subprocess.run(["git", "rm", "-q", "--", rel], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", f"retire {rel}"], cwd=repo, check=True)
+
+
+@pytest.fixture
+def retired(ws):
+    """A personal repo whose one plan was drafted, landed, and then deleted on retirement."""
+    write_config(ws, 'public_roots = ["github.com-personal"]\n[roots]\n"github.com-personal" = "repo"\n')
+    commit_plan(ws.personal, f"plans/{PLAN_NAME}", "---\nstatus: idea\n---\n\n## Context\n\nDrafting.\n", "plan: draft")
+    commit_plan(ws.personal, f"plans/{PLAN_NAME}", RETIRED_PLAN, "plan: land it")
+    retire_plan(ws.personal, f"plans/{PLAN_NAME}")
+    return ws
+
+
+def test_archive_lists_a_deleted_plan_with_its_status_and_destination(retired, capsys):
+    assert plans.main(["archive", "--path", str(retired.personal)]) == 0
+    out = capsys.readouterr().out
+    assert PLAN_NAME in out
+    assert "landed" in out  # the status it carried when it went, read from the pre-deletion blob
+    assert "design-rationale.md" in out  # its `## Migrated to` line: where the content actually is
+    assert f"^:plans/{PLAN_NAME}" in out  # the command that brings it back
+    # One destination, not one per wrapped line — every plan in a formatted repo has wrapped bullets.
+    assert out.count("migrated to:") == 1
+
+
+def test_archive_show_prints_the_file_as_it_was_before_deletion(retired, capsys):
+    assert plans.main(["archive", "--show", PLAN_NAME, "--path", str(retired.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "two clients' `api` never collide" in out
+    assert "Drafting." not in out  # the final state, not the first draft
+
+
+def test_archive_search_matches_a_phrase_the_formatter_wrapped(retired, capsys):
+    # "The store mirrors each repo's path" is split across a line break in the file, which is what
+    # every phrase in a formatter-reflowed plan eventually is. A literal pickaxe would miss it.
+    assert plans.main(["archive", "--search", "store mirrors each repo's path", "--path", str(retired.personal)]) == 0
+    assert PLAN_NAME in capsys.readouterr().out
+
+    assert plans.main(["archive", "--search", "kafka topic naming", "--path", str(retired.personal)]) == 0
+    assert "no retired plan" in capsys.readouterr().out
+
+
+def test_archive_file_prints_the_whole_lifecycle(retired, capsys):
+    assert plans.main(["archive", "--file", PLAN_NAME, "--path", str(retired.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "plan: draft" in out
+    assert "plan: land it" in out
+    assert "retired here" in out
+    assert "3 commit(s)" in out
+
+
+def test_archive_does_not_call_a_moved_plan_retired(ws, capsys):
+    """A plan that went to the store is gone from the repo's history in exactly the same way a
+    retired one is. Reporting it as retired would send a session digging for content that is live."""
+    write_config(ws, '[repos]\n"github.com-personal/agent-skills" = { mode = "both", write = "store" }\n')
+    commit_plan(ws.personal, f"plans/{PLAN_NAME}", RETIRED_PLAN, "plan: land it")
+    assert plans.main(["move", PLAN_NAME, "--to", "store", "--path", str(ws.personal)]) == 0
+    retire_plan(ws.personal, f"plans/{PLAN_NAME}")
+    capsys.readouterr()
+
+    assert plans.main(["archive", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "still live" in out
+    assert "^:plans/" not in out  # no restore command for a file that never left
+
+    assert plans.main(["archive", "--show", PLAN_NAME, "--path", str(ws.personal)]) == 1
+    assert "still on the working set" in capsys.readouterr().err
+
+
+def test_archive_all_finds_a_retirement_in_the_store_history(ws, capsys):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    make_repo(ws.store)
+    mirrored = "client.com-bitbucket/team/api"
+    commit_plan(ws.store, f"{mirrored}/{PLAN_NAME}", RETIRED_PLAN, "plan: land it")
+    retire_plan(ws.store, f"{mirrored}/{PLAN_NAME}")
+
+    assert plans.main(["archive", "--all", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert PLAN_NAME in out
+    assert mirrored in out  # a store path names the repo it mirrors, which is the owner
+    assert "never for pasting into a repo you publish" in out
+
+
+def test_archive_reports_a_store_that_cannot_archive_anything(ws, capsys):
+    """The store is a git repository on purpose — an unversioned one silently loses every plan it
+    is handed, and the only moment anyone would notice is the one this line exists for."""
+    write_config(ws, 'default = "store"\n')
+    (ws.store / "client.com-bitbucket" / "team" / "api").mkdir(parents=True)
+
+    assert plans.main(["archive", "--path", str(ws.client)]) == 0
+    assert "not a git repository" in capsys.readouterr().out

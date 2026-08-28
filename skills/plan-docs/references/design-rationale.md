@@ -344,6 +344,23 @@ Two details are what make it usable rather than ignored:
 - **Generic repo names get an ignore list, not a wider `public_roots`.** A work repo called `tools`
   or `settings` matches ordinary English. Ignoring that one name costs almost nothing; adding its
   root to `public_roots` would silence every other name in that organisation at the same time.
+- **Root names are split into their organisation; repo names are not.** An organisation appears in
+  more forms than its directory name. Confirmed 2026-08-28 by running the finished scanner against a
+  sibling repo whose committed plan file lists four work email addresses: it reported that repo
+  **clean**, because its term list held `<org>.com-bitbucket-<team>` and the document said
+  `@<org>.com`. Splitting a root on `.`/`-`/`_` and dropping the hosting words (`github`, `com`,
+  `bitbucket`, …) closes that. Repo names are deliberately left whole — splitting a repo called
+  `<team>-telemetry` would gate on `telemetry`, an ordinary word, and noise is how a gate stops
+  being run.
+
+Caught by the gate itself, minutes later: the first draft of this very paragraph used a real client
+repo name as the example, and `scan --mode staged` refused the commit. Commit messages are covered
+too, but only after the fact — `git log -p` carries them, so `--mode history` sees them while
+`--mode staged` cannot.
+
+An organisation with no clone on this machine has no directory to derive from and is invisible to
+the derivation entirely — that is what `[private] extra` is for, and it has to be filled in by hand
+once, per employer.
 
 `--mode history` exists because the working tree is the wrong place to look once something has been
 pushed: a redaction commit fixes the file and changes nothing about what is published. The scanner

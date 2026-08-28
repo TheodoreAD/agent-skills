@@ -101,8 +101,13 @@ specifics in the store, where they belong.
 **Run `python3 $P scan` before committing to any repo that is or might become public**, and
 `--mode staged` immediately before the commit itself. It exits non-zero on a hit. The terms come
 from the machine — every root, project and repo name under `projects_root` that is not under a
-`public_roots` entry, plus `[private] extra` — so a newly cloned client is covered with nothing to
-maintain, and the list itself never has to be written into a public repo.
+`public_roots` entry, each root name also split into its organisation (so the client behind
+`<org>.com-<host>-<team>` is caught in an `@<org>.com` address too), plus `[private] extra` — so a
+newly cloned client is covered with nothing to maintain, and the list itself never has to be written
+into a public repo.
+
+`[private] extra` is not optional decoration: an employer with no repo on this machine has no
+directory to derive from, and is invisible to the scan until someone adds it.
 
 Two failure modes to handle correctly:
 

@@ -350,6 +350,23 @@ def test_private_terms_stop_at_the_repo_boundary(ws):
     assert "github.com-personal" not in terms
 
 
+def test_private_terms_split_a_root_into_its_organisation(ws):
+    # The same client appears as a directory name and as an email domain. Measured 2026-08-28: a
+    # term list holding only `client.com-bitbucket` scanned a document full of `@client.com`
+    # addresses and reported it clean.
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    terms = plans.private_terms(plans.load_config())
+    assert "client" in terms
+    assert "bitbucket" not in terms  # a hosting word, identifies nobody
+    assert "com" not in terms
+
+
+def test_scan_catches_a_work_email_domain(ws):
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    (ws.personal / "keys.md").write_text("someone@client.com__laptop_rsa\n", encoding="utf-8")
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 1
+
+
 def test_private_terms_honour_extra_and_ignore(ws):
     write_config(
         ws,

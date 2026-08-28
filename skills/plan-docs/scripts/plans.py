@@ -55,6 +55,35 @@ MIN_PRIVATE_TERM = 4
 # appear at depth 1 and 2 (a Bitbucket-style <project>/<repo> hierarchy); 3 leaves headroom.
 MAX_REPO_DEPTH = 3
 
+# Structural words in a root directory name — the hosting service and the domain suffix. They
+# identify nobody, and gating on "github" or "com" would match everything.
+HOSTING_WORDS = frozenset(
+    {
+        "com",
+        "org",
+        "net",
+        "io",
+        "co",
+        "dev",
+        "eu",
+        "us",
+        "github",
+        "gitlab",
+        "bitbucket",
+        "visualstudio",
+        "azure",
+        "sourcehut",
+        "codeberg",
+        "git",
+        "www",
+        "corp",
+        "inc",
+        "group",
+        "eng",
+        "projects",
+    }
+)
+
 MODES = ("repo", "store", "both")
 TAG_NAMES = ("NEEDS CLARIFICATION", "DECISION", "PITFALL", "DEFERRED", "UNVERIFIED")
 # Anchored exactly as SKILL.md specifies: a tag opens its own line, optionally after a list marker.
@@ -512,11 +541,16 @@ def private_terms(cfg: Config) -> list[str]:
     public = set(cfg.public_root_names())
     terms: set[str] = set()
     if cfg.projects_root.is_dir():
-        terms.update(
-            path.name
-            for path in cfg.projects_root.iterdir()
-            if path.is_dir() and path.name not in public and not path.name.startswith(".")
-        )
+        for path in cfg.projects_root.iterdir():
+            if not path.is_dir() or path.name in public or path.name.startswith("."):
+                continue
+            terms.add(path.name)
+            # An organisation appears in more forms than its directory name: a root called
+            # `<org>.com-bitbucket-<something>` is the same client as an `@<org>.com` email address
+            # in a doc. Splitting the root name on its separators catches both; the hosting words
+            # are dropped because "github" and "com" identify nobody. Only ROOT names are split —
+            # splitting repo names too would gate on ordinary words like "telemetry".
+            terms.update(part for part in re.split(r"[.\-_]", path.name) if part.lower() not in HOSTING_WORDS)
     for rel in repo_paths(cfg):
         parts = rel.split("/")
         if parts[0] not in public:

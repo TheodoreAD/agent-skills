@@ -132,17 +132,16 @@ rule now lives in this repo's `AGENTS.md` and in the skill; the scanner is what 
 Settled with the user 2026-08-28. The content is other people's identities, not the author's own,
 and a public repo's history is as readable as its tip.]
 
-[DEFERRED: the purge itself, blocked on ssh access this machine only regains after a restart. What
-is already done: the unpushed commits were rewritten 2026-08-28 (`git filter-branch --tree-filter`
-over `a4be538^..HEAD`, backup in `refs/original/`), verified three ways — the client project path
-that was never public has zero occurrences above the pushed tip, no private name appears in any
-added line, and the old and new HEAD trees are identical, so history changed and content did not.
-What remains here: one full-history pass over `d3bc2f8`, which also clears the removal lines a range
-rewrite necessarily leaves behind, then a force-push and a GitHub Support request to purge cached
-views. `power-user-linux-setup` owns its own half — see its
-`plans/2026-08-28-published-history-purge.md`, which carries the branch list, the two traps this
-first pass hit, and the note that `git-filter-repo` should arrive through `setup.toml` rather than
-as a one-off install.]
+**Done 2026-08-29.** The full-history rewrite ran over all 29 commits and was force-pushed:
+`origin/main` = `96999fd`, tip tree unchanged at `09488ff`, `scan --mode history` returns 0, and the
+local backup ref was deleted and the objects gc'd, so the pre-rewrite commits no longer exist on
+this machine. `power-user-linux-setup` did the same for its own half — see its
+`plans/2026-08-28-published-history-purge.md`.
+
+[DEFERRED: the GitHub Support request, which is what actually stops the old commits being served.
+Measured minutes after the push: `gh api .../commits/d3bc2f8` still returned the commit and 10
+matches in its patch. Tracked in `plans/2026-08-29-github-support-cache-purge.md`, with the text to
+send and the 404 that counts as verification.]
 
 [PITFALL: a **range** rewrite does not remove the text from `git log -p`. The commits above the
 range keep the private strings as `-` lines, because their parents still contain them — measured

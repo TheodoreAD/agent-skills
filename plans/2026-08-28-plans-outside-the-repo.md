@@ -1,6 +1,6 @@
 ---
-status: in-progress
-updated: 2026-08-28
+status: landed
+updated: 2026-08-29
 depends_on: [power-user-linux-setup]
 ---
 
@@ -172,10 +172,10 @@ open question.
 From the skill, via the script: `plans.py where` is the entry point, and its exit 3 is what forces
 the question rather than a rule someone has to remember.
 
-[DEFERRED: a one-line pointer in the always-loaded instructions file, for sessions that write a plan
-without loading `plan-docs`. That file belongs to `power-user-linux-setup`, and its
-`plans/2026-08-28-pulse-capture.md` has the same `portable.md`-vs-`this-setup.md` question about its
-own routing rule; decide both there, together, not here.]
+**Done 2026-08-29.** The rule went into `power-user-linux-setup`'s `config/agents-md/portable.md` as
+its own section under "Git & commits" — the confidentiality half of the routing question, which is
+the half that reaches a session writing a plan without loading this skill — and was deployed to
+`~/AGENTS.md`.
 
 ### 5. Machine setup (`power-user-linux-setup`)
 
@@ -212,6 +212,15 @@ Done 2026-08-28, all green:
   correctly surfaces the published leak this plan's PITFALL records — the gate is verified against a
   real positive, not only against a green tree.
 
-[DEFERRED: the `[packages.plan-store]` entry in `power-user-linux-setup` (§5). Until it lands,
-`PLANS_HOME` is unset and the script's `~/plans` default is what makes the store resolve — correct,
-but undeclared to anything else on the machine.]
+**Done 2026-08-29** (`power-user-linux-setup` `82573fa`). `[packages.plan-store]` declares the
+`PLANS_HOME` export from `~/.zshenv` and adds `~/plans` to Claude Code's `additionalDirectories` —
+read-write, unlike `research-library`'s read-only grant, because the script creates a plan file and
+an agent then fills the body in with its editing tools, which are what the file-permission checks
+gate. The store itself is still created by this skill's own `install`, mirroring how
+`research-library` leaves `~/research` to the user.
+
+[PITFALL: the skill was installed on this machine from a commit that predated its `scripts/`
+directory, so `~/.agents/skills/plan-docs/scripts/plans.py` — the path this skill's own command
+block and the new `~/AGENTS.md` rule both name — did not exist for several hours while every
+document insisted it did. The checkout worked throughout, which is why nothing surfaced it. Run a
+documented command from the installed path after any change that adds files to a skill.]

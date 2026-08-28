@@ -419,7 +419,19 @@ goes live, the article needs reading by some other route first.]
 
 ## Recommended direction
 
-Rough, and contingent on the first open question.
+[DECISION: **the discovery-vs-relocation question is settled — discovery, and the store is a
+parallel path rather than a relocation.** Answered 2026-08-29 by
+`plans/2026-08-28-plans-outside-the-repo.md`, now `landed`: repos that can hold their own plans keep
+holding them and nothing moved, while repos that cannot route to `$PLANS_HOME` under a mirrored
+path. That plan also built most of the machinery this one assumed it would have to design —
+`skills/plan-docs/scripts/plans.py` already resolves routes from config, parses frontmatter, groups
+by status and counts open tags per file, and `known_repos()`/`repo_paths()` already walk the
+projects root and stop at each `.git`. What is left here is genuinely only the cross-repo view:
+`list` is scoped to one repo's own read directories, so the aggregator is a new command over the
+existing walker, not a new mechanism.]
+
+The rest of this section predates that decision; it holds up, and the first open question it was
+contingent on is now answered.
 
 **Most likely shape: keep the store where it is, add a discovery layer.** Per-repo `plans/` stays
 exactly as `plan-docs` defines it — same lifecycle, same retirement procedure, same quality gate,

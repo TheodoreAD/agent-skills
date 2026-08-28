@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-08-28
+updated: 2026-08-29
 ---
 
 ## Context
@@ -303,12 +303,9 @@ Whether that difference is decisive is the question below.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: is the requirement discovery or relocation? Everything else follows from this.
-If the real need is "one command shows every open plan across the family," an aggregator over the
-existing per-repo `plans/` directories delivers it with no migration, no lifecycle change, and no
-loss of per-repo history. If the need is genuinely one editable location — plans authored and
-revised in one directory regardless of which repo they concern — that is a different design and
-costs the coupling of a plan's history to its code's history.]
+The question this section used to open with — discovery or relocation — is settled; the
+`[DECISION:]` under "Recommended direction" records it and what answered it. What follows is what is
+still open.
 
 [NEEDS CLARIFICATION: how much does per-repo plan history actually buy? Worth interrogating rather
 than assuming, because `plan-docs` **deletes** plans on retirement and migrates their durable
@@ -353,18 +350,15 @@ every other piece of family tooling; that is a deliberate consequence of the ski
 not an oversight. Precedent already exists in the same repo: `session-bash-audit/scripts/audit.py`
 is stdlib-only and invoked as `python3 $S/scripts/audit.py`.]
 
-[NEEDS CLARIFICATION: **what tells the script which directories to walk?** The script is portable;
-"where this user's repos live" is not. Four options, in rough order of how well they survive being
-installed on someone else's machine: a positional argument the `SKILL.md` shows being called with a
-path; an env var, the way `research-library` declares `$RESEARCH_HOME`; discovery by scanning the
-parent of the current repo for siblings that have a `plans/`, which is how tasks.md finds a
-workspace and needs no registration at all; or a list supplied by whatever installed the skill,
-which for this machine means a `setup.toml` entry — reviewable and unsurprising, but it makes the
-script useless to anyone without that installer, which is the coupling the skills move just undid.
-The `research-library` precedent is the strongest: that skill became publishable precisely by
-_declaring_ its one environment assumption rather than assuming an installer had provided it, and
-the same shape applies here. Whichever is chosen determines whether PULSE needs a config entry at
-all, so decide before the script is written.]
+[DECISION: **the script learns where the repos are from its own config, not from an installer or a
+sibling scan.** Answered 2026-08-29 by `plans/2026-08-28-plans-outside-the-repo.md`: `plans.py`
+reads `projects_root` from `~/.config/plan-docs/config.toml` (default `~/projects`,
+`$PLAN_DOCS_CONFIG` overriding the file's location), and `known_repos()` walks it, stopping at the
+first `.git` so a repo's own subdirectories are never descended into. That is the `research-library`
+shape the four options were being weighed against — one declared environment assumption, written by
+`plans.py install`, with nothing supplied by whatever installed the skill. The aggregator therefore
+needs no new registration mechanism, and PULSE needs no config entry: it already exports
+`PLANS_HOME` and installs the skill, which is all it does.]
 
 [NEEDS CLARIFICATION: **should the status vocabulary be validated, and by what?** The measured tally
 above found `done` where `landed` is defined, and one free-form status paragraph. A per-repo gate
@@ -383,28 +377,14 @@ interacts with the history question above: if retirement stopped deleting, the a
 storage strengthens considerably, because the repo's history would then hold the plan itself rather
 than only its drafting.]
 
-[NEEDS CLARIFICATION: **`plan-docs`' retirement procedure names destinations this repo does not
-have.** It routes a settled decision or a confirmed pitfall to `contributing/`, and usage-facing
-content to `docs/` — in eleven places across `SKILL.md`, including the `description` frontmatter
-itself, the `[DECISION:]`/`[PITFALL:]` tag table, the triage table, and steps 1, 3 and 4 of the
-retirement procedure. This repo has neither directory, deliberately: its `AGENTS.md` puts rationale
-in each skill's own `references/`, and the decoupling plan settled "no `contributing/` tree in
-`agent-skills`" as a decision rather than an omission. So the convention, as written, assumes the
-layout of the repo it used to live in. Found 2026-08-28 while auditing these plans for exactly that
-kind of leftover.
-
-(The skill's one citation of a named sibling repo — `repo-tasks/contributing/type-checking.md` — is
-_not_ part of this problem and should stay. It is dated evidence for a rule, which this repo's
-`AGENTS.md` explicitly asks for; a stranger learns the rule without needing the file to exist.)
-
-Three ways out, and this is the one open question here that blocks retiring anything in this repo
-rather than merely shaping a future tool: state the destinations as _roles_ (design rationale, usage
-docs) and let each repo map them onto whatever it has; keep the literal paths but add this repo's
-`skills/<name>/references/` as the third named destination; or admit a `contributing/` here after
-all and reverse that decision. The first is the smallest change to the skill and the most portable
-for anyone who installs it — a consumer repo has no obligation to have `contributing/` either — and
-it is the only one that does not make `plan-docs` describe one family's directory names to every
-consumer.]
+[DECISION: **retirement destinations are stated as roles, not as paths.** `SKILL.md` named
+`contributing/` and `docs/` in eleven places — the layout of the repo the convention used to live
+in, which this repo deliberately does not have (rationale goes in each skill's own `references/`).
+Fixed 2026-08-29: "Where retired content goes" now names three roles — the code itself, usage docs,
+design rationale — and says to map them onto whatever the repo has, which is the only option of the
+three considered that does not describe one family's directory names to every consumer. The skill's
+one citation of a named sibling repo stays: it is dated evidence for a rule, and a stranger learns
+the rule without needing that file to exist.]
 
 [UNVERIFIED: Markdown Projects, git-issues, TrackDown, TODO.md, gh-issue-sync, imdone and Dendron's
 multi-vault behaviour were assessed at web-search/README depth only. tasks.md, beads and Backlog.md
@@ -444,7 +424,7 @@ nobody reads. The measured tally above is what its first run should print, drift
 
 It ships as `skills/plan-docs/scripts/`, stdlib-only, per the decision above — not as an
 `inv plans.*` namespace in `repo-tasks`, which was the assumption before the skills were decoupled.
-What remains open about it is only how it learns which directories to walk.
+Where it walks is settled too: `projects_root` from the routing config, via `known_repos()`.
 
 That gets "one location" as a _view_ rather than a _directory_, which is what every mature project
 in this space converged on, and it costs nothing that currently works. The second pass strengthened
@@ -452,18 +432,18 @@ this rather than complicating it: beads' `source_repo` + hydration is the same d
 adopted at scale, and the aggregator sketched above is the small version of it — no database, no
 federation, no new store, just a parse of frontmatter every repo in the family already writes.
 
-Two things to settle before building anything, in this order: the discovery-vs-relocation question
-above, and then `power-user-linux-setup`'s `plans/2026-08-23-github-issues-plan-lifecycle.md`, which
-becomes answerable once the store's location is fixed.
+One thing is still worth settling before building: `power-user-linux-setup`'s
+`plans/2026-08-23-github-issues-plan-lifecycle.md`, which became answerable once the store's
+location was fixed and decides whether a tracker appears in this picture at all.
 
-If the answer to the first question turns out to be genuine relocation, the fallback worth designing
-properly is the **Planning Repo Pattern** — a real `plans` git repo at the projects root whose
-`.gitignore` treats the sibling project repos as opaque. It gives a single editable location and a
-single history, keeps every project repo independent, and needs no submodules. It is the only
-central-store option surveyed that doesn't require adopting a tool that rejects markdown.
+The **Planning Repo Pattern** — a real `plans` git repo at the projects root whose `.gitignore`
+treats the sibling project repos as opaque — was the fallback if relocation had won. It did not, so
+that design is not needed; it stays recorded here only because it is the one central-store option
+surveyed that doesn't require adopting a tool that rejects markdown, should the question ever
+reopen.
 
-Do not start moving plan files before this is settled. Half-migrated is the one state worse than
-either endpoint, and the current convention is working — nothing here is urgent.
+Nothing here is urgent: no plan file moves under the settled answer, and the current convention is
+working.
 
 **Adopting a tool wholesale is now ruled out on evidence, not taste.** beads is the only mature
 option that solves the problem, and taking it means a Dolt database, federation machinery sized for

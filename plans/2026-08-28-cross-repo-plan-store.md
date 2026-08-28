@@ -322,12 +322,15 @@ This also answers what per-repo history buys, which was a second open question h
 path for exactly this. It is why deletion costs little, and it is the argument that would collapse
 if plans were ever stored somewhere without version control.]
 
-[DEFERRED: **searching git history for a retired plan.** Raised by the user 2026-08-29 as the thing
-that makes the deletion rule comfortable, and it is a `plans.py` command, not a new tool: find plan
-files deleted from `plans/` (`git log --diff-filter=D`), search every retired plan's content by
-keyword (`git log -S`), and print the `git show <sha>^:<path>` that brings one back — across every
-repo the walker already knows plus the store's own history. Nothing depends on it existing before
-the rule takes effect, since git already holds everything; it is the ergonomics of getting it out.]
+[DECISION: **the retrieval path is `plans.py archive`, a query over the deletion commits.** Raised
+by the user 2026-08-29 as the thing that makes the deletion rule comfortable, and built the same
+day: `git log --diff-filter=D` over each history's plans directory is the index, git's pickaxe over
+every version is the content search, and each row prints the plan's final status, its
+`## Migrated to` destinations and the `git show <sha>^:<path>` that brings it back — for this repo's
+routes, or with `--all` across every repo the walker knows plus the store's own history. Nothing is
+restored to the working tree, because a resurrected file with a stale status is the permanent
+archive this convention just rejected. Rationale, and the two silent traps found building it, in
+`skills/plan-docs/references/design-rationale.md`.]
 
 [DECISION: **borrow the model, adopt nothing.** Settled 2026-08-29 by the aggregator existing:
 `plans.py backlog` is the discovery layer, stdlib, ~130 lines, and it took the workspace-discovery

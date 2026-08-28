@@ -1,6 +1,6 @@
 ---
 name: session-harvest
-description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, wants a session reviewed for durable facts, or says something like 'harvest this session', 'anything to remember here', or 'is it safe to compact'. Reviews the conversation against Claude Code's built-in auto-memory taxonomy (user/feedback/project/reference), but routes plan-specific content to plans/*.md instead (per the plan-docs skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md, so memory doesn't end up duplicating what those already own or silently siloing a preference in one project's memory folder. Ends with a safe-to-compact report. On-demand only — never installs hooks or runs automatically."
+description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation against Claude Code's built-in auto-memory taxonomy, but routes plan-specific content to plans/*.md instead (per the plan-docs skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md, so memory doesn't duplicate what those already own or silently silo a preference in one project's memory folder. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent and a safe-to-compact verdict. On-demand only — never installs hooks or runs automatically."
 ---
 
 # Session harvest
@@ -104,6 +104,15 @@ considered and rejected).
      `session-bash-audit` — which already invites newly noticed Bash anti-patterns and can _measure_
      the rate — rather than becoming a 34th rule in a file already at 33 rules / 390 lines. A
      finding that a topic-owning skill can act on is usually better there than restated globally.
+     Counter-example, resolved 2026-08-28 the other way: a non-terminating CI-poll loop went to the
+     always-loaded file _despite_ it standing at 37 rules / 446 lines, because the tier test is
+     decided by the miss, not by the budget — this miss is silent by construction (a loop that
+     cannot fail emits nothing, so "still waiting" and "will never finish" look identical) and it
+     had already made a session report a result it could never observe. Size pressure argues for a
+     skill; it does not overrule "silent and expensive". Two levers keep the cost honest when the
+     always-loaded file wins: extend an existing section instead of adding a heading (rule count
+     unchanged), and end the rule on the command that replaces the habit rather than on the warning.
+     Report the before/after line count either way.
    - **Destination mid-restructure → the plan reshaping it, not the file.** When a candidate's
      correct home is currently the subject of an open `plans/*.md` that is reshaping it — especially
      one that defines its own criteria for what may be added — record the candidate _in that plan_,
@@ -142,22 +151,71 @@ considered and rejected).
    if it's real design/idea work worth resuming, or say plainly that it's fine to let go if it's
    genuinely ephemeral task state.
 
-5. **Harvest report**, zoned and capped:
-   - Judgment calls that genuinely need the user's input, first, capped to a handful so review stays
-     fast even after a long session.
-   - Routine, unambiguous routings underneath as one-liners (saved to memory / routed to plan /
-     routed to docs / dropped as insignificant) — informational, not asking for confirmation.
+   **Read the conversation, not only the summary.** A compacted session hands you someone else's
+   précis: intermediate summaries drop exactly the loose ends this step exists to catch, and their
+   confident tone reads as completeness. Extract the real user turns from the session transcript
+   (`~/.claude/projects/<slugged-cwd>/<session-id>.jsonl`, `type == "user"` entries with real text
+   content — a few dozen lines of Python, and typically under ten turns even in a long session) and
+   re-read the original instructions rather than the recap of them. Confirmed 2026-08-28: the
+   brief's own "this needs a full tier run afterwards, only one common cause was established"
+   survived into no summary, and neither did an explicitly-declined consumer sweep.
+
+5. **Live-state sweep** — the parts of "dangling" that are not in the conversation at all. The
+   transcript says what was _intended_; these say what is actually true now. Run them even when the
+   session felt tidy, because every one of them has been wrong at least once:
+   - **Processes this session started.** Backgrounded polls and watchers outlive the turn that
+     spawned them. Check for live children (`ps -o pid,stat,etimes,args`, and whether a `sleep`
+     child was respawned seconds ago — that is the difference between hung and still-working).
+     Confirmed 2026-08-28: four CI-poll loops, 36 hours old, still polling, whose exit condition
+     could never be true; the harvest was the only thing that would ever have found them.
+   - **Git state, every repo the session touched** — not just the primary one. Dirty tree, unpushed
+     commits (`git log origin/<branch>..HEAD`), and whether the remote moved under you. An unpushed
+     commit is the most common real loose end, and a session that ends with one usually believes it
+     pushed.
+   - **CI, for anything this session pushed.** A green local gate is not a green CI run. Use a
+     bounded waiter (`gh run watch <id> --exit-status`), never a hand-rolled `until` loop.
+   - **Work the session promised but never verified** — a test tier it added to but never ran, a
+     consumer it changed but never swept. "I'll report when it lands" in the last message is a
+     promise the harvest has to either keep or retract.
+
+6. **Harvest report**, ordered so the reader can stop early only at their own risk: least urgent
+   first, most urgent last, because the final lines are what a skimmed report actually retains.
+   - **Settled** — verified green/clean, no action. Say what was checked, so "fine" is a measurement
+     and not an impression.
+   - **Persisted this pass** — routine routings as one-liners (memory / plan / docs / dropped), plus
+     any cost worth naming, e.g. what an addition did to an always-loaded file's size.
+   - **Decisions waiting** — documented, not urgent. Name plans that must be decided _together_.
+   - **Risks carried** — known and written down. For each, the falsifier: what observation would
+     show the reasoning was wrong.
+   - **Needs action now** — dangling state, and anything the user alone can decide (a push, a
+     destructive cleanup). Last, and specific.
    - Ends with a one-line verdict: "safe to compact" or "not yet — needs a decision on X."
 
-6. **On friction, ask — then self-update the skill, not just this session.** Two triggers:
+   Fix what is cheap and unambiguous rather than only reporting it — kill the orphaned loops, write
+   the lost measurement into the plan that owns it — and report it as done. Reserve the report's
+   last zone for what genuinely needs the user. Anything outward-facing (a push) still gets asked.
+
+7. **On friction, ask — then self-update the skill, not just this session.** Three triggers:
    - A candidate doesn't clearly fit any routing filter in step 2 (e.g. arguably both plan-specific
      _and_ a durable cross-repo preference), or the significance test itself is a genuine toss-up.
    - The user corrects a routing decision this skill just made.
+   - **The user's own invocation asks for behavior this skill doesn't have.** Arguments like "make
+     sure you also check X, not sure the skill does that today" are a spec, not a one-off request.
+     Applying them to the current run and stopping there is the failure this step exists to prevent
+     — and it is easy to miss, because the run itself goes well. Confirmed 2026-08-28: every
+     live-state check in step 5 arrived that way, was executed, produced the session's most valuable
+     findings, and was nearly lost because nothing prompted writing it down. If the user has to ask
+     "did you update the skill?", this trigger already fired and was missed.
 
-   In either case, use `AskUserQuestion` to resolve it for _this_ item — never silently pick a side
-   on a real ambiguity. Then fold the resolution back into this skill's source (see below) so the
-   same friction doesn't recur next time. Resolving it for one session only defeats the point of a
-   shared convention skill.
+   In the first two cases use `AskUserQuestion` to resolve it for _this_ item — never silently pick
+   a side on a real ambiguity. In the third the user has already told you what they want; just fold
+   it in. Either way the resolution goes back into this skill's source (see below) so the same
+   friction doesn't recur. Resolving it for one session only defeats the point of a shared
+   convention skill.
+
+   **Do the fold-back before the final report**, not after, and say in that report which of the two
+   destinations was updated (this skill's source, or the always-loaded instructions file). A harvest
+   whose whole subject is "what would be lost" should not end by losing its own lesson.
 
 Everything this harvest writes into a repo — a `plans/*.md` entry, an `AGENTS.md` addition, a
 `docs/`/`contributing/` page, a skill's own source — goes through that repo's quality gate

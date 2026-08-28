@@ -147,3 +147,51 @@ admission criterion this skill routes candidates through, would have been applie
 names that no longer existed. The failure would have been silent: an edit landing in a plausible but
 wrong place, or a new heading created for a rule that already had a home. One `grep -n '^## '`
 against the source avoids it.
+
+## Why the harvest sweeps live state, not just the conversation (2026-08-28)
+
+The skill was built on one assumption: everything worth catching is _in the conversation_, so
+re-reading it is sufficient. A single run falsified that. Its most valuable findings came from
+places the transcript could not describe:
+
+- **The process table.** Four backgrounded CI-poll loops were alive 36 hours after the turn that
+  spawned them, still issuing requests, having made on the order of 26,000 API calls between them.
+  They could never exit — `gh run list --commit` matches only the full 40-char SHA and returns `[]`
+  with exit 0 for an abbreviation, so the predicate compared `null` to `"completed"` forever.
+  Nothing in the conversation could have revealed this: the transcript records the loops being
+  _started_, and a loop that cannot fail produces no output to contradict that. Only `ps` shows it,
+  and only if someone looks. The tell that separates hung from working is a `sleep` child a few
+  seconds old.
+- **Git and CI.** Cheap to check, and the failure mode is a session confidently ending with an
+  unpushed commit or an unread red run.
+- **Unkept promises.** The run's own last pre-compaction message said "CI is running; I'll report
+  when it lands." That was already false when written. A harvest that reads only the conversation
+  would have copied the claim forward as fact.
+
+Ordering was changed at the same time and for a related reason. The report had judgment calls first,
+on the theory that the user reads top-down and should hit decisions early. In practice a long report
+is skimmed, and skimming retains the _end_. Urgency now ascends: settled → persisted → decisions →
+risks → needs-action-now. Each risk carries its falsifier, so "this should be fine" stays a claim
+that can be checked rather than a reassurance.
+
+The step also shifted from reporting to acting. Finding four runaway processes and merely listing
+them would be a worse outcome than killing them, and the same holds for a measurement that exists
+nowhere but the transcript: write it into the plan that owns it. What stays reserved for the user is
+what is genuinely theirs — anything outward-facing, and anything with a real trade-off.
+
+## Why "the invocation asked for something the skill lacks" is a self-update trigger (2026-08-28)
+
+The original two triggers both assumed the skill did something and it went wrong — an ambiguous
+routing, or a correction. They missed the case where the skill is simply _missing a capability_ and
+the user supplies it inline: "make sure you also check the running shells / git state / next steps,
+not sure if the skill does that today."
+
+That phrasing is a specification, and it is uniquely easy to drop, because following it makes the
+current run go _well_. Success is exactly what suppresses the instinct to write anything down. Every
+live-state check in step 5 arrived this way, produced the run's best findings, and was still nearly
+lost — the fold-back happened only because the user afterwards asked whether the skill had been
+updated. By then the signal had already been missed once.
+
+Hence the ordering requirement: fold back _before_ the final report, and name the destination in it.
+A skill whose entire subject is "what would be lost when this session ends" has no business losing
+its own lesson.

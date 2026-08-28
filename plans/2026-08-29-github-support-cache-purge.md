@@ -41,8 +41,15 @@ readable as its tip.]
 
 ### 2. The requests to send
 
-One per repo, at [support.github.com](https://support.github.com). They can go in either order and
-neither depends on anything else. Text to paste:
+One per repo, at [support.github.com](https://support.github.com).
+
+**Order matters, for one of them.** `agent-skills` is finished and its request can go whenever.
+`power-user-linux-setup` has a second rewrite still to run — a 2021 string its first pass missed,
+tracked in that repo's `plans/2026-08-28-published-history-purge.md` — and a rewrite creates a fresh
+set of unreachable commits, so a request sent before it would be answered and immediately be stale.
+Send that one after.
+
+Text to paste:
 
 > **Subject: Purge cached views after a history rewrite — TheodoreAD/agent-skills**
 >
@@ -82,6 +89,12 @@ Worth knowing before treating this as closed, and worth not chasing without a re
   GitHub's code search index is a separate cache. Neither is covered by a request to purge a
   repository.
 
+[DEFERRED: the whole errand is scheduled for the week of 2026-09-01, not abandoned. The user's own
+risk read, recorded 2026-08-29: the 6 stars on `power-user-linux-setup` are ex-colleagues from an
+early version of that guide, at the very companies whose names leaked — people who already knew.
+Nobody is expected to clone either repo. That is why this is a task with a date rather than an
+incident.]
+
 [DEFERRED: checking Software Heritage for a snapshot of either repo. It is a lookup by origin URL
 and a takedown request if there is a hit — worth doing once the support requests are answered, not
 before.]
@@ -103,4 +116,5 @@ gh api repos/TheodoreAD/power-user-linux-setup/commits/3c0b606e341984bdbeaff0e6a
 Both must return **404**, not a commit. That is the whole test, and it is the only evidence that the
 purge actually happened — a successful force-push proves nothing about it, as the table above shows.
 
-[UNVERIFIED: neither request has been sent. Until they are, both old commits are live.]
+[UNVERIFIED: neither request has been sent. Until they are, both old commits are live — confirmed
+live 2026-08-29, hours after both force-pushes.]

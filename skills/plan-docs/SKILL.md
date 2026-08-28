@@ -109,6 +109,14 @@ into a public repo.
 `[private] extra` is not optional decoration: an employer with no repo on this machine has no
 directory to derive from, and is invisible to the scan until someone adds it.
 
+**Never hand-roll the pattern for an audit.** `scan --list-terms` prints the list the scanner
+derives; `scan --mode history` is the audit. A regex written by hand is a narrower list whose edges
+you cannot see, and it will look like a clean result. Confirmed live 2026-08-29: a repo was surveyed
+with a hand-written alternation covering the addresses already known about, declared clean apart
+from those, purged — and the scanner then found an employer's name in that repo's first two commits
+from 2021, in four branches, because the hand-written pattern omitted one work root the derived list
+had all along.
+
 Two failure modes to handle correctly:
 
 - **A generic hit.** A work repo named `tools` or `settings` matches ordinary English. Put that one

@@ -219,6 +219,18 @@ considered and rejected).
    - **Work the session promised but never verified** — a test tier it added to but never ran, a
      consumer it changed but never swept. "I'll report when it lands" in the last message is a
      promise the harvest has to either keep or retract.
+   - **`depends_on` plans whose blocker may have lifted.** The routing filter above parks work owed
+     to a mid-restructure repo in a `depends_on`-tagged plan — which stores it safely and gives it
+     no trigger. Nothing watches the named repo, so the queue is discovered only when someone thinks
+     to look, and a plan waiting on a repo that has been ready for days is indistinguishable from
+     one waiting on a repo that is still busy. Cheap to close: for each `depends_on` plan the
+     current repo has (`rg -l 'depends_on' plans/`), check that repo's tree and recent commits, and
+     report the ones whose blocker is gone as ready rather than blocked. Confirmed 2026-08-29: nine
+     skill edits parked five hours earlier were already unblocked, and were found only because the
+     user asked what plans needed other repos — the harvest that created the queue had not scheduled
+     anything to drain it. Verify against the working tree, not the plan's prose: the same check
+     that day read "surgery finished" from a clean `git status` and a landed plan, then found two
+     modified files a few minutes later.
    - **Work handed off to another session, and what it blocks here.** This user runs parallel
      sessions, so "another session is doing X, don't touch it" is a routine instruction — and it
      creates state no other check finds: not a process, not git state, not CI, not an unkept

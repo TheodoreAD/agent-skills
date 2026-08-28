@@ -1,9 +1,9 @@
 # Why this workflow is shaped the way it is
 
-Design rationale for `SKILL.md` — the workflow for taking a personal MCP server or skill repo from a
-working checkout to something an agent can actually load, on the dev machine and everywhere else.
-What it _is_ and how to use it live in the skill; this page is the _why_, including the branches
-that were tried and rejected.
+Design rationale for `SKILL.md` — the workflow for taking a personal MCP server from a working
+checkout to something an agent can actually load, on the dev machine and everywhere else. What it
+_is_ and how to use it live in the skill; this page is the _why_, including the branches that were
+tried and rejected.
 
 ## Why git+`uv` instead of PyPI
 
@@ -50,28 +50,3 @@ use it" becomes `uv tool install -e <path>` vs. `uv tool install git+<url>` — 
 itself (`claude mcp add --scope user <name> <name>`) never changes, since both installs land the
 same binary name on `PATH`. Never two divergent MCP-registration setups to keep in sync, and never a
 reason to publish a dev build somewhere just to test it end-to-end.
-
-## Why "self-update on friction" is a convention, not one skill's quirk
-
-Surfaced while designing `session-harvest`: a routing decision it made mid-design was genuinely
-ambiguous (should "new skills should default to self-update mechanics" be a personal preference, or
-a documented convention?) — asked rather than guessed, and the answer was "a convention, stated
-here." That is itself an instance of the pattern: a convention skill that never revises itself from
-what actually happens when it is used goes stale the way any unmaintained doc does, except worse,
-since nobody re-reads a skill file the way they would re-read `AGENTS.md`. Worth generalizing to
-every future convention skill rather than treating it as bespoke to `session-harvest` — hence the
-short rule in the skill pointing back at that skill as the worked example instead of re-explaining
-the mechanics twice.
-
-## Why the skill no longer documents a single machine's install mechanism
-
-Until 2026-08-27 this skill said skills ship by declaring them in one particular machine-setup
-repo's `setup.toml` and running that repo's own invoke task. That was true, and it was the exact
-problem: the skill telling people how to ship a skill described a mechanism only its author could
-run. The `skills` CLI does the same job for anyone, on any agent, so the skill now describes that
-instead. The machine-specific declaration still exists on that machine, but it is a consumer of the
-published repo, not the way skills are distributed.
-
-The general form of that lesson is worth keeping: **a skill about a workflow must describe the
-workflow's portable mechanism, not the author's automation around it.** Automation is the right
-place for "and here is how my machine does it"; the skill is not.

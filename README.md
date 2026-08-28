@@ -24,9 +24,15 @@ read the file directly.
 
 ## Skills
 
-| Skill                            | Use it when                                                                  | Scope                   |
-| -------------------------------- | ---------------------------------------------------------------------------- | ----------------------- |
-| [`plan-docs`](skills/plan-docs/) | Capturing an idea, drafting a design, or tracking work-in-progress in a repo | Opinionated but general |
+| Skill                                                        | Use it when                                                                                                                                                                                                     | Scope                   |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| [`db-defaults`](skills/db-defaults/)                         | Adding local persistence to a Python project — cache, relational, OLAP, documents, full-text or vector search, job queue, pub/sub, blobs, time series — and you want the default pick rather than an evaluation | Opinionated but general |
+| [`invoke-task-conventions`](skills/invoke-task-conventions/) | Adding, renaming or reviewing an `inv <namespace>.<task>`, and weighing what a rename actually costs across docs, CI and other repos                                                                            | Opinionated but general |
+| [`mcp-skill-shipping`](skills/mcp-skill-shipping/)           | Developing or distributing a personal MCP server or skill repo — dev loop, `uv tool install` from git instead of PyPI, MCP registration scope                                                                   | Opinionated but general |
+| [`plan-docs`](skills/plan-docs/)                             | Capturing an idea, drafting a design, or tracking work-in-progress in a repo's `plans/` directory, and retiring a plan once it lands                                                                            | Opinionated but general |
+| [`polite-mcp-conventions`](skills/polite-mcp-conventions/)   | Working in the `*-polite-mcp` repos — confirming before a first live mutating action against a real account, batching per-item decisions                                                                        | Personal                |
+| [`python-conventions`](skills/python-conventions/)           | Writing or reviewing Python and wanting one settled answer per design question — data modeling, dates/times, settings, guard clauses, tests, exceptions, async, HTTP                                            | Opinionated but general |
+| [`session-harvest`](skills/session-harvest/)                 | Deciding what from a session is worth persisting, and where it goes — a plan, a repo's `AGENTS.md`, a global preference, or nowhere                                                                             | Opinionated but general |
 
 **Scope** says how much of the skill is a convention anyone can adopt versus a personal preference:
 _general_ is portable as written, _opinionated but general_ picks one defensible convention out of

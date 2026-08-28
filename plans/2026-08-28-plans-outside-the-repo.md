@@ -100,13 +100,55 @@ available.]
 
 ### 3. `skills/plan-docs/scripts/plans.py` — the deterministic half
 
-Stdlib, read-only except where stated. `where`, `new`, `list`, `tags`, `set-status`, `move`, `refs`,
-`config`, `init-store`. Everything routing touches is a path computation, a frontmatter rewrite, an
-anchored grep, or a gate that is a grep returning empty — as prose each costs an agent several file
-reads and gets the anchoring subtly wrong; as a command each is one call whose output is the answer.
+Stdlib, read-only except where stated: `where`, `new`, `list`, `tags`, `set-status`, `move`, `refs`,
+`scan`, `repos`, `describe`, `graduate`, `install`, `uninstall`, `config`. Everything routing
+touches is a path computation, a frontmatter rewrite, an anchored grep, or a gate that is a grep
+returning empty — as prose each costs an agent several file reads and gets the anchoring subtly
+wrong; as a command each is one call whose output is the answer.
 
 `set-status` enforces the two gates the convention previously only described: `planned` refuses
 while a `[NEEDS CLARIFICATION:` remains, `landed` while an `[UNVERIFIED:` does.
+
+`install` is the whole machine setup, idempotent, and `uninstall` reverses it — asymmetrically: the
+config goes, the store stays unless `--purge-store --force`, because the store is the only copy of
+what it holds.
+
+### 3a. The confidentiality gate — `scan`
+
+[DECISION: **The forbidden-name list is derived from the machine, never checked in.** A list of
+clients cannot live in the public repo it is protecting, and a list anywhere else goes stale the day
+a new client is cloned. `scan` takes every root, project and repo name under `projects_root` that is
+not under a `public_roots` entry, plus `[private] extra`. The walk stops at the first `.git`: the
+first version descended into repos and swept up `src`/`tests`/`dist`, producing 81 hits on a clean
+tree — noise is how a gate gets ignored. A generic work repo name goes in `[private] ignore`, never
+into `public_roots`, which would silence a whole organisation to fix one word.]
+
+[PITFALL: this plan's own first draft, and the commit that published it, listed six employer/client
+root names and one client's internal `<project>/<repo>` path — in a repo whose README advertises it
+as public. Confirmed 2026-08-28 by `scan --mode history`, which found exactly those commits. The
+rule now lives in this repo's `AGENTS.md` and in the skill; the scanner is what makes it hold.]
+
+[DEFERRED: the published history itself. Redacting the working tree does not unpublish `d3bc2f8`;
+purging it means a force-push on a public repo (and the same question in `power-user-linux-setup`,
+where committed SSH key filenames carry four work email addresses). That is the user's decision,
+tracked here until it is made.]
+
+### 3b. Plans with no repo yet — `_unscoped/` and `graduate`
+
+Ideas, tasks and explorations that have not earned a repo go to `$PLANS_HOME/_unscoped/`;
+`--unscoped` needs no git repo at all, since the idea may not be had inside a checkout.
+`graduate
+<file> --to <repo>` routes it through the destination repo's own rule when the repo
+appears, and stamps `repo:` if that destination is the store. Underscore-prefixed so the name can
+never collide with a mirrored root.
+
+### 3c. Knowing what each repo is for — `repos` / `describe`
+
+One line per repo: the config's `[about]` entry, else the repo's README first real line. Enough to
+rank candidates with `--search`, cheap enough to compute for every repo at once, and specifically
+not a grep of the repos. The output is the input to an `AskUserQuestion` — two or three concrete
+options with those descriptions — so the user confirms an informed guess instead of answering an
+open question.
 
 ### 4. Where the routing rule fires from
 
@@ -127,12 +169,14 @@ no global `user.name`/`user.email` — identity comes from `includeIf` rules per
 
 ## Files touched
 
-- `skills/plan-docs/scripts/plans.py` — new; routing, creation, index, tags, gates, references.
+- `skills/plan-docs/scripts/plans.py` — new; routing, creation, index, tags, gates, references, the
+  confidentiality scan, repo metadata, the unscoped area, install/uninstall.
 - `tests/unit/test_plan_store.py` — new; 29 tests against a fake `$HOME` and projects root.
 - `skills/plan-docs/SKILL.md` — command list up front, routing section, environment assumptions,
   every mechanical step repointed at the script; `description` extended with the store triggers.
 - `skills/plan-docs/references/design-rationale.md` — new section carrying the reasoning.
 - `README.md` — the skill row, and the corrected claim about skills reaching outside the repo.
+- `AGENTS.md` — the rule that no file in this published repo may name a client.
 - `~/.config/plan-docs/config.toml`, `~/plans` — this machine, not this repo.
 
 ## Verification
@@ -147,6 +191,9 @@ Done 2026-08-28, all green:
   confirming the depth measurement above is actually handled.
 - This machine's config and store created: `default = "store"`, `github.com-personal = "repo"`,
   `~/plans` initialized as git with no remote and one commit.
+- `scan` run against this repo: working tree clean (0 hits, 52 derived terms), `--mode history`
+  correctly surfaces the published leak this plan's PITFALL records — the gate is verified against a
+  real positive, not only against a green tree.
 
 [DEFERRED: the `[packages.plan-store]` entry in `power-user-linux-setup` (§5). Until it lands,
 `PLANS_HOME` is unset and the script's `~/plans` default is what makes the store resolve — correct,

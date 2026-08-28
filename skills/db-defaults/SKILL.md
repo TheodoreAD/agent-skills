@@ -52,7 +52,41 @@ facing recommendation. Each category's "Escalate to" line is the pick for that s
 - Default: `sqlalchemy` + `alembic` (both MIT)
 - Why: real Engine/Session/declarative-model ceremony, but it buys migration and relationship safety
   that nothing lighter offers for a genuinely transactional multi-table shape
+- **Define the column vocabulary once**, via the declarative base's `type_annotation_map` for plain
+  types and `Annotated` aliases for the ones needing per-column arguments. Every `Mapped[Decimal]`
+  in every model then resolves the same way, so no column opts out by being written from memory in
+  another file. This is also the honest answer to "why the ORM rather than Core" — Core gives you
+  the same SQL with the vocabulary spelled out at each column instead.
 - Escalate to: Postgres
+- **The SQLite tier silently corrupts `Decimal` and drops `tzinfo`**, and both are invisible on the
+  Postgres you escalate to — which matters here specifically, because "testable fully inside a plain
+  `pytest` run" is what puts SQLite under every project following this entry. Measured against
+  SQLAlchemy 2.0.52:
+  - `Numeric` round-trips a `Decimal` through a float, with no warning:
+    `1234567890123456789.000000001` comes back `1234567890123456768.0000000000`. The mechanism is in
+    the library — `engine/default.py` sets `supports_native_decimal = False` and the SQLite dialect
+    does not override it, so `sqltypes.py` takes the branch commented "DBAPI returns floats,
+    convert", quantized to scale 10. A `TypeDecorator` storing the exact string is the fix.
+  - A timezone-aware datetime comes back naive. Not a SQLite limitation: `dialects/sqlite/base.py`'s
+    `DATETIME.bind_processor` never reads `tzinfo` at all.
+  - The trap is how they hide. A first probe of the `Decimal` case _passes_ on a ten-digit value,
+    which survives a float intact — so a project whose fixtures use realistic amounts concludes
+    `Numeric` is fine and ships. Probe with a value wide enough to fail.
+- **Pass `sqlite_strict=True`** in `__table_args__` so the test dialect stops being laxer than the
+  Postgres it stands in for — the failure mode a test-only dialect invites. It is **not** a free
+  extra keyword, and the snippet shows the whole shape: STRICT accepts only
+  `INT`/`INTEGER`/`REAL`/`TEXT`/`BLOB`/`ANY`, so `create_all` fails outright on `NUMERIC(38, 10)`,
+  on `DATETIME`, and on the `VARCHAR(64)` that a plain `String(64)` renders (all three measured on
+  2.0.52). `String(64).with_variant(Text(), "sqlite")` keeps the real bound on Postgres, and the
+  `Decimal`/`datetime` `TypeDecorator`s above are what make the other two columns legal. Adopting
+  STRICT and closing the two traps are therefore the same piece of work, which is the argument for
+  doing both at once rather than neither.
+- **Alembic's SQLite batch mode is a data-integrity footgun.** On SQLite, `batch_alter_table`
+  implements a change by recreating the table, which **drops that table's triggers** — and Alembic
+  has no trigger awareness anywhere (a grep for "trigger" across the package returns one unrelated
+  comment). It also skips a `CheckConstraint` that is **both reflected and unnamed**, per
+  `batch.py`'s own `TODO`. Two mitigations, and either is valid: **name every constraint**, or
+  decide that the SQLite tier never migrates at all and is always created from current metadata.
 
 ## Analytical / OLAP (read/aggregate-heavy queries over structured data)
 

@@ -101,14 +101,28 @@ rather than deriving the path.
 
 **The split is structure, not the safety mechanism.** The risk is a client's name inside _any_ file,
 not a file inside a client's directory — an unscoped idea or a plan for a personal repo can easily
-name work that is not yours to disclose. So before every push of the shareable tier:
+name work that is not yours to disclose. So the shareable tier is gated on content, like any repo
+you publish:
 
 ```shell
-python3 <path> scan --mode tree --path <the shareable store>
+python3 <path> scan --mode history --path <the shareable store>   # before the FIRST push
+python3 <path> scan --mode staged  --path <the shareable store>   # before each commit after that
 ```
 
-It exits non-zero on a hit. That is the gate; the tier boundary is only what keeps the whole of a
-client root off a remote in the first place.
+Both exit non-zero on a hit. The tier boundary is only what keeps the whole of a client root off a
+remote in the first place.
+
+**`--mode tree` is not the pre-push gate, and using it as one is the mistake to avoid.** A push
+ships **history**, not the working tree, and the two diverge exactly where it matters: a plan that
+named a client, was reworded, and was committed again leaves a clean tree and a dirty history, and
+the push publishes the history. Confirmed 2026-08-29 while wiring this store's own remote —
+`--mode tree` was written into this section as the gate, and the first real push was the thing that
+showed it was the wrong question.
+
+The first push is the one moment history mode is cheap to act on: nothing is published, so a hit is
+still an edit rather than a purge decision. After that, `--mode staged` on every commit is what
+keeps history clean going forward, and `--mode history` becomes the periodic audit rather than a
+gate.
 
 `shareable_roots` exists as its own key, defaulting to `public_roots`, because the two questions
 nearly always agree but are not the same: a root's name may be publishable while its plans are not,
@@ -381,11 +395,12 @@ git -C <store> add <the one path> && git -C <store> commit -m "<repo>: <what it 
 Stage by explicit path, never `git add -A` — a parallel session's half-written plan can land between
 your write and your commit, and a blanket stage would ship it under your message.
 
-**Pushing is a separate, gated step, and only the shareable tier has anywhere to push to.** Run
-`scan --mode tree --path <that store>` first and push only on a clean result — the tier boundary
-keeps whole client roots off the remote, but a client's name inside a personal repo's plan or an
-unscoped idea is exactly what it cannot catch. The sensitive tier has no remote, so there is nothing
-to push.
+**Pushing is a separate, gated step, and only the shareable tier has anywhere to push to.** Scan
+before pushing and push only on a clean result — `--mode staged` on the commit you are about to
+make, and `--mode history` before the store's very first push, since that is what a push actually
+ships and the last moment a hit is an edit rather than a purge decision. The tier boundary keeps
+whole client roots off the remote, but a client's name inside a personal repo's plan or an unscoped
+idea is exactly what it cannot catch. The sensitive tier has no remote, so there is nothing to push.
 
 ### Absorbing what was filed for this repo
 

@@ -375,7 +375,17 @@ of them silent failures rather than inconveniences:
   directory", it is "a client's name inside any file" — and an unscoped idea or a plan for a
   personal repo can easily name client work, because that is work the user thinks about. `scan` is
   the content-shaped answer and already derives the right terms from the machine itself, so the tier
-  split is structure and `scan --mode tree` inside the shareable store is the actual push gate.
+  split is structure and `scan` inside the shareable store is the actual push gate.
+
+[PITFALL: **the push gate is `--mode history`, not `--mode tree`** — and this section, the skill
+body and the store README all said `tree` when the split was first written, 2026-08-29. A push ships
+history; the working tree is a proxy that stops being accurate the moment a plan naming a client is
+reworded and committed again, leaving a clean tree behind a dirty history that the push then
+publishes. Caught the same day by wiring this store's first real remote and noticing the two modes
+answer different questions. The first push is the one time history mode is cheap to act on: nothing
+is published yet, so a hit is an edit rather than the purge decision it becomes afterwards.
+Thereafter `--mode staged` per commit is what keeps history clean, and `--mode history` reverts to
+being the audit it already was for repo-held plans.]
 
 The rejected alternative to two directories was one tree with the sensitive root as a nested
 repository named in the outer `.gitignore`. It keeps one browsable directory but reintroduces the

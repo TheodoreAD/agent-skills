@@ -217,11 +217,13 @@ retirement rule a durable archive rather than one disk.
 
 **A remote is not the safety mechanism; the content gate is.** The risk is a client's name inside
 any file, not a file inside a client's directory — an unscoped idea can easily name work that is
-not yours to disclose. Before every push:
+not yours to disclose. Scan before pushing:
 
-    python3 <path>/plans.py scan --mode tree --path <this directory>
+    python3 <path>/plans.py scan --mode history --path <this directory>   # before the FIRST push
+    python3 <path>/plans.py scan --mode staged  --path <this directory>   # before each commit after
 
-It exits non-zero on a hit. Redact, then push.
+Both exit non-zero on a hit. Redact, then push. Not `--mode tree`: a push ships history, and a plan
+that named a client and was later reworded leaves a clean tree behind a dirty history.
 """,
     SENSITIVE: f"""\
 # Plans store — sensitive tier

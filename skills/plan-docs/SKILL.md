@@ -144,6 +144,33 @@ answer is already given and the walkthrough stays short.
 store is the only copy of those plans; deleting it takes `--purge-store --force` and a deliberate
 decision.
 
+### What the projects tree has to look like
+
+Repos are discovered by walking `projects_root` and stopping at each `.git`, so the walk assumes a
+shape. A **collection directory** is any directory on the path down to a repo — `projects_root`
+itself, each root under it, and each intermediate level of a `<root>/<project>/<repo>` hierarchy.
+Collection-ness is derived, never configured: a directory is one if it is not a repo and has repos
+beneath it.
+
+- **`projects_root` must not be a git repository.** This one is fatal and refuses rather than
+  reporting: with a `.git` there the walk returns a single repo named `.`, every real repo becomes
+  invisible, and `scan` derives almost no terms — a confidentiality gate that passes because it can
+  no longer see anything.
+- **A symlink is never followed.** Git resolves symlinks, so a link to a repo inside the root
+  enrolls the same repo twice under two paths, and a link to one outside is counted by discovery
+  while `where` refuses it. Plan in the repo at its real path.
+- **A bare repository is neither a repo nor a collection**, and is reported as such rather than
+  walked into.
+- A directory holding no repos is simply ignored — `doctor` counts them and `--strict` lists them.
+
+**Categorise every root explicitly**, even where `default` would give the same answer. Then a root
+falling through to `default` means exactly "this appeared since you last decided anything", and
+`doctor` lists it as awaiting a decision — no seen-markers, no registry, just the config read as a
+record of what has been answered. Without that pass, a newly cloned root is routed silently, which
+is right for a client root and quietly wrong for a personal one: its plans would accumulate in the
+store mirror forever, because a store-routed repo's mirror _is_ its home and `absorb` correctly does
+nothing.
+
 ### Is this machine set up, and what is in it
 
 ```shell

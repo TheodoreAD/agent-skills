@@ -41,7 +41,7 @@ import sys
 import tomllib
 from collections import Counter
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -579,29 +579,124 @@ def open_tags(path: Path, tag: str) -> list[tuple[int, str]]:
 # confidentiality
 
 
-def repo_paths(cfg: Config) -> list[str]:
-    """Every git repo under the projects root, as a path relative to it.
+@dataclass(frozen=True)
+class LayoutProblem:
+    """One thing wrong with the shape of the projects tree, as `doctor` should report it."""
+
+    where: str
+    kind: str
+    detail: str
+
+
+def looks_bare(path: Path) -> bool:
+    """A bare repository: the git directory itself, with no working tree wrapped around it.
+
+    Checked by shape rather than by asking git, to keep the walk free of a subprocess per
+    directory. The three entries below are present in every bare repo and in no ordinary one.
+    """
+    return all((path / name).exists() for name in ("HEAD", "objects", "refs"))
+
+
+def walk_projects(cfg: Config) -> tuple[list[str], list[LayoutProblem]]:
+    """Every git repo under the projects root, plus everything wrong with the tree on the way.
 
     Stops descending the moment a `.git` is found, so a repo's own internal directory names never
     leak into the walk — collecting `src`, `tests` and `.venv` as if they identified a client is
     what makes a confidentiality gate noisy enough to be ignored.
     """
     if not cfg.projects_root.is_dir():
-        return []
-    found: list[str] = []
+        return [], []
+    if (cfg.projects_root / ".git").exists():
+        # Fatal rather than reported: the walk would return `["."]`, collapsing the whole tree into
+        # one repo, hiding every real one, and leaving `scan` with almost no terms — a
+        # confidentiality gate that passes because it can no longer see anything. Every answer
+        # downstream of this is wrong, so stopping beats continuing.
+        raise PlanError(
+            f"{cfg.projects_root} is itself a git repository, but it must be a plain directory "
+            "holding repos. Every repo under it would be invisible and `scan` would derive almost "
+            "no terms, so this is refused rather than reported."
+        )
 
-    def visit(path: Path, depth: int) -> None:
-        if depth > MAX_REPO_DEPTH:
-            return
+    walk = _Walk(cfg)
+    walk.visit(cfg.projects_root, 0)
+    return walk.found, walk.problems
+
+
+@dataclass
+class _Walk:
+    """The projects-tree walk, as an object so each step is its own small function."""
+
+    cfg: Config
+    found: list[str] = field(default_factory=list)
+    problems: list[LayoutProblem] = field(default_factory=list)
+
+    def note(self, path: Path, kind: str, detail: str) -> None:
+        rel = path.relative_to(self.cfg.projects_root).as_posix()
+        self.problems.append(LayoutProblem(rel, kind, detail))
+
+    def children_of(self, path: Path, depth: int) -> list[Path] | None:
+        """The directories worth descending into, or None when this path is not a collection."""
+        if looks_bare(path):
+            self.note(path, "bare repo", "a git directory with no working tree: neither a repo nor a collection")
+            return None
+        if depth >= MAX_REPO_DEPTH:
+            # Only worth reporting when a repo is actually being lost. Every ordinary `src/` or
+            # `docs/` sits at this depth too, and reporting all of them buried the real findings
+            # 8-deep in noise on this author's machine — a gate nobody can read is a gate nobody
+            # runs. One peek costs a single listing at the boundary.
+            if self.hides_a_repo(path):
+                self.note(path, "too deep", f"a repo below it is not searched: depth {MAX_REPO_DEPTH} is the limit")
+            return None
+        try:
+            entries = sorted(path.iterdir())
+        except OSError as exc:
+            self.note(path, "unreadable", f"{type(exc).__name__}: nothing below it can be seen")
+            return None
+        return [child for child in entries if self.worth_visiting(child)]
+
+    def hides_a_repo(self, path: Path) -> bool:
+        """Whether anything one level below the depth limit is a repo. One listing, no recursion."""
+        try:
+            return any((child / ".git").exists() for child in path.iterdir() if child.is_dir())
+        except OSError:
+            return False
+
+    def worth_visiting(self, child: Path) -> bool:
+        if child.name.startswith(".") or not child.is_dir():
+            return False
+        if child.is_symlink():
+            # Never followed. Git resolves symlinks, so a link to a repo inside the root just
+            # enrolls the same repo a second time under a different path — measured 2026-08-29, one
+            # plan file listed twice as two plans. A link to a repo outside the root is worse:
+            # discovery accepts it while `where` refuses it as not under projects_root, so it is
+            # counted and its name reaches the private-term list while being unusable.
+            self.note(child, "symlink", "not followed; plan in the repo at its real path instead")
+            return False
+        return True
+
+    def visit(self, path: Path, depth: int) -> bool:
+        """Returns whether any repo was found at or beneath this path."""
         if (path / ".git").exists():
-            found.append(path.relative_to(cfg.projects_root).as_posix())
-            return
-        for child in sorted(path.iterdir()):
-            if child.is_dir() and not child.name.startswith("."):
-                visit(child, depth + 1)
+            self.found.append(path.relative_to(self.cfg.projects_root).as_posix())
+            return True
+        children = self.children_of(path, depth)
+        if children is None:
+            return False
+        any_found = False
+        for child in children:
+            any_found = self.visit(child, depth + 1) or any_found
+        if not any_found and depth > 0:
+            # Informational, not a fault. A directory under a root holding no repos is simply not a
+            # collection, and is correctly ignored — playgrounds, scratch folders and document
+            # directories all land here legitimately. It is reported only under `--strict`, because
+            # on a healthy machine it is the single largest source of output and acting on none of
+            # it is the right answer.
+            self.note(path, "no repos", "not a repo and holds none: ignored, which may be intended")
+        return any_found
 
-    visit(cfg.projects_root, 0)
-    return found
+
+def repo_paths(cfg: Config) -> list[str]:
+    return walk_projects(cfg)[0]
 
 
 def private_terms(cfg: Config) -> list[str]:
@@ -2243,6 +2338,32 @@ def store_problems(cfg: Config) -> list[str]:
     return found
 
 
+def layout_problems(cfg: Config, *, strict: bool = False) -> list[str]:
+    """The tree's own shape, and which collections nobody has categorised yet."""
+    try:
+        _, found = walk_projects(cfg)
+    except PlanError as exc:
+        # doctor is the command whose job is saying what is wrong, so the one fatal layout error is
+        # reported here rather than raised out of it.
+        return [str(exc)]
+    shown = found if strict else [problem for problem in found if problem.kind != "no repos"]
+    out = [f"{problem.where}: {problem.kind} — {problem.detail}" for problem in shown]
+
+    # A root reaching only `default` has never been decided about. Once every existing root carries
+    # an explicit rule, this list is exactly the collections that appeared since — no seen-markers,
+    # no registry, just the config read as a record of what has been answered.
+    roots = sorted({rel.split("/")[0] for rel in repo_paths(cfg)})
+    undecided = [name for name in roots if _match_rule(cfg, f"{name}/x")[1] == "default"]
+    out += [f"{name}: no explicit rule, using `default` — config set roots.{name} <repo|store>" for name in undecided]
+    return out
+
+
+def _all_problems(cfg: Config, unrouted: list[str], *, strict: bool = False) -> list[str]:
+    """Everything wrong, in one list: the store, the tree's shape, and unrouted repos holding plans."""
+    routing = [f"{rel} holds plans but no rule routes it" for rel in unrouted]
+    return store_problems(cfg) + layout_problems(cfg, strict=strict) + routing
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Where plans live, which repos are enrolled, how many there are, and what is broken.
 
@@ -2250,7 +2371,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     frontmatter field, so `plans.py status` would read as a question about one plan.
     """
     cfg = load_config()
-    entries = family_plans(cfg)
+    try:
+        entries = family_plans(cfg)
+    except PlanError as exc:
+        # A layout fatal enough to stop every other command still has to be diagnosable, and this
+        # is the command you run to find out what is wrong. Report it and the locations, which need
+        # no walk, rather than dying with the same message every other command already gives.
+        print(f"config:        {cfg.path}{'' if cfg.path.is_file() else ' (does not exist)'}")
+        print(f"projects_root: {cfg.projects_root}")
+        print(f"store:         {cfg.store} (from {cfg.store_source})")
+        print("\nproblems (1)")
+        print(f"  - {exc}")
+        return 0
     counts: dict[str, int] = {}
     for rel, _ in entries:
         counts[rel] = counts.get(rel, 0) + 1
@@ -2285,12 +2417,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             ],
             "holding_plans": [{"repo": rel, "plans": n} for rel, n in holding],
             "statuses": dict(Counter(plan.group for _, plan in entries)),
-            "problems": store_problems(cfg) + [f"{rel} holds plans but no rule routes it" for rel in unrouted],
+            "problems": _all_problems(cfg, unrouted, strict=args.strict),
         }
         print(json.dumps(payload, indent=2))
         return 0
 
-    _print_doctor(cfg, entries, roots, counts, holding, unrouted)
+    _print_doctor(cfg, entries, roots, counts, holding, unrouted, strict=args.strict)
     return 0
 
 
@@ -2301,6 +2433,8 @@ def _print_doctor(
     counts: dict[str, int],
     holding: list[tuple[str, int]],
     unrouted: list[str],
+    *,
+    strict: bool = False,
 ) -> None:
     anchor, source = session_anchor(cfg)
     print(f"session repo:  {anchor or '(not in a git repository)'}  [{source}]")
@@ -2318,6 +2452,13 @@ def _print_doctor(
         with_plans = sum(1 for rel in members if counts.get(rel))
         print(f"  {name.ljust(width)}  {described:<24} {source:<22} {len(members):>3} repo(s), {with_plans} with plans")
 
+    ignored = sum(1 for problem in walk_projects(cfg)[1] if problem.kind == "no repos")
+    if ignored and not strict:
+        # Counted here rather than listed under problems: on a healthy machine these are all
+        # deliberate — playgrounds, docs, scratch folders — and a permanent entry in a problems
+        # list is how a problems list stops being read.
+        print(f"  … {ignored} director(ies) hold no repos and are ignored — doctor --strict to list them")
+
     if holding:
         print(f"\nholding plans ({len(holding)})")
         width = max(len(rel) for rel, _ in holding)
@@ -2332,7 +2473,7 @@ def _print_doctor(
     if tags:
         print("  " + "  ".join(f"{tags[name]} {name}" for name in TAG_NAMES if tags[name]))
 
-    problems = store_problems(cfg) + [f"{rel} holds plans but no rule routes it" for rel in unrouted]
+    problems = _all_problems(cfg, unrouted, strict=strict)
     print(f"\nproblems ({len(problems)})")
     for problem in problems:
         print(f"  - {problem}")
@@ -2614,6 +2755,7 @@ def build_parser() -> argparse.ArgumentParser:
     install.set_defaults(func=cmd_install)
 
     doctor = add("doctor", "where plans live, which repos are enrolled, the tally, and what is broken")
+    doctor.add_argument("--strict", action="store_true", help="also list directories that hold no repos")
     doctor.add_argument("--json", action="store_true")
     doctor.set_defaults(func=cmd_doctor)
 

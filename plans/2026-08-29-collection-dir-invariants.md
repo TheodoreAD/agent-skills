@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-08-29
 ---
 
@@ -62,12 +62,26 @@ found by anything — not `list`, not `doctor`, and critically not `scan`, whose
 every name under the root. No error, no mention. Given collections nest, a repo below the limit is
 invisible rather than excluded.]
 
-[UNVERIFIED: symlinks. `iterdir()` with `is_dir()` follows them, so a symlinked repo can plausibly
-enroll twice under two paths, or resolve outside `projects_root` entirely. Not tested; the decision
-to follow or skip has not been made either.]
+[DECISION: **symlinked directories are never followed.** Tested 2026-08-29, and the risk is worse
+than duplication. Git resolves symlinks — `rev-parse --show-toplevel` from inside a linked directory
+returns the real path — so **routing** is always correct while **discovery** is not, and the two
+disagree:
 
-[UNVERIFIED: an unreadable directory raises out of `iterdir()` uncaught, so a permissions problem
-anywhere under the root crashes the command instead of being reported as a problem. Not tested.]
+- A link to a repo _inside_ the root enrolls that repo a second time under the link's path.
+  Measured: one plan file listed as two plans in two locations, and the link name entered the
+  private-term list as though it were a distinct repo.
+- A link to a repo _outside_ the root is worse. Discovery accepts it, so it is counted and its name
+  reaches the term list, while `where` inside it refuses with `needs-decision` — "not under
+  projects_root, so its store path cannot be mirrored". Discovered but unusable.
+
+Skipping makes discovery and routing agree. The cost is that deliberately symlinking an external
+repo into the tree no longer enrols it — but that never worked, per the second case, so nothing that
+functioned is lost. `doctor` reports the skip so someone who intended enrolment learns why it is not
+happening.]
+
+[DECISION: **an unreadable directory is reported, not fatal.** `iterdir()` raised uncaught, so a
+permissions problem anywhere under the root crashed whichever command was running. Now caught per
+directory: the subtree is skipped with a note, and everything readable still answers.]
 
 ## How a collection gets its policy
 
@@ -90,23 +104,41 @@ mirror _is_ its permanent home, so `absorb` correctly does nothing, and the plan
 store forever without ever reaching the repo they belong to. The safe default is right for the
 common case and wrong for the rare one, which is precisely why it would go unnoticed.]
 
-[NEEDS CLARIFICATION: whether to make every existing root explicit so that "matched only by
-`default`" becomes a meaningful signal. If each of this machine's roots gets its own `[roots]`
-entry, then a root falling through to `default` means exactly "this appeared since you last decided
-anything", and `doctor` can list those as awaiting categorisation with no new state, no seen-markers
-and no registry. The cost is a one-off pass over the existing roots and the loss of `default` as a
-shorthand. The alternative is to keep `default` as the real answer and accept that new collections
-are categorised silently.]
+[DECISION: **every root is categorised explicitly in the config, and `doctor` flags any that is
+not.** Settled with the user 2026-08-29: the route is a user choice that has to persist, and the
+tooling alerts when it needs to change. Done the same day — the seven employer and client roots each
+got a `[roots]` entry via `config set`, which changes no behaviour (they already reached the same
+answer through `default`) but converts the config into a record of what has been decided.
 
-## Recommended direction
+`default` returns to being a safety net rather than the answer, so a root reaching it now means
+exactly "this appeared since you last decided anything". No seen-markers, no registry, no second
+source of truth — the signal is the absence of a config entry.]
 
-1. **`doctor` validates the invariants** and reports each failure with its diagnosis:
-   root-is-a-repo, bare repo, neither-repo-nor-collection, unreadable, and any repo excluded by the
-   depth limit.
-2. **Only root-is-a-repo hard-fails**, and it fails wherever the walk is used rather than only in
-   `doctor` — every answer downstream of it is wrong, so continuing is worse than stopping.
-3. **Categorisation stays a conversation**, through the existing `install --explain` → question →
-   `config set` path, with `doctor` naming which collections still lack an explicit answer.
+## What was built
+
+All of it, 2026-08-29. `walk_projects` returns the repos and the layout problems together; `doctor`
+reports them; `repo_paths` is a thin wrapper so every existing caller inherits the invariants for
+free.
+
+Only root-is-a-repo hard-fails, and it fails wherever the walk is used rather than only in `doctor`
+— every answer downstream of it is wrong, so continuing is worse than stopping. `doctor` catches it
+specifically and reports it with the locations, since the command whose job is diagnosing should not
+die with the same message every other command already gives.
+
+[PITFALL: **the first version reported 24 problems on a healthy machine, which is a failed gate by
+this codebase's own standard.** Two categories were over-reporting, and only running it against the
+real tree showed it.
+
+`too deep` fired for every directory at the depth limit — ordinary `src/`, `docs/` and `poze/`
+folders — burying the real findings. Now it peeks one level for a `.git` and reports only when a
+repo is genuinely being excluded: on this machine that took the category from 8 entries to zero.
+
+`no repos` fired for every playground and scratch directory. Correct by the letter of the invariant
+and useless in practice, since acting on none of them is the right answer. It moved behind
+`--strict`, with a count in the enrolled block so it stays discoverable — a permanent entry inside
+`problems (N)` is how a problems list stops being read.
+
+24 down to 8, then to 0 once the roots were categorised.]
 
 [DEFERRED: the marker question. The user's proposal was a git attributes file in a specialized
 collection. Verified 2026-08-29 that a `.gitattributes` above a repo affects nothing —

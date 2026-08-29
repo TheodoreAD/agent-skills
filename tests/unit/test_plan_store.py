@@ -847,6 +847,72 @@ def test_a_bogus_neutral_variable_fails_loudly_rather_than_silently_degrading(ws
         plans.session_anchor(plans.load_config())
 
 
+def test_projects_root_being_a_repo_is_fatal_everywhere(ws, capsys):
+    """It collapses the tree to one repo named '.', hiding every real repo and leaving scan with
+    almost no terms — a confidentiality gate that passes because it can no longer see anything."""
+    write_config(ws, 'default = "store"\n')
+    subprocess.run(["git", "init", "-q"], cwd=ws.projects, check=True)
+
+    with pytest.raises(plans.PlanError):
+        plans.repo_paths(plans.load_config())
+    # doctor is the command whose job is saying what is wrong, so it reports rather than raising.
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "itself a git repository" in capsys.readouterr().out
+
+
+def test_a_symlinked_repo_is_not_followed(ws, capsys):
+    """Git resolves symlinks, so following one enrolls the same repo twice under two paths —
+    measured on a real tree, one plan file listed as two plans in two locations."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    (ws.projects / "github.com-personal" / "linked").symlink_to(ws.personal)
+    plan(ws.personal / "plans", "2026-01-01-one.md", "status: idea\nupdated: 2026-01-01")
+
+    repos, problems = plans.walk_projects(plans.load_config())
+    assert "github.com-personal/linked" not in repos
+    assert any(p.kind == "symlink" for p in problems)
+
+    assert plans.main(["list", "--scope", "family", "--path", str(ws.personal)]) == 0
+    assert capsys.readouterr().out.count("2026-01-01-one.md") == 1  # once, not twice
+
+
+def test_a_bare_repo_is_neither_a_repo_nor_a_collection(ws):
+    write_config(ws, 'default = "store"\n')
+    subprocess.run(["git", "init", "-q", "--bare", str(ws.projects / "mirror.git")], check=True)
+
+    repos, problems = plans.walk_projects(plans.load_config())
+    assert "mirror.git" not in repos
+    assert any(p.kind == "bare repo" and p.where == "mirror.git" for p in problems)
+
+
+def test_the_depth_limit_is_reported_only_when_it_actually_hides_a_repo(ws):
+    """Every ordinary src/ and docs/ sits at the limit too; reporting all of them buried the real
+    findings on this author's machine."""
+    write_config(ws, 'default = "store"\n')
+    deep = ws.projects / "a" / "b" / "c"
+    make_repo(deep / "hidden")
+    (ws.projects / "x" / "y" / "harmless").mkdir(parents=True)
+
+    _, problems = plans.walk_projects(plans.load_config())
+    too_deep = [p for p in problems if p.kind == "too deep"]
+    assert [p.where for p in too_deep] == ["a/b/c"]
+
+
+def test_doctor_flags_a_root_with_no_explicit_rule(ws, capsys):
+    """Once every root is explicit, falling through to `default` means exactly 'new, undecided' —
+    no seen-markers and no registry, just the config read as a record of what has been answered."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "client.com-bitbucket: no explicit rule" in out
+    assert "github.com-personal: no explicit rule" not in out
+
+    plans.main(["config", "set", "roots.client.com-bitbucket", "store"])
+    capsys.readouterr()
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "no explicit rule" not in capsys.readouterr().out
+
+
 def test_doctor_reports_the_anchor_tier_and_flags_the_weak_one(ws, capsys, monkeypatch):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     monkeypatch.chdir(ws.personal)

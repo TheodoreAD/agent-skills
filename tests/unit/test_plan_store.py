@@ -220,8 +220,9 @@ def test_new_writes_into_the_store_with_the_origin_url(ws, capsys):
     assert front["repo"] == "git@example.com:x/api.git"
 
 
-def test_new_in_a_repo_route_omits_the_repo_field(ws, capsys):
+def test_new_in_a_repo_route_omits_the_repo_field(ws, capsys, monkeypatch):
     write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.personal)  # a repo-routed create is only allowed from inside that repo
     assert plans.main(["new", "trigger-eval", "--path", str(ws.personal)]) == 0
     created = Path(capsys.readouterr().out.splitlines()[0].split(": ", 1)[1])
     assert created.parent == ws.personal / "plans"
@@ -750,6 +751,36 @@ def test_filing_for_another_repo_never_touches_its_tree(ws, capsys):
     assert plans.parse_frontmatter(filed.read_text())["repo"] == "git@example.com:x/agent-skills.git"
 
 
+def test_new_refuses_to_create_a_plan_in_another_repos_tree(ws, capsys, monkeypatch):
+    """Now that --for exists, writing a new file into another repo's tree has no legitimate use —
+    so this refuses and names the alternative rather than warning and doing it anyway."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.client)  # the session lives here
+
+    assert plans.main(["new", "sneaky", "--path", str(ws.personal)]) == 1
+    assert not (ws.personal / "plans").exists()
+
+    # From inside that repo it is an ordinary create.
+    monkeypatch.chdir(ws.personal)
+    assert plans.main(["new", "sneaky", "--path", str(ws.personal)]) == 0
+    assert (ws.personal / "plans" / f"{plans.today()}-sneaky.md").is_file()
+
+
+def test_graduate_into_another_repo_warns_rather_than_refusing(ws, capsys, monkeypatch):
+    """It moves a file that already exists and has legitimate uses, so it is a warning — but a
+    parallel session sharing that tree deserves the line every time."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.client)
+    plans.main(["new", "homeless", "--unscoped"])
+    capsys.readouterr()
+
+    assert plans.main(["graduate", f"{plans.today()}-homeless.md", "--to", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "WARNING" in out
+    assert "not the repo this session is in" in out
+    assert (ws.personal / "plans" / f"{plans.today()}-homeless.md").is_file()
+
+
 def test_filing_accepts_an_absolute_path_and_refuses_the_current_repo(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     assert plans.main(["new", "by-abs-path", "--for", str(ws.client), "--path", str(ws.personal)]) == 0
@@ -821,6 +852,67 @@ def test_absorb_refuses_to_rename_around_a_name_collision(ws, capsys):
     # Neither copy was destroyed.
     assert (ws.store / "github.com-personal" / "agent-skills" / name).is_file()
     assert "already here" in (ws.personal / "plans" / name).read_text()
+
+
+def test_absorb_pairs_up_the_split_a_dirty_store_forced(ws, capsys):
+    """The full dirty-store cycle: a harvest that could not edit an existing filed plan wrote a
+    second one referencing it, and absorption is where that debt is paid — the first moment both
+    halves are in one tree with one session owning them."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    mirror = ws.store / "github.com-personal" / "agent-skills"
+    plan(mirror, "2026-01-01-caching.md", "status: idea\nupdated: 2026-01-01", "\nfirst half\n")
+    plan(
+        mirror,
+        "2026-01-02-caching-more.md",
+        "status: idea\nupdated: 2026-01-02",
+        "\nstore was dirty; relates to 2026-01-01-caching.md\n",
+    )
+    plan(mirror, "2026-01-03-unrelated.md", "status: idea\nupdated: 2026-01-03")
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "consolidate with 2026-01-01-caching.md" in out
+    assert "two halves of one topic" in out
+    assert "2026-01-03-unrelated.md" in out  # listed, but carries no consolidation note
+
+    assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "consolidate: 2026-01-02-caching-more.md with 2026-01-01-caching.md" in out
+    assert (ws.personal / "plans" / "2026-01-01-caching.md").is_file()
+    assert (ws.personal / "plans" / "2026-01-02-caching-more.md").is_file()
+
+
+def test_absorb_pairs_against_a_plan_already_committed_in_the_repo(ws, capsys):
+    """The referenced half may already have been absorbed in an earlier pass."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-caching.md", "status: idea\nupdated: 2026-01-01")
+    plan(
+        ws.store / "github.com-personal" / "agent-skills",
+        "2026-01-02-caching-more.md",
+        "status: idea\nupdated: 2026-01-02",
+        "\nrelates to 2026-01-01-caching.md\n",
+    )
+
+    assert plans.main(["absorb", "--json", "--path", str(ws.personal)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["absorbable"][0]["consolidate_with"] == ["2026-01-01-caching.md"]
+
+
+def test_a_reference_to_a_plan_that_does_not_exist_is_not_a_pair(ws, capsys):
+    """Plans cite retired and foreign plans in prose all the time; only a name that resolves to a
+    real file on either side is a consolidation."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(
+        ws.store / "github.com-personal" / "agent-skills",
+        "2026-01-02-thing.md",
+        "status: idea\nupdated: 2026-01-02",
+        "\nextracted from the now-retired 2020-01-01-ancient.md\n",
+    )
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "consolidate" not in out
+    assert "2026-01-02-thing.md" in out
 
 
 def test_list_footer_surfaces_absorbable_plans(ws, capsys):

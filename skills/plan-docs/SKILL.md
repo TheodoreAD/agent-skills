@@ -219,6 +219,12 @@ by an agent with no rule telling it not to, into a repo whose own README adverti
 tree, so a file appearing there under a session already working in it is the failure this rule
 exists to prevent — and a plan committed across repos is a commit nobody in that repo asked for.
 
+The script enforces this rather than trusting anyone to remember: `new` **refuses** to create a plan
+in a repo other than the one the session is in, and names `--for` in the error. Commands that act on
+files which already exist — `graduate`, and anything reached by `--path` — **warn** instead, because
+those have legitimate uses; when you see that warning, prefer doing the work from a session inside
+that repo, and if you continue, tell the user exactly what landed where.
+
 ```shell
 python3 <path> new <topic> --for github.com-personal/<repo>   # or an absolute path
 ```
@@ -264,6 +270,17 @@ file you just took. What is forbidden is writing into a tree that is not yours.
 **A name collision is a merge, not a rename.** `absorb` refuses when a filed plan's name already
 exists in `plans/`, exits non-zero, and destroys neither copy — two plans sharing a name means both
 cover the topic, and that is the moment to combine them by hand.
+
+**Absorption is also where a dirty-store split gets reconciled.** When a harvest found the store
+dirty it added a new plan referencing an existing one rather than editing a file another session
+might have been holding. `absorb` finds those pairs — by the reference itself, checked against both
+directories — and prints `consolidate with …` beside each. Do it as part of the same acceptance:
+merge the two into one plan, keep the earlier filename, delete the other. **Nothing re-surfaces this
+after absorption**, because the pairing lives in prose, so a pair skipped here is a pair nobody is
+reminded of again.
+
+A cited filename that resolves to no actual file is not a pair — plans legitimately reference
+retired and foreign plans in prose, and only a name matching a real file on either side counts.
 
 Absorption applies only to a repo that keeps its own plans. For a repo routed to the store, the
 mirror **is** the permanent home and nothing is ever in transit.

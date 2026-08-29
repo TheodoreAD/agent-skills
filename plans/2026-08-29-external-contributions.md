@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-08-29
 ---
 
@@ -54,7 +54,7 @@ turned out not to be wanted — see below.
 
 ## The design question, stated precisely
 
-The rest was settled with the user the same day. One question is still open, at the end.
+All settled with the user the same day, over three passes — one of which reversed the first.
 
 [DECISION: **no `origin:` field, and no provenance axis at all — this is a single-user system.**
 Reversed by the user 2026-08-29, a few hours after it was settled the other way in this same file.
@@ -118,12 +118,27 @@ session at all, which is the point of the whole design.
 It also means the check is about **one** repository rather than one per target, so it is a single
 cheap call regardless of how many repos a harvest produces plans for.]
 
-[NEEDS CLARIFICATION: **what the "second pass that unifies plans" actually is.** The sentence
-proposing it read as a slip and both readings offered — that the new plan records a unification is
-owed, or that tooling later performs the merge itself — were rejected as wrong. So the mechanism is
-still unknown and nothing should be built for it. Everything else in Stage 1 is independent of the
-answer and can proceed; what waits is only how a duplicate created under a dirty store gets
-reconciled later.]
+[DECISION: **absorption is the reconciler; there is no separate unification pass.** Settled with the
+user 2026-08-29 after both earlier readings were rejected. A split created because the store was
+dirty is paired back up at the next absorption, which is typically a fresh session in the owning
+repo but is not required to be one — it is simply the first moment both halves are in one tree with
+one session owning them.
+
+The signal is the reference the dirty-store rule already requires the second plan to carry, checked
+against both directories so it pairs with a filed plan or one already committed. Deterministic, and
+it costs the author nothing they were not already told to write. Guessing from similar titles was
+rejected: a false pair is worse than a missed one, because it proposes destroying a distinct plan.
+
+**The script finds the pairs; the agent merges the prose; the user accepts.** Same split as
+everywhere else in this skill — mechanics in `plans.py` where they are testable, judgement in the
+session. No tooling edits plan prose.]
+
+[PITFALL: **a pair skipped at absorption is never re-surfaced.** The pairing lives in prose, and
+once absorbed the plans are ordinary repo plans that cite each other, which is indistinguishable
+from the many legitimate cross-references plans carry. So the consolidation prompt is one-shot. The
+alternative — a marker in the file — was considered and rejected, since a marker on every
+dirty-store split is a tag nobody would clear. Accepted, and stated in `SKILL.md` so the prompt is
+not treated as a reminder that will come back.]
 
 ## Where this touches `session-harvest`
 
@@ -182,19 +197,28 @@ The pieces:
    one per plan.
 4. **A `list` footer**, in the same shape as the existing "N plan(s) await retirement" line, so a
    session that skipped the proposal still sees the backlog.
-5. **A cross-repo warning**, last. Warning about a workaround before its replacement exists just
-   blocks people, so this lands only once absorption works.
+5. **A cross-repo guard**, last, because warning about a workaround before its replacement exists
+   just blocks people.
+
+[DECISION: **`new` refuses, everything else warns.** Once `--for` exists there is no legitimate
+reason to create a plan in another repo's tree, so that one is an error naming the alternative — a
+warning would be read past by exactly the agent that needed it. Commands acting on files that
+already exist (`graduate`, anything aimed by `--path`) warn instead, since those have real uses and
+a false refusal blocks work. The session's repo is cwd, never `--path`: `--path` names what a
+command is _about_, cwd is where the session lives, and keeping them distinct is what makes the
+detection possible at all.]
 
 [PITFALL: absorbing means committing markdown into the target repo, so **the target's quality gate
 runs before that commit** like any other. Doc-only commits that skipped the gate are already the
 most common cause of red CI in these repos, and a bulk absorb touching several files at once is
 exactly the shape that trips a formatter.]
 
-[NEEDS CLARIFICATION: what happens when a filed plan's name already exists in the target's `plans/`.
-`move` refuses on collision today, which is safe but leaves the flow stuck. Renaming silently is
-worse — it hides that two plans cover the same topic, which is the moment a merge is actually
-wanted. Reporting it as a conflict for the session to resolve is the conservative answer and
-probably right, but it should be a decision rather than a fallback.]
+[DECISION: **a name collision on absorption refuses, exits non-zero, and destroys neither copy.**
+Two plans sharing `YYYY-MM-DD-topic.md` means both were written about the same topic on the same
+day, which is a merge — the same conclusion the consolidation pairing reaches by a different route.
+Renaming around it would be the one outcome that hides exactly the case worth noticing. The other
+absorbable plans in the same run still move; only the colliding one is held back, so one conflict
+does not block the batch.]
 
 ### The two skills have to cooperate, not each decide
 

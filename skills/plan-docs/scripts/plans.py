@@ -93,6 +93,9 @@ TAG_NAMES = ("NEEDS CLARIFICATION", "DECISION", "PITFALL", "DEFERRED", "UNVERIFI
 # An unanchored search matches every prose *mention* of a tag and reports a false backlog.
 TAG_RE = re.compile(rf"^\s*[-*]?\s*\[({'|'.join(TAG_NAMES)}): ", re.MULTILINE)
 TOPIC_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+# A plan filename as it appears cited inside another plan's prose. Used to find the pairs that a
+# dirty-store harvest deliberately created instead of editing one file.
+PLAN_NAME_RE = re.compile(r"\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md")
 
 # Grouping order for `list`: what needs attention first, terminal states last.
 STATUS_ORDER = ("in-progress", "blocked", "planned", "idea", "landed", "abandoned", "superseded")
@@ -983,6 +986,33 @@ def cmd_where(args: argparse.Namespace) -> int:
     return 0 if routing.verdict == "ok" else NEEDS_DECISION
 
 
+def session_repo(cfg: Config) -> Path | None:
+    """The repo this session is actually working in — always cwd, never `--path`.
+
+    `--path` names what a command is *about*; cwd is where the session lives. Keeping them separate
+    is what lets a cross-repo write be detected at all.
+    """
+    return resolve(Path.cwd(), cfg).repo_root
+
+
+def is_foreign(target: Path | None, cfg: Config) -> bool:
+    here = session_repo(cfg)
+    return target is not None and here is not None and here.resolve() != target.resolve()
+
+
+def warn_cross_repo(target: Path, cfg: Config, action: str) -> None:
+    """Say so when a command is about to touch a working tree that is not the session's.
+
+    Not a refusal: these act on files that already exist, and there are legitimate reasons. But
+    parallel sessions on one machine share a working tree, so a file appearing in someone else's is
+    worth a line every single time rather than a surprise later.
+    """
+    if is_foreign(target, cfg):
+        print(f"WARNING: {action} touches {target}, which is not the repo this session is in.")
+        print("         Parallel sessions share a working tree. Prefer doing this from a session")
+        print("         inside that repo; if you continue, tell the user what landed where.")
+
+
 def resolve_repo_argument(value: str, cfg: Config) -> Path:
     """A repo named either by path or by its path relative to `projects_root`.
 
@@ -1009,6 +1039,14 @@ def cmd_new(args: argparse.Namespace) -> int:
     if args.for_repo:
         return file_for_repo(args, cfg)
     routing = resolve(args.path, cfg)
+    if routing.rule and routing.rule.write == "repo" and is_foreign(routing.repo_root, cfg):
+        # Refused rather than warned: `--for` is the correct way to record something against
+        # another repo, so writing a new file into its tree has no remaining legitimate use.
+        raise PlanError(
+            f"{routing.repo_root} is not the repo this session is in, and creating a plan there "
+            f"would put a file in a tree a parallel session may be holding. "
+            f"File it instead: new {args.topic} --for {routing.rel or routing.repo_root}"
+        )
     if args.to is None:
         require_ok(routing)
         target = routing.write_dir
@@ -1428,6 +1466,33 @@ def cmd_set_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def plan_references(text: str, exclude: str) -> list[str]:
+    """Plan filenames a plan's own text names, other than itself.
+
+    The dirty-store rule requires a plan written alongside an existing one to reference it, so the
+    reference is the signal that two files cover one topic. Deterministic, unlike guessing from
+    similar titles — and it costs the author nothing they were not already told to write.
+    """
+    return sorted({name for name in PLAN_NAME_RE.findall(text) if name != exclude})
+
+
+def consolidation_pairs(routing: Routing, pending: list[PlanFile]) -> dict[str, list[str]]:
+    """For each plan awaiting absorption, the plans it says it relates to that actually exist.
+
+    Checked against both directories: a plan filed while the store was dirty may reference another
+    filed plan, or one already committed in the repo.
+    """
+    known = {plan.path.name for plan in pending}
+    known |= {path.name for path in routing.dirs["repo"].glob("*.md")} if routing.dirs["repo"].is_dir() else set()
+    pairs: dict[str, list[str]] = {}
+    for plan in pending:
+        cited = plan_references(plan.path.read_text(encoding="utf-8"), plan.path.name)
+        related = [name for name in cited if name in known]
+        if related:
+            pairs[plan.path.name] = related
+    return pairs
+
+
 def absorbable(routing: Routing) -> list[PlanFile]:
     """Plans filed for this repo that belong in its own tree.
 
@@ -1450,9 +1515,17 @@ def cmd_absorb(args: argparse.Namespace) -> int:
     routing = require_ok(resolve(args.path, cfg))
     pending = absorbable(routing)
 
+    pairs = consolidation_pairs(routing, pending) if pending else {}
+
     if args.json:
         payload = [
-            {"path": str(plan.path), "name": plan.path.name, "status": plan.status, "updated": plan.updated}
+            {
+                "path": str(plan.path),
+                "name": plan.path.name,
+                "status": plan.status,
+                "updated": plan.updated,
+                "consolidate_with": pairs.get(plan.path.name, []),
+            }
             for plan in pending
         ]
         print(json.dumps({"repo": routing.rel, "absorbable": payload}, indent=2))
@@ -1466,12 +1539,7 @@ def cmd_absorb(args: argparse.Namespace) -> int:
         return 0
 
     if not args.apply:
-        print(f"{len(pending)} plan(s) filed for {routing.rel or routing.repo_root}, awaiting absorption:")
-        for plan in pending:
-            print(f"  {plan.path.name:<52} {plan.status}  updated {plan.updated or '?'}")
-        print("\nabsorb them with --apply; each moves into this repo's plans/ and leaves the store.")
-        print("Commit both: this repo (the additions) and the store (the removals).")
-        return 0
+        return _report_absorbable(routing, pending, pairs)
 
     target = routing.dirs["repo"]
     wanted = set(args.only) if args.only else None
@@ -1485,7 +1553,39 @@ def cmd_absorb(args: argparse.Namespace) -> int:
         print(f"          cover the same topic, which is a merge, not a rename. Filed copy: {plan.path}")
     if moved:
         print(f"\n{len(moved)} absorbed. Run this repo's quality gate, then commit here and in {cfg.store}.")
+    landed = {plan.path.name for plan, _ in moved}
+    owed = {name: related for name, related in pairs.items() if name in landed}
+    if owed:
+        print()
+        for name, related in owed.items():
+            print(f"consolidate: {name} with {', '.join(related)} — now both in {target}")
+        _print_consolidation_note()
     return 1 if blocked else 0
+
+
+def _report_absorbable(routing: Routing, pending: list[PlanFile], pairs: dict[str, list[str]]) -> int:
+    print(f"{len(pending)} plan(s) filed for {routing.rel or routing.repo_root}, awaiting absorption:")
+    for plan in pending:
+        related = pairs.get(plan.path.name)
+        note = f"  -> consolidate with {', '.join(related)}" if related else ""
+        print(f"  {plan.path.name:<52} {plan.status}  updated {plan.updated or '?'}{note}")
+    if pairs:
+        _print_consolidation_note()
+    print("\nabsorb them with --apply; each moves into this repo's plans/ and leaves the store.")
+    print("Commit both: this repo (the additions) and the store (the removals).")
+    return 0
+
+
+def _print_consolidation_note() -> None:
+    """Why these exist, said once rather than per pair.
+
+    They are not an accident: a harvest that found the store dirty was told to add a file rather
+    than edit one another session might be holding. Absorption is where that debt is paid, because
+    it is the first moment both halves are in one tree and one session owns them.
+    """
+    print("\nThese are two halves of one topic, split because the store was dirty when the second")
+    print("was written. Merge them into one plan, keep the earlier filename, and delete the other")
+    print("— the reference that paired them is prose, so nothing re-surfaces this once absorbed.")
 
 
 def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFile, Path]], list[PlanFile]]:
@@ -1823,6 +1923,8 @@ def cmd_graduate(args: argparse.Namespace) -> int:
         plan = read_plan(candidate.resolve(), "unscoped")
 
     routing = require_ok(resolve(Path(args.to), cfg))
+    if routing.rule and routing.rule.write == "repo" and routing.repo_root:
+        warn_cross_repo(routing.repo_root, cfg, f"graduate {plan.path.name}")
     target = routing.write_dir
     destination = target / plan.path.name
     if destination.exists():

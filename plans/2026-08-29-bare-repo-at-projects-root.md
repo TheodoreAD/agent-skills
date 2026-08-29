@@ -1,7 +1,31 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-29
 ---
+
+## Migrated to
+
+- `skills/plan-docs/scripts/plans.py` — both fixes. `is_repository` is the shared shape test, and
+  `private_terms` skips the organisation split for an entry that is one; `inert_root_rules` reports
+  a `[roots]` key that names a repo, surfaced by `doctor` and by `where` at the moment it bites.
+- `skills/plan-docs/references/design-rationale.md`, "Why the route is configuration, not a
+  heuristic" — why the inert `[roots]` entry is reported rather than made to match, and why this was
+  a portability defect in a published skill. The term-splitting half is under "Why the
+  confidentiality gate derives its terms instead of listing them", as a fourth bullet on what makes
+  the gate usable.
+- `skills/plan-docs/SKILL.md`, "What the projects tree has to look like" and the confidentiality
+  section — the `[repos]`-not-`[roots]` rule at depth 1, and that only a collection's name is split.
+- `tests/unit/test_plan_store.py`, "a repo cloned straight into the projects root" — four tests: the
+  inert entry being reported by both commands, `[repos]` being the working spelling, the term list
+  staying clean, and the depth-1 case surviving `list --scope family` and `doctor`.
+
+The `[DECISION:]` about which tier a depth-1 repo lands in was migrated with the tier split, into
+"Why the tier boundary is its own key defaulting to `public_roots`" — that section cites this case
+as the evidence for reuse, which is the form the decision actually had value in.
+
+Not migrated: the "it works today, with two config caveats" section. Both caveats are now enforced
+rather than documented — one is reported by two commands, the other no longer exists — so a passage
+telling a reader to work around them would be wrong.
 
 ## Context
 

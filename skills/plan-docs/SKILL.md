@@ -309,7 +309,10 @@ for a session that skipped the proposal.
 
 **Committing to both repositories here is not the cross-repo commit this section forbids.** You are
 the session working in this repo: the additions go to your own tree, and the store only loses the
-file you just took. What is forbidden is writing into a tree that is not yours.
+file you just took. What is forbidden is writing into a tree that is not yours — and
+`absorb --apply` enforces exactly that, refusing when the target is not the repo your session
+belongs to. Reporting for another repo (`absorb --path <other>`, no `--apply`) is a harmless
+question and stays allowed.
 
 **A name collision is a merge, not a rename.** `absorb` refuses when a filed plan's name already
 exists in `plans/`, exits non-zero, and destroys neither copy — two plans sharing a name means both

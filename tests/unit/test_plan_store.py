@@ -13,6 +13,7 @@ against a fake `$HOME` and a fake projects root: the real config, the real store
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -756,10 +757,18 @@ def test_filing_for_another_repo_never_touches_its_tree(ws, capsys):
 
 
 def anchor_session_to(ws: Workspace, repo: Path, monkeypatch) -> None:
-    """Fake the harness transcript that says which repo this session started in."""
+    """Fake the harness transcript that says which repo this session started in.
+
+    Clears any previous anchor: two directories holding the same session id is ambiguous, and the
+    lookup deliberately returns nothing rather than guessing — so leaving the old one behind would
+    silently test the fallback instead of the re-anchor.
+    """
+    root = ws.home / ".claude" / "projects"
+    if root.is_dir():
+        shutil.rmtree(root)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(ws.home / ".claude"))
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-1")
-    directory = ws.home / ".claude" / "projects" / plans.encode_project_dir(repo)
+    directory = root / plans.encode_project_dir(repo)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "sess-1.jsonl").write_text("", encoding="utf-8")
 
@@ -903,10 +912,11 @@ def test_filing_for_a_store_routed_repo_is_at_home_not_in_transit(ws, capsys):
     assert "in transit" not in capsys.readouterr().out
 
 
-def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys):
+def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys, monkeypatch):
     """File from elsewhere, absorb from inside the owning repo — the full cycle, with the target's
     tree untouched until its own session does the taking."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    anchor_session_to(ws, ws.personal, monkeypatch)  # --apply is only allowed from the owning repo
     plans.main(["new", "filed-thing", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])
     capsys.readouterr()
     name = f"{plans.today()}-filed-thing.md"
@@ -926,6 +936,29 @@ def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys):
     assert capsys.readouterr().out == ""  # silent once drained
 
 
+def test_absorb_apply_refuses_for_a_repo_this_session_does_not_belong_to(ws, capsys, monkeypatch):
+    """The most destructive cross-repo write in the tool — several files into a foreign tree plus
+    deletions from the store — and it had no guard at all until live testing found it."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
+    plan(ws.store / "github.com-personal" / "repo-tasks", "2026-01-01-filed.md", "status: idea\nupdated: 2026-01-01")
+    anchor_session_to(ws, ws.personal, monkeypatch)
+
+    # Reporting from elsewhere is a harmless question.
+    assert plans.main(["absorb", "--path", str(other)]) == 0
+    assert "awaiting absorption" in capsys.readouterr().out
+
+    # Applying is not.
+    assert plans.main(["absorb", "--apply", "--path", str(other)]) == 1
+    assert not (other / "plans").exists()
+    assert (ws.store / "github.com-personal" / "repo-tasks" / "2026-01-01-filed.md").is_file()
+
+    # From inside the owning repo it works.
+    anchor_session_to(ws, other, monkeypatch)
+    assert plans.main(["absorb", "--apply", "--path", str(other)]) == 0
+    assert (other / "plans" / "2026-01-01-filed.md").is_file()
+
+
 def test_absorb_is_silent_when_there_is_nothing_and_never_touches_a_store_routed_repo(ws, capsys):
     """A client repo's mirror is its permanent home, so nothing there is ever in transit."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
@@ -939,10 +972,11 @@ def test_absorb_is_silent_when_there_is_nothing_and_never_touches_a_store_routed
     assert "nothing filed" in capsys.readouterr().out
 
 
-def test_absorb_refuses_to_rename_around_a_name_collision(ws, capsys):
+def test_absorb_refuses_to_rename_around_a_name_collision(ws, capsys, monkeypatch):
     """Two plans sharing a name is the moment a merge is wanted; a silent rename hides exactly
     that."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    anchor_session_to(ws, ws.personal, monkeypatch)
     plans.main(["new", "same-name", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])
     capsys.readouterr()
     name = f"{plans.today()}-same-name.md"
@@ -957,11 +991,12 @@ def test_absorb_refuses_to_rename_around_a_name_collision(ws, capsys):
     assert "already here" in (ws.personal / "plans" / name).read_text()
 
 
-def test_absorb_pairs_up_the_split_a_dirty_store_forced(ws, capsys):
+def test_absorb_pairs_up_the_split_a_dirty_store_forced(ws, capsys, monkeypatch):
     """The full dirty-store cycle: a harvest that could not edit an existing filed plan wrote a
     second one referencing it, and absorption is where that debt is paid — the first moment both
     halves are in one tree with one session owning them."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    anchor_session_to(ws, ws.personal, monkeypatch)
     mirror = ws.store / "github.com-personal" / "agent-skills"
     plan(mirror, "2026-01-01-caching.md", "status: idea\nupdated: 2026-01-01", "\nfirst half\n")
     plan(

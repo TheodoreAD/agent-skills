@@ -1637,6 +1637,7 @@ def cmd_absorb(args: argparse.Namespace) -> int:
     if not args.apply:
         return _report_absorbable(routing, pending, pairs)
 
+    _require_own_repo(routing, cfg)
     target = routing.dirs["repo"]
     wanted = set(args.only) if args.only else None
     chosen = [plan for plan in pending if wanted is None or plan.path.name in wanted]
@@ -1657,6 +1658,25 @@ def cmd_absorb(args: argparse.Namespace) -> int:
             print(f"consolidate: {name} with {', '.join(related)} — now both in {target}")
         _print_consolidation_note()
     return 1 if blocked else 0
+
+
+def _require_own_repo(routing: Routing, cfg: Config) -> None:
+    """Refuse to absorb into a repo this session does not belong to.
+
+    Reporting for another repo is a harmless question; applying is the most destructive cross-repo
+    write in the tool — several files into a tree that is not yours, plus deletions from the store.
+    Absorption is defined as the session that owns the repo taking them in, so there is no
+    legitimate cross-repo form of it. Found by live testing after the guard shipped, 2026-08-29:
+    `new` and `graduate` were covered and this, the worst of the three, was not.
+    """
+    if is_foreign(routing.repo_root, cfg):
+        raise PlanError(
+            f"absorb --apply writes into {routing.repo_root}, which is not the repo this session "
+            f"belongs to ({session_repo(cfg)}).\n"
+            "  Absorption is done by the session working in the repo that owns the plans, so the\n"
+            "  additions and the store's removals are committed by whoever is actually there.\n"
+            "  Run it from a session inside that repo. Reporting without --apply is fine from here."
+        )
 
 
 def _report_absorbable(routing: Routing, pending: list[PlanFile], pairs: dict[str, list[str]]) -> int:

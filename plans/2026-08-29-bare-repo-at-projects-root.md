@@ -38,6 +38,33 @@ private terms `loose`, `loose-repo` and **`repo`**. A gate that flags the word "
 document is a gate that gets switched off, which is precisely the noise-then-ignored failure the
 splitting rule was written to avoid.]
 
+## It works today, with two config caveats
+
+Tested 2026-08-29 against a scratch root containing one bare repo and one `<root>/<repo>` client
+tree. With both caveats applied the bare repo routes correctly and contributes **no** private terms
+at all — the only terms derived came from the client root, split correctly:
+
+- **List it in `public_roots`.** This skips the organisation-splitting branch entirely, so the
+  second defect below disappears. It is also semantically right: `public_roots` means "names that
+  may be disclosed", and a personal repo's name is one.
+- **Route it with `[repos]`, not `[roots]`.** `[repos] "<name>" = "repo"` matches exactly; the
+  `[roots]` form is silently ignored, per the first defect.
+
+So the honest summary is "supported, with two things you have to know" rather than "broken" — which
+lowers the urgency of the fixes without removing the case for them, since both caveats are invisible
+until someone hits them.
+
+[DECISION: **a bare repo lands in the non-sensitive tier only if it is in `public_roots`.** Asked by
+the user 2026-08-29 while thinking about the tier split in
+`plans/2026-08-29-store-sensitivity-tiers.md`. A depth-1 repo is its own root, and tier follows root
+membership — so a bare repo **not** listed defaults to the _sensitive_ tier, which is the opposite
+of what "I put it at the top level because it is my own" would suggest.
+
+The same single `public_roots` entry therefore does both jobs: it stops the scan poisoning and it
+puts the repo in the shareable tier. That convergence is real evidence for reusing `public_roots` as
+the tier boundary rather than adding a second key — the deferred question in the tiers plan — though
+it is evidence of convenience, not proof the two questions can never diverge.]
+
 ## Recommended direction
 
 Both fixes are small and independent.

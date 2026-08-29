@@ -100,7 +100,13 @@ it. Reuse is less config and no drift between two lists that would nearly always
 not the same question — a root could have a public name and sensitive content, or the reverse — and
 overloading one key for two purposes is cheap now and expensive at the moment they first disagree. A
 build-time decision, not a blocker: it does not change the shape agreed above, and it is better
-answered against a real second root than in the abstract.]
+answered against a real second root than in the abstract.
+
+Evidence for reuse, 2026-08-29: for a repo cloned directly into `projects_root`, one `public_roots`
+entry already has to do two jobs — it keeps the repo's name out of the derived private-term list,
+and under this design it also decides the tier. Having those disagree would mean a repo whose name
+may be published but whose plans may not, or the reverse, which is possible but was not the case in
+any layout examined. See `plans/2026-08-29-bare-repo-at-projects-root.md`.]
 
 ### A content gate before any push, not just a path split
 

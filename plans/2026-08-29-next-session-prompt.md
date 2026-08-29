@@ -71,21 +71,30 @@ makes it the obvious carrier, which is the same conclusion
 `2026-08-29-retirement-prompt-on-the-session-sweep.md` reached for a different feature — worth
 deciding those two together rather than bolting both onto the same command independently.
 
-Evidence from doing it by hand, 2026-08-29: asked to file a next-session prompt durably, a session
-put it in Claude Code's per-project memory directory
-(`~/.claude/projects/<encoded repo path>/memory/`, indexed by `MEMORY.md`) as a single `project`
-entry. That is not a recommendation for the built feature — it is harness-specific, which this repo
-does not ship, and `~/AGENTS.md` calls that directory a staging area rather than a store. But it
-beat every option this question lists on the one axis that matters: **it is loaded automatically at
-session start and depends on nobody running a command.** `absorb` is the once-per-session call only
-because `SKILL.md` says so, and a carrier that fails when the first call is skipped fails exactly
-when a session is in a hurry — which is when a handoff matters most.
+**One candidate is ruled out outright: a harness's own memory store.** Stated by the user
+2026-08-29, after a session filed a real prompt into Claude Code's per-project memory directory and
+was corrected: no memories, for any harness, for any project, for any reason. Project data and
+user-wide practices are not to be vendor-locked. The carve-out is harness _configuration_ —
+`settings.json`, hooks, keybindings — which is expected to differ per harness because it is about
+the tool, not about the work.
 
-Two constraints fell out of writing a real one. It went in the memory directory rather than `plans/`
-because the prompt is ordering and immediacy, and a plan file would give it a status field and a
-retirement it should never need. And it carries its own delete-when-done instruction, because
-nothing else expires it — whatever the built version is, expiry has to be part of it rather than a
-habit.]
+That is a harder constraint than the "staging area" wording in `~/AGENTS.md` implied, and it
+disqualifies the option on grounds that have nothing to do with staleness: automatic loading at
+session start is worth nothing if only one vendor's sessions get it. Whatever this becomes has to be
+a plain file that any agent can read, reachable by a documented command rather than by a harness
+feature.]
+
+[DECISION: **the prompt was re-filed as an ordinary plan, and the "prompt" framing was the thing
+that had to go.** Settled 2026-08-29 by writing a real one twice. The four items it carried were
+follow-up work — merge these plans, retire that one, absorb across repos — which is what `plans/`
+already exists for, and `plans.py list` already surfaces `in-progress` above everything else. See
+`plans/2026-08-29-store-tier-split-follow-ups.md`.
+
+This weakens the case for building anything. The open question below asks what the boundary against
+`plans/` is; the honest answer from one real attempt is that most of a handoff falls on the `plans/`
+side of it, and what is left may not justify a mechanism. The residue worth measuring is ordering
+and immediacy — a plan file says what is open, not what to do first — plus the delete-when-done
+expiry, which nothing else provides.]
 
 [NEEDS CLARIFICATION: per-repo or per-machine? The session that asked for this touched `repo-tasks`,
 wrote to the plans store, and read three sibling repos. A per-repo prompt is easy to route and

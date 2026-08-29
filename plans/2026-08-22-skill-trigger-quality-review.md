@@ -101,11 +101,36 @@ Also relevant to the cadence question: `--runs` defaults to 3 per case, so non-d
 handled by the tool rather than by us; `--threshold <0..1>` exits 1 below the bar, which makes it
 CI-gateable; and `--judge-model` defaults to haiku, which bounds the per-run cost.
 
-[PITFALL: **the HTML report publishes to claude.ai by default.** `--no-publish` keeps it local, and
-`--publish-report` is described as already the default where the account supports it. For a repo
-whose central rule is that a client's identity must not reach anything published, a report of
-authored eval prompts is low-risk — but the default is outward, and adopting this tool means pinning
-`--no-publish` deliberately rather than discovering the behaviour later.]
+[PITFALL: **the HTML report publishes to claude.ai by default, and the sensitive material would be
+generated at runtime rather than authored by us.** `--report` writes "scores, prompts, grader
+verdicts"; `--no-publish` keeps it local; `--publish-report` is "already the default when your
+account supports it".
+
+The first version of this note called the exposure low-risk because we author the prompts. That was
+the wrong end of the problem, and is corrected here. A trigger test for `plan-docs` has to invoke
+`plan-docs`; the first thing the skill instructs is to run `plans.py`; and `list --scope family`,
+`doctor` and `repos` all print employer and client names read live from the real projects root.
+`--scaffold` is documented as running author-supplied bash **as you**, so these runs are not
+isolated from this machine. The material at risk is therefore produced at runtime, by the one skill
+in this repo whose commands enumerate every client directory by name — not by anything written into
+a case file.
+
+The mitigation is not only `--no-publish`, which treats the symptom. Cases must be written so the
+run never reaches the enumerating commands: assert the skill fired and stop. A trigger test needs to
+prove selection happened, not that the skill did its job — so the risky output need never exist.]
+
+[NEEDS CLARIFICATION: three things to verify before adopting, none knowable from `--help`. Whether
+run transcripts and tool output appear in the report at all or only scores and verdicts (`--verbose`
+sends per-message traces to a _debug log_, which hints at the latter but proves nothing). What
+visibility a published report has — private to the account, or linkable. And whether the run sandbox
+constrains filesystem reads despite scaffold running as the user.]
+
+**The general rule this sits under: data flowing outward to a vendor is a cost, not a neutral
+default.** Stated by the user 2026-08-29 while reviewing the above. It applies wider than this tool
+— any feature whose default is to upload, publish, or phone home gets the flag pinned to off
+deliberately and recorded as a decision, rather than accepted because it was the default. That is
+the same stance the store takes by having no remote, and the reason `plans.py` is stdlib-only and
+reads nothing off the network.
 
 [UNVERIFIED: **still gated.** `claude plugin eval .` in this repo returns exactly
 `` `plugin eval` is currently in early access `` and exits without running, on 2026-08-29 with CLI

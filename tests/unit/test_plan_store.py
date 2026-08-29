@@ -745,6 +745,69 @@ def test_repos_search_ranks_by_description(ws, capsys):
 # install / uninstall
 
 
+def test_explain_writes_nothing_and_names_the_decisions(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    before = ws.config.read_text()
+
+    assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "nothing was written" in out
+    assert not ws.store.exists()
+    assert ws.config.read_text() == before
+    for key in ("projects_root", "store", "default", "public_roots", "private.extra"):
+        assert f"decision: {key}" in out
+
+
+def test_explain_asks_per_root_only_when_no_default_answers_it(ws, capsys):
+    """With a default set every unrouted root has the same answer already, and asking anyway turns a
+    short walkthrough into one the user pays for question by question."""
+    write_config(ws, 'default = "store"\n')
+    assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
+    assert "decision: roots." not in capsys.readouterr().out
+
+    write_config(ws, "")
+    assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "decision: roots.client.com-bitbucket" in out
+    assert "decision: roots.github.com-personal" in out
+
+
+def test_doctor_aggregates_by_root_and_names_only_repos_holding_plans(ws, capsys):
+    """A per-repo listing named every employer and client repo on the machine — 71 rows on this
+    author's, which is exactly the listing this skill exists to keep from being produced casually."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    make_repo(ws.projects / "client.com-bitbucket" / "team" / "quiet")
+    plan(ws.personal / "plans", "2026-01-01-open.md", "status: idea\nupdated: 2026-01-01")
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "enrolled (2 root(s), 3 repo(s))" in out
+    assert "github.com-personal/agent-skills" in out  # holds a plan, so it is named
+    assert "quiet" not in out  # holds none, so it is not
+    assert "1 idea" in out
+    assert "not yours to disclose" in out  # a non-public root is present
+
+
+def test_doctor_reports_a_store_that_lost_its_git_identity(ws, capsys):
+    """`install` reported this once and never again, so a store broken afterwards stayed broken
+    silently until `archive` returned nothing and looked like an empty history."""
+    write_config(ws, 'default = "store"\n')
+    plans.main(["install", "--path", str(ws.personal)])
+    subprocess.run(["git", "config", "--unset", "user.email"], cwd=ws.store, check=False)
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "no git identity" in capsys.readouterr().out
+
+
+def test_doctor_flags_a_repo_holding_plans_that_no_rule_routes(ws, capsys):
+    write_config(ws, "")  # no default, no roots — nothing routes anything
+    plan(ws.personal / "plans", "2026-01-01-orphan.md", "status: idea\nupdated: 2026-01-01")
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "holds plans but no rule routes it" in capsys.readouterr().out
+
+
 def test_install_is_idempotent_and_sets_the_store_up(ws, capsys):
     assert plans.main(["install", "--path", str(ws.personal)]) == 0
     assert ws.config.is_file()

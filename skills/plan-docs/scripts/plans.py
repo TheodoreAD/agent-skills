@@ -22,7 +22,8 @@ also take `--json`) so an agent can act on the answer without opening a file.
     plans.py repos --search auth        # what each repo is for, to route a plan by
     plans.py new <topic> --unscoped     # an idea with no repo yet
     plans.py graduate <file> --to <repo>  # ... once it has one
-    plans.py install / uninstall        # set this machine up, or undo it
+    plans.py doctor                     # where plans live, what is enrolled, what is broken
+    plans.py install --explain          # what setup would do, and what only the user can decide
 
 Exit codes: 0 ok, 1 error, 2 argparse usage, 3 needs-decision — no rule matched the repo, so the
 agent must ask the user rather than pick a side.
@@ -1663,7 +1664,123 @@ def cmd_graduate(args: argparse.Namespace) -> int:
     return 0
 
 
+@dataclass(frozen=True)
+class Decision:
+    """One thing the user has to settle, printed as data for an agent to put to them."""
+
+    key: str
+    what: str
+    current: str
+    suggest: str
+    cost: str
+
+
+def install_decisions(cfg: Config) -> list[Decision]:
+    """Everything `install` cannot decide on the user's behalf, with what it would guess and why.
+
+    Printed rather than prompted. The script has to keep working when a human runs it by hand, and
+    an interactive prompt inside an agent's Bash call hangs the session with nothing to type into —
+    so the agent is the interactive surface and this is the data it asks from.
+    """
+    unset = "(unset — the default is in use)"
+    decisions = [
+        Decision(
+            key="projects_root",
+            what="the directory every repo path is measured from, and the shape the store mirrors",
+            current=f"{cfg.projects_root}" + ("" if cfg.exists and cfg.path.is_file() else f" {unset}"),
+            suggest=str(cfg.projects_root),
+            cost="a wrong root matches no repo to any rule, so every plan asks where it goes",
+        ),
+        Decision(
+            key="store",
+            what="where plans live for repos that cannot hold their own",
+            current=f"{cfg.store} (from {cfg.store_source})",
+            suggest=str(cfg.store),
+            cost="moving it later leaves the old copy behind; it is the only copy of those plans",
+        ),
+    ]
+
+    decisions.append(
+        Decision(
+            key="default",
+            what="the route for a repo no [roots] or [repos] rule matches",
+            current=cfg.default.describe() if cfg.default else "(none — an unmatched repo exits 3 and asks)",
+            suggest="store on a machine with client work; leave unset to be asked each time",
+            cost="a default of `repo` silently adds plans/ to repos you do not own",
+        )
+    )
+
+    # One question per unrouted root only when nothing else answers it. With a `default` set, every
+    # one of them has the same answer already, and asking anyway turned a six-question walkthrough
+    # into a twelve-question one on this author's machine — questions the user pays for and whose
+    # answer was never in doubt.
+    roots = sorted({rel.split("/")[0] for rel in repo_paths(cfg)})
+    unrouted = [name for name in roots if name not in cfg.roots]
+    if unrouted and cfg.default is None:
+        decisions += [
+            Decision(
+                key=f"roots.{name}",
+                what=f"where plans go for every repo under {name}/",
+                current="(no rule, and no default — these repos cannot be planned in until this is set)",
+                suggest="repo if these are yours to commit to, store if they are an employer's",
+                cost='guessing "repo" writes a plans/ directory into someone else\'s repository',
+            )
+            for name in unrouted
+        ]
+    decisions.append(
+        Decision(
+            key="public_roots",
+            what="roots whose names may appear in a repo you publish; everything else is scanned for",
+            current=", ".join(cfg.public_roots) or "(unset — falls back to the roots routed `repo`)",
+            suggest=", ".join(name for name in roots if cfg.roots.get(name, Rule((), "")).write == "repo") or "(none)",
+            cost="too wide silences a whole organisation's names in `scan`, which is the gate that "
+            "stops a client's identity reaching a published repo",
+        )
+    )
+    decisions.append(
+        Decision(
+            key="private.extra",
+            what="names that must never reach a published repo and are not directories here",
+            current=", ".join(cfg.private_extra) or "(empty)",
+            suggest="any employer with no clone on this machine, work email domains, ticket prefixes",
+            cost="an employer with no directory to derive from is invisible to `scan` until listed",
+        )
+    )
+    return decisions
+
+
 def cmd_install(args: argparse.Namespace) -> int:
+    if args.explain:
+        return explain_install(load_config())
+    return run_install(args)
+
+
+def explain_install(cfg: Config) -> int:
+    """What `install` will do, and what only the user can settle. Writes nothing."""
+    print("install would:")
+    for verb, target, note in (
+        ("write" if not cfg.path.is_file() else "keep", cfg.path, ""),
+        ("create" if not cfg.store.is_dir() else "keep", cfg.store, " (git repository, no remote)"),
+        ("create" if not cfg.unscoped.is_dir() else "keep", cfg.unscoped, ""),
+    ):
+        print(f"  {verb:<7}{target}{note}")
+    print("  nothing else — it never edits a value you have already set")
+
+    decisions = install_decisions(cfg)
+    print(f"\n{len(decisions)} decision(s) — put each to the user, then record it with `config set`:")
+    for decision in decisions:
+        print(f"\ndecision: {decision.key}")
+        print(f"  what:    {decision.what}")
+        print(f"  current: {decision.current}")
+        print(f"  suggest: {decision.suggest}")
+        print(f"  cost:    {decision.cost}")
+    print("\nnothing was written. Run `install` once the decisions above are recorded.")
+    if any(key.startswith("roots.") for key in (d.key for d in decisions)):
+        print("Root names above that are not under a public root are not yours to disclose.")
+    return 0
+
+
+def run_install(args: argparse.Namespace) -> int:
     """Everything this skill needs on a machine, idempotently: config, store, unscoped area."""
     cfg = load_config()
     if not cfg.path.exists():
@@ -1700,6 +1817,130 @@ def cmd_install(args: argparse.Namespace) -> int:
     if not args.quiet:
         print("\nnext:        plans.py where   (in a repo)   /   plans.py new <topic> --unscoped")
     return 0
+
+
+def store_problems(cfg: Config) -> list[str]:
+    """What is wrong with the store, checked every time rather than only at setup.
+
+    `install` reported these once and never again, so a store that lost its git identity afterwards
+    stayed broken silently until `archive` returned nothing and looked like an empty history.
+    """
+    found: list[str] = []
+    if not cfg.path.is_file():
+        found.append(f"no config at {cfg.path} — run: plans.py install")
+    if not cfg.store.is_dir():
+        found.append(f"the store {cfg.store} does not exist — run: plans.py install")
+        return found
+    if not is_git_repo(cfg.store):
+        found.append("the store is not a git repository, so `archive` can retrieve nothing there — plans.py install")
+    elif not git(["config", "user.email"], cfg.store):
+        found.append("the store has no git identity and cannot commit — git -C <store> config user.name/user.email")
+    remotes = git(["remote"], cfg.store)
+    if remotes:
+        found.append(f"the store has remote(s) {remotes.split()} — one personal remote holding several clients'")
+    if not os.environ.get("PLANS_HOME"):
+        found.append(f"PLANS_HOME is unset; {cfg.store} is in use by default. Export it so the machine agrees")
+    return found
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Where plans live, which repos are enrolled, how many there are, and what is broken.
+
+    Deliberately not called `status`: `set-status` already exists and `status:` is a plan's own
+    frontmatter field, so `plans.py status` would read as a question about one plan.
+    """
+    cfg = load_config()
+    entries = family_plans(cfg)
+    counts: dict[str, int] = {}
+    for rel, _ in entries:
+        counts[rel] = counts.get(rel, 0) + 1
+
+    # Aggregated per root, not per repo. Routing is a per-root decision, so the root is the unit
+    # that answers "what is enrolled" — and a per-repo listing on this author's machine was 71 rows
+    # naming every employer and client repo on it, which is a listing this skill exists to keep from
+    # being produced casually. A repo is named below only when it actually holds plans.
+    roots: dict[str, list[str]] = {}
+    for rel in repo_paths(cfg):
+        roots.setdefault(rel.split("/")[0], []).append(rel)
+    holding = sorted(((rel, counts[rel]) for rel in counts if rel != UNSCOPED_DIR and counts[rel]), key=lambda p: -p[1])
+    unrouted = [rel for rel, _ in holding if _match_rule(cfg, rel)[1] == "no rule"]
+
+    if args.json:
+        payload = {
+            "config": str(cfg.path),
+            "exists": cfg.path.is_file(),
+            "projects_root": str(cfg.projects_root),
+            "store": str(cfg.store),
+            "store_source": cfg.store_source,
+            "unscoped": str(cfg.unscoped),
+            "idea_limit": cfg.idea_limit,
+            "roots": [
+                {
+                    "root": name,
+                    "rule": (rule.describe() if (rule := _match_rule(cfg, f"{name}/x")[0]) else "(no rule — asks)"),
+                    "source": _match_rule(cfg, f"{name}/x")[1],
+                    "repos": len(members),
+                }
+                for name, members in sorted(roots.items())
+            ],
+            "holding_plans": [{"repo": rel, "plans": n} for rel, n in holding],
+            "statuses": dict(Counter(plan.group for _, plan in entries)),
+            "problems": store_problems(cfg) + [f"{rel} holds plans but no rule routes it" for rel in unrouted],
+        }
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    _print_doctor(cfg, entries, roots, counts, holding, unrouted)
+    return 0
+
+
+def _print_doctor(
+    cfg: Config,
+    entries: list[tuple[str, PlanFile]],
+    roots: dict[str, list[str]],
+    counts: dict[str, int],
+    holding: list[tuple[str, int]],
+    unrouted: list[str],
+) -> None:
+    print(f"config:        {cfg.path}{'' if cfg.path.is_file() else ' (does not exist)'}")
+    print(f"projects_root: {cfg.projects_root}")
+    print(f"store:         {cfg.store} (from {cfg.store_source})")
+    print(f"unscoped:      {cfg.unscoped}")
+    print(f"idea_limit:    {cfg.idea_limit}")
+
+    print(f"\nenrolled ({len(roots)} root(s), {sum(len(m) for m in roots.values())} repo(s))")
+    width = max((len(name) for name in roots), default=0)
+    for name, members in sorted(roots.items()):
+        rule, source = _match_rule(cfg, f"{name}/x")
+        described = rule.describe() if rule else "(no rule — asks)"
+        with_plans = sum(1 for rel in members if counts.get(rel))
+        print(f"  {name.ljust(width)}  {described:<24} {source:<22} {len(members):>3} repo(s), {with_plans} with plans")
+
+    if holding:
+        print(f"\nholding plans ({len(holding)})")
+        width = max(len(rel) for rel, _ in holding)
+        for rel, count in holding:
+            print(f"  {rel.ljust(width)}  {count} plan(s)")
+
+    statuses = Counter(plan.group for _, plan in entries)
+    tally = "  ".join(f"{statuses[name]} {name}" for name in (*STATUS_ORDER, "unknown") if statuses[name])
+    tags = Counter(name for _, plan in entries for name in plan.tags.elements())
+    print(f"\ntally ({len(entries)} plan(s))")
+    print(f"  {tally or '(none)'}")
+    if tags:
+        print("  " + "  ".join(f"{tags[name]} {name}" for name in TAG_NAMES if tags[name]))
+
+    problems = store_problems(cfg) + [f"{rel} holds plans but no rule routes it" for rel in unrouted]
+    print(f"\nproblems ({len(problems)})")
+    for problem in problems:
+        print(f"  - {problem}")
+    if not problems:
+        print("  (none)")
+
+    public = set(cfg.public_root_names())
+    if any(name not in public for name in roots):
+        print("\nRoot and repo names above that are not under a public root are not yours to disclose —")
+        print("this is for setting the machine up, never for pasting into a repo you publish.")
 
 
 def cmd_uninstall(args: argparse.Namespace) -> int:
@@ -1948,7 +2189,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     install = add("install", "set this machine up: config, store, unscoped area")
     install.add_argument("--quiet", action="store_true")
+    install.add_argument(
+        "--explain", action="store_true", help="what it would do and what you must decide; writes nothing"
+    )
     install.set_defaults(func=cmd_install)
+
+    doctor = add("doctor", "where plans live, which repos are enrolled, the tally, and what is broken")
+    doctor.add_argument("--json", action="store_true")
+    doctor.set_defaults(func=cmd_doctor)
 
     uninstall = add("uninstall", "undo install; never deletes plans without being told twice")
     uninstall.add_argument("--keep-config", action="store_true", help="leave the config file in place")

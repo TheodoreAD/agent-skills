@@ -34,7 +34,7 @@ python3 ~/.agents/skills/plan-docs/scripts/plans.py list
 | -------------------------------------- | ---------------------------------- |
 | what is open? what should I work on?   | `list` — see "Asking what is open" |
 | where does a new plan go, and write it | `new <topic>`                      |
-| which directories does this repo use?  | `where`                            |
+| is this machine set up, and how?       | `doctor`                           |
 
 The rest, in the order the lifecycle reaches them:
 
@@ -48,7 +48,8 @@ python3 <path> scan                         # no private name reaches a repo you
 python3 <path> repos --search <words>       # what each repo is for, to route a plan by
 python3 <path> new <topic> --unscoped       # an idea with no repo yet
 python3 <path> graduate <file> --to <repo>  # …once it has one
-python3 <path> install                      # set the machine up; uninstall undoes it
+python3 <path> where                        # which directories this repo reads and writes
+python3 <path> install --explain            # set the machine up, one decision at a time
 ```
 
 ## Where a plan file goes
@@ -103,12 +104,46 @@ default = "store" # omit it and an unmatched repo asks instead
 `$PLANS_HOME` (default `~/plans`) is the store; `projects_root` (default `~/projects`) is the root
 the mirrored paths are relative to; `$PLAN_DOCS_CONFIG` overrides the config location.
 
-`python3 <path> install` is the whole setup and is idempotent: it writes the config skeleton if
-there isn't one (never over an existing one), creates the store as a **local git repository with no
-remote**, creates the repo-less area, then reports what it could not do for you — a store with no
-git identity, an unset `PLANS_HOME`. `python3 <path> uninstall` reverses it: it removes the config
-but **keeps the store**, because the store is the only copy of those plans; deleting it takes
-`--purge-store --force` and a deliberate decision.
+**Setting up a machine is a walkthrough, and you run it.** The script never prompts — it has to keep
+working when a human runs it by hand, and an interactive prompt inside an agent's Bash call hangs
+with nothing to type into. So the decisions are printed as data and **you** are the interactive
+surface:
+
+1. `python3 <path> install --explain` — what it would create, then one block per decision, each with
+   what it is, what is currently set, what it would suggest, and what it costs to get wrong. Writes
+   nothing.
+2. Put each decision to the user with `AskUserQuestion`, using the `suggest` line as the recommended
+   option and the `cost` line as the description. Do not skip to the defaults: the `default` and
+   `public_roots` answers decide whether plans land in repos the user does not own and whether
+   `scan` will catch a client's name.
+3. Record each answer with `config set` (above). Never edit the TOML by hand.
+4. `python3 <path> install` — idempotent: writes the config skeleton if there isn't one (never over
+   an existing one), creates the store as a **local git repository with no remote**, creates the
+   repo-less area.
+5. `python3 <path> doctor` — confirm it took, and that no problem is left.
+
+It asks one question per unrouted root only when no `default` covers them; with a default set, that
+answer is already given and the walkthrough stays short.
+
+`python3 <path> uninstall` reverses it: it removes the config but **keeps the store**, because the
+store is the only copy of those plans; deleting it takes `--purge-store --force` and a deliberate
+decision.
+
+### Is this machine set up, and what is in it
+
+```shell
+python3 <path> doctor
+```
+
+One call for the whole picture: config and store locations, which roots are enrolled and by which
+rule, which repos actually hold plans, a tally by status and open tag, and a **problems** list — a
+store that is not a git repository or has lost its git identity, a store with a remote, an unset
+`PLANS_HOME`, a repo holding plans that no rule routes. Run it when something behaves oddly and
+before trusting `archive`, which retrieves nothing from a store with no git history.
+
+It aggregates by root and names an individual repo only when that repo holds plans — a per-repo
+listing is one row per clone on the machine, which is a roster of employers and clients. Its output
+is for setting the machine up, never for pasting into a repo you publish.
 
 The no-remote default is the design, not an oversight: local history is the benefit, and one
 personal remote accumulating several clients' internal architecture is the outcome to avoid. Adding

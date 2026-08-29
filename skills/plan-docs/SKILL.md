@@ -68,10 +68,23 @@ gets `<store>/<root>/<project>/<repo>` — no slug, no collision between two cli
 is computed from the repo root, not from the working directory.
 
 **`where` exiting 3 is a question, not a failure.** It means no rule covers this repo. Ask the user
-which route it should use, then record the answer in `~/.config/plan-docs/config.toml` —
-`python3 <path> config init` writes a commented skeleton. Never pick a side silently: guessing
-"repo" writes a directory into someone else's repository, and guessing "store" hides the plan
-somewhere the user never named.
+which route it should use, then record the answer. Never pick a side silently: guessing "repo"
+writes a directory into someone else's repository, and guessing "store" hides the plan somewhere the
+user never named.
+
+**Record it with `config set`, never by editing the TOML yourself:**
+
+```shell
+python3 <path> config set roots.<root-name> repo         # a whole root
+python3 <path> config set repos.<root>/<repo> store      # one repo, beats any root rule
+python3 <path> config set default store                  # everything unmatched
+python3 <path> config set view.idea_limit 20             # how many ideas a listing shows
+```
+
+It preserves every comment in the file — those comments carry the reasoning for each key — replaces
+a commented-out example in place, and rejects a value the config's own schema will not accept,
+restoring the file rather than leaving it broken. A key's table is whatever precedes its first dot,
+so a repo path full of dots stays one key.
 
 ```toml
 projects_root = "~/projects"

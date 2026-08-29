@@ -115,6 +115,10 @@ DEFAULT_IDEA_LIMIT = 10
 
 SCOPES = ("auto", "repo", "family", "unscoped")
 
+# Tables `config set` understands. A key's table is whatever precedes its first dot, but only when
+# it is one of these — a [repos] key is a path full of dots and must not be split on every one.
+CONFIG_TABLES = ("roots", "repos", "about", "private", "view")
+
 # The two gates SKILL.md states in prose, as data. Everything else is a free transition.
 STATUS_GATES = {"planned": "NEEDS CLARIFICATION", "landed": "UNVERIFIED"}
 
@@ -154,6 +158,11 @@ extra = []
 # Names too generic to gate on — a work repo called "tools" would otherwise flag every mention of
 # the word. Only add a name whose leaking would tell a reader nothing.
 ignore = []
+
+# How many `idea` plans a listing shows before eliding the rest. Only that tier is capped: the live
+# tiers are bounded by what can be in flight, while ideas accumulate forever. 0 disables the cap.
+[view]
+idea_limit = 10
 
 # What each repo is for — lets a plan be routed without grepping the repos. Only needed where a
 # repo's README does not already say it in its first line. `plans.py describe <repo> "<text>"`.
@@ -1719,6 +1728,89 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     return 0
 
 
+def split_config_key(key: str) -> tuple[str, str]:
+    """`view.idea_limit` -> ("view", "idea_limit"); `roots.github.com-personal` -> ("roots", rest).
+
+    Split on the first dot only, and only when what precedes it is a known table: a repo key is a
+    path full of dots, and naively splitting on every dot turns one entry into a nested table.
+    """
+    table, _, rest = key.partition(".")
+    if rest and table in CONFIG_TABLES:
+        return table, rest
+    return "", key
+
+
+def render_toml_value(raw: str) -> str:
+    """Encode a CLI string as a TOML value, letting TOML itself decide whether it already is one.
+
+    `10` stays an integer, `["a", "b"]` an array, `{ mode = "both" }` an inline table — while a bare
+    `store` or `~/plans`, which is not valid TOML on its own, becomes the string it obviously means.
+    No serializer of our own, and no way for the two to disagree.
+    """
+    try:
+        tomllib.loads(f"v = {raw}")
+    except tomllib.TOMLDecodeError:
+        return json.dumps(raw)
+    return raw
+
+
+def render_toml_key(name: str) -> str:
+    return name if re.fullmatch(r"[A-Za-z0-9_-]+", name) else json.dumps(name)
+
+
+def table_span(lines: list[str], table: str) -> tuple[int, int] | None:
+    """The line range a table's entries live in, exclusive of its header. None if it has none."""
+    if not table:
+        end = next((i for i, line in enumerate(lines) if line.lstrip().startswith("[")), len(lines))
+        return 0, end
+    header = f"[{table}]"
+    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
+    if start is None:
+        return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+    return start + 1, end
+
+
+def set_config_value(path: Path, key: str, value: str) -> str:
+    """Write one key, preserving every comment in the file.
+
+    Surgical line editing rather than a read-modify-serialize round trip, generalising what
+    `describe` has always done. The skeleton's comments carry the reasoning for every key, and the
+    rule that routing is configuration rather than a per-session judgement call rests on them being
+    readable — a hand-rolled serializer would drop all of them, and `tomllib` cannot write at all.
+    A commented-out example is replaced in place, which leaves the explanation above it attached to
+    the value it explains.
+    """
+    table, name = split_config_key(key)
+    entry = f"{render_toml_key(name)} = {render_toml_value(value)}"
+    lines = path.read_text(encoding="utf-8").splitlines()
+
+    span = table_span(lines, table)
+    if span is None:
+        lines += ["", f"[{table}]", entry]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return "added"
+
+    start, end = span
+    pattern = re.compile(rf"^(\s*)(#\s*)?{re.escape(render_toml_key(name))}\s*=")
+    live = [i for i in range(start, end) if pattern.match(lines[i]) and not lines[i].lstrip().startswith("#")]
+    commented = [i for i in range(start, end) if pattern.match(lines[i])]
+    if live:
+        lines[live[0]] = entry
+        action = "updated"
+    elif commented:
+        lines[commented[0]] = entry
+        action = "set"
+    else:
+        insert = end
+        while insert > start and not lines[insert - 1].strip():
+            insert -= 1
+        lines.insert(insert, entry)
+        action = "added"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return action
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     path = config_path()
     if args.action == "path":
@@ -1731,6 +1823,25 @@ def cmd_config(args: argparse.Namespace) -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(CONFIG_SKELETON, encoding="utf-8")
         print(f"created: {path}")
+        return 0
+    if args.action == "set":
+        if args.key is None or args.value is None:
+            raise PlanError("config set needs a key and a value, e.g. config set view.idea_limit 20")
+        if not path.exists():
+            raise PlanError(f"no config at {path} — run: plans.py install")
+        original = path.read_text(encoding="utf-8")
+        action = set_config_value(path, args.key, args.value)
+        try:
+            # Re-read so a value the config's own schema rejects fails here, next to the change,
+            # rather than on some later command that has nothing to do with it. Restore first: a
+            # rejected value left on disk breaks every subsequent command, which is a worse failure
+            # than the one being reported.
+            load_config()
+        except PlanError:
+            path.write_text(original, encoding="utf-8")
+            raise
+        print(f"{action}:  {args.key}")
+        print(f"config:  {path}")
         return 0
 
     cfg = load_config()
@@ -1845,8 +1956,10 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall.add_argument("--force", action="store_true", help="allow --purge-store to delete plan files")
     uninstall.set_defaults(func=cmd_uninstall)
 
-    config = add("config", "show, locate or create the routing config")
-    config.add_argument("action", choices=("show", "path", "init"), nargs="?", default="show")
+    config = add("config", "show, locate, create or edit the routing config")
+    config.add_argument("action", choices=("show", "path", "init", "set"), nargs="?", default="show")
+    config.add_argument("key", nargs="?", help="set: e.g. default, view.idea_limit, roots.<root>")
+    config.add_argument("value", nargs="?", help="set: a TOML literal, or a bare string")
     config.set_defaults(func=cmd_config)
 
     return parser

@@ -504,6 +504,61 @@ def test_landed_gate_blocks_on_unverified(ws):
 # config and store bootstrap
 
 
+def test_config_set_keeps_every_comment_and_fills_in_the_commented_example(ws, capsys):
+    """The skeleton's comments carry the reasoning for each key, and the rule that routing is
+    configuration rather than a per-session judgement rests on them staying readable."""
+    plans.main(["config", "init"])
+    # Every comment except the commented-out example itself, which is what `set` consumes.
+    example = '# default = "store"'
+    prose = [line for line in ws.config.read_text().splitlines() if line.startswith("#") and line != example]
+    capsys.readouterr()
+
+    assert plans.main(["config", "set", "default", "store"]) == 0
+    assert "set:" in capsys.readouterr().out
+    after = ws.config.read_text()
+
+    assert [line for line in after.splitlines() if line.startswith("#")] == prose
+    assert 'default = "store"' in after
+    assert example not in after  # the example became the value, in its own place
+    assert plans.load_config().default.write == "store"
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "expected"),
+    [
+        ("view.idea_limit", "20", "idea_limit = 20"),  # an integer stays one
+        ("private.extra", '["acme-corp"]', 'extra = ["acme-corp"]'),  # an array stays one
+        ("projects_root", "~/code", 'projects_root = "~/code"'),  # a bare word becomes a string
+        ("roots.github.com-personal", "repo", '"github.com-personal" = "repo"'),  # dots are a path
+        ("repos.a/b", '{ mode = "both", write = "store" }', '"a/b" = { mode = "both"'),
+    ],
+)
+def test_config_set_encodes_each_value_shape(ws, capsys, key, value, expected):
+    plans.main(["config", "init"])
+    capsys.readouterr()
+    assert plans.main(["config", "set", key, value]) == 0
+    assert expected in ws.config.read_text()
+
+
+def test_config_set_creates_a_missing_table_and_rejects_a_value_toml_cannot_read(ws, capsys):
+    plans.main(["config", "init"])
+    capsys.readouterr()
+    assert plans.main(["config", "set", "about.some/repo", "what it is for"]) == 0
+    assert '"some/repo" = "what it is for"' in ws.config.read_text()
+
+    # A value that parses as TOML but not as this config's schema fails next to the change, not on
+    # some later command that has nothing to do with it — and is not left on disk, where it would
+    # break every subsequent command.
+    before = ws.config.read_text()
+    assert plans.main(["config", "set", "view.idea_limit", "-4"]) == 1
+    assert ws.config.read_text() == before
+    assert plans.load_config().idea_limit == plans.DEFAULT_IDEA_LIMIT
+
+
+def test_config_set_refuses_without_a_config(ws):
+    assert plans.main(["config", "set", "default", "store"]) == 1
+
+
 def test_config_init_writes_a_skeleton_and_never_overwrites(ws):
     assert plans.main(["config", "init"]) == 0
     assert "[roots]" in ws.config.read_text()

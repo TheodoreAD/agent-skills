@@ -34,73 +34,95 @@ Before designing anything, the honest inventory — three of the four mechanics 
 - **Cross-repo awareness without cross-repo commits.** `list --scope family` and the `depends_on` →
   "waiting on this repo" view already answer "what is pending on me from elsewhere".
 
-So the transport is built. What is missing is **meaning, and a defined hand-off.**
+So the transport is built. What is missing is **a defined hand-off, and a rule that stops the
+foreign commit happening at all.**
 
 ## What is actually missing
 
-1. **Nothing records that a plan came from outside.** The pulse note above was hand-stamped
-   `origin: external` by an agent inventing a field. Nothing writes it, nothing reads it, nothing
-   validates it — the exact "half-tagged is worse than untagged" failure this convention warns about
-   elsewhere.
-2. **`--to store --path <other repo>` is an override, not an expression of intent.** It happens to
-   do the right thing. A first-class `new <topic> --for <repo>` would say what is meant and stamp
-   the provenance without an agent having to know the trick.
-3. **No triage view.** `list --scope repo` shows a filed contribution mixed in with the repo's own
-   plans. "What has been filed against this repo from outside that nobody has taken on" is the
-   question a session should open with in a repo others file against, and it cannot be asked.
+1. **`--to store --path <other repo>` is an override, not an expression of intent.** It happens to
+   do the right thing. A first-class `new <topic> --for <repo>` would say what is meant, so no agent
+   has to know the trick.
+2. **Nothing drains the store back into the repo that owns the work.** A plan filed for a
+   repo-routed repo sits in the mirror indefinitely; nothing tells the session working in that repo
+   that it is there, and nothing moves it in.
+3. **Nothing stops or warns about the foreign commit.** The whole problem is available by default —
+   an agent that writes into another repo's `plans/` gets no resistance from any tool.
 
-An "accept path" was the fourth item here. It turned out not to be missing — see the decisions
-below: accepting a contribution is promoting its status, which already exists and already gates.
+Two items that were here have been struck. An "accept path" turned out not to be missing: accepting
+is promoting the plan's status, which already exists and already gates. And a provenance marker
+turned out not to be wanted — see below.
 
 ## The design question, stated precisely
 
-[DECISION: **provenance is a separate axis from status, and the user's instinct to add frontmatter
-is right.** `status` is lifecycle — where the work has got to. Where it came from is orthogonal: an
-external bug report can be at any status, and a roadmap item can be too. Encoding provenance as a
-status value (`status: reported`) would break the lifecycle vocabulary, which is why this is a
-field.]
-
 The rest was settled with the user the same day. One question is still open, at the end.
 
-[DECISION: **one field, `origin:`, and no acceptance field — acceptance is the existing status
-vocabulary.** Settled with the user 2026-08-29, and it is a better answer than the "location is
-acceptance" design this plan originally recommended.
+[DECISION: **no `origin:` field, and no provenance axis at all — this is a single-user system.**
+Reversed by the user 2026-08-29, a few hours after it was settled the other way in this same file.
+The reversal is the right call and the earlier decision was designed for a situation that does not
+exist.
 
-The triage question — "what has been filed against this repo that nobody has taken on" — is
-`origin: external` **and** `status: idea`. That needs no new state, because the status vocabulary
-already covers every transition: **accepting** is promoting off `idea` (to `planned`, `in-progress`,
-or `blocked on …`), and **rejecting** is `abandoned`, which already means killed before landing.
+`origin:` existed to mark a contribution as "raised by somebody else, triage it before an agent acts
+on it". On this machine there is one person filing plans, no connection to an external work tracker,
+and no mirroring. So every plan is the user's own and validated by construction; the field would be
+written by convention and read by nothing, which is the exact "half-tagged is worse than untagged"
+failure this convention warns about elsewhere.
 
-Crucially the query is **location-independent**, which is what makes it work for store-routed client
-repos where nothing can ever be graduated into a `plans/` directory. Location-as-acceptance would
-have hardcoded into the filesystem a distinction that one field expresses in one place, and would
-have been unexpressable exactly where the store matters most.]
+**The distinction is deferred, not rejected.** When mirroring or an external tracker arrives, the
+question comes back in its real form — how to separate ideas the user validated by having them from
+ideas that arrive needing triage before agents treat them as actionable. That is the moment to
+design it, with the actual inbound shape in hand.]
 
-[PITFALL: the accepted imprecision is that `origin: external` + `status: idea` cannot distinguish
-"never looked at" from "looked at, still worth doing, left at `idea`". `updated` moves when the
-owner touches it, which is a weak signal and not a reliable one. This is a deliberate trade against
-a third state nobody would maintain — but it means the inbox view is "not yet promoted", not
-"unread", and should be worded that way rather than implying it tracks attention.]
+[DECISION: **route plus location already says everything a marker would have, so nothing is lost.**
+A plan in `<store>/<repo>/` where that repo is routed `repo` is by definition awaiting absorption —
+that repo's own route says its plans belong in its tree, so a file in the mirror is in transit. The
+identical file under a store-routed client repo is at its permanent home. The two are distinguished
+by data that already exists and cannot drift, with no frontmatter, no migration of existing plans,
+and no field for anyone to forget to set.]
 
 [DECISION: **no `kind:` field; bug versus feature request stays out of the frontmatter.** Settled
 with the user 2026-08-29. A `kind:` only earns a place if it changes what someone does, and a bug
 and a feature request are both work with the same lifecycle, the same gates and the same retirement
-rules. The convention has held to five tags and one status vocabulary with no categories, and
-`origin:` already carries the roadmap-versus-field-report signal that motivated the question. The
+rules. The convention has held to five tags and one status vocabulary with no categories. The
 distinction stays evident from the title and `## Context`, where it costs nothing to maintain.]
 
-[DECISION: **external contributions must work against every repo, client and work repos included.**
-Settled with the user 2026-08-29. This is why `origin:` is a field rather than a location: the store
-then holds two kinds of thing — plans that live there because the repo cannot take them, and
-contributions filed from elsewhere — and the field is what tells them apart, at any location.]
+[DECISION: **filing must work against every repo, client and work repos included** — settled
+2026-08-29. With provenance dropped this costs nothing extra: filing is a write to the store mirror,
+which every repo has regardless of route.]
 
-[NEEDS CLARIFICATION: **does the store become the new contention point?** Both sides now commit
-there: the filing session writes a contribution, the owning session later removes it on acceptance.
-Two sessions committing to one git repository is the thing being escaped. It is probably still far
-better — the files are distinct, the commits are tiny, and nothing is ever edited concurrently — but
-"probably better" is not a design. At minimum the convention must require staging by explicit path
-in the store, never `git add -A`, for the same reason the machine's own rules already require it in
-shared repos.]
+[PITFALL: this plan settled `origin:` in the morning and dropped it the same afternoon, on the same
+evidence, because the first pass designed for a multi-contributor future rather than the single-user
+present. The general lesson is the one this convention already states about speculative work,
+applied to frontmatter: a field is a contract every future plan pays for, so the bar is a reader
+that exists now, not a reader that might.]
+
+[DECISION: **the store contention is answered by a dirty-tree rule, not by locking.** The user's
+answer, 2026-08-29: a harvest producing plans for another repo **creates a new plan and references
+the existing ones when the tree is dirty**, recording in that new plan that a later pass should
+unify them. When the tree is clean, it may update or expand existing plans directly.
+
+The insight is that a new file never conflicts. Two sessions writing distinct new files to one git
+repository do not contend in any way that matters — the cost is duplication, and duplication is
+recoverable later by a pass that has both halves in front of it. Editing an existing file while
+another session holds it is the thing that is not recoverable. So the rule trades a tidy tree for a
+safe one, and buys the tidiness back with a second pass.
+
+The convention still requires staging by explicit path in the store, never `git add -A`, for the
+same reason the machine's own rules already require it in shared repos.]
+
+[NEEDS CLARIFICATION: **which tree does "dirty" mean, and how is it checked?** Two readings, and
+they lead to different code. If it is the **target repo's** tree, the check is
+`git -C <target> status --porcelain` and it is about whether a session is mid-work there — but under
+Stage 1 nothing is written into that tree anyway, so what it would gate is the Stage 2 absorption
+and any edit to plans already committed there. If it is the **store's** tree, the check is whether
+another session has uncommitted work in the store, and it gates whether a filing session may edit an
+existing store-held plan. Both are plausible and both may be wanted; the sentence that settled this
+covered the target repo, so that is the assumption unless corrected.]
+
+[NEEDS CLARIFICATION: the sentence stating this rule was "make a second pass that unifies plans a
+part of the newly created plan should", which reads as a slip. Taken to mean: the newly created plan
+must itself record that a unification pass is owed, so the duplication is not silently left for
+someone to discover. Worth confirming, since an alternative reading — that a second pass runs
+automatically as part of the same harvest — is a materially different feature.]
 
 ## Where this touches `session-harvest`
 
@@ -112,23 +134,37 @@ filed as an external contribution" — no cross-repo commit, ever, from a harves
 
 ## Recommended direction
 
-Settled except where noted. Five pieces, each independently shippable:
+Two stages, in order. No frontmatter changes in either.
 
-1. **`origin:` frontmatter**, one field, two values. **Absent means internal**, so every existing
-   plan on the machine stays valid and nothing needs migrating — only a filed contribution carries
-   the field. Validated the way `status` is, so it cannot drift into a third invented value.
-2. **`new <topic> --for <repo>`** — files against another repo, stamps `origin: external`, never
-   touches that repo's tree. A thin wrapper over `--to store --path`, which already works; the point
-   is that it says what is meant, so no agent has to know the trick.
-3. **An inbox view** — `origin: external` and `status: idea`, at repo scope. Naming open; it is the
-   question a session should open with in a repo other people file against. Word it as "not yet
-   promoted", never "unread", per the pitfall above.
-4. **No accept verb is needed.** Accepting is `set-status <file> planned`, which exists and already
-   runs the promotion gate. Rejecting is `set-status <file> abandoned`. A store-held contribution
-   for a repo-routed repo may additionally be moved with `move --to repo` once accepted, but that is
-   a filing choice, not the acceptance itself.
-5. **A `session-harvest` rule change** so a finding about any repo other than the one the session is
-   in is filed as an external contribution rather than committed across.
+### Stage 1 — file it, never commit it across
+
+1. **`new <topic> --for <repo>`** — writes into that repo's store mirror, never touches its tree. A
+   thin wrapper over `--to store --path`, which already works; the point is that it states intent,
+   so no agent has to know the trick.
+2. **`session-harvest` files rather than commits across.** A finding about the repo the session is
+   in goes to that repo's plans as today; a finding about any other repo is filed. This is the rule
+   change that removes the foreign commit, and it is most of the value of the whole plan.
+
+### Stage 2 — absorb, from inside the repo that owns it
+
+The store is a transit area for repo-routed repos, not a second home. A session actually working in
+repo B drains it, on B's own schedule, committing only to B.
+
+3. **A nudge, not a scan the user has to remember.** `list` at repo scope already reads the store
+   mirror; it needs a footer line saying how many plans are waiting to be absorbed, in the same
+   shape as the existing "N plan(s) await retirement" line. That line is the trigger for the whole
+   stage.
+4. **An absorb verb.** Per file this is already `move <file> --to repo`. What is missing is the bulk
+   form and the rule about when — see the open question on dirty trees.
+5. **A cross-repo warning.** Once absorption exists, writing into another repo's tree is a mistake
+   rather than a workaround, and the tooling should say so at the moment it is attempted.
+
+### The two skills have to cooperate, not each decide
+
+`session-harvest` must not reimplement any of this. It decides _what is worth recording_; where the
+file goes, whether the target tree is safe to touch, and whether an existing plan may be edited are
+`plan-docs` questions, and the answers belong in `plans.py` where they are testable. Harvest calls
+it and follows what it says. Two skills each holding half a rule is how the halves drift apart.
 
 [PITFALL: the goal is "cross-repo **commits** almost never happen", not "cross-repo awareness never
 happens". Awareness is the thing that makes a repo family navigable and it is already built. Stating

@@ -88,8 +88,8 @@ directory: the subtree is skipped with a note, and everything readable still ans
 Two things need deciding per collection, and neither is "is this a collection":
 
 - its **route** — `repo`, `store`, or `both`
-- whether its name is **disclosable**, which drives `scan` and, under
-  `plans/2026-08-29-store-sensitivity-tiers.md`, the store tier
+- whether its name is **disclosable**, which drives `scan` and — through `shareable_roots`, which
+  falls back to it — which half of the store its plans live in
 
 The mechanism exists: `install --explain` prints these as decisions, the agent puts them to the user
 with `AskUserQuestion`, `config set` records the answers. Nothing new is needed for the initial

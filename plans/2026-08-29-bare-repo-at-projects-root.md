@@ -55,10 +55,10 @@ lowers the urgency of the fixes without removing the case for them, since both c
 until someone hits them.
 
 [DECISION: **a bare repo lands in the non-sensitive tier only if it is in `public_roots`.** Asked by
-the user 2026-08-29 while thinking about the tier split in
-`plans/2026-08-29-store-sensitivity-tiers.md`. A depth-1 repo is its own root, and tier follows root
-membership — so a bare repo **not** listed defaults to the _sensitive_ tier, which is the opposite
-of what "I put it at the top level because it is my own" would suggest.
+the user 2026-08-29 while thinking about the tier split, which landed the same day; the boundary is
+`shareable_roots`, which falls back to `public_roots` while unset. A depth-1 repo is its own root,
+and tier follows root membership — so a bare repo **not** listed defaults to the _sensitive_ tier,
+which is the opposite of what "I put it at the top level because it is my own" would suggest.
 
 The same single `public_roots` entry therefore does both jobs: it stops the scan poisoning and it
 puts the repo in the shareable tier. That convergence is real evidence for reusing `public_roots` as

@@ -69,7 +69,23 @@ instructions, and `plan-docs` explicitly forbids status narrative in it), or the
 nothing reads it at session start except `absorb`). `absorb` already being the once-per-session call
 makes it the obvious carrier, which is the same conclusion
 `2026-08-29-retirement-prompt-on-the-session-sweep.md` reached for a different feature — worth
-deciding those two together rather than bolting both onto the same command independently.]
+deciding those two together rather than bolting both onto the same command independently.
+
+Evidence from doing it by hand, 2026-08-29: asked to file a next-session prompt durably, a session
+put it in Claude Code's per-project memory directory
+(`~/.claude/projects/<encoded repo path>/memory/`, indexed by `MEMORY.md`) as a single `project`
+entry. That is not a recommendation for the built feature — it is harness-specific, which this repo
+does not ship, and `~/AGENTS.md` calls that directory a staging area rather than a store. But it
+beat every option this question lists on the one axis that matters: **it is loaded automatically at
+session start and depends on nobody running a command.** `absorb` is the once-per-session call only
+because `SKILL.md` says so, and a carrier that fails when the first call is skipped fails exactly
+when a session is in a hurry — which is when a handoff matters most.
+
+Two constraints fell out of writing a real one. It went in the memory directory rather than `plans/`
+because the prompt is ordering and immediacy, and a plan file would give it a status field and a
+retirement it should never need. And it carries its own delete-when-done instruction, because
+nothing else expires it — whatever the built version is, expiry has to be part of it rather than a
+habit.]
 
 [NEEDS CLARIFICATION: per-repo or per-machine? The session that asked for this touched `repo-tasks`,
 wrote to the plans store, and read three sibling repos. A per-repo prompt is easy to route and

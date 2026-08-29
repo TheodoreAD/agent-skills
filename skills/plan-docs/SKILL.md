@@ -28,7 +28,8 @@ every invocation below is the whole path:
 python3 ~/.agents/skills/plan-docs/scripts/plans.py list
 ```
 
-**Start here.** Three commands answer most sessions:
+**Start here. These three answer most sessions**, and nothing below is needed until the lifecycle
+reaches it:
 
 | the question                           | the command                        |
 | -------------------------------------- | ---------------------------------- |
@@ -36,21 +37,33 @@ python3 ~/.agents/skills/plan-docs/scripts/plans.py list
 | where does a new plan go, and write it | `new <topic>`                      |
 | is this machine set up, and how?       | `doctor`                           |
 
-The rest, in the order the lifecycle reaches them:
+<details>
+<summary>The rest, by the moment you need them</summary>
 
 ```shell
-python3 <path> tags --tag DEFERRED          # anchored, across every plan this repo can see
-python3 <path> set-status <file> planned    # refuses if the gate for that status fails
-python3 <path> refs <file>                  # inbound references, before retiring
-python3 <path> archive --search <words>     # a retired plan, back out of git history
-python3 <path> move <file> --to store       # a repo switching where it keeps plans
-python3 <path> scan                         # no private name reaches a repo you publish
+# writing one down
+python3 <path> where                        # which directories this repo reads and writes
 python3 <path> repos --search <words>       # what each repo is for, to route a plan by
 python3 <path> new <topic> --unscoped       # an idea with no repo yet
 python3 <path> graduate <file> --to <repo>  # …once it has one
-python3 <path> where                        # which directories this repo reads and writes
+
+# working on it
+python3 <path> set-status <file> planned    # refuses if the gate for that status fails
+python3 <path> tags --tag DEFERRED          # anchored, across every plan this repo can see
+python3 <path> move <file> --to store       # a repo switching where it keeps plans
+
+# retiring it, and getting it back
+python3 <path> refs <file>                  # inbound references, before retiring
+python3 <path> archive --search <words>     # a retired plan, back out of git history
+
+# keeping the machine right
+python3 <path> scan                         # no private name reaches a repo you publish
 python3 <path> install --explain            # set the machine up, one decision at a time
 ```
+
+</details>
+
+Every command that reads takes `--json`, so nothing here has to be parsed out of its text output.
 
 ## Where a plan file goes
 

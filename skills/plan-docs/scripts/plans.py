@@ -1297,13 +1297,19 @@ def cmd_tags(args: argparse.Namespace) -> int:
     targets = [locate(routing, args.file)] if args.file else plan_files(routing)
     wanted = [args.tag] if args.tag else list(TAG_NAMES)
 
-    hits = 0
-    for plan in targets:
-        for tag in wanted:
-            for number, line in open_tags(plan.path, tag):
-                print(f"{plan.path}:{number}: {line}")
-                hits += 1
-    print(f"\n{hits} tag(s) across {len(targets)} file(s): {', '.join(wanted)}")
+    found = [
+        {"path": str(plan.path), "tag": tag, "line": number, "text": line}
+        for plan in targets
+        for tag in wanted
+        for number, line in open_tags(plan.path, tag)
+    ]
+    if args.json:
+        print(json.dumps(found, indent=2))
+        return 0
+
+    for hit in found:
+        print(f"{hit['path']}:{hit['line']}: {hit['text']}")
+    print(f"\n{len(found)} tag(s) across {len(targets)} file(s): {', '.join(wanted)}")
     return 0
 
 
@@ -1332,6 +1338,10 @@ def cmd_set_status(args: argparse.Namespace) -> int:
     kept = [line for line in body if not line.startswith(("status:", "updated:"))]
     front = [f"status: {args.status}", f"updated: {today()}", *kept]
     plan.path.write_text("\n".join(["---", *front, "---", *lines[end + 1 :], ""]), encoding="utf-8")
+    if args.json:
+        payload = {"path": str(plan.path), "from": plan.status, "to": args.status, "updated": today()}
+        print(json.dumps(payload, indent=2))
+        return 0
     print(f"updated: {plan.path}")
     print(f"status:  {plan.status} -> {args.status}")
     return 0
@@ -1369,22 +1379,28 @@ def cmd_refs(args: argparse.Namespace) -> int:
     cfg = load_config()
     routing = require_ok(resolve(args.path, cfg))
     name = Path(args.file).name
-    hits = 0
+    found: list[dict[str, object]] = []
     if routing.repo_root:
         # `git grep` over tracked files: the same set a reviewer sees, without walking .venv or
         # build output. Matching the bare filename, since short-form references are the easy miss.
         output = git(["grep", "-n", "-F", "--", name], routing.repo_root)
         for line in (output or "").splitlines():
-            print(f"repo   {line}")
-            hits += 1
+            path, _, rest = line.partition(":")
+            number, _, text = rest.partition(":")
+            found.append({"where": "repo", "path": path, "line": int(number) if number.isdigit() else 0, "text": text})
     store_dir = routing.dirs.get("store")
     if store_dir and store_dir.is_dir():
         for path in sorted(store_dir.rglob("*.md")):
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
                 if name in line:
-                    print(f"store  {path}:{number}:{line.strip()}")
-                    hits += 1
-    print(f"\n{hits} reference(s) to {name}")
+                    found.append({"where": "store", "path": str(path), "line": number, "text": line.strip()})
+
+    if args.json:
+        print(json.dumps({"file": name, "references": found}, indent=2))
+        return 0
+    for hit in found:
+        print(f"{hit['where']:<6} {hit['path']}:{hit['line']}:{hit['text']}")
+    print(f"\n{len(found)} reference(s) to {name}")
     return 0
 
 
@@ -2134,6 +2150,7 @@ def build_parser() -> argparse.ArgumentParser:
     tags = add("tags", "anchored search for the five plan-docs tags")
     tags.add_argument("--tag", choices=TAG_NAMES, help="one tag (default: all five)")
     tags.add_argument("--file", help="one plan, by path or bare filename (default: all)")
+    tags.add_argument("--json", action="store_true")
     tags.set_defaults(func=cmd_tags)
 
     status = add("set-status", "rewrite a plan's status and updated date, running the gate first")
@@ -2142,6 +2159,7 @@ def build_parser() -> argparse.ArgumentParser:
         "status", help="idea | planned | in-progress | blocked on … | landed | abandoned | superseded by …"
     )
     status.add_argument("--force", action="store_true", help="write the status even if its gate fails")
+    status.add_argument("--json", action="store_true")
     status.set_defaults(func=cmd_set_status)
 
     move = add("move", "move a plan between the repo and the store")
@@ -2151,6 +2169,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     refs = add("refs", "inbound references to a plan, across the repo and the store")
     refs.add_argument("file", help="plan path or bare filename")
+    refs.add_argument("--json", action="store_true")
     refs.set_defaults(func=cmd_refs)
 
     archive = add("archive", "retired plans, read back out of git history")

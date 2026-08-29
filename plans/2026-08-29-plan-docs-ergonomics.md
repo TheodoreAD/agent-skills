@@ -219,12 +219,16 @@ documented form has never worked as written. Either document the full path or sh
 but the latter conflicts with this repo's rule that a skill must work for someone who has only this
 repo.]
 
-[DEFERRED: the command block in `SKILL.md` lists 15 commands at equal weight, so an agent opening
-the file has to pick. It needs a "start here" of two or three — the unified listing, `new`, and
-`where` — with the rest below a fold.]
+[DECISION: **the command block is a "start here" of three plus a `<details>` fold, grouped by the
+moment each command is needed** — writing a plan down, working on it, retiring it, keeping the
+machine right — rather than one flat list of fifteen at equal weight. Lifecycle order was the wrong
+axis: an agent does not read the file front to back, it arrives already knowing which moment it is
+in.]
 
-[DEFERRED: `--json` is available on some commands and not others (`tags`, `refs` and `set-status`
-lack it). Each gap costs a retry when an agent assumes the flag is uniform.]
+[DECISION: **`--json` is on every reading command**, and `SKILL.md` says so once rather than marking
+each. `tags`, `refs` and `set-status` were the three that lacked it; a flag available on some
+commands and not others costs a retry each time an agent assumes uniformity, which is cheaper to
+finish than to document.]
 
 ## Verification
 
@@ -245,13 +249,8 @@ dogfooding and transcript measurement, the way `session-bash-audit` does it.]
 
 ## What is still not done
 
-The five changes and the description fix are implemented, tested and committed. What remains:
-
-[DEFERRED: `--json` is still missing on `tags`, `refs` and `set-status`. Each gap costs a retry when
-an agent assumes the flag is uniform, and uniformity is cheaper to finish than to document.]
-
-[DEFERRED: the `SKILL.md` command block has a "start here" of three now, but the remaining eleven
-still sit at equal weight below it rather than behind a fold.]
+Every change above is implemented, tested and committed, including the two smaller ergonomics that
+were deferred on the first pass. What remains:
 
 [DEFERRED: `--since <date>` as an independent filter alongside `--stale <days>`. Not the mechanism
 that bounds default output — that is settled as the count cap — but a genuine question ("what moved

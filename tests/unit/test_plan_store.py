@@ -12,6 +12,7 @@ against a fake `$HOME` and a fake projects root: the real config, the real store
 # pyright: reportAny=false
 
 import importlib.util
+import json
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -450,6 +451,27 @@ def test_listing_filters_by_tag(ws, capsys):
 
 # --------------------------------------------------------------------------------------------
 # tags and the status gates
+
+
+def test_every_reading_command_offers_json(ws, capsys):
+    """A flag available on some commands and not others costs a retry each time an agent assumes
+    uniformity, which is cheaper to finish than to document."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    target = plan(ws.personal / "plans", "2026-01-01-one.md", "status: idea\nupdated: 2026-01-01", "\n[DEFERRED: x]\n")
+    commit(ws.personal, "notes.md", f"see {target.name}\n")
+
+    assert plans.main(["tags", "--json", "--path", str(ws.personal)]) == 0
+    tags = json.loads(capsys.readouterr().out)
+    assert [hit["tag"] for hit in tags] == ["DEFERRED"]
+
+    assert plans.main(["refs", target.name, "--json", "--path", str(ws.personal)]) == 0
+    refs = json.loads(capsys.readouterr().out)
+    assert refs["file"] == target.name
+    assert any(hit["path"].endswith("notes.md") for hit in refs["references"])
+
+    assert plans.main(["set-status", target.name, "planned", "--json", "--path", str(ws.personal)]) == 0
+    moved = json.loads(capsys.readouterr().out)
+    assert (moved["from"], moved["to"]) == ("idea", "planned")
 
 
 def test_tag_matching_is_anchored(ws):

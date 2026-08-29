@@ -225,6 +225,23 @@ files which already exist — `graduate`, and anything reached by `--path` — *
 those have legitimate uses; when you see that warning, prefer doing the work from a session inside
 that repo, and if you continue, tell the user exactly what landed where.
 
+**The guard compares against the working directory, and that is a weaker signal than it looks.**
+Whether cwd survives between an agent's Bash calls is not reliable either way — both a reset and a
+persisted `cd` were observed inside one session, 2026-08-29. Two consequences worth knowing rather
+than trusting past:
+
+- **It cannot fire when cwd has drifted.** With no `--path`, both the target and "this session's
+  repo" are derived from cwd, so they drift together and always match. A plan then lands in whatever
+  repo cwd wandered into, silently as far as the guard is concerned. This is why **every create
+  prints a `repo:` line** naming the repo the plan just became the property of — that line depends
+  on nothing that drifted, and reading it is the check that actually holds. Read it every time.
+- **A refusal you did not expect is itself a drift signal.** If it names a target that _is_ the repo
+  you thought you were in, cwd has moved; `cd` back rather than reaching for `--for`, which would
+  file the plan to the store instead of the repo. The error says both repos for exactly this reason.
+
+So: never `cd` into another repo without asking the user first, and after any cross-repo command,
+treat cwd as unknown until a call re-establishes it.
+
 ```shell
 python3 <path> new <topic> --for github.com-personal/<repo>   # or an absolute path
 ```

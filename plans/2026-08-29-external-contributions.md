@@ -208,6 +208,30 @@ a false refusal blocks work. The session's repo is cwd, never `--path`: `--path`
 command is _about_, cwd is where the session lives, and keeping them distinct is what makes the
 detection possible at all.]
 
+[PITFALL: **the cwd-based guard is blind in the case that matters most, and no better signal
+exists.** Raised by the user 2026-08-29 immediately after it was built; the challenge was correct.
+Whether cwd survives between an agent's Bash calls is unreliable in both directions — a reset and a
+persisted `cd` were both observed inside the single session that built this. Two failure modes:
+
+- **Blind.** With no `--path`, the target repo and "this session's repo" are both derived from cwd.
+  They drift together, compare equal, and the guard cannot fire — the plan lands in whatever repo
+  cwd wandered into.
+- **Misfires.** With an explicit `--path` naming the session's real repo while cwd has drifted, a
+  correct action is refused, and the suggested `--for` would file to the store rather than the repo.
+
+There is nothing better to reach for: `CLAUDE_PROJECT_DIR` is absent from this harness's Bash
+environment (checked 2026-08-29) and nothing else names the session's own repo. So the mitigation is
+not a smarter comparison but a report that cannot be fooled — **every create prints a `repo:` line**
+naming what the plan just became the property of, derived from the write target rather than from any
+comparison, so it survives whatever cwd did. The misfire is kept deliberately: an unexpected refusal
+naming a repo you believed you were in is the only drift detector that exists, which is why the
+error names both repos and says to `cd` back rather than reach for `--for`.]
+
+[DEFERRED: a machine-level rule that an agent asks the user before `cd`-ing into another repo at
+all, raised by the user 2026-08-29 as secondary to the above. It belongs in `~/AGENTS.md` rather
+than this skill, since it governs every Bash call and not just plan filing — filed as a note in the
+store for `power-user-linux-setup`.]
+
 [PITFALL: absorbing means committing markdown into the target repo, so **the target's quality gate
 runs before that commit** like any other. Doc-only commits that skipped the gate are already the
 most common cause of red CI in these repos, and a bulk absorb touching several files at once is

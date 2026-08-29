@@ -1042,10 +1042,14 @@ def cmd_new(args: argparse.Namespace) -> int:
     if routing.rule and routing.rule.write == "repo" and is_foreign(routing.repo_root, cfg):
         # Refused rather than warned: `--for` is the correct way to record something against
         # another repo, so writing a new file into its tree has no remaining legitimate use.
+        # The comparison is against cwd, which can drift — see `session_repo`. A refusal that
+        # surprises you is therefore itself worth reading as a possible drift signal, which is why
+        # the message names both repos rather than only the target.
         raise PlanError(
-            f"{routing.repo_root} is not the repo this session is in, and creating a plan there "
-            f"would put a file in a tree a parallel session may be holding. "
-            f"File it instead: new {args.topic} --for {routing.rel or routing.repo_root}"
+            f"cwd says this session is in {session_repo(cfg)}, but this would create a plan in "
+            f"{routing.repo_root} — a tree a parallel session may be holding.\n"
+            f"  If the plan belongs to that repo:  new {args.topic} --for {routing.rel or routing.repo_root}\n"
+            f"  If that IS the repo you are in:    cwd has drifted; cd back and re-run without --path."
         )
     if args.to is None:
         require_ok(routing)
@@ -1061,7 +1065,8 @@ def cmd_new(args: argparse.Namespace) -> int:
         # The store's directory tree encodes the clone path; the origin URL is the identity that
         # survives the clone being moved or renamed, so that is what the file itself records.
         origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
-    return write_plan(target, args.topic, args.status, where, origin, cfg)
+    belongs = routing.rel or (str(routing.repo_root) if routing.repo_root else None)
+    return write_plan(target, args.topic, args.status, where, origin, cfg, belongs_to=belongs)
 
 
 def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
@@ -1097,7 +1102,9 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
     return code
 
 
-def write_plan(target: Path, topic: str, status: str, where: str, repo: str | None, cfg: Config) -> int:
+def write_plan(
+    target: Path, topic: str, status: str, where: str, repo: str | None, cfg: Config, belongs_to: str | None = None
+) -> int:
     path = target / f"{today()}-{topic}.md"
     if path.exists():
         raise PlanError(f"{path} already exists — update it in place rather than opening a second file")
@@ -1111,6 +1118,12 @@ def write_plan(target: Path, topic: str, status: str, where: str, repo: str | No
     path.write_text("\n".join(lines), encoding="utf-8")
     print(f"created: {path}")
     print(f"where:   {where}")
+    if belongs_to:
+        # Named on every create, not only when something looks wrong. The cross-repo guard compares
+        # against cwd, and cwd can drift — when it does, both sides of that comparison drift with it
+        # and the guard cannot fire at all. Saying which repo the plan just became the property of
+        # is the one check that survives drift, because it depends on nothing that drifted.
+        print(f"repo:    {belongs_to}")
     if where in {"store", "unscoped"} and not (cfg.store / ".git").is_dir():
         print(f"note:    {cfg.store} is not a git repository yet — plans.py install")
     if where == "unscoped":

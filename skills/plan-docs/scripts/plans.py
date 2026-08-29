@@ -11,8 +11,8 @@ also take `--json`) so an agent can act on the answer without opening a file.
 
     plans.py where                      # which directories this repo's plans live in
     plans.py new store-routing          # create today's plan file in the right one
-    plans.py list                       # status-grouped index, with open-tag counts
-    plans.py backlog                    # the same, across every repo on the machine
+    plans.py list                       # what is open here — scope, cap and filters below
+    plans.py list --scope family        # the same, across every repo on the machine
     plans.py tags --tag DEFERRED        # the anchored greps, without the anchoring mistakes
     plans.py set-status <file> planned  # runs the promotion gate first
     plans.py move <file> --to store     # a repo switching where it keeps plans
@@ -105,8 +105,15 @@ TERMINAL_STATUSES = ("landed", "abandoned", "superseded")
 STATUS_EXACT = ("in-progress", "planned", "idea", "landed", "abandoned")
 STATUS_PREFIXES = ("blocked on ", "superseded by ")
 
-# How much of a status line `backlog` prints as a group heading before eliding it.
+# How much of a status line `list` prints as a group heading before eliding it.
 HEADING_WIDTH = 72
+
+# How many `idea` plans a listing shows before eliding the rest. Only that tier is capped — see
+# `_print_rows`. Measured 2026-08-29 against this author's corpus: 10 keeps the whole-machine
+# listing inside ~35 lines, which is the token cost this default exists to bound.
+DEFAULT_IDEA_LIMIT = 10
+
+SCOPES = ("auto", "repo", "family", "unscoped")
 
 # The two gates SKILL.md states in prose, as data. Everything else is a free transition.
 STATUS_GATES = {"planned": "NEEDS CLARIFICATION", "landed": "UNVERIFIED"}
@@ -211,6 +218,7 @@ class Config:
     private_extra: tuple[str, ...]
     private_ignore: tuple[str, ...]
     about: dict[str, str]
+    idea_limit: int
 
     @property
     def unscoped(self) -> Path:
@@ -308,7 +316,17 @@ def load_config() -> Config:
         private_extra=_strings(_table(raw, "private").get("extra"), "private.extra"),
         private_ignore=_strings(_table(raw, "private").get("ignore"), "private.ignore"),
         about={str(key): str(value) for key, value in _table(raw, "about").items()},
+        idea_limit=_int_field(_table(raw, "view"), "idea_limit", DEFAULT_IDEA_LIMIT),
     )
+
+
+def _int_field(raw: dict[str, object], key: str, fallback: int) -> int:
+    value = raw.get(key)
+    if value is None:
+        return fallback
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise PlanError(f"view.{key} must be a non-negative integer, got {value!r}")
+    return value
 
 
 def _table(raw: dict[str, object], key: str) -> dict[str, object]:
@@ -1000,93 +1018,112 @@ def write_plan(target: Path, topic: str, status: str, where: str, repo: str | No
     return 0
 
 
+def is_within(path: Path, parent: Path) -> bool:
+    try:
+        return path.resolve().is_relative_to(parent.resolve())
+    except OSError:
+        return False
+
+
+def auto_scope(cfg: Config, routing: Routing) -> str:
+    """`repo` when the session sits in a routed repo, `family` otherwise.
+
+    Inside the store the answer is `family`: the store is a git repository, so `resolve` finds a
+    repo root there, but it is not a project and a session that has cd'd into it is asking about
+    everything rather than about the store's own directory.
+    """
+    if routing.repo_root is not None and is_within(routing.repo_root, cfg.store):
+        return "family"
+    return "repo" if routing.verdict == "ok" else "family"
+
+
+def repo_scope_plans(cfg: Config, routing: Routing) -> list[tuple[str, PlanFile]]:
+    """Everything about the repo the session is in, plus the plans that belong to no repo yet.
+
+    Deliberately not `routing.read_dirs()`. A route decides where a *write* lands; letting it decide
+    what a *read* can see is what kept unscoped plans invisible from every repo on a machine whose
+    roots are all `mode = "repo"` — the set with no other route back to attention was the one set
+    nothing surfaced. Same argument `family_plans` already makes: discovery must not depend on the
+    routing config being complete.
+    """
+    label = routing.rel or (routing.repo_root.name if routing.repo_root else "(repo)")
+    found: list[tuple[str, PlanFile]] = []
+    for where in ("repo", "store"):
+        if where in routing.dirs:
+            found.extend((label, plan) for plan in plans_in(routing.dirs[where], where))
+    found.extend((UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
+    return found
+
+
 def cmd_list(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    if args.unscoped:
-        sources = [("unscoped", cfg.unscoped)]
-        plans = plans_in(cfg.unscoped, "unscoped")
-    else:
-        routing = require_ok(resolve(args.path, cfg))
-        sources = routing.read_dirs()
-        plans = plan_files(routing)
-    if args.status:
-        plans = [plan for plan in plans if plan.status.startswith(args.status)]
+    """What is open, at whichever breadth the question was asked at.
 
-    if args.json:
-        print(
-            json.dumps(
-                [
-                    {
-                        "path": str(plan.path),
-                        "where": plan.where,
-                        "status": plan.status,
-                        "updated": plan.updated,
-                        "tags": dict(plan.tags),
-                    }
-                    for plan in plans
-                ],
-                indent=2,
-            )
-        )
-        return 0
-
-    for where, path in sources:
-        print(f"read:    {where:<8} {path}{'' if path.is_dir() else ' (does not exist)'}")
-    if not plans:
-        print("\n(no plan files)")
-        return 0
-
-    order = {name: index for index, name in enumerate((*STATUS_ORDER, "unknown"))}
-    grouped: dict[str, list[PlanFile]] = {}
-    for plan in sorted(plans, key=lambda p: (order[p.group], p.path.name)):
-        grouped.setdefault(plan.status, []).append(plan)
-    width = max(len(plan.path.name) for plan in plans)
-    for status, group in grouped.items():
-        print(f"\n{status} ({len(group)})")
-        for plan in group:
-            tags = "  ".join(f"{count} {name}" for name, count in sorted(plan.tags.items()))
-            name = plan.path.name.ljust(width)
-            print(f"  {plan.where:<6} {name}  updated {plan.updated or '?'}{'  ' + tags if tags else ''}")
-    return 0
-
-
-def cmd_backlog(args: argparse.Namespace) -> int:
-    """What is open across every repo — the one question a per-repo `plans/` directory cannot answer.
-
-    Ownership stays per-repo; this is a view over it, which is where every mature tool in this space
-    landed. Nothing is moved, and nothing is written.
+    One command rather than two: a per-repo index and a machine-wide one differ only in breadth, and
+    `--scope` is that axis. Ownership stays per-repo either way — this is a view, nothing is written.
     """
     cfg = load_config()
-    entries = _select_backlog(family_plans(cfg), args)
+    routing = resolve(args.path, cfg)
+    scope = args.scope if args.scope != "auto" else auto_scope(cfg, routing)
 
+    if scope == "repo":
+        require_ok(routing)
+        entries = repo_scope_plans(cfg, routing)
+    elif scope == "unscoped":
+        entries = [(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped")]
+    else:
+        entries = family_plans(cfg)
+
+    all_entries = entries
+    entries = _select(entries, args)
     if args.json:
         print(json.dumps([_plan_payload(rel, plan) for rel, plan in entries], indent=2))
         return 0
 
-    print(f"root:    {cfg.projects_root}")
+    print(f"scope:   {scope}{' (auto)' if args.scope == 'auto' else ''}")
+    if scope == "repo":
+        print(f"repo:    {routing.rel or routing.repo_root}")
+    else:
+        print(f"root:    {cfg.projects_root}")
     print(f"store:   {cfg.store}")
     if not entries:
-        print("\n(no plan files)")
+        # Not necessarily an empty repo: a `plans/` holding nothing but landed plans is a
+        # retirement backlog, and "(no plan files)" on its own would be a lie of omission.
+        print("\n(no open plans)")
+        _print_retirements_owed(all_entries, args)
         return 0
 
-    _print_backlog_rows(entries)
-    _print_dependencies(entries)
-    _print_status_drift(entries)
-
-    totals = Counter(name for _, plan in entries for name in plan.tags.elements())
-    open_tags = "  ".join(f"{totals[name]} {name}" for name in TAG_NAMES if totals[name])
-    print(f"\n{len(entries)} plan(s) across {len({rel for rel, _ in entries})} location(s)")
-    if open_tags:
-        print(f"open tags: {open_tags}")
-
-    public = set(cfg.public_root_names())
-    if any(rel.split("/")[0] not in public and rel != UNSCOPED_DIR for rel, _ in entries):
-        print("Rows outside a public root name repos that are not yours to disclose — this listing is")
-        print("for deciding what to work on, never for pasting into a repo you publish.")
+    elided = _print_rows(entries, show_repo=scope != "repo", limit=_idea_limit(args, cfg), stale=args.stale)
+    if scope == "repo":
+        _print_inbound_dependencies(cfg, routing)
+    elif scope == "family":
+        _print_family_dependencies(entries)
+        _print_status_drift(entries)
+    _print_footer(cfg, entries, elided)
+    _print_retirements_owed(all_entries, args)
     return 0
 
 
-def _select_backlog(entries: list[tuple[str, PlanFile]], args: argparse.Namespace) -> list[tuple[str, PlanFile]]:
+def _print_retirements_owed(entries: list[tuple[str, PlanFile]], args: argparse.Namespace) -> None:
+    """Terminal-status plans are hidden from the rows but never silently.
+
+    `plans/` is a working set that empties out, so a `landed` plan still sitting in one is a
+    retirement owed — the single most useful thing this command can point at. Hiding it with no
+    trace is what the pre-scope `list` avoided by showing terminal rows outright; the count says the
+    same thing in one line instead of N.
+    """
+    if args.all or args.status:
+        return
+    owed = [pair for pair in entries if pair[1].group in TERMINAL_STATUSES]
+    if owed:
+        print(f"{len(owed)} plan(s) at a terminal status await retirement — --all to see them")
+
+
+def _idea_limit(args: argparse.Namespace, cfg: Config) -> int:
+    """`--limit` wins over the configured cap; 0 means no cap at either level."""
+    return cfg.idea_limit if args.limit is None else args.limit
+
+
+def _select(entries: list[tuple[str, PlanFile]], args: argparse.Namespace) -> list[tuple[str, PlanFile]]:
     """An explicit --status wins over the open-work default, so `--status landed` still works."""
     if args.status:
         entries = [pair for pair in entries if pair[1].status.startswith(args.status)]
@@ -1094,7 +1131,27 @@ def _select_backlog(entries: list[tuple[str, PlanFile]], args: argparse.Namespac
         entries = [pair for pair in entries if pair[1].group not in TERMINAL_STATUSES]
     if args.tag:
         entries = [pair for pair in entries if pair[1].tags.get(args.tag)]
+    if args.stale is not None:
+        entries = [pair for pair in entries if _is_stale(pair[1], args.stale)]
     return entries
+
+
+def _is_stale(plan: PlanFile, days: int) -> bool:
+    age = age_in_days(plan.updated)
+    return age is None or age >= days
+
+
+def age_in_days(updated: str) -> int | None:
+    """Days since a plan's `updated` stamp, or None when it has none or it does not parse.
+
+    None is not zero: a plan with no stamp is drift, and treating it as fresh would hide exactly the
+    file most likely to have been abandoned.
+    """
+    try:
+        stamped = datetime.strptime(updated, "%Y-%m-%d").replace(tzinfo=UTC).date()
+    except ValueError:
+        return None
+    return (datetime.now(UTC).astimezone().date() - stamped).days
 
 
 def _plan_payload(rel: str, plan: PlanFile) -> dict[str, object]:
@@ -1109,39 +1166,106 @@ def _plan_payload(rel: str, plan: PlanFile) -> dict[str, object]:
     }
 
 
-def _print_backlog_rows(entries: list[tuple[str, PlanFile]]) -> None:
+def _print_rows(entries: list[tuple[str, PlanFile]], *, show_repo: bool, limit: int, stale: int | None) -> int:
+    """Render the grouped index, capping the `idea` tier only. Returns how many rows were elided.
+
+    Only `idea` is capped. The live tiers are bounded by how much work can actually be in flight —
+    measured 2026-08-29 on this author's machine, 19 live against 49 ideas — while `idea` grows
+    without bound, so it is the only group whose output cost is unbounded. A limit that can hide
+    in-progress work would make the command unsafe to trust, and a truncated answer to "what is
+    next" is worse than an untruncated long one.
+    """
     order = {name: index for index, name in enumerate((*STATUS_ORDER, "unknown"))}
     grouped: dict[str, list[tuple[str, PlanFile]]] = {}
     for rel, plan in sorted(entries, key=lambda pair: (order[pair[1].group], pair[0], pair[1].path.name)):
         grouped.setdefault(plan.status, []).append((rel, plan))
-    repo_width = max(len(rel) for rel, _ in entries)
+    repo_width = max(len(rel) for rel, _ in entries) if show_repo else 0
     name_width = max(len(plan.path.name) for _, plan in entries)
+
+    elided = 0
     for status, group in grouped.items():
+        shown = group
+        if status == "idea" and limit > 0 and len(group) > limit:
+            # Newest first inside the capped tier: an idea nobody has touched in months is the one
+            # row a cap may drop without costing anything.
+            shown = sorted(group, key=lambda pair: pair[1].updated, reverse=True)[:limit]
+            shown = sorted(shown, key=lambda pair: (pair[0], pair[1].path.name))
+            elided += len(group) - limit
         # A free-form status can be a whole paragraph; the drift section prints it in full instead.
         heading = status if len(status) <= HEADING_WIDTH else status[: HEADING_WIDTH - 1] + "…"
-        print(f"\n{heading} ({len(group)})")
-        for rel, plan in group:
+        capped = f", showing {len(shown)}" if len(shown) != len(group) else ""
+        print(f"\n{heading} ({len(group)}{capped})")
+        for rel, plan in shown:
             tags = "  ".join(f"{count} {name}" for name, count in sorted(plan.tags.items()))
-            line = f"  {rel.ljust(repo_width)}  {plan.where:<6} {plan.path.name.ljust(name_width)}"
-            print(f"{line}  updated {plan.updated or '?'}{'  ' + tags if tags else ''}")
+            prefix = f"  {rel.ljust(repo_width)}  " if show_repo else "  "
+            line = f"{prefix}{plan.where:<8} {plan.path.name.ljust(name_width)}"
+            age = age_in_days(plan.updated)
+            stamp = f"updated {plan.updated or '?'}"
+            if stale is not None:
+                stamp += f" ({age}d)" if age is not None else " (no stamp)"
+            print(f"{line}  {stamp}{'  ' + tags if tags else ''}")
+    return elided
 
 
-def _print_dependencies(entries: list[tuple[str, PlanFile]]) -> None:
+def _print_footer(cfg: Config, entries: list[tuple[str, PlanFile]], elided: int) -> None:
+    totals = Counter(name for _, plan in entries for name in plan.tags.elements())
+    open_tags = "  ".join(f"{totals[name]} {name}" for name in TAG_NAMES if totals[name])
+    print(f"\n{len(entries)} plan(s) across {len({rel for rel, _ in entries})} location(s)")
+    if elided:
+        print(f"{elided} idea(s) not shown — --limit 0 for all of them")
+    if open_tags:
+        print(f"open tags: {open_tags}")
+
+    public = set(cfg.public_root_names())
+    if any(rel.split("/")[0] not in public and rel != UNSCOPED_DIR for rel, _ in entries):
+        print("Rows outside a public root name repos that are not yours to disclose — this listing is")
+        print("for deciding what to work on, never for pasting into a repo you publish.")
+
+
+def _blocked_by(entries: list[tuple[str, PlanFile]]) -> dict[str, list[str]]:
     """`depends_on` as a blocked-by view, which is the only thing that ever made the field useful.
 
     A plan naming a sibling repo is waiting on work there; from that repo's own `plans/` directory
-    the wait is invisible, which is the discovery gap this whole command exists to close.
+    the wait is invisible, which is the discovery gap this command exists to close. Keyed by the
+    bare repo name the field carries, not by a path — `depends_on: [repo-tasks]` names a repo.
     """
     waiting: dict[str, list[str]] = {}
     for rel, plan in entries:
         for name in plan.depends_on:
             waiting.setdefault(name, []).append(f"{rel}/{plan.path.name}")
+    return waiting
+
+
+def _print_family_dependencies(entries: list[tuple[str, PlanFile]]) -> None:
+    """Counts, not edges.
+
+    Every edge printed here is one line, so the section grows with the corpus exactly the way the
+    `idea` tier did — measured 2026-08-29, 22 of 81 lines in this author's family listing, the
+    largest single section once the idea cap landed. Capping one tier only moves an unbounded cost
+    unless the other unbounded section is bounded too. The edges themselves are actionable in one
+    place, `--scope repo` inside the repo being waited on, so that is where they are printed.
+    """
+    waiting = _blocked_by(entries)
     if not waiting:
         return
-    print("\nblocked by another repo (depends_on)")
+    print("\nblocked by another repo (depends_on) — run --scope repo there for the plans")
     for name in sorted(waiting):
-        for dependent in sorted(waiting[name]):
-            print(f"  {name} <- {dependent}")
+        print(f"  {name} <- {len(waiting[name])} plan(s)")
+
+
+def _print_inbound_dependencies(cfg: Config, routing: Routing) -> None:
+    """What other repos are waiting on *this* one — the actionable half, and bounded by definition.
+
+    Needs the family pass: a repo's own `plans/` cannot contain the plan that names it. Cheap, since
+    `repo_paths` stops at each `.git` without walking any repo's contents.
+    """
+    name = (routing.rel or "").split("/")[-1] or (routing.repo_root.name if routing.repo_root else "")
+    dependents = sorted(_blocked_by(family_plans(cfg)).get(name, []))
+    if not dependents:
+        return
+    print(f"\nwaiting on this repo ({len(dependents)})")
+    for dependent in dependents:
+        print(f"  {dependent}")
 
 
 def _print_status_drift(entries: list[tuple[str, PlanFile]]) -> None:
@@ -1645,18 +1769,15 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--unscoped", action="store_true", help="an idea with no repo yet; needs no repo at all")
     new.set_defaults(func=cmd_new)
 
-    listing = add("list", "status-grouped index of this repo's plans, with open-tag counts")
+    listing = add("list", "what is open — this repo by default, every repo with --scope family")
+    listing.add_argument("--scope", choices=SCOPES, default="auto", help="breadth (default: auto)")
     listing.add_argument("--status", help="only plans whose status starts with this")
+    listing.add_argument("--tag", choices=TAG_NAMES, help="only plans carrying this open tag")
+    listing.add_argument("--stale", type=int, metavar="DAYS", help="only plans not updated in this many days")
+    listing.add_argument("--limit", type=int, help="cap the idea tier (0 = no cap; default: config)")
+    listing.add_argument("--all", action="store_true", help="include landed, abandoned and superseded")
     listing.add_argument("--json", action="store_true")
-    listing.add_argument("--unscoped", action="store_true", help="the repo-less plans instead of this repo's")
     listing.set_defaults(func=cmd_list)
-
-    backlog = add("backlog", "every open plan across every repo, in one index")
-    backlog.add_argument("--status", help="only plans whose status starts with this")
-    backlog.add_argument("--tag", choices=TAG_NAMES, help="only plans carrying this open tag")
-    backlog.add_argument("--all", action="store_true", help="include landed, abandoned and superseded")
-    backlog.add_argument("--json", action="store_true")
-    backlog.set_defaults(func=cmd_backlog)
 
     tags = add("tags", "anchored search for the five plan-docs tags")
     tags.add_argument("--tag", choices=TAG_NAMES, help="one tag (default: all five)")

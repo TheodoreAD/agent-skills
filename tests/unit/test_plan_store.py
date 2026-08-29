@@ -247,12 +247,30 @@ def test_list_reads_both_directories_in_both_mode(ws, capsys):
     )
     plans.main(["new", "new-thing", "--path", str(ws.client)])
     capsys.readouterr()
-    assert plans.main(["list", "--path", str(ws.client)]) == 0
+    assert plans.main(["list", "--all", "--path", str(ws.client)]) == 0
     out = capsys.readouterr().out
-    assert "2026-01-01-old.md" in out
-    assert "new-thing.md" in out
+    assert "2026-01-01-old.md" in out  # the repo's own plans/
+    assert "new-thing.md" in out  # the store mirror this repo also writes to
     assert "idea (1)" in out
     assert "landed (1)" in out
+
+
+def test_a_landed_plan_is_hidden_from_the_rows_but_never_silently(ws, capsys):
+    """`plans/` is a working set that empties out, so a terminal plan still sitting in one is a
+    retirement owed — the count says so in a line even when nothing open is left to list."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-done.md", "status: landed\nupdated: 2026-01-01")
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "(no open plans)" in out
+    assert "2026-01-01-done.md" not in out
+    assert "1 plan(s) at a terminal status await retirement" in out
+
+    assert plans.main(["list", "--all", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "2026-01-01-done.md" in out
+    assert "await retirement" not in out  # --all already shows them; the nudge would be noise
 
 
 def test_move_relocates_and_stamps_the_repo_field(ws, capsys):
@@ -268,7 +286,7 @@ def test_move_relocates_and_stamps_the_repo_field(ws, capsys):
 
 
 # --------------------------------------------------------------------------------------------
-# the cross-repo view
+# the listing, at each scope
 
 
 def plan(directory: Path, name: str, front: str, body: str = "") -> Path:
@@ -278,7 +296,7 @@ def plan(directory: Path, name: str, front: str, body: str = "") -> Path:
     return path
 
 
-def test_backlog_spans_repos_and_hides_finished_plans(ws, capsys):
+def test_family_scope_spans_repos_and_hides_finished_plans(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plan(ws.personal / "plans", "2026-01-01-open.md", "status: idea\nupdated: 2026-01-01")
     plan(
@@ -287,16 +305,16 @@ def test_backlog_spans_repos_and_hides_finished_plans(ws, capsys):
         "status: landed\nupdated: 2026-01-02",
     )
 
-    assert plans.main(["backlog", "--path", str(ws.personal)]) == 0
+    assert plans.main(["list", "--scope", "family", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
     assert "2026-01-01-open.md" in out
     assert "2026-01-02-shipped.md" not in out  # terminal statuses are not open work
 
-    plans.main(["backlog", "--all", "--path", str(ws.personal)])
+    plans.main(["list", "--scope", "family", "--all", "--path", str(ws.personal)])
     assert "2026-01-02-shipped.md" in capsys.readouterr().out
 
 
-def test_backlog_sees_a_repo_no_routing_rule_covers(ws, capsys):
+def test_family_scope_sees_a_repo_no_routing_rule_covers(ws, capsys):
     """Discovery must not depend on the config being complete — the unrouted repo is exactly the one
     whose backlog would otherwise stay invisible."""
     write_config(ws, "")
@@ -304,24 +322,102 @@ def test_backlog_sees_a_repo_no_routing_rule_covers(ws, capsys):
     assert plans.main(["where", "--path", str(ws.personal)]) == plans.NEEDS_DECISION
     capsys.readouterr()
 
-    assert plans.main(["backlog", "--path", str(ws.personal)]) == 0
+    assert plans.main(["list", "--scope", "family", "--path", str(ws.personal)]) == 0
     assert "2026-01-01-orphan.md" in capsys.readouterr().out
 
 
-def test_backlog_turns_depends_on_into_blocked_by_edges(ws, capsys):
+def test_repo_scope_reads_the_store_mirror_and_unscoped_whatever_the_route_says(ws, capsys):
+    """The regression this scope exists for: under a `mode = "repo"` root, routing named only the
+    repo's own directory, so an unscoped plan was unreachable from every repo on the machine."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
-    plan(
-        ws.personal / "plans",
-        "2026-01-01-waiting.md",
-        "status: idea\nupdated: 2026-01-01\ndepends_on: [repo-tasks, scaffoldapy]",
-    )
-    assert plans.main(["backlog", "--path", str(ws.personal)]) == 0
+    plan(ws.personal / "plans", "2026-01-01-committed.md", "status: idea\nupdated: 2026-01-01")
+    mirror = ws.store / "github.com-personal" / "agent-skills"
+    plan(mirror, "2026-01-02-left-behind.md", "status: idea\nupdated: 2026-01-02")
+    plan(ws.store / "_unscoped", "2026-01-03-homeless.md", "status: idea\nupdated: 2026-01-03")
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
-    assert "repo-tasks <- github.com-personal/agent-skills/2026-01-01-waiting.md" in out
-    assert "scaffoldapy <- github.com-personal/agent-skills/2026-01-01-waiting.md" in out
+    assert "scope:   repo (auto)" in out
+    assert "2026-01-01-committed.md" in out
+    assert "2026-01-02-left-behind.md" in out
+    assert "2026-01-03-homeless.md" in out
 
 
-def test_backlog_reports_status_drift_no_single_repo_can_see(ws, capsys):
+def test_scope_falls_back_to_family_outside_a_repo_and_inside_the_store(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-open.md", "status: idea\nupdated: 2026-01-01")
+    outside = ws.home / "elsewhere"
+    outside.mkdir()
+
+    assert plans.main(["list", "--path", str(outside)]) == 0
+    assert "scope:   family (auto)" in capsys.readouterr().out
+
+    # The store is itself a git repository, so `resolve` finds a root there — but it is not a
+    # project, and a session that has cd'd into it is asking about everything.
+    make_repo(ws.store)
+    assert plans.main(["list", "--path", str(ws.store)]) == 0
+    assert "scope:   family (auto)" in capsys.readouterr().out
+
+
+def test_the_idea_tier_is_capped_and_the_live_tiers_never_are(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n[view]\nidea_limit = 2\n')
+    for day in range(1, 6):
+        plan(ws.personal / "plans", f"2026-01-0{day}-idea.md", f"status: idea\nupdated: 2026-01-0{day}")
+    for day in range(6, 9):
+        plan(ws.personal / "plans", f"2026-01-0{day}-live.md", f"status: in-progress\nupdated: 2026-01-0{day}")
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "idea (5, showing 2)" in out
+    assert "in-progress (3)" in out  # no cap, and no "showing"
+    assert "3 idea(s) not shown" in out
+    # Newest kept: an idea nobody has touched is the row a cap may drop.
+    assert "2026-01-05-idea.md" in out
+    assert "2026-01-01-idea.md" not in out
+
+    assert plans.main(["list", "--limit", "0", "--path", str(ws.personal)]) == 0
+    assert "2026-01-01-idea.md" in capsys.readouterr().out
+
+
+def test_stale_filters_by_age_and_keeps_an_unstamped_plan(ws, capsys):
+    """A plan with no `updated` stamp is drift; treating it as fresh would hide the file most likely
+    to have been abandoned."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-ancient.md", "status: idea\nupdated: 2026-01-01")
+    plan(ws.personal / "plans", "2099-01-01-fresh.md", "status: idea\nupdated: 2099-01-01")
+    plan(ws.personal / "plans", "2026-01-01-unstamped.md", "status: idea")
+
+    assert plans.main(["list", "--stale", "30", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "2026-01-01-ancient.md" in out
+    assert "2026-01-01-unstamped.md" in out
+    assert "2099-01-01-fresh.md" not in out
+
+
+def test_family_scope_summarises_depends_on_while_repo_scope_names_the_plans(ws, capsys):
+    """Every edge printed is a line that grows with the corpus, so the family view counts them and
+    the repo being waited on gets the actionable list."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
+    plan(
+        other / "plans",
+        "2026-01-01-waiting.md",
+        "status: idea\nupdated: 2026-01-01\ndepends_on: [agent-skills]",
+    )
+    plan(ws.personal / "plans", "2026-01-02-here.md", "status: idea\nupdated: 2026-01-02")
+
+    assert plans.main(["list", "--scope", "family", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "agent-skills <- 1 plan(s)" in out
+    assert "2026-01-01-waiting.md" not in out.split("blocked by another repo")[1]
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "waiting on this repo (1)" in out
+    assert "github.com-personal/repo-tasks/2026-01-01-waiting.md" in out
+
+
+def test_status_drift_no_single_repo_can_see(ws, capsys):
     """`done` where `landed` is defined, and prose where an enum belongs. Each repo's own gate sees
     one repo, so this is the only place either can surface."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
@@ -333,7 +429,7 @@ def test_backlog_reports_status_drift_no_single_repo_can_see(ws, capsys):
     )
     plan(ws.personal / "plans", "2026-01-03-fine.md", "status: blocked on the upstream API\nupdated: 2026-01-03")
 
-    assert plans.main(["backlog", "--path", str(ws.personal)]) == 0
+    assert plans.main(["list", "--scope", "family", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
     assert "status drift (2)" in out
     assert "'done'" in out
@@ -341,12 +437,12 @@ def test_backlog_reports_status_drift_no_single_repo_can_see(ws, capsys):
     assert "2026-01-03-fine.md" in out  # a reason after `blocked on` is the vocabulary, not drift
 
 
-def test_backlog_filters_by_tag(ws, capsys):
+def test_listing_filters_by_tag(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plan(ws.personal / "plans", "2026-01-01-deferred.md", "status: idea\nupdated: 2026-01-01", "\n[DEFERRED: later]\n")
     plan(ws.personal / "plans", "2026-01-02-clean.md", "status: idea\nupdated: 2026-01-02")
 
-    assert plans.main(["backlog", "--tag", "DEFERRED", "--path", str(ws.personal)]) == 0
+    assert plans.main(["list", "--scope", "family", "--tag", "DEFERRED", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
     assert "2026-01-01-deferred.md" in out
     assert "2026-01-02-clean.md" not in out
@@ -509,13 +605,15 @@ def test_new_unscoped_needs_no_repo_at_all(ws, capsys):
     assert plans.parse_frontmatter(created.read_text())["status"] == "idea"
 
 
-def test_unscoped_plans_are_listed_separately(ws, capsys):
+def test_unscoped_plans_are_isolated_by_scope_but_visible_from_a_repo(ws, capsys):
+    """`--scope unscoped` is the repo-less backlog on its own; repo scope shows it alongside the
+    repo's own plans, because an unscoped plan nothing surfaces is one nobody comes back to."""
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "half-an-idea", "--unscoped", "--path", str(ws.client)])
     plans.main(["new", "repo-scoped", "--path", str(ws.client)])
     capsys.readouterr()
 
-    plans.main(["list", "--unscoped", "--path", str(ws.client)])
+    plans.main(["list", "--scope", "unscoped", "--path", str(ws.client)])
     unscoped = capsys.readouterr().out
     assert "half-an-idea" in unscoped
     assert "repo-scoped" not in unscoped
@@ -523,7 +621,7 @@ def test_unscoped_plans_are_listed_separately(ws, capsys):
     plans.main(["list", "--path", str(ws.client)])
     scoped = capsys.readouterr().out
     assert "repo-scoped" in scoped
-    assert "half-an-idea" not in scoped
+    assert "half-an-idea" in scoped
 
 
 def test_graduate_moves_an_idea_into_its_new_repo(ws, capsys):

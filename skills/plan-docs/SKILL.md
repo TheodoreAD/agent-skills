@@ -20,23 +20,35 @@ anchored tag greps, the promotion and deletion gates, inbound references. Run it
 files to work the answer out — the file reads are the expensive part, and each command below is one
 of them.
 
-```shell
-P=~/.agents/skills/plan-docs/scripts/plans.py
+**Write the path out in full on every call.** Shell variables do not survive between an agent's Bash
+calls — only the working directory does — so a `P=…` assignment is empty by the next command and
+every invocation below is the whole path:
 
-python3 $P where                        # which directories this repo reads and writes
-python3 $P new <topic>                  # today's file, right directory, frontmatter filled in
-python3 $P list                         # status-grouped index + open-tag counts per file
-python3 $P backlog                      # the same, across every repo on the machine
-python3 $P tags --tag DEFERRED          # anchored, across every plan this repo can see
-python3 $P set-status <file> planned    # refuses if the gate for that status fails
-python3 $P refs <file>                  # inbound references, before retiring
-python3 $P archive --search <words>     # a retired plan, back out of git history
-python3 $P move <file> --to store       # a repo switching where it keeps plans
-python3 $P scan                         # no private name reaches a repo you publish
-python3 $P repos --search <words>       # what each repo is for, to route a plan by
-python3 $P new <topic> --unscoped       # an idea with no repo yet
-python3 $P graduate <file> --to <repo>  # …once it has one
-python3 $P install                      # set the machine up; uninstall undoes it
+```shell
+python3 ~/.agents/skills/plan-docs/scripts/plans.py list
+```
+
+**Start here.** Three commands answer most sessions:
+
+| the question                           | the command                        |
+| -------------------------------------- | ---------------------------------- |
+| what is open? what should I work on?   | `list` — see "Asking what is open" |
+| where does a new plan go, and write it | `new <topic>`                      |
+| which directories does this repo use?  | `where`                            |
+
+The rest, in the order the lifecycle reaches them:
+
+```shell
+python3 <path> tags --tag DEFERRED          # anchored, across every plan this repo can see
+python3 <path> set-status <file> planned    # refuses if the gate for that status fails
+python3 <path> refs <file>                  # inbound references, before retiring
+python3 <path> archive --search <words>     # a retired plan, back out of git history
+python3 <path> move <file> --to store       # a repo switching where it keeps plans
+python3 <path> scan                         # no private name reaches a repo you publish
+python3 <path> repos --search <words>       # what each repo is for, to route a plan by
+python3 <path> new <topic> --unscoped       # an idea with no repo yet
+python3 <path> graduate <file> --to <repo>  # …once it has one
+python3 <path> install                      # set the machine up; uninstall undoes it
 ```
 
 ## Where a plan file goes
@@ -57,9 +69,9 @@ is computed from the repo root, not from the working directory.
 
 **`where` exiting 3 is a question, not a failure.** It means no rule covers this repo. Ask the user
 which route it should use, then record the answer in `~/.config/plan-docs/config.toml` —
-`python3 $P config init` writes a commented skeleton. Never pick a side silently: guessing "repo"
-writes a directory into someone else's repository, and guessing "store" hides the plan somewhere the
-user never named.
+`python3 <path> config init` writes a commented skeleton. Never pick a side silently: guessing
+"repo" writes a directory into someone else's repository, and guessing "store" hides the plan
+somewhere the user never named.
 
 ```toml
 projects_root = "~/projects"
@@ -78,11 +90,11 @@ default = "store" # omit it and an unmatched repo asks instead
 `$PLANS_HOME` (default `~/plans`) is the store; `projects_root` (default `~/projects`) is the root
 the mirrored paths are relative to; `$PLAN_DOCS_CONFIG` overrides the config location.
 
-`python3 $P install` is the whole setup and is idempotent: it writes the config skeleton if there
-isn't one (never over an existing one), creates the store as a **local git repository with no
+`python3 <path> install` is the whole setup and is idempotent: it writes the config skeleton if
+there isn't one (never over an existing one), creates the store as a **local git repository with no
 remote**, creates the repo-less area, then reports what it could not do for you — a store with no
-git identity, an unset `PLANS_HOME`. `python3 $P uninstall` reverses it: it removes the config but
-**keeps the store**, because the store is the only copy of those plans; deleting it takes
+git identity, an unset `PLANS_HOME`. `python3 <path> uninstall` reverses it: it removes the config
+but **keeps the store**, because the store is the only copy of those plans; deleting it takes
 `--purge-store --force` and a deliberate decision.
 
 The no-remote default is the design, not an oversight: local history is the benefit, and one
@@ -100,7 +112,7 @@ the ticket prefix. A plan about work for someone else can still be written — d
 work root with a `<project>/<repo>` hierarchy", "a client repo under review pressure") and keep the
 specifics in the store, where they belong.
 
-**Run `python3 $P scan` before committing to any repo that is or might become public**, and
+**Run `python3 <path> scan` before committing to any repo that is or might become public**, and
 `--mode staged` immediately before the commit itself. It exits non-zero on a hit. The terms come
 from the machine — every root, project and repo name under `projects_root` that is not under a
 `public_roots` entry, each root name also split into its organisation (so the client behind
@@ -143,9 +155,9 @@ by an agent with no rule telling it not to, into a repo whose own README adverti
 An idea, task or exploration that has not earned a repo goes to `$PLANS_HOME/_unscoped/`:
 
 ```shell
-python3 $P new <topic> --unscoped     # works anywhere, including outside any git repo
-python3 $P list --unscoped            # the repo-less backlog
-python3 $P graduate <file> --to <path inside the new repo>
+python3 <path> new <topic> --unscoped     # works anywhere, including outside any git repo
+python3 <path> list --scope unscoped      # the repo-less backlog on its own
+python3 <path> graduate <file> --to <path inside the new repo>
 ```
 
 `graduate` routes the file through the destination repo's own rule — into its committed `plans/`, or
@@ -153,30 +165,52 @@ into that repo's store directory — and stamps the `repo:` frontmatter when the
 store. Do it the moment the repo appears, not later: an unscoped plan whose work has moved into a
 repo is a plan nobody will find again.
 
-## What is open everywhere
+## Asking what is open
 
-A `plans/` directory answers "what is open here". Nothing in the convention answers "what is open
-across everything" — and a plan filed in one repo about another is invisible from the repo it
-concerns. `backlog` is that view; ownership does not move, and nothing is written:
+**Answer "what plans do we have" and "what should I work on" with one `list` call, not by opening
+plan files.** The scope is chosen for you:
 
 ```shell
-python3 $P backlog                    # every open plan, every repo, grouped by status
-python3 $P backlog --tag DEFERRED     # only plans carrying that open tag
-python3 $P backlog --all              # include landed, abandoned and superseded
+python3 <path> list                       # auto: this repo when in one, the machine when not
+python3 <path> list --scope family        # every repo, always
+python3 <path> list --stale 14            # only what nobody has touched in a fortnight
+python3 <path> list --tag DEFERRED        # only plans carrying that open tag
+python3 <path> list --all                 # include landed, abandoned and superseded
+python3 <path> list --limit 0             # every idea, uncapped
 ```
 
-It reads both possible directories for every repo under the projects root, whether or not the config
-routes that repo yet — the repo nobody has routed is exactly the one whose plans would otherwise
-stay unseen. Two things it reports that no per-repo command can:
+`--scope auto` is the default and resolves to `repo` inside a routed repo, `family` outside any repo
+and inside the store itself — so a session that has cd'd nowhere in particular gets the machine-wide
+answer without asking for it.
 
-- **`depends_on` as a blocked-by view.** Each plan naming a sibling repo is listed under that repo,
-  so a session working there sees what is waiting on it.
+**Repo scope reads the repo's `plans/`, its store mirror, _and_ the unscoped area, whatever the
+route says.** A route decides where a _write_ lands; letting it decide what a _read_ can see is what
+kept unscoped plans invisible from every repo on a machine whose roots are all `mode = "repo"`
+(confirmed 2026-08-29) — the plans with no other route back to attention were the ones nothing
+surfaced.
+
+**Output is bounded, and only the `idea` tier is capped.** `in-progress`, `blocked` and `planned`
+are limited by how much work can actually be in flight; `idea` grows forever, so it is the only
+group whose cost is unbounded. The cap is `[view] idea_limit` (default 10), `--limit` overrides per
+call, and the footer always says how many rows were elided. **Never read a capped listing as the
+whole set** — if you are about to conclude something about every plan, pass `--limit 0` first.
+
+Two things only `--scope family` reports, because no per-repo command can see them:
+
+- **`depends_on` as a blocked-by view**, summarised as counts. The plans themselves print under
+  `--scope repo` in the repo being waited on, as "waiting on this repo" — that is where the wait is
+  actionable, and printing every edge machine-wide is a section that grows with the corpus exactly
+  the way the idea tier does (measured 2026-08-29: 22 of 81 lines).
 - **Status drift.** A status outside the vocabulary — `done` where `landed` is defined, or a
   free-form paragraph where an enum belongs — is only visible across repos, since each repo's own
-  gate sees one repo. Both were found on this command's first real run, 2026-08-29.
+  gate sees one repo. Both were found on this view's first real run, 2026-08-29.
 
-Like `repos`, its output names work repos: use it to decide what to work on, never paste it into a
-repo you publish.
+**A terminal-status plan is hidden from the rows but never silently.** `plans/` is a working set
+that empties out, so a `landed` plan still sitting in one is a retirement owed; the footer counts
+them and `--all` shows them. That count is often the most useful line in the output.
+
+Like `repos`, family output names work repos: use it to decide what to work on, never paste it into
+a repo you publish.
 
 ## Which repo does a plan belong to?
 
@@ -184,21 +218,21 @@ When content could plausibly belong to more than one repo, don't grep repos to d
 guess:
 
 ```shell
-python3 $P repos --search "<the words the plan is about>"
+python3 <path> repos --search "<the words the plan is about>"
 ```
 
 It prints every repo under the projects root with its route and a one-line description — the
 config's `[about]` entry, else that repo's README first line — ranked by the search words. Take the
 top two or three and put them to the user as `AskUserQuestion` options with those descriptions as
 the option text: an informed guess to confirm, not an open question. Record a better description
-with `python3 $P describe <repo> "<what belongs there>"` whenever a README's own line turns out to
-be a poor answer. That listing names work repos, so it is for choosing a destination — never paste
-it into a repo you publish.
+with `python3 <path> describe <repo> "<what belongs there>"` whenever a README's own line turns out
+to be a poor answer. That listing names work repos, so it is for choosing a destination — never
+paste it into a repo you publish.
 
 ## Creating a plan
 
-`python3 $P new <topic>` — kebab-case topic, one file per topic. It writes `YYYY-MM-DD-topic.md` in
-the route's write directory with the frontmatter already correct:
+`python3 <path> new <topic>` — kebab-case topic, one file per topic. It writes `YYYY-MM-DD-topic.md`
+in the route's write directory with the frontmatter already correct:
 
 ```yaml
 ---
@@ -258,8 +292,8 @@ tag, so any document discussing this convention reports a false backlog. `plans.
 anchoring, applied across every directory the repo's route reads:
 
 ```shell
-python3 $P tags --tag DEFERRED               # the whole backlog, no file opened
-python3 $P tags --file <file>.md             # one plan, all five tags
+python3 <path> tags --tag DEFERRED               # the whole backlog, no file opened
+python3 <path> tags --file <file>.md             # one plan, all five tags
 ```
 
 Tag at status transitions, not while drafting — those are the moments someone is already reading
@@ -269,8 +303,8 @@ above.
 ## Promoting a plan
 
 **Promote in place, in the same file — never split into a second file for the same topic.** Resolve
-every `NEEDS CLARIFICATION` first, then `python3 $P set-status <file> planned` — it runs that gate
-and refuses while any remain, so a refusal is the answer, not an obstacle to route around with
+every `NEEDS CLARIFICATION` first, then `python3 <path> set-status <file> planned` — it runs that
+gate and refuses while any remain, so a refusal is the answer, not an obstacle to route around with
 `--force`. Rewrite the body as `## Context` → `## Design` (numbered subsections, one per
 file/component touched, rationale inline) → `## Files touched` → `## Verification`.
 
@@ -308,9 +342,9 @@ picking one is part of the first retirement, not a reason to skip it.
 On reaching `landed`, `abandoned`, or an old `superseded by ...`: `plans/` is a working set that
 empties out — but nothing genuinely costly to work out gets silently dropped. Deleting the file
 takes it off the working set, not out of the repository: the drafting commits, its final state and
-the `## Migrated to` commit all stay reachable through git, and `python3 $P archive` is how they are
-read back — see "Getting a retired plan back" below. That is what makes the deletion cheap, and it
-is why a plan is only ever kept in version control.
+the `## Migrated to` commit all stay reachable through git, and `python3 <path> archive` is how they
+are read back — see "Getting a retired plan back" below. That is what makes the deletion cheap, and
+it is why a plan is only ever kept in version control.
 
 **A store-held plan retires exactly like a repo-held one, and is deleted the same way.** The usage
 docs and design rationale still go into the repo the plan is _about_ — updating a repo's own docs is
@@ -343,17 +377,17 @@ Code contracts and verification logs are usually the bulk of the deletable volum
 2. **A plan carrying live unfinished work is not deletable.** Run the deletion gate and move
    everything it finds into a plan that stays, before going further:
    ```shell
-   python3 $P tags --file <file>.md --tag DEFERRED
-   python3 $P tags --file <file>.md --tag UNVERIFIED
+   python3 <path> tags --file <file>.md --tag DEFERRED
+   python3 <path> tags --file <file>.md --tag UNVERIFIED
    ```
    Prefer appending to an existing open plan that already owns the concern over spawning a new file.
    On an untagged legacy plan, grep prose instead
    (`deferred|not yet|follow-up|TODO|known
    limitation`) and read what it finds.
-3. **Find inbound references before starting, not after** — `python3 $P refs <file>.md`. The count
-   decides whether this is one commit or several. It searches the **whole repo** (code comments and
-   docstrings cite plan paths too) plus the store, on the bare filename rather than the full
-   `plans/` path, since short-form references are the easy miss.
+3. **Find inbound references before starting, not after** — `python3 <path> refs <file>.md`. The
+   count decides whether this is one commit or several. It searches the **whole repo** (code
+   comments and docstrings cite plan paths too) plus the store, on the bare filename rather than the
+   full `plans/` path, since short-form references are the easy miss.
 4. **Add a `## Migrated to` section** naming each destination, and name what you deliberately did
    _not_ migrate and why. **Commit this addition on its own, before deleting the file** —
    add-and-delete in one commit means the section is never recorded in history at all, which defeats
@@ -384,11 +418,11 @@ Deleting a plan is only cheap because the file is still in the repository, and t
 practice if getting one back is a single command rather than an archaeology session:
 
 ```shell
-python3 $P archive                      # every plan deleted from this repo's plans/, newest first
-python3 $P archive --search "<phrase>"  # only the ones whose content ever contained it
-python3 $P archive --show <file>        # print one back, as it stood the moment before deletion
-python3 $P archive --file <file>        # one plan's whole lifecycle: drafting, landing, retirement
-python3 $P archive --all                # every repo on the machine, plus the store's own history
+python3 <path> archive                      # every plan deleted from this repo's plans/, newest first
+python3 <path> archive --search "<phrase>"  # only the ones whose content ever contained it
+python3 <path> archive --show <file>        # print one back, as it stood the moment before deletion
+python3 <path> archive --file <file>        # one plan's whole lifecycle: drafting, landing, retirement
+python3 <path> archive --all                # every repo on the machine, plus the store's own history
 ```
 
 Each row carries the plan's final `status` and its `## Migrated to` destinations, which are usually
@@ -405,7 +439,7 @@ Three things worth knowing before trusting a result:
 - **A plan that moved between the repo and the store is not retired**, though its old location's
   history says it was deleted. Those rows say `still live` and name where it is; go read that file.
 - **A store with no git repository archives nothing.** `archive` says so in its header when it finds
-  one. Fix it with `python3 $P install` _before_ retiring anything held there.
+  one. Fix it with `python3 <path> install` _before_ retiring anything held there.
 
 ## Migrating a legacy single plan file
 

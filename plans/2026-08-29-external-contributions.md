@@ -109,20 +109,21 @@ safe one, and buys the tidiness back with a second pass.
 The convention still requires staging by explicit path in the store, never `git add -A`, for the
 same reason the machine's own rules already require it in shared repos.]
 
-[NEEDS CLARIFICATION: **which tree does "dirty" mean, and how is it checked?** Two readings, and
-they lead to different code. If it is the **target repo's** tree, the check is
-`git -C <target> status --porcelain` and it is about whether a session is mid-work there — but under
-Stage 1 nothing is written into that tree anyway, so what it would gate is the Stage 2 absorption
-and any edit to plans already committed there. If it is the **store's** tree, the check is whether
-another session has uncommitted work in the store, and it gates whether a filing session may edit an
-existing store-held plan. Both are plausible and both may be wanted; the sentence that settled this
-covered the target repo, so that is the assumption unless corrected.]
+[DECISION: **the tree checked is the store's, not the target repo's.** Confirmed by the user
+2026-08-29. `git -C <store> status --porcelain` decides whether a filing session may edit an
+existing store-held plan or must add a new file referencing it. This is the check that bites in
+Stage 1, where the writing actually happens — the target repo's tree is never written to by a filing
+session at all, which is the point of the whole design.
 
-[NEEDS CLARIFICATION: the sentence stating this rule was "make a second pass that unifies plans a
-part of the newly created plan should", which reads as a slip. Taken to mean: the newly created plan
-must itself record that a unification pass is owed, so the duplication is not silently left for
-someone to discover. Worth confirming, since an alternative reading — that a second pass runs
-automatically as part of the same harvest — is a materially different feature.]
+It also means the check is about **one** repository rather than one per target, so it is a single
+cheap call regardless of how many repos a harvest produces plans for.]
+
+[NEEDS CLARIFICATION: **what the "second pass that unifies plans" actually is.** The sentence
+proposing it read as a slip and both readings offered — that the new plan records a unification is
+owed, or that tooling later performs the merge itself — were rejected as wrong. So the mechanism is
+still unknown and nothing should be built for it. Everything else in Stage 1 is independent of the
+answer and can proceed; what waits is only how a duplicate created under a dirty store gets
+reconciled later.]
 
 ## Where this touches `session-harvest`
 

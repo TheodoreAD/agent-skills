@@ -186,20 +186,11 @@ whether the output is too long — the two problems had the same fix here, but o
 
 ### Not doing: an MCP server
 
-[DECISION: **this stays a skill; no MCP server, and specifically not both.** Three reasons, in
-weight order. An MCP server's tool schemas load into every session in every repo whether or not
-anything is planned, which is a permanent context tax against the token-saving motivation that
-started this work. The valuable half of this skill is judgment — what may not be published, when a
-plan is deletable, how to triage at retirement — and MCP tools carry no prose a model reads before
-deciding, so the skill would survive anyway and the MCP would duplicate only the mechanical half,
-leaving two artifacts to keep in sync. And `--json` already is the structured interface; MCP would
-change the transport, not the contract. Settled with the user 2026-08-29.]
-
-[DEFERRED: an MCP wrapper if a shell-less harness ever matters, or if trigger reliability turns out
-to need always-visible tools. It would be a thin wrapper importing `plans.py`, in its own repo per
-the `mcp-server-shipping` skill, never a reimplementation — and `SKILL.md` would say "use the MCP
-tools if present, else the script". The trigger-reliability worry has a cheaper fix first: the
-`description` wording, which `plans/2026-08-22-skill-trigger-quality-review.md` already owns.]
+[DECISION: **this stays a skill; no MCP server, and specifically not both.** Settled with the user
+2026-08-29. The reasoning, and what would have to change to revisit it, moved to
+`plans/2026-08-29-plan-docs-mcp-wrapper.md` — it is a live question with its own trigger conditions
+rather than a footnote to this work, and leaving it here would have kept this plan open on something
+deliberately not being worked on.]
 
 ### 6. Say so in the description, or none of it triggers
 
@@ -259,5 +250,6 @@ evidence of being touched, and "what moved this week" must not claim a file move
 it did. Neither bounds default output; the count cap does, because a date window's size is not
 predictable, which was settled when the cap was chosen.]
 
-What is left is the MCP deferral above, and the trigger gate in
+Nothing in this plan's scope is outstanding. Two things it spawned live elsewhere: the MCP wrapper
+question in `plans/2026-08-29-plan-docs-mcp-wrapper.md`, and the trigger gate in
 `plans/2026-08-22-skill-trigger-quality-review.md`, which now has a concrete first case to test.

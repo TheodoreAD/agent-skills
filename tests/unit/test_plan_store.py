@@ -1333,6 +1333,70 @@ def test_uninstall_keeps_both_stores_unless_told_twice(ws, capsys):
 
 
 # --------------------------------------------------------------------------------------------
+# a repo cloned straight into the projects root
+#
+# `~/projects/<repo>` is the more common layout in the wild; the `<host>-<org>/<repo>` shape this
+# skill was written against is the unusual one. Both defects below are portability defects in a
+# published skill, and both were silent.
+
+
+@pytest.fixture
+def loose(ws):
+    """A repo at depth 1, beside the two nested ones the standard fixture builds."""
+    return make_repo(ws.projects / "loose-repo")
+
+
+def test_a_roots_entry_naming_a_repo_matches_nothing_and_says_so(loose, ws, capsys):
+    """`_match_rule` walks proper prefixes, so a one-segment path never consults [roots] at all.
+    The entry is left inert rather than made to match — [roots] means "a directory of repos" — but
+    silently falling through to `default` while the config names the repo is the trap."""
+    write_config(ws, 'default = "store"\n[roots]\n"loose-repo" = "repo"\n')
+
+    assert plans.main(["where", "--path", str(loose)]) == 0
+    out = capsys.readouterr().out
+    assert "(default)" in out
+    assert "names this repo, not a directory of repos" in out
+    assert "config set repos.loose-repo" in out
+
+    assert plans.main(["doctor", "--path", str(loose)]) == 0
+    assert "matches nothing" in capsys.readouterr().out
+
+
+def test_a_repos_entry_is_the_working_spelling_at_depth_one(loose, ws):
+    write_config(ws, 'default = "store"\n[repos]\n"loose-repo" = "repo"\n')
+    routing = route(loose)
+    assert routing.verdict == "ok"
+    assert routing.write_dir == loose / "plans"
+
+
+def test_a_depth_one_repo_is_not_split_as_though_it_were_an_organisation(loose, ws):
+    """Measured 2026-08-29: `loose-repo` contributed `loose`, `loose-repo` and `repo` — a gate that
+    flags the word "repo" in every document is one that gets switched off."""
+    write_config(ws, 'public_roots = ["github.com-personal"]\n')
+    terms = plans.private_terms(plans.load_config())
+
+    assert "loose-repo" in terms  # a non-public repo's own name is still private
+    assert "loose" not in terms
+    assert "repo" not in terms
+    # The nested client root is still split, which is what the splitting exists for.
+    assert "client" in terms
+
+
+def test_a_depth_one_repo_survives_the_rest_of_the_depth_assumptions(loose, ws, capsys):
+    """The plan left this UNVERIFIED: everything keying off `rel.split("/")[0]` assumes depth >= 2."""
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    plan(ws.sensitive / "loose-repo", "2026-01-01-loose.md", "status: idea\nupdated: 2026-01-01")
+
+    assert plans.main(["list", "--scope", "family", "--path", str(loose)]) == 0
+    out = capsys.readouterr().out
+    assert "2026-01-01-loose.md" in out
+    assert "not yours to disclose" in out  # it is its own root, and that root is not public
+
+    assert plans.main(["doctor", "--path", str(loose)]) == 0
+    assert "loose-repo" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------------------------
 # the store's two tiers
 #
 # The store is two git repositories: a shareable one that may have a remote, and a sensitive one

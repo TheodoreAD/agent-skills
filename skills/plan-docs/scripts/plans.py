@@ -727,6 +727,16 @@ def looks_bare(path: Path) -> bool:
     return all((path / name).exists() for name in ("HEAD", "objects", "refs"))
 
 
+def is_repository(path: Path) -> bool:
+    """Whether a directory is itself a repository rather than a directory holding them.
+
+    Ordinary or bare. Same shape test the walk uses, so "collection" means the same thing to
+    discovery and to the confidentiality derivation — they disagreed at depth 1, which is what let a
+    repo's own name be split as though it were an organisation.
+    """
+    return (path / ".git").exists() or looks_bare(path)
+
+
 def walk_projects(cfg: Config) -> tuple[list[str], list[LayoutProblem]]:
     """Every git repo under the projects root, plus everything wrong with the tree on the way.
 
@@ -845,6 +855,14 @@ def private_terms(cfg: Config) -> list[str]:
             if not path.is_dir() or path.name in public or path.name.startswith("."):
                 continue
             terms.add(path.name)
+            if is_repository(path):
+                # A repo cloned straight into the projects root is not an organisation, and
+                # splitting its name is how ordinary words enter the term list. Measured
+                # 2026-08-29 against a scratch root: `~/projects/loose-repo` contributed `loose`,
+                # `loose-repo` and **`repo`** — a gate that flags the word "repo" in every document
+                # is a gate that gets switched off, which is the exact failure the
+                # only-split-root-names rule was written to avoid.
+                continue
             # An organisation appears in more forms than its directory name: a root called
             # `<org>.com-bitbucket-<something>` is the same client as an `@<org>.com` email address
             # in a doc. Splitting the root name on its separators catches both; the hosting words
@@ -1216,6 +1234,11 @@ def cmd_where(args: argparse.Namespace) -> int:
     print(f"rel:     {routing.rel or '(not under projects_root)'}")
     if routing.rule:
         print(f"rule:    {routing.rule.describe()}  ({routing.source})")
+    if routing.rel and routing.rel in cfg.roots and routing.source != f'roots entry "{routing.rel}"':
+        # The moment the inert entry actually bites, said where the confusion happens rather than
+        # only in `doctor`: the rule line above says `(default)` while the config names this repo.
+        print(f'note:    [roots] "{routing.rel}" names this repo, not a directory of repos, so it')
+        print(f"         matched nothing. Use: config set repos.{routing.rel} <repo|store>")
     if routing.verdict == "ok" and routing.rule:
         print(f"write:   {routing.dirs[routing.rule.write]}")
         for where, path in routing.read_dirs():
@@ -2600,10 +2623,32 @@ def layout_problems(cfg: Config, *, strict: bool = False) -> list[str]:
     # A root reaching only `default` has never been decided about. Once every existing root carries
     # an explicit rule, this list is exactly the collections that appeared since — no seen-markers,
     # no registry, just the config read as a record of what has been answered.
-    roots = sorted({rel.split("/")[0] for rel in repo_paths(cfg)})
+    known = repo_paths(cfg)
+    roots = sorted({rel.split("/")[0] for rel in known})
     undecided = [name for name in roots if _match_rule(cfg, f"{name}/x")[1] == "default"]
     out += [f"{name}: no explicit rule, using `default` — config set roots.{name} <repo|store>" for name in undecided]
-    return out
+    return out + inert_root_rules(cfg, known)
+
+
+def inert_root_rules(cfg: Config, known: list[str]) -> list[str]:
+    """`[roots]` entries that name a repo rather than a directory of repos, and so match nothing.
+
+    `_match_rule` walks a path's *proper* prefixes, so a key equal to a whole repo path is never
+    consulted and the repo falls through to `default` — reported by `where` as `(default)` while an
+    entry naming that exact repo sits in the config, unread. Reproduced 2026-08-29 against a scratch
+    root with a repo cloned straight into it, which is where a one-segment path makes the prefix walk
+    empty.
+
+    Reported rather than made to match: `[roots]` means "a directory containing repos" and `[repos]`
+    means "one repo", and collapsing that distinction would lose the only thing the two sections are
+    for. `[repos]` is the working spelling, verified in the same run.
+    """
+    return [
+        f'roots entry "{rel}" names a repo, not a directory of repos, so it matches nothing — '
+        f"config set repos.{rel} <repo|store>"
+        for rel in known
+        if rel in cfg.roots
+    ]
 
 
 def _all_problems(cfg: Config, unrouted: list[str], *, strict: bool = False) -> list[str]:

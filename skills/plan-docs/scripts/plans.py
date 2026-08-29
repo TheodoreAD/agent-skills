@@ -40,6 +40,7 @@ import subprocess
 import sys
 import tomllib
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -986,13 +987,66 @@ def cmd_where(args: argparse.Namespace) -> int:
     return 0 if routing.verdict == "ok" else NEEDS_DECISION
 
 
-def session_repo(cfg: Config) -> Path | None:
-    """The repo this session is actually working in — always cwd, never `--path`.
+def transcript_root() -> Path:
+    base = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(base).expanduser() if base else Path.home() / ".claude") / "projects"
 
-    `--path` names what a command is *about*; cwd is where the session lives. Keeping them separate
-    is what lets a cross-repo write be detected at all.
+
+def encode_project_dir(path: Path) -> str:
+    """How Claude Code names a project's transcript directory: every non-alphanumeric becomes `-`.
+
+    Verified against this machine's own directories 2026-08-29 — `/home/u/projects/github.com-x/y`
+    becomes `-home-u-projects-github-com-x-y`, so dots collapse to dashes like separators do.
     """
-    return resolve(Path.cwd(), cfg).repo_root
+    return re.sub(r"[^A-Za-z0-9]", "-", str(path))
+
+
+def _candidate_repos(cfg: Config) -> Iterator[Path]:
+    """cwd's repo first — the overwhelmingly common answer — then every repo under the root.
+
+    A generator so the projects-root walk only happens when cwd is *not* the session's repo, which
+    is exactly the drifted case and the only one worth paying for.
+    """
+    here = repo_root_of(Path.cwd())
+    if here is not None:
+        yield here
+    for rel in repo_paths(cfg):
+        yield cfg.projects_root / rel
+
+
+def session_start_repo(cfg: Config) -> Path | None:
+    """The repo this session was *started* in, which is the thing cwd was standing in for.
+
+    Claude Code writes each session's transcript to `<config>/projects/<encoded project path>/`, so
+    the directory holding this session's file names the repo the session belongs to — decided when
+    the session began and unaffected by any later `cd`. That is what makes it a real anchor: a guard
+    comparing cwd against cwd cannot fire when cwd drifts, because both sides move together.
+
+    The encoding is lossy (several characters all become `-`), so candidates are encoded and
+    compared rather than the directory name being decoded, which would be ambiguous.
+
+    Returns None outside Claude Code, or when nothing matches — callers fall back to cwd, which is
+    the previous behaviour rather than a failure.
+    """
+    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session_id):
+        return None
+    try:
+        matches = list(transcript_root().glob(f"*/{session_id}.jsonl"))
+    except OSError:
+        return None
+    if len(matches) != 1:
+        return None
+    encoded = matches[0].parent.name
+    return next((repo for repo in _candidate_repos(cfg) if encode_project_dir(repo) == encoded), None)
+
+
+def session_repo(cfg: Config) -> Path | None:
+    """The repo this session belongs to: where it started if that is knowable, else cwd.
+
+    Never `--path`. `--path` names what a command is *about*; this names where the session lives.
+    """
+    return session_start_repo(cfg) or repo_root_of(Path.cwd())
 
 
 def is_foreign(target: Path | None, cfg: Config) -> bool:
@@ -1042,14 +1096,18 @@ def cmd_new(args: argparse.Namespace) -> int:
     if routing.rule and routing.rule.write == "repo" and is_foreign(routing.repo_root, cfg):
         # Refused rather than warned: `--for` is the correct way to record something against
         # another repo, so writing a new file into its tree has no remaining legitimate use.
-        # The comparison is against cwd, which can drift — see `session_repo`. A refusal that
-        # surprises you is therefore itself worth reading as a possible drift signal, which is why
-        # the message names both repos rather than only the target.
+        anchored = session_start_repo(cfg) is not None
+        source = "this session started in" if anchored else "cwd says this session is in"
+        hint = (
+            ""
+            if anchored
+            else "\n  If that IS the repo you are in:    cwd has drifted; cd back and re-run without --path."
+        )
         raise PlanError(
-            f"cwd says this session is in {session_repo(cfg)}, but this would create a plan in "
-            f"{routing.repo_root} — a tree a parallel session may be holding.\n"
-            f"  If the plan belongs to that repo:  new {args.topic} --for {routing.rel or routing.repo_root}\n"
-            f"  If that IS the repo you are in:    cwd has drifted; cd back and re-run without --path."
+            f"{source} {session_repo(cfg)}, but this would create a plan in {routing.repo_root} "
+            f"— a tree a parallel session may be holding.\n"
+            f"  If the plan belongs to that repo:  new {args.topic} --for {routing.rel or routing.repo_root}"
+            f"{hint}"
         )
     if args.to is None:
         require_ok(routing)

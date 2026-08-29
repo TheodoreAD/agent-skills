@@ -225,22 +225,23 @@ files which already exist — `graduate`, and anything reached by `--path` — *
 those have legitimate uses; when you see that warning, prefer doing the work from a session inside
 that repo, and if you continue, tell the user exactly what landed where.
 
-**The guard compares against the working directory, and that is a weaker signal than it looks.**
-Whether cwd survives between an agent's Bash calls is not reliable either way — both a reset and a
-persisted `cd` were observed inside one session, 2026-08-29. Two consequences worth knowing rather
-than trusting past:
+**The guard is anchored to the repo the session started in, not to the working directory.** Under
+Claude Code it reads `CLAUDE_CODE_SESSION_ID` and finds the transcript directory holding that
+session, whose name encodes the project path — decided when the session began and unaffected by any
+later `cd`. That matters because cwd is unreliable in both directions: a reset and a persisted `cd`
+were both observed inside one session, 2026-08-29. A guard comparing cwd against cwd cannot fire
+when cwd drifts, since both sides move together; the anchor gives the comparison two independent
+sides, so a create in a drifted directory is caught rather than landing silently.
 
-- **It cannot fire when cwd has drifted.** With no `--path`, both the target and "this session's
-  repo" are derived from cwd, so they drift together and always match. A plan then lands in whatever
-  repo cwd wandered into, silently as far as the guard is concerned. This is why **every create
-  prints a `repo:` line** naming the repo the plan just became the property of — that line depends
-  on nothing that drifted, and reading it is the check that actually holds. Read it every time.
-- **A refusal you did not expect is itself a drift signal.** If it names a target that _is_ the repo
-  you thought you were in, cwd has moved; `cd` back rather than reaching for `--for`, which would
-  file the plan to the store instead of the repo. The error says both repos for exactly this reason.
+Outside Claude Code, or when the transcript cannot be matched, it falls back to cwd — the weaker
+behaviour, never an error. Two habits that hold either way:
 
-So: never `cd` into another repo without asking the user first, and after any cross-repo command,
-treat cwd as unknown until a call re-establishes it.
+- **Read the `repo:` line every create prints.** It names the repo the plan just became the property
+  of, derived from where the file was written rather than from any comparison, so it is true
+  regardless of what cwd or the anchor did.
+- **Never `cd` into another repo without asking the user first**, and after any cross-repo command
+  treat cwd as unknown until a call re-establishes it. The anchor makes a stray `cd` survivable, not
+  free — everything else in a session still runs relative to cwd.
 
 ```shell
 python3 <path> new <topic> --for github.com-personal/<repo>   # or an absolute path

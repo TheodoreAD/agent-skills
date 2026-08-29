@@ -74,6 +74,10 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.delenv("PLANS_HOME", raising=False)
+    # The real session's transcript lives in the real ~/.claude and would otherwise be found by the
+    # session anchor, making every test depend on where the suite happens to be run from.
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     config = home / ".config" / "plan-docs" / "config.toml"
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
     return Workspace(
@@ -749,6 +753,55 @@ def test_filing_for_another_repo_never_touches_its_tree(ws, capsys):
     assert "in transit" in out
     assert "move <file> --to repo" in out
     assert plans.parse_frontmatter(filed.read_text())["repo"] == "git@example.com:x/agent-skills.git"
+
+
+def anchor_session_to(ws: Workspace, repo: Path, monkeypatch) -> None:
+    """Fake the harness transcript that says which repo this session started in."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(ws.home / ".claude"))
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-1")
+    directory = ws.home / ".claude" / "projects" / plans.encode_project_dir(repo)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "sess-1.jsonl").write_text("", encoding="utf-8")
+
+
+def test_the_session_anchor_survives_a_drifted_cwd(ws, capsys, monkeypatch):
+    """The failure the cwd-only guard could not see: with no --path, target and session repo both
+    came from cwd, drifted together, always compared equal, and the plan landed in the wrong repo.
+    Anchoring to where the session started gives the comparison two independent sides."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
+    anchor_session_to(ws, ws.personal, monkeypatch)
+    monkeypatch.chdir(other)  # cwd drifted; the session still belongs to ws.personal
+
+    assert plans.main(["new", "drifted"]) == 1
+    assert not (other / "plans").exists()
+    err = capsys.readouterr().err
+    assert "this session started in" in err
+    assert "cwd has drifted" not in err  # the anchor is authoritative, so no cwd caveat
+
+
+def test_the_anchor_prevents_refusing_a_correct_action_under_drift(ws, capsys, monkeypatch):
+    """The mirror-image failure: --path naming the session's real repo while cwd is elsewhere was
+    refused, and the suggested --for would have filed to the store instead of the repo."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
+    anchor_session_to(ws, ws.personal, monkeypatch)
+    monkeypatch.chdir(other)
+
+    assert plans.main(["new", "correct", "--path", str(ws.personal)]) == 0
+    assert (ws.personal / "plans" / f"{plans.today()}-correct.md").is_file()
+
+
+def test_the_anchor_falls_back_to_cwd_outside_claude_code(ws, capsys, monkeypatch):
+    """The skill has to work under any harness; an absent or unmatched session id is a fallback to
+    the previous behaviour, not a failure."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.chdir(ws.personal)
+
+    assert plans.session_start_repo(plans.load_config()) is None
+    assert plans.session_repo(plans.load_config()) == ws.personal
+    assert plans.main(["new", "no-harness"]) == 0
 
 
 def test_new_refuses_to_create_a_plan_in_another_repos_tree(ws, capsys, monkeypatch):

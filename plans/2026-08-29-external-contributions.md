@@ -219,13 +219,29 @@ persisted `cd` were both observed inside the single session that built this. Two
 - **Misfires.** With an explicit `--path` naming the session's real repo while cwd has drifted, a
   correct action is refused, and the suggested `--for` would file to the store rather than the repo.
 
-There is nothing better to reach for: `CLAUDE_PROJECT_DIR` is absent from this harness's Bash
-environment (checked 2026-08-29) and nothing else names the session's own repo. So the mitigation is
-not a smarter comparison but a report that cannot be fooled — **every create prints a `repo:` line**
-naming what the plan just became the property of, derived from the write target rather than from any
-comparison, so it survives whatever cwd did. The misfire is kept deliberately: an unexpected refusal
-naming a repo you believed you were in is the only drift detector that exists, which is why the
-error names both repos and says to `cd` back rather than reach for `--for`.]
+**Both are now fixed** — see the anchor decision below. The `repo:` line each create prints was
+added as the fallback mitigation and stays, because it is true regardless of what any comparison
+did.]
+
+[DECISION: **the session is anchored to the repo it started in, via its transcript directory.**
+Found 2026-08-29 after the user asked whether a session could be tied to its starting repo — the
+first answer, that no such signal existed, was wrong and had been reached by checking only for
+`CLAUDE_PROJECT_DIR`.
+
+`CLAUDE_CODE_SESSION_ID` _is_ exported, and Claude Code writes each session's transcript to
+`<config>/projects/<encoded project path>/<session id>.jsonl`. The directory holding this session's
+file therefore names the repo the session belongs to, fixed when the session began and unaffected by
+any later `cd`. Measured the same day: the guard now fires on a create from a drifted cwd with no
+`--path` — the case it was previously blind to — and stops refusing a correct `--path` naming the
+session's real repo.
+
+The encoding replaces every non-alphanumeric with `-`, so it is lossy and ambiguous to reverse.
+Candidate repos are encoded and compared rather than the directory name being decoded, with cwd's
+repo tried first so the projects-root walk only happens in the drifted case that actually needs it.
+
+Absent or unmatched — another harness, a subagent, a moved transcript — it falls back to cwd, which
+is the previous behaviour rather than a failure. The environment assumption is declared in
+`SKILL.md`, as this repo's rules require of a skill that depends on one.]
 
 [DEFERRED: a machine-level rule that an agent asks the user before `cd`-ing into another repo at
 all, raised by the user 2026-08-29 as secondary to the above. It belongs in `~/AGENTS.md` rather

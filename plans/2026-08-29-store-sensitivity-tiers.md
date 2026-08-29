@@ -1,7 +1,35 @@
 ---
-status: planned
+status: landed
 updated: 2026-08-29
 ---
+
+## Migrated to
+
+- `skills/plan-docs/scripts/plans.py` — the implementation. `Config.shareable_root_names`,
+  `tier_of`, `store_for` and `stores` are the tier lookup; `resolve` substitutes the tier's store
+  into `routing.dirs["store"]`, which is the single hinge every other command already went through.
+  `archive_sources`, `install`, `uninstall`, `doctor` and `where` each learned to span both halves.
+- `skills/plan-docs/SKILL.md`, "The store is two repositories, split by sensitivity" — the tier
+  table, that an agent never picks a tier, and the `scan --mode tree` push gate. The dirty-store
+  check and the commit/push rules were rewritten to name the store a write targets rather than "the
+  store".
+- `skills/plan-docs/references/design-rationale.md`, "Why the store is two git repositories split by
+  sensitivity" — the durability argument this plan opens with, all three reasons gitignore is the
+  wrong mechanism, the rejected nested-repo layout, why the boundary got its own key defaulting to
+  `public_roots`, and the two deferrals restated as what they are.
+- `tests/unit/test_plan_store.py`, "the store's two tiers" — routing per tier, the boundary
+  overriding `public_roots`, the unscoped area staying shareable, the degraded single-store shape, a
+  remote being a problem on one tier and expected on the other, and a root filed in the wrong half.
+- `plans/2026-08-29-sensitive-tier-durability.md` — both live `[DEFERRED:]` items, the encrypted
+  remote and the non-vendor destination, with the trigger that ends the deferral.
+- The machine itself: `~/plans` is the shareable tier, `~/plans-sensitive` the sensitive one, and
+  `sensitive_store` is recorded in `~/.config/plan-docs/config.toml`. `shareable_roots` is
+  deliberately left unset, so it falls back to `public_roots`.
+
+Not migrated: the two superseded `[DECISION:]` blocks about _when_ to build this, and the
+measurements of how empty the store was on the day. Both were about timing, which the execution
+settled — the reasoning that outlived them is in the rationale, and the counts are recoverable from
+this file's own history.
 
 ## Context
 

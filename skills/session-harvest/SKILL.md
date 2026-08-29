@@ -237,7 +237,13 @@ considered and rejected).
      directory, so a machine-wide rule instructed every future session to run a file that did not
      exist. The checkout worked perfectly throughout, which is why nothing surfaced it.
    - **CI, for anything this session pushed.** A green local gate is not a green CI run. Use a
-     bounded waiter (`gh run watch <id> --exit-status`), never a hand-rolled `until` loop.
+     bounded waiter (`gh run watch <id> --exit-status`), never a hand-rolled `until` loop. **Do not
+     pipe it.** `gh run watch <id> --exit-status | tail -5; echo $?` reports `tail`'s exit, so the
+     `--exit-status` flag that exists to turn a red run into a non-zero exit is discarded by the
+     very command reading it, and a failed run prints `0`. Run it bare, or read the conclusion as
+     data (`gh run view <id> --json status,conclusion`). Same shape as the `git fetch` bullet above,
+     and confirmed the same way, 2026-08-29: a harvest reported `WATCH_EXIT=0` from `tail` while
+     executing this very checklist. Both bullets now exist because the pipe defeated the check.
    - **Shared stores outside any repo.** `$RESEARCH_HOME` clones, caches, anything the session added
      to a location no `git status` covers. The failure is a half-finished convention rather than a
      missing file — a clone without its `SOURCE.md`, or one that failed partway — and it is

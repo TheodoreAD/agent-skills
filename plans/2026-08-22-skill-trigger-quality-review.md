@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-08-22
+updated: 2026-08-29
 ---
 
 ## Context
@@ -78,6 +78,41 @@ engineering-blog guidance is qualitative prose only (avoid jargon, avoid ambiguo
 — no automated methodology of its own; `skill-creator` is where Anthropic operationalized that
 advice into something testable.
 
+## Read hands-on from the CLI (2026-08-29)
+
+The 2026-08-22 pass was desk research against write-ups. `claude plugin eval --help` on this machine
+(Claude Code 2.1.251) is the primary source, and it revises two conclusions above.
+
+[DECISION: **the scoping question is answered — a bare `skills/<name>/SKILL.md` layout resolves, and
+no `plugin.json` conversion is needed.** The help states a target "is a path, a plugin name, or a
+`plugin@marketplace` id — installed and **skills-dir plugins** both resolve (and add a no-plugin
+baseline arm)". That removes the concern that Anthropic's own tooling would force this repo into a
+vendor manifest format its `AGENTS.md` rules out.]
+
+[DECISION: **`plugin eval` does test cold triggering, contrary to the earlier pass.** The
+characterization above — "built to test a plugin's behavior once invoked, not description-only
+cold-trigger matching" — was wrong. `--ablation with-without` runs a no-plugin baseline arm and
+reports the score delta, and graders marked with-only, **`tool_used: Skill` explicitly named among
+them**, are described as "a plugin-fired indicator rather than part of the score". A case whose
+grader asserts `tool_used: Skill` is precisely the positive trigger test this plan wants, and the
+ablation arm gives the with/without comparison that says what the skill actually changed.]
+
+Also relevant to the cadence question: `--runs` defaults to 3 per case, so non-determinism is
+handled by the tool rather than by us; `--threshold <0..1>` exits 1 below the bar, which makes it
+CI-gateable; and `--judge-model` defaults to haiku, which bounds the per-run cost.
+
+[PITFALL: **the HTML report publishes to claude.ai by default.** `--no-publish` keeps it local, and
+`--publish-report` is described as already the default where the account supports it. For a repo
+whose central rule is that a client's identity must not reach anything published, a report of
+authored eval prompts is low-risk — but the default is outward, and adopting this tool means pinning
+`--no-publish` deliberately rather than discovering the behaviour later.]
+
+[UNVERIFIED: **still gated.** `claude plugin eval .` in this repo returns exactly
+`` `plugin eval` is currently in early access `` and exits without running, on 2026-08-29 with CLI
+2.1.251. So none of the above is usable here yet, and the hand-built harness below remains the live
+plan. Re-check on a CLI upgrade before building anything custom: what changed today was the argument
+for waiting, not the availability.]
+
 ## Recommended direction
 
 **Adopt the trigger-eval methodology `skill-creator` uses — 3 cases per skill (positive, negative,
@@ -141,6 +176,19 @@ That rule has since been exercised on this repo's own contents: `mcp-skill-shipp
 per description was itself two. So the failure mode is confirmed present in authored-in-good-faith
 skills, not only hypothetical — which is the argument for a check rather than a convention alone.
 
-[NEEDS CLARIFICATION: confirm hands-on whether `claude plugin init` can actually convert an existing
-bare `.agents/skills/<name>/` directory into something `claude plugin eval`/`skill-creator` can
-target, in case Anthropic's own tooling becomes available and preferable to a hand-built harness.]
+The `claude plugin init` conversion question that used to sit here is closed by the 2026-08-29
+section above: skills-dir targets resolve directly, so no conversion is needed.
+
+## A first case to test, whenever the harness exists
+
+`plan-docs` gained a new reason to be invoked on 2026-08-29 — "what plans do we have", "what should
+I work on next" — and its description was edited to name it
+(`plans/2026-08-29-plan-docs-ergonomics.md` records why). That is a concrete, dated positive case
+whose before/after is known: the same prompt against the old description should not have selected
+the skill, and against the new one should. It is worth being the first case authored here, because
+it is the rare one where the expected answer is known independently of the harness being trusted.
+
+The negative case it needs pairing with is `session-harvest`, whose description also covers "what's
+worth saving before compacting" — a request about outstanding work that must **not** route to
+`plan-docs`. That pair exercises the cross-skill contention requirement stated above, not just the
+isolated binary check.

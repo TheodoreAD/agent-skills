@@ -253,7 +253,15 @@ considered and rejected).
      were found only because the user asked what plans needed other repos — the harvest that created
      the queue had not scheduled anything to drain it. Verify against the working tree, not the
      plan's prose: the same check that day read "surgery finished" from a clean `git status` and a
-     landed plan, then found two modified files a few minutes later.
+     landed plan, then found two modified files a few minutes later. **A clean tree only answers the
+     queue case.** The tag carries two meanings — work parked because that repo was mid-restructure
+     (this bullet's case, and a deprecated one now that `new --for <repo>` exists), and `plan-docs`'
+     own documented meaning, "sibling repos this plan can't fully land without". For the second, the
+     named repo being idle says nothing: the blocker is a change that repo has not made yet, and
+     only reading the plan answers whether it has. Sort the tagged plans into the two kinds before
+     reporting any of them, and report readiness only for the first — "seven plans ready" assembled
+     from clean `git status` output is a claim the check never made. Confirmed 2026-08-29: eight
+     tagged plans, three sibling repos all clean, and exactly one of the eight was queue-shaped.
    - **Work handed off to another session, and what it blocks here.** This user runs parallel
      sessions, so "another session is doing X, don't touch it" is a routine instruction — and it
      creates state no other check finds: not a process, not git state, not CI, not an unkept

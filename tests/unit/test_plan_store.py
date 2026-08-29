@@ -519,6 +519,31 @@ def test_tag_matching_is_anchored(ws):
     assert len(plans.open_tags(path, "NEEDS CLARIFICATION")) == 1
 
 
+def test_a_filed_plan_cannot_be_retired_before_it_is_absorbed(ws, capsys):
+    """A repo that keeps its own plans must retire them in its own history. Retiring from the store
+    would put the drafting, the landing and the deletion commit in the store's history while the
+    repo's has nothing, so `archive` inside that repo would find the plan missing."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    mirror = ws.store / "github.com-personal" / "agent-skills"
+    plan(mirror, "2026-01-01-filed.md", "status: idea\nupdated: 2026-01-01")
+
+    for terminal in ("landed", "abandoned", "superseded by plans/2026-01-02-other.md"):
+        assert plans.main(["set-status", "2026-01-01-filed.md", terminal, "--path", str(ws.personal)]) == 1
+
+    # Non-terminal statuses are fine: nothing has been deleted, so no history has been split.
+    assert plans.main(["set-status", "2026-01-01-filed.md", "in-progress", "--path", str(ws.personal)]) == 0
+
+
+def test_a_store_routed_repo_retires_in_the_store_as_normal(ws, capsys):
+    """The rule is about plans in transit, not about the store. A client repo's plans live there
+    permanently, so that is where their history belongs."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    mirror = ws.store / "client.com-bitbucket" / "team" / "api"
+    plan(mirror, "2026-01-01-clientwork.md", "status: idea\nupdated: 2026-01-01")
+
+    assert plans.main(["set-status", "2026-01-01-clientwork.md", "landed", "--path", str(ws.client)]) == 0
+
+
 def test_promotion_gate_blocks_planned_while_questions_are_open(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "gated", "--path", str(ws.client)])

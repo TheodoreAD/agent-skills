@@ -560,11 +560,20 @@ the `## Migrated to` commit all stay reachable through git, and `python3 <path> 
 are read back — see "Getting a retired plan back" below. That is what makes the deletion cheap, and
 it is why a plan is only ever kept in version control.
 
-**A store-held plan retires exactly like a repo-held one, and is deleted the same way.** The usage
-docs and design rationale still go into the repo the plan is _about_ — updating a repo's own docs is
-an ordinary contribution, available even where adding a `plans/` directory is not, and it would be
-owed just the same if the planning had happened in a tracker instead. What is left after that
-migration is reasoning that belongs to nobody but you, and it stays in the store's git history,
+**A repo that keeps its own plans retires them in its own history — absorb first, then retire.**
+`set-status` refuses a terminal status on a plan still sitting in the store mirror of a repo-routed
+repo, and names `absorb`. The reason is that retirement deletes the file and `archive` reads it back
+out of the deletion commit: retiring from the store would put the drafting, the landing and the
+deletion in the store's history while the repo's history has nothing, so `archive` run inside that
+repo would find the plan missing. One plan, one history. Non-terminal statuses are unaffected —
+nothing has been deleted, so nothing is split.
+
+**A store-held plan retires exactly like a repo-held one, and is deleted the same way.** This is
+about a repo whose plans live in the store permanently, not one whose plan is merely in transit. The
+usage docs and design rationale still go into the repo the plan is _about_ — updating a repo's own
+docs is an ordinary contribution, available even where adding a `plans/` directory is not, and it
+would be owed just the same if the planning had happened in a tracker instead. What is left after
+that migration is reasoning that belongs to nobody but you, and it stays in the store's git history,
 which is why the store is a git repository at all.
 
 **Triage the file's content by lifecycle first.** Split by what each passage _is_, never by how long

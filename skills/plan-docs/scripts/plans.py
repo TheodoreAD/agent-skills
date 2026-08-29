@@ -546,19 +546,35 @@ def family_plans(cfg: Config) -> list[tuple[str, PlanFile]]:
     return found
 
 
-def locate(routing: Routing, name: str) -> PlanFile:
-    """Resolve a plan by path, or by bare filename across the repo's read directories."""
+def visible_dirs(cfg: Config, routing: Routing) -> list[tuple[str, Path]]:
+    """Every directory a session in this repo can see a plan in, whatever the route says.
+
+    The route decides where a *write* lands; a read that obeys it cannot see a plan filed into the
+    store mirror from another repo, so `set-status` and friends could not act on one at all. Same
+    argument, and the same fix, as the per-repo listing.
+    """
+    dirs = [(where, routing.dirs[where]) for where in ("repo", "store") if where in routing.dirs]
+    return [*dirs, ("unscoped", cfg.unscoped)]
+
+
+def locate(cfg: Config, routing: Routing, name: str) -> PlanFile:
+    """Resolve a plan by path, or by bare filename across every directory this repo can see."""
     candidate = Path(name)
     if candidate.is_file():
         resolved = candidate.resolve()
-        for where, directory in routing.read_dirs():
+        for where, directory in visible_dirs(cfg, routing):
             if resolved.parent == directory.resolve():
                 return read_plan(resolved, where)
         return read_plan(resolved, "outside")
 
-    matches = [plan for plan in plan_files(routing) if plan.path.name == Path(name).name]
+    matches = [
+        plan
+        for where, directory in visible_dirs(cfg, routing)
+        for plan in plans_in(directory, where)
+        if plan.path.name == Path(name).name
+    ]
     if not matches:
-        searched = ", ".join(str(d) for _, d in routing.read_dirs()) or "(no readable directory)"
+        searched = ", ".join(str(d) for _, d in visible_dirs(cfg, routing)) or "(no readable directory)"
         raise PlanError(f"no plan named {name!r} in {searched}")
     if len(matches) > 1:
         joined = ", ".join(str(m.path) for m in matches)
@@ -1604,7 +1620,7 @@ def _print_status_drift(entries: list[tuple[str, PlanFile]]) -> None:
 def cmd_tags(args: argparse.Namespace) -> int:
     cfg = load_config()
     routing = require_ok(resolve(args.path, cfg))
-    targets = [locate(routing, args.file)] if args.file else plan_files(routing)
+    targets = [locate(cfg, routing, args.file)] if args.file else plan_files(routing)
     wanted = [args.tag] if args.tag else list(TAG_NAMES)
 
     found = [
@@ -1623,10 +1639,33 @@ def cmd_tags(args: argparse.Namespace) -> int:
     return 0
 
 
+def _require_absorbed_before_retiring(plan: PlanFile, routing: Routing, status: str) -> None:
+    """A repo that keeps its own plans must retire them in its own history, not in the store's.
+
+    Retirement deletes the file, and `archive` reads retired plans back out of the deletion commit.
+    If a plan bound for a repo-routed repo is retired while still sitting in the store mirror, its
+    whole record — drafting, landing, and the deletion — lands in the store's history while the
+    repo's history has nothing, and `archive` run inside that repo finds it missing. One plan, two
+    histories, and the cheap-deletion rule stops holding.
+
+    Only the terminal statuses are blocked. Marking a filed plan `in-progress` before absorbing it
+    is harmless, because nothing has been deleted yet.
+    """
+    terminal = status.startswith(TERMINAL_STATUSES)
+    if terminal and plan.where == "store" and routing.rule is not None and routing.rule.write == "repo":
+        raise PlanError(
+            f"{plan.path.name} is still in the store, and {routing.rel or 'this repo'} keeps its own "
+            f"plans — retiring it here would put its history in the store instead of the repo.\n"
+            f"  Absorb it first, from a session in that repo:  plans.py absorb --apply\n"
+            f"  then set the status and retire it there, so one plan has one history."
+        )
+
+
 def cmd_set_status(args: argparse.Namespace) -> int:
     cfg = load_config()
     routing = require_ok(resolve(args.path, cfg))
-    plan = locate(routing, args.file)
+    plan = locate(cfg, routing, args.file)
+    _require_absorbed_before_retiring(plan, routing, args.status)
 
     gate = next((tag for prefix, tag in STATUS_GATES.items() if args.status.startswith(prefix)), None)
     if gate and not args.force:
@@ -1822,7 +1861,7 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFi
 def cmd_move(args: argparse.Namespace) -> int:
     cfg = load_config()
     routing = require_ok(resolve(args.path, cfg))
-    plan = locate(routing, args.file)
+    plan = locate(cfg, routing, args.file)
     if args.to not in routing.dirs:
         raise PlanError(f"this repo has no {args.to!r} directory: {routing.reason or 'not resolvable'}")
     target = routing.dirs[args.to]

@@ -287,6 +287,29 @@ Renaming around it would be the one outcome that hides exactly the case worth no
 absorbable plans in the same run still move; only the colliding one is held back, so one conflict
 does not block the batch.]
 
+### Retirement happens where the plan lives permanently
+
+[DECISION: **a repo that keeps its own plans must absorb a filed plan before retiring it.** Raised
+by the user 2026-08-29 to keep history walkable, and enforced: `set-status` refuses a terminal
+status on a plan still in the store mirror of a repo-routed repo, and names `absorb`.
+
+Retirement deletes the file, and `archive` reads a retired plan back out of the deletion commit. So
+retiring from the store would put that plan's whole record — drafting, landing, deletion — in the
+store's history while the repo's history holds nothing, and `archive` run inside the repo it belongs
+to would find it missing. One plan, two histories, and the cheap-deletion rule stops holding.
+
+Only terminal statuses are blocked. Marking a filed plan `in-progress` before absorbing is harmless,
+because nothing has been deleted yet. And a **store-routed** repo is unaffected: its plans live in
+the store permanently, so that is where their history belongs.]
+
+[PITFALL: **`locate` obeyed the route, so `set-status` could not see a filed plan at all** — the
+same route-limits-reads bug already fixed for the per-repo listing, still present in the by-filename
+lookup and therefore in `set-status`, `move`, `refs` and `tags --file`. Found only because the first
+version of the guard's test passed for the wrong reason: the terminal statuses were rejected by "no
+plan named …" rather than by the guard, and the non-terminal case failing is what exposed it. A test
+that passes for the wrong reason is worse than one that fails, and only the case expected to succeed
+revealed it.]
+
 ### The two skills have to cooperate, not each decide
 
 `session-harvest` must not reimplement any of this. It decides _what is worth recording_; where the

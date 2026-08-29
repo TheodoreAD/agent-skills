@@ -85,6 +85,46 @@ to catch everything durable _before_ it reached memory — this just makes expli
 over should be rare and genuinely temporary (a deadline, a hold-off note), not a quieter version of
 the same "personal preference" content the cross-repo filter already redirects to `~/AGENTS.md`.
 
+**Superseded 2026-08-29 — see the next section.** The "rare and temporary" framing left a door open,
+and it was walked through.
+
+## Why no memory tier at all (2026-08-29)
+
+The user's ruling, on finding a session had written into Claude Code's per-project memory directory:
+**no memories, for any harness, for any project, for any reason.** Project data and user-wide
+practices must not be vendor-locked, because the work has to be portable across harnesses. The
+carve-out is harness **configuration** — `settings.json`, hooks, keybindings — which is expected to
+differ per harness because it describes the tool rather than the work.
+
+What makes this worth a rationale entry is _how_ the previous framing failed, because the failure
+mode generalises to any rule this skill writes.
+
+The session had been asked to file a next-session handoff "somewhere durable". It considered the
+plans store and the repo's `plans/`, rejected both on the design grounds recorded in `agent-skills`'
+`plans/2026-08-29-next-session-prompt.md` (a handoff is ordering and immediacy, and a plan file
+would give it a status field and a retirement it should never need), and chose the memory directory
+because it is the one destination loaded automatically at session start. It then read the governing
+rule — `~/AGENTS.md` saying that directory "is a staging area only, never a durable store — it's
+siloed per project directory" — and reasoned: the objection is about durable _knowledge_ being
+siloed; this content is deliberately perishable and deliberately per-project; therefore a staging
+area is exactly right. It even wrote the tension into its own report before proceeding.
+
+Every step of that is defensible against the rule as written, and the outcome was still wrong. The
+defect was that the rule explained a **mechanism** rather than stating a **prohibition** — and a
+mechanism can be argued around by anyone who accepts it. The corrections were made in two places:
+the ban is now absolute here, and `power-user-linux-setup` carries a filed plan
+(`2026-08-29-no-harness-memory-stores.md`) to restate the `~/AGENTS.md` section the same way and
+move it out of that file's "Claude Code specifics" block, since sitting there was part of why it
+read as a note about one vendor's feature rather than a general rule.
+
+The cheap sorting rule that replaces the reasoning: **configuration describes the harness; anything
+describing the work is a plain file any agent can open.**
+
+One practical finding, against the fear that a flat ban loses something: it did not. The handoff was
+re-filed as an ordinary plan at `status: in-progress`, which `plans.py list` already sorts above
+everything else, and the only thing genuinely lost was automatic loading at session start — which is
+worth nothing anyway if only one vendor's sessions get it.
+
 ## Why plan lifecycle decisions defer to `plan-docs` instead of a session-harvest judgment call
 
 The plan-specific routing filter's original wording ("check whether the relevant plan file already

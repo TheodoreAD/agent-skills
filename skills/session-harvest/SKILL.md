@@ -1,6 +1,6 @@
 ---
 name: session-harvest
-description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation against Claude Code's built-in auto-memory taxonomy, but routes plan-specific content to plans/*.md instead (per the plan-docs skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md, so memory doesn't duplicate what those already own or silently silo a preference in one project's memory folder. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent and a safe-to-compact verdict. On-demand only — never installs hooks or runs automatically."
+description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation for anything worth keeping and routes each item to a plain file every agent can read: plan-specific content to plans/*.md (per the plan-docs skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md. Never a harness's own memory store, for any project or any reason — that vendor-locks the work. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent and a safe-to-compact verdict. On-demand only — never installs hooks or runs automatically."
 ---
 
 # Session harvest
@@ -150,8 +150,8 @@ considered and rejected).
      `depends_on` keeps its own, different meaning: **this** work cannot land until that repo
      changes, which is a dependency rather than a delivery. Used this way on the run that added it,
      to route two `~/AGENTS.md` corrections to the repo that owns the fragments.
-   - **Already covered → skip.** If an existing memory file or doc already says this, don't write a
-     duplicate — check first.
+   - **Already covered → skip.** If an existing doc already says this, don't write a duplicate —
+     check first.
    - **Meta-conventions about how to build things in this ecosystem (e.g. "skills should do X by
      default") → the relevant existing skill's own docs, not a feedback memory** — even though on
      the surface "how to approach work" sounds like the `feedback` bucket. Resolved via
@@ -160,16 +160,24 @@ considered and rejected).
      contributor/tool), not this harness's private memory store. Use that as the default for similar
      cases rather than re-asking each time.
 
-3. **Survivors** get saved following the harness's own existing memory-save procedure exactly as
-   specified in its system prompt (frontmatter format, `MEMORY.md` index entry, `[[links]]`) — not
-   reimplemented here. **Expect this to be rare.** Confirmed directly by the user 2026-08-23: memory
-   is not a durable store at all anymore — a prior session's restructuring moved everything durable
-   that used to live there into `AGENTS.md`/`~/AGENTS.md`, and step 2's filters exist precisely so
-   that keeps being true going forward. What's actually left to save here should be genuinely
-   temporary — expires on its own, isn't meant to persist indefinitely (a deadline, a "don't touch X
-   until Y happens" note) — not a preference, convention, or fact that would still be true in a
-   month. If a candidate feels durable but doesn't cleanly fit any filter in step 2, that's a signal
-   to add a new routing filter there (step 6's self-update), not to default to memory.
+3. **There is no memory tier. Every survivor lands in a plain file, and step 2 is the whole of the
+   routing.** A harness's own memory store is never a destination — not for durable content, not for
+   perishable content, not as a staging area, not "just this once".
+
+   [DECISION: stated by the user 2026-08-29 — no memories, for any harness, for any project, for any
+   reason, because project data and user-wide practices must not be vendor-locked. The carve-out is
+   harness **configuration** (`settings.json`, hooks, keybindings), which is expected to differ per
+   harness because it describes the tool rather than the work. The sorting rule: configuration
+   describes the harness; anything describing the work is a plain file any agent can open.]
+
+   **State the ban, not the mechanism.** Earlier versions of this step sent "genuinely temporary"
+   survivors to the harness's memory store, and explaining _why_ that store is a poor home is
+   precisely what let a session reason its way to an exception — see
+   [`references/rationale.md`](references/rationale.md), "Why no memory tier at all".
+
+   If a candidate fits no filter in step 2, that is a signal to add a filter there (step 6's
+   self-update) — never a reason to reach for a harness feature. The gap is usually smaller than it
+   looks: an `in-progress` plan is already sorted above everything else by `plans.py list`.
 
 4. **Loose-ends pass**, separate from the memory scan: is there in-progress state in _this_
    conversation that isn't memory-worthy (failed step 1) and isn't covered by a plan file either,

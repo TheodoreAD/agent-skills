@@ -109,6 +109,16 @@ safe one, and buys the tidiness back with a second pass.
 The convention still requires staging by explicit path in the store, never `git add -A`, for the
 same reason the machine's own rules already require it in shared repos.]
 
+[DECISION: **a store plan is committed the moment it is written, never at the end of a session.**
+Added by the user 2026-08-29. This and the dirty-store rule above are the same rule from two ends:
+the add-a-new-file fallback is cheap precisely because dirty windows are short, and dirty windows
+are short only if nobody sits on an uncommitted plan. A session that batches its store commits until
+the end forces every other session, for that whole period, into a fallback it did not need.
+
+The moment is after the content is written, not at `new` — `new` produces an empty skeleton, so
+committing there would record nothing useful and leave the file dirty again immediately. `new --for`
+prints the exact command as its closing line so the timing is in front of the agent at creation.]
+
 [DECISION: **the tree checked is the store's, not the target repo's.** Confirmed by the user
 2026-08-29. `git -C <store> status --porcelain` decides whether a filing session may edit an
 existing store-held plan or must add a new file referencing it. This is the check that bites in
@@ -242,6 +252,23 @@ repo tried first so the projects-root walk only happens in the drifted case that
 Absent or unmatched — another harness, a subagent, a moved transcript — it falls back to cwd, which
 is the previous behaviour rather than a failure. The environment assumption is declared in
 `SKILL.md`, as this repo's rules require of a skill that depends on one.]
+
+[DECISION: **three anchor tiers, and only the middle one is Claude-specific.**
+`$PLAN_DOCS_SESSION_REPO` first, the Claude transcript second, cwd last. Added 2026-08-29 when the
+user asked to be sure a non-Claude harness had a fallback — it did (cwd), but that is the tier that
+cannot detect drift, so "works" and "works as well" were not the same thing. The neutral variable
+closes that: any harness exporting `PLAN_DOCS_SESSION_REPO="$(git rev-parse --show-toplevel)"` at
+session start gets a guard exactly as strong as Claude Code's, verified against a drifted cwd with
+the Claude variables unset.
+
+An explicit value beats an inferred one, so the variable wins over the transcript. A value that is
+not inside a git repository **raises** rather than falling back — silently degrading the guard
+someone just tried to strengthen is the worst of the three outcomes.]
+
+[DECISION: **`doctor` reports the tier in use and lists the cwd fallback as a problem.** A degraded
+guard that never says it is degraded is worse than no guard, because it is trusted. This is the same
+argument as the store's git-identity check: a condition that silently disables a safety property has
+to be visible from the command whose job is telling you what is broken.]
 
 [DEFERRED: a machine-level rule that an agent asks the user before `cd`-ing into another repo at
 all, raised by the user 2026-08-29 as secondary to the above. It belongs in `~/AGENTS.md` rather

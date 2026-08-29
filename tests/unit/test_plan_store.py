@@ -796,12 +796,62 @@ def test_the_anchor_falls_back_to_cwd_outside_claude_code(ws, capsys, monkeypatc
     """The skill has to work under any harness; an absent or unmatched session id is a fallback to
     the previous behaviour, not a failure."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
-    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.chdir(ws.personal)
 
-    assert plans.session_start_repo(plans.load_config()) is None
-    assert plans.session_repo(plans.load_config()) == ws.personal
+    assert plans.claude_session_repo(plans.load_config()) is None
+    anchor, source = plans.session_anchor(plans.load_config())
+    assert anchor == ws.personal
+    assert source.startswith("cwd")
+    assert not plans.session_is_anchored(plans.load_config())
     assert plans.main(["new", "no-harness"]) == 0
+
+
+def test_a_non_claude_harness_gets_the_same_guard_via_the_neutral_variable(ws, capsys, monkeypatch):
+    """PLAN_DOCS_SESSION_REPO is the tier any harness can supply, and it must be exactly as strong
+    as the Claude-specific one — including catching a drifted cwd."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
+    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(ws.personal))
+    monkeypatch.chdir(other)  # drifted
+
+    assert plans.session_is_anchored(plans.load_config())
+    assert plans.session_anchor(plans.load_config())[1] == "$PLAN_DOCS_SESSION_REPO"
+    assert plans.main(["new", "drifted"]) == 1  # caught, with no Claude env at all
+    assert not (other / "plans").exists()
+
+
+def test_the_neutral_variable_wins_over_the_claude_transcript(ws, capsys, monkeypatch):
+    """An explicit answer beats an inferred one, so a harness that knows can always say."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
+    anchor_session_to(ws, ws.personal, monkeypatch)
+    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(other))
+
+    assert plans.session_anchor(plans.load_config()) == (other, "$PLAN_DOCS_SESSION_REPO")
+
+
+def test_a_bogus_neutral_variable_fails_loudly_rather_than_silently_degrading(ws, monkeypatch):
+    """Falling back to cwd here would silently weaken the guard the user just tried to strengthen."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(ws.home / "not-a-repo"))
+    with pytest.raises(plans.PlanError):
+        plans.session_anchor(plans.load_config())
+
+
+def test_doctor_reports_the_anchor_tier_and_flags_the_weak_one(ws, capsys, monkeypatch):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.personal)
+
+    assert plans.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "session repo:" in out
+    assert "no session anchor" in out  # listed as a problem, not left silent
+
+    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(ws.personal))
+    assert plans.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "$PLAN_DOCS_SESSION_REPO" in out
+    assert "no session anchor" not in out
 
 
 def test_new_refuses_to_create_a_plan_in_another_repos_tree(ws, capsys, monkeypatch):

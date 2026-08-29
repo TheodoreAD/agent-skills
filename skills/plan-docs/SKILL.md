@@ -225,16 +225,27 @@ files which already exist — `graduate`, and anything reached by `--path` — *
 those have legitimate uses; when you see that warning, prefer doing the work from a session inside
 that repo, and if you continue, tell the user exactly what landed where.
 
-**The guard is anchored to the repo the session started in, not to the working directory.** Under
-Claude Code it reads `CLAUDE_CODE_SESSION_ID` and finds the transcript directory holding that
-session, whose name encodes the project path — decided when the session began and unaffected by any
-later `cd`. That matters because cwd is unreliable in both directions: a reset and a persisted `cd`
-were both observed inside one session, 2026-08-29. A guard comparing cwd against cwd cannot fire
-when cwd drifts, since both sides move together; the anchor gives the comparison two independent
-sides, so a create in a drifted directory is caught rather than landing silently.
+**The guard is anchored to the repo the session started in, not to the working directory**, because
+cwd is unreliable in both directions — a reset and a persisted `cd` were both observed inside one
+session, 2026-08-29. A guard comparing cwd against cwd cannot fire when cwd drifts, since both sides
+move together; an anchor gives the comparison two independent sides.
 
-Outside Claude Code, or when the transcript cannot be matched, it falls back to cwd — the weaker
-behaviour, never an error. Two habits that hold either way:
+Three tiers, most trustworthy first. **Nothing here is Claude-only except tier 2**, and no tier is
+required for the skill to work:
+
+| tier | signal                                                    | when it applies                   |
+| ---- | --------------------------------------------------------- | --------------------------------- |
+| 1    | `$PLAN_DOCS_SESSION_REPO`                                 | **any harness**, if it exports it |
+| 2    | `$CLAUDE_CODE_SESSION_ID` → the session's transcript path | Claude Code, no setup needed      |
+| 3    | cwd                                                       | fallback; cannot detect drift     |
+
+**On a harness that is not Claude Code, export `PLAN_DOCS_SESSION_REPO` at session start** —
+`export PLAN_DOCS_SESSION_REPO="$(git rev-parse --show-toplevel)"` — and the guard is exactly as
+strong as it is under Claude Code. Without it everything still works; the guard just degrades to
+tier 3 and stops catching a drifted directory. `doctor` reports which tier is in use and lists the
+fallback as a problem, so nobody is in the weak tier without being told.
+
+Two habits that hold at every tier:
 
 - **Read the `repo:` line every create prints.** It names the repo the plan just became the property
   of, derived from where the file was written rather than from any comparison, so it is true
@@ -261,6 +272,21 @@ reference the plan it relates to. Another session may be holding that file; a ne
 conflict, while an edit to a held file is the one loss that is not recoverable. Check with
 `git -C <store> status --porcelain` — one call, whatever the repo, because the store is one
 repository.
+
+**Commit a store plan the moment it is written, never at the end of a session.** Every minute the
+store is dirty is a minute another session must fall back to adding a file it would rather have
+edited, so the rule above and this one are the same rule from two ends: the fallback is cheap
+because dirty windows are short, and dirty windows are short because nobody sits on an uncommitted
+plan. `new` produces an empty skeleton, so the moment to commit is after the content is written, not
+at creation.
+
+```shell
+git -C <store> add <the one path> && git -C <store> commit -m "<repo>: <what it is>"
+```
+
+Stage by explicit path, never `git add -A` — a parallel session's half-written plan can land between
+your write and your commit, and a blanket stage would ship it under your message. The store has no
+remote, so there is nothing to push.
 
 ### Absorbing what was filed for this repo
 

@@ -1014,19 +1014,15 @@ def _candidate_repos(cfg: Config) -> Iterator[Path]:
         yield cfg.projects_root / rel
 
 
-def session_start_repo(cfg: Config) -> Path | None:
-    """The repo this session was *started* in, which is the thing cwd was standing in for.
+def claude_session_repo(cfg: Config) -> Path | None:
+    """The session's repo per Claude Code's own transcript layout, or None under anything else.
 
     Claude Code writes each session's transcript to `<config>/projects/<encoded project path>/`, so
     the directory holding this session's file names the repo the session belongs to — decided when
-    the session began and unaffected by any later `cd`. That is what makes it a real anchor: a guard
-    comparing cwd against cwd cannot fire when cwd drifts, because both sides move together.
+    the session began and unaffected by any later `cd`.
 
     The encoding is lossy (several characters all become `-`), so candidates are encoded and
     compared rather than the directory name being decoded, which would be ambiguous.
-
-    Returns None outside Claude Code, or when nothing matches — callers fall back to cwd, which is
-    the previous behaviour rather than a failure.
     """
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session_id):
@@ -1041,12 +1037,39 @@ def session_start_repo(cfg: Config) -> Path | None:
     return next((repo for repo in _candidate_repos(cfg) if encode_project_dir(repo) == encoded), None)
 
 
-def session_repo(cfg: Config) -> Path | None:
-    """The repo this session belongs to: where it started if that is knowable, else cwd.
+def session_anchor(cfg: Config) -> tuple[Path | None, str]:
+    """The repo this session belongs to, and which signal said so.
 
-    Never `--path`. `--path` names what a command is *about*; this names where the session lives.
+    Three tiers, most trustworthy first, because the guard that uses this is only as good as its
+    weakest input and a caller deserves to know which one it got:
+
+    1. `$PLAN_DOCS_SESSION_REPO` — the vendor-neutral escape hatch. Any harness can export it at
+       session start, and it is the only tier available to one that is not Claude Code.
+    2. Claude Code's session transcript, which is exact and needs no setup.
+    3. cwd — the weak tier. It is what the guard used before an anchor existed, and it cannot detect
+       a drifted directory, since the thing being checked and the thing checking it both moved.
+
+    Never `--path`: that names what a command is *about*, not where the session lives.
     """
-    return session_start_repo(cfg) or repo_root_of(Path.cwd())
+    override = os.environ.get("PLAN_DOCS_SESSION_REPO", "").strip()
+    if override:
+        root = repo_root_of(Path(override).expanduser())
+        if root is None:
+            raise PlanError(f"$PLAN_DOCS_SESSION_REPO is {override!r}, which is not inside a git repository")
+        return root, "$PLAN_DOCS_SESSION_REPO"
+    found = claude_session_repo(cfg)
+    if found is not None:
+        return found, "this session's transcript"
+    return repo_root_of(Path.cwd()), "cwd (no session anchor — see doctor)"
+
+
+def session_repo(cfg: Config) -> Path | None:
+    return session_anchor(cfg)[0]
+
+
+def session_is_anchored(cfg: Config) -> bool:
+    """Whether the answer came from a real anchor rather than the drift-prone fallback."""
+    return not session_anchor(cfg)[1].startswith("cwd")
 
 
 def is_foreign(target: Path | None, cfg: Config) -> bool:
@@ -1096,7 +1119,7 @@ def cmd_new(args: argparse.Namespace) -> int:
     if routing.rule and routing.rule.write == "repo" and is_foreign(routing.repo_root, cfg):
         # Refused rather than warned: `--for` is the correct way to record something against
         # another repo, so writing a new file into its tree has no remaining legitimate use.
-        anchored = session_start_repo(cfg) is not None
+        anchored = session_is_anchored(cfg)
         source = "this session started in" if anchored else "cwd says this session is in"
         hint = (
             ""
@@ -1157,6 +1180,8 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
     if routing.rule and routing.rule.write == "repo":
         print("note:      that repo keeps its own plans, so this is in transit — a session working")
         print("           there absorbs it with: plans.py move <file> --to repo")
+    print("commit:    write the plan, then commit it in the store straight away —")
+    print(f"           git -C {cfg.store} add <path> && git -C {cfg.store} commit")
     return code
 
 
@@ -2190,6 +2215,11 @@ def store_problems(cfg: Config) -> list[str]:
         found.append(f"the store has remote(s) {remotes.split()} — one personal remote holding several clients'")
     if not os.environ.get("PLANS_HOME"):
         found.append(f"PLANS_HOME is unset; {cfg.store} is in use by default. Export it so the machine agrees")
+    if not session_is_anchored(cfg):
+        found.append(
+            "no session anchor: the cross-repo guard is falling back to cwd, which cannot detect a "
+            "drifted directory. Export PLAN_DOCS_SESSION_REPO=<repo> at session start to fix it"
+        )
     return found
 
 
@@ -2252,6 +2282,8 @@ def _print_doctor(
     holding: list[tuple[str, int]],
     unrouted: list[str],
 ) -> None:
+    anchor, source = session_anchor(cfg)
+    print(f"session repo:  {anchor or '(not in a git repository)'}  [{source}]")
     print(f"config:        {cfg.path}{'' if cfg.path.is_file() else ' (does not exist)'}")
     print(f"projects_root: {cfg.projects_root}")
     print(f"store:         {cfg.store} (from {cfg.store_source})")

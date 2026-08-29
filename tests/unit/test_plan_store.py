@@ -769,6 +769,69 @@ def test_filing_for_a_store_routed_repo_is_at_home_not_in_transit(ws, capsys):
     assert "in transit" not in capsys.readouterr().out
 
 
+def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys):
+    """File from elsewhere, absorb from inside the owning repo — the full cycle, with the target's
+    tree untouched until its own session does the taking."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plans.main(["new", "filed-thing", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])
+    capsys.readouterr()
+    name = f"{plans.today()}-filed-thing.md"
+    mirror = ws.store / "github.com-personal" / "agent-skills" / name
+
+    # Reporting is read-only: nothing moves until --apply.
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    assert "awaiting absorption" in capsys.readouterr().out
+    assert mirror.is_file()
+
+    assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 0
+    assert "absorbed:" in capsys.readouterr().out
+    assert (ws.personal / "plans" / name).is_file()
+    assert not mirror.exists()
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    assert capsys.readouterr().out == ""  # silent once drained
+
+
+def test_absorb_is_silent_when_there_is_nothing_and_never_touches_a_store_routed_repo(ws, capsys):
+    """A client repo's mirror is its permanent home, so nothing there is ever in transit."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.store / "client.com-bitbucket" / "team" / "api", "2026-01-01-home.md", "status: idea\nupdated: 2026-01-01")
+
+    assert plans.main(["absorb", "--path", str(ws.client)]) == 0
+    assert capsys.readouterr().out == ""
+    assert (ws.store / "client.com-bitbucket" / "team" / "api" / "2026-01-01-home.md").is_file()
+
+    assert plans.main(["absorb", "--verbose", "--path", str(ws.client)]) == 0
+    assert "nothing filed" in capsys.readouterr().out
+
+
+def test_absorb_refuses_to_rename_around_a_name_collision(ws, capsys):
+    """Two plans sharing a name is the moment a merge is wanted; a silent rename hides exactly
+    that."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plans.main(["new", "same-name", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])
+    capsys.readouterr()
+    name = f"{plans.today()}-same-name.md"
+    plan(ws.personal / "plans", name, "status: idea\nupdated: 2026-01-01", "\nalready here\n")
+
+    assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 1
+    out = capsys.readouterr().out
+    assert "CONFLICT" in out
+    assert "merge, not a rename" in out
+    # Neither copy was destroyed.
+    assert (ws.store / "github.com-personal" / "agent-skills" / name).is_file()
+    assert "already here" in (ws.personal / "plans" / name).read_text()
+
+
+def test_list_footer_surfaces_absorbable_plans(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plans.main(["new", "waiting", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])
+    capsys.readouterr()
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
+    assert "1 plan(s) filed for this repo await absorption" in capsys.readouterr().out
+
+
 def test_graduate_moves_an_idea_into_its_new_repo(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plans.main(["new", "grown-up", "--unscoped", "--path", str(ws.personal)])

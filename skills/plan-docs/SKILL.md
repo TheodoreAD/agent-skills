@@ -31,11 +31,12 @@ python3 ~/.agents/skills/plan-docs/scripts/plans.py list
 **Start here. These three answer most sessions**, and nothing below is needed until the lifecycle
 reaches it:
 
-| the question                           | the command                        |
-| -------------------------------------- | ---------------------------------- |
-| what is open? what should I work on?   | `list` — see "Asking what is open" |
-| where does a new plan go, and write it | `new <topic>`                      |
-| is this machine set up, and how?       | `doctor`                           |
+| the question                             | the command                            |
+| ---------------------------------------- | -------------------------------------- |
+| **first call of a session, in any repo** | `absorb` — silent unless it applies    |
+| what is open? what should I work on?     | `list` — see "Asking what is open"     |
+| where does a new plan go, and write it   | `new <topic>`, or `new … --for <repo>` |
+| is this machine set up, and how?         | `doctor`                               |
 
 <details>
 <summary>The rest, by the moment you need them</summary>
@@ -233,7 +234,39 @@ Route plus location already says it, so there is nothing to set and nothing to d
 
 **If the store has uncommitted changes, add a new plan rather than editing an existing one**, and
 reference the plan it relates to. Another session may be holding that file; a new file cannot
-conflict, while an edit to a held file is the one loss that is not recoverable.
+conflict, while an edit to a held file is the one loss that is not recoverable. Check with
+`git -C <store> status --porcelain` — one call, whatever the repo, because the store is one
+repository.
+
+### Absorbing what was filed for this repo
+
+**On your first plan-docs call in a session, run `absorb` before anything else:**
+
+```shell
+python3 <path> absorb            # report only — prints nothing at all if nothing is waiting
+python3 <path> absorb --apply    # move them into this repo's plans/
+```
+
+It is silent when the store holds nothing for this repo, so it costs nothing on the sessions where
+it does not apply. When it does print, **put the set to the user with `AskUserQuestion` before
+applying** — one question for the set, not one per plan — then apply, run the repo's quality gate,
+and commit **twice**: this repo for the additions, the store for the removals. Then carry on with
+whatever the session was for.
+
+Once per session, not once per command. The script is stateless and cannot tell a first call from a
+fifth; you can, so the rule lives here. `list` also prints a one-line footer when plans are waiting,
+for a session that skipped the proposal.
+
+**Committing to both repositories here is not the cross-repo commit this section forbids.** You are
+the session working in this repo: the additions go to your own tree, and the store only loses the
+file you just took. What is forbidden is writing into a tree that is not yours.
+
+**A name collision is a merge, not a rename.** `absorb` refuses when a filed plan's name already
+exists in `plans/`, exits non-zero, and destroys neither copy — two plans sharing a name means both
+cover the topic, and that is the moment to combine them by hand.
+
+Absorption applies only to a repo that keeps its own plans. For a repo routed to the store, the
+mirror **is** the permanent home and nothing is ever in transit.
 
 ## Plans that belong to no repo yet
 

@@ -148,17 +148,53 @@ Two stages, in order. No frontmatter changes in either.
 
 ### Stage 2 — absorb, from inside the repo that owns it
 
-The store is a transit area for repo-routed repos, not a second home. A session actually working in
-repo B drains it, on B's own schedule, committing only to B.
+The store is a transit area for repo-routed repos, not a second home. The user's stated cycle,
+2026-08-29:
 
-3. **A nudge, not a scan the user has to remember.** `list` at repo scope already reads the store
-   mirror; it needs a footer line saying how many plans are waiting to be absorbed, in the same
-   shape as the existing "N plan(s) await retirement" line. That line is the trigger for the whole
-   stage.
-4. **An absorb verb.** Per file this is already `move <file> --to repo`. What is missing is the bulk
-   form and the rule about when — see the open question on dirty trees.
-5. **A cross-repo warning.** Once absorption exists, writing into another repo's tree is a mistake
-   rather than a workaround, and the tooling should say so at the moment it is attempted.
+> build feature → harvest → write plans to the central store for another repo → stop. Then in the
+> target repo: build feature → harvest → write plans wherever needed → new session → call plan-docs
+> → consolidation proposed before anything else → user accepts → consolidation happens, committed in
+> both repos → resume the regular flow of displaying the most likely plans to continue on.
+
+[DECISION: **consolidation commits to both the target repo and the store, and this is not the
+cross-repo commit the plan exists to prevent.** Worth stating because it looks like one. The session
+consolidating _is_ the session working in the target repo: it commits to its own repo, which is
+ordinary, and to the store, where it only removes the file it just absorbed. Nothing lands in a
+third party's tree. The distinction the whole design rests on is not "never touch two repositories",
+it is "never write into a working tree that is not yours".]
+
+[DECISION: **"usually a fresh session" is agent state, not script state, so the skill owns the
+trigger and the script owns the answer.** `plans.py` is stateless and cannot tell a first call from
+a fifth; proposing on every invocation would make the feature an irritation within a day. The script
+reports what is absorbable and performs it on request; `SKILL.md` says to propose it once, on the
+first plan-docs call of a session. Putting the once-per-session rule anywhere else cannot work.]
+
+[DECISION: **silence when there is nothing to absorb.** The stated flow says consolidation comes
+before anything else, which is right when there is something waiting and friction when there is not
+— a request to capture a quick idea should not become a triage prompt. So the proposal appears only
+when the store actually holds plans for this repo, and costs nothing at all otherwise. This is a
+softening of "before anything else", agreed as the intent rather than the letter.]
+
+The pieces:
+
+3. **`absorb`, reporting and performing.** Per file this is already `move <file> --to repo`; what is
+   missing is the set view and the bulk form. Bulk matters because the proposal is one question, not
+   one per plan.
+4. **A `list` footer**, in the same shape as the existing "N plan(s) await retirement" line, so a
+   session that skipped the proposal still sees the backlog.
+5. **A cross-repo warning**, last. Warning about a workaround before its replacement exists just
+   blocks people, so this lands only once absorption works.
+
+[PITFALL: absorbing means committing markdown into the target repo, so **the target's quality gate
+runs before that commit** like any other. Doc-only commits that skipped the gate are already the
+most common cause of red CI in these repos, and a bulk absorb touching several files at once is
+exactly the shape that trips a formatter.]
+
+[NEEDS CLARIFICATION: what happens when a filed plan's name already exists in the target's `plans/`.
+`move` refuses on collision today, which is safe but leaves the flow stuck. Renaming silently is
+worse — it hides that two plans cover the same topic, which is the moment a merge is actually
+wanted. Reporting it as a conflict for the session to resolve is the conservative answer and
+probably right, but it should be a decision rather than a fallback.]
 
 ### The two skills have to cooperate, not each decide
 

@@ -1156,6 +1156,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
     elided = _print_rows(entries, show_repo=scope != "repo", limit=_idea_limit(args, cfg), stale=args.stale)
     if scope == "repo":
+        _print_absorbable(routing)
         _print_inbound_dependencies(cfg, routing)
     elif scope == "family":
         _print_family_dependencies(entries)
@@ -1336,6 +1337,13 @@ def _print_family_dependencies(entries: list[tuple[str, PlanFile]]) -> None:
         print(f"  {name} <- {len(waiting[name])} plan(s)")
 
 
+def _print_absorbable(routing: Routing) -> None:
+    """A session that skipped the start-of-session proposal still sees the backlog here."""
+    pending = absorbable(routing)
+    if pending:
+        print(f"\n{len(pending)} plan(s) filed for this repo await absorption — plans.py absorb")
+
+
 def _print_inbound_dependencies(cfg: Config, routing: Routing) -> None:
     """What other repos are waiting on *this* one — the actionable half, and bounded by definition.
 
@@ -1418,6 +1426,86 @@ def cmd_set_status(args: argparse.Namespace) -> int:
     print(f"updated: {plan.path}")
     print(f"status:  {plan.status} -> {args.status}")
     return 0
+
+
+def absorbable(routing: Routing) -> list[PlanFile]:
+    """Plans filed for this repo that belong in its own tree.
+
+    Only for a repo whose route writes to `repo`: for one routed to the store, the mirror *is* the
+    permanent home and nothing is in transit. That is the whole distinction, read from route plus
+    location rather than from a frontmatter field nobody would maintain.
+    """
+    if routing.rule is None or routing.rule.write != "repo" or "store" not in routing.dirs:
+        return []
+    return plans_in(routing.dirs["store"], "store")
+
+
+def cmd_absorb(args: argparse.Namespace) -> int:
+    """Take plans filed for this repo from the store into the repo's own `plans/`.
+
+    Run from inside the repo that owns them, which is what keeps this from being a foreign commit:
+    the session writes only to its own tree, and to the store only to remove what it just took.
+    """
+    cfg = load_config()
+    routing = require_ok(resolve(args.path, cfg))
+    pending = absorbable(routing)
+
+    if args.json:
+        payload = [
+            {"path": str(plan.path), "name": plan.path.name, "status": plan.status, "updated": plan.updated}
+            for plan in pending
+        ]
+        print(json.dumps({"repo": routing.rel, "absorbable": payload}, indent=2))
+        return 0
+
+    if not pending:
+        # Silence is the point: this runs at the top of a session, and a session with nothing
+        # waiting should not be told so.
+        if args.verbose:
+            print(f"nothing filed for {routing.rel or routing.repo_root}")
+        return 0
+
+    if not args.apply:
+        print(f"{len(pending)} plan(s) filed for {routing.rel or routing.repo_root}, awaiting absorption:")
+        for plan in pending:
+            print(f"  {plan.path.name:<52} {plan.status}  updated {plan.updated or '?'}")
+        print("\nabsorb them with --apply; each moves into this repo's plans/ and leaves the store.")
+        print("Commit both: this repo (the additions) and the store (the removals).")
+        return 0
+
+    target = routing.dirs["repo"]
+    wanted = set(args.only) if args.only else None
+    chosen = [plan for plan in pending if wanted is None or plan.path.name in wanted]
+    moved, blocked = _take_plans(chosen, target)
+
+    for plan, destination in moved:
+        print(f"absorbed: {plan.path.name} -> {destination}")
+    for plan in blocked:
+        print(f"CONFLICT: {plan.path.name} already exists in {target}; resolve it by hand — the two")
+        print(f"          cover the same topic, which is a merge, not a rename. Filed copy: {plan.path}")
+    if moved:
+        print(f"\n{len(moved)} absorbed. Run this repo's quality gate, then commit here and in {cfg.store}.")
+    return 1 if blocked else 0
+
+
+def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFile, Path]], list[PlanFile]]:
+    """Move each plan into the target directory, skipping any whose name is already taken.
+
+    A collision is never renamed around: two plans sharing a name is the moment a merge is wanted,
+    and a silent rename hides exactly that.
+    """
+    moved: list[tuple[PlanFile, Path]] = []
+    blocked: list[PlanFile] = []
+    for plan in chosen:
+        destination = target / plan.path.name
+        if destination.exists():
+            blocked.append(plan)
+            continue
+        target.mkdir(parents=True, exist_ok=True)
+        destination.write_text(plan.path.read_text(encoding="utf-8"), encoding="utf-8")
+        plan.path.unlink()
+        moved.append((plan, destination))
+    return moved, blocked
 
 
 def cmd_move(args: argparse.Namespace) -> int:
@@ -2241,6 +2329,13 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--force", action="store_true", help="write the status even if its gate fails")
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=cmd_set_status)
+
+    absorb = add("absorb", "take plans filed for this repo out of the store into its own plans/")
+    absorb.add_argument("--apply", action="store_true", help="actually move them (default: report only)")
+    absorb.add_argument("--only", nargs="*", default=[], metavar="FILE", help="absorb just these filenames")
+    absorb.add_argument("--verbose", action="store_true", help="say so when there is nothing to absorb")
+    absorb.add_argument("--json", action="store_true")
+    absorb.set_defaults(func=cmd_absorb)
 
     move = add("move", "move a plan between the repo and the store")
     move.add_argument("file", help="plan path or bare filename")

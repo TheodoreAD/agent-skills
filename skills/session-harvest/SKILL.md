@@ -18,6 +18,16 @@ considered and rejected).
 
 ## Procedure
 
+0. **Check the copy you are running is the current one.** The running skill is a file copy dropped
+   at install time, so a harvest can silently execute a version older than the source — skipping
+   exactly the checks most recently added, and reporting a clean run because it never looked. Diff
+   the installed copy against the checkout before starting
+   (`diff -q ~/.agents/skills/session-harvest/SKILL.md <checkout>/skills/session-harvest/SKILL.md`),
+   and do the same for any other skill this run leans on. If they differ, say so and offer to
+   re-install first; a stale harvest is worse than no harvest, because its report reads identical.
+   Added 2026-08-29 after the user asked for a harvest "with the latest versions" — behaviour the
+   skill did not have, and could not have confirmed if asked.
+
 1. **Significance test first.** Re-read the conversation for candidates. For each one, before
    anything else: _if this were lost, would a future session go wrong?_ Anything that fails this is
    dropped (optionally noted in the report as "considered, not worth persisting"), not proposed.
@@ -130,6 +140,16 @@ considered and rejected).
      session produced nine evidence-backed edits owed to two skills in `agent-skills` while that
      repo was undergoing surgery; they went to a `depends_on`-tagged plan in the project that found
      them, with the evidence attached, so the edits can be made in one pass later.
+   - **A candidate belonging to another repo is _filed_ there, not queued here.** As of 2026-08-29
+     `plan-docs` has `plans.py new <topic> --for <repo>`, which writes the plan into that repo's
+     store mirror outside every working tree: no commit crosses, and the session that next works in
+     that repo is offered it by `plans.py absorb`. Prefer it over a `depends_on` plan in the current
+     repo, which was the workaround before the mechanism existed and leaves the candidate somewhere
+     the owning repo never looks. Commit the filed plan in the store immediately — a dirty store
+     forces every other session into the add-a-new-file fallback for as long as it lasts.
+     `depends_on` keeps its own, different meaning: **this** work cannot land until that repo
+     changes, which is a dependency rather than a delivery. Used this way on the run that added it,
+     to route two `~/AGENTS.md` corrections to the repo that owns the fragments.
    - **Already covered → skip.** If an existing memory file or doc already says this, don't write a
      duplicate — check first.
    - **Meta-conventions about how to build things in this ecosystem (e.g. "skills should do X by

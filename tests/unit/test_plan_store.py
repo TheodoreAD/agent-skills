@@ -44,6 +44,7 @@ class Workspace:
     home: Path
     projects: Path
     store: Path
+    sensitive: Path
     config: Path
     personal: Path
     client: Path
@@ -75,6 +76,7 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.delenv("PLANS_HOME", raising=False)
+    monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
     # The real session's transcript lives in the real ~/.claude and would otherwise be found by the
     # session anchor, making every test depend on where the suite happens to be run from.
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
@@ -84,7 +86,11 @@ def ws(tmp_path, monkeypatch):
     return Workspace(
         home=home,
         projects=projects,
+        # The two halves of the store. `client.com-bitbucket` is not a public root, so every plan
+        # for the client repo below lands in the sensitive one — the split is the default, not an
+        # opt-in, and a test writing a client plan into `store` would be testing the wrong tier.
         store=home / "plans",
+        sensitive=home / "plans-sensitive",
         config=config,
         # depth 1, the ordinary case; depth 3, the Bitbucket project/repo hierarchy the store
         # layout has to mirror rather than flatten.
@@ -174,7 +180,7 @@ def test_default_routes_client_repo_to_the_mirrored_store_path(ws):
     routing = route(ws.client)
     assert routing.verdict == "ok"
     # Mirrored at full depth: a fixed "<root>/<repo>" rule would lose the `team` level.
-    assert routing.write_dir == ws.store / "client.com-bitbucket" / "team" / "api"
+    assert routing.write_dir == ws.sensitive / "client.com-bitbucket" / "team" / "api"
 
 
 def test_repo_entry_beats_root_entry(ws):
@@ -219,7 +225,7 @@ def test_new_writes_into_the_store_with_the_origin_url(ws, capsys):
     write_config(ws, 'default = "store"\n')
     assert plans.main(["new", "store-routing", "--path", str(ws.client)]) == 0
     created = Path(capsys.readouterr().out.splitlines()[0].split(": ", 1)[1])
-    assert created.parent == ws.store / "client.com-bitbucket" / "team" / "api"
+    assert created.parent == ws.sensitive / "client.com-bitbucket" / "team" / "api"
     front = plans.parse_frontmatter(created.read_text())
     assert front["status"] == "idea"
     assert front["repo"] == "git@example.com:x/api.git"
@@ -287,7 +293,7 @@ def test_move_relocates_and_stamps_the_repo_field(ws, capsys):
     source.write_text("---\nstatus: idea\nupdated: 2026-01-02\n---\n\n## Context\n", encoding="utf-8")
     assert plans.main(["move", "2026-01-01-old.md", "--to", "store", "--path", str(ws.client)]) == 0
     capsys.readouterr()
-    moved = ws.store / "client.com-bitbucket" / "team" / "api" / "2026-01-01-old.md"
+    moved = ws.sensitive / "client.com-bitbucket" / "team" / "api" / "2026-01-01-old.md"
     assert not source.exists()
     assert plans.parse_frontmatter(moved.read_text())["repo"] == "git@example.com:x/api.git"
 
@@ -307,7 +313,7 @@ def test_family_scope_spans_repos_and_hides_finished_plans(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plan(ws.personal / "plans", "2026-01-01-open.md", "status: idea\nupdated: 2026-01-01")
     plan(
-        ws.store / "client.com-bitbucket" / "team" / "api",
+        ws.sensitive / "client.com-bitbucket" / "team" / "api",
         "2026-01-02-shipped.md",
         "status: landed\nupdated: 2026-01-02",
     )
@@ -454,7 +460,7 @@ def test_status_drift_no_single_repo_can_see(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plan(ws.personal / "plans", "2026-01-01-drifted.md", "status: done\nupdated: 2026-01-01")
     plan(
-        ws.store / "client.com-bitbucket" / "team" / "api",
+        ws.sensitive / "client.com-bitbucket" / "team" / "api",
         "2026-01-02-prose.md",
         "status: idea — hooks still unadopted, re-measure later\nupdated: 2026-01-02",
     )
@@ -507,7 +513,7 @@ def test_every_reading_command_offers_json(ws, capsys):
 def test_tag_matching_is_anchored(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "tagged", "--path", str(ws.client)])
-    path = next((ws.store / "client.com-bitbucket" / "team" / "api").glob("*-tagged.md"))
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-tagged.md"))
     path.write_text(
         path.read_text()
         + "\n[NEEDS CLARIFICATION: which store]\n"
@@ -538,7 +544,7 @@ def test_a_store_routed_repo_retires_in_the_store_as_normal(ws, capsys):
     """The rule is about plans in transit, not about the store. A client repo's plans live there
     permanently, so that is where their history belongs."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
-    mirror = ws.store / "client.com-bitbucket" / "team" / "api"
+    mirror = ws.sensitive / "client.com-bitbucket" / "team" / "api"
     plan(mirror, "2026-01-01-clientwork.md", "status: idea\nupdated: 2026-01-01")
 
     assert plans.main(["set-status", "2026-01-01-clientwork.md", "landed", "--path", str(ws.client)]) == 0
@@ -547,7 +553,7 @@ def test_a_store_routed_repo_retires_in_the_store_as_normal(ws, capsys):
 def test_promotion_gate_blocks_planned_while_questions_are_open(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "gated", "--path", str(ws.client)])
-    path = next((ws.store / "client.com-bitbucket" / "team" / "api").glob("*-gated.md"))
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-gated.md"))
     path.write_text(path.read_text() + "\n[NEEDS CLARIFICATION: unresolved]\n", encoding="utf-8")
 
     assert plans.main(["set-status", str(path), "planned", "--path", str(ws.client)]) == 1
@@ -560,7 +566,7 @@ def test_promotion_gate_blocks_planned_while_questions_are_open(ws):
 def test_set_status_bumps_updated_and_keeps_other_fields(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "moving", "--path", str(ws.client)])
-    path = next((ws.store / "client.com-bitbucket" / "team" / "api").glob("*-moving.md"))
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-moving.md"))
     assert plans.main(["set-status", path.name, "blocked on the store landing", "--path", str(ws.client)]) == 0
     front = plans.parse_frontmatter(path.read_text())
     assert front["status"] == "blocked on the store landing"
@@ -572,7 +578,7 @@ def test_set_status_bumps_updated_and_keeps_other_fields(ws):
 def test_landed_gate_blocks_on_unverified(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "unproven", "--path", str(ws.client)])
-    path = next((ws.store / "client.com-bitbucket" / "team" / "api").glob("*-unproven.md"))
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-unproven.md"))
     path.write_text(path.read_text() + "\n- [UNVERIFIED: never actually run]\n", encoding="utf-8")
     assert plans.main(["set-status", path.name, "landed", "--path", str(ws.client)]) == 1
 
@@ -988,7 +994,7 @@ def test_filing_accepts_an_absolute_path_and_refuses_the_current_repo(ws, capsys
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     assert plans.main(["new", "by-abs-path", "--for", str(ws.client), "--path", str(ws.personal)]) == 0
     capsys.readouterr()
-    assert (ws.store / "client.com-bitbucket" / "team" / "api" / f"{plans.today()}-by-abs-path.md").is_file()
+    assert (ws.sensitive / "client.com-bitbucket" / "team" / "api" / f"{plans.today()}-by-abs-path.md").is_file()
 
     # Filing against the repo you are already in is a mistake, not a shorthand.
     assert plans.main(["new", "here", "--for", str(ws.personal), "--path", str(ws.personal)]) == 1
@@ -1053,11 +1059,12 @@ def test_absorb_apply_refuses_for_a_repo_this_session_does_not_belong_to(ws, cap
 def test_absorb_is_silent_when_there_is_nothing_and_never_touches_a_store_routed_repo(ws, capsys):
     """A client repo's mirror is its permanent home, so nothing there is ever in transit."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
-    plan(ws.store / "client.com-bitbucket" / "team" / "api", "2026-01-01-home.md", "status: idea\nupdated: 2026-01-01")
+    mirror = ws.sensitive / "client.com-bitbucket" / "team" / "api"
+    plan(mirror, "2026-01-01-home.md", "status: idea\nupdated: 2026-01-01")
 
     assert plans.main(["absorb", "--path", str(ws.client)]) == 0
     assert capsys.readouterr().out == ""
-    assert (ws.store / "client.com-bitbucket" / "team" / "api" / "2026-01-01-home.md").is_file()
+    assert (ws.sensitive / "client.com-bitbucket" / "team" / "api" / "2026-01-01-home.md").is_file()
 
     assert plans.main(["absorb", "--verbose", "--path", str(ws.client)]) == 0
     assert "nothing filed" in capsys.readouterr().out
@@ -1171,7 +1178,7 @@ def test_graduate_into_a_store_routed_repo_stamps_the_origin(ws, capsys):
     capsys.readouterr()
 
     plans.main(["graduate", source.name, "--to", str(ws.client), "--path", str(ws.client)])
-    landed = ws.store / "client.com-bitbucket" / "team" / "api" / source.name
+    landed = ws.sensitive / "client.com-bitbucket" / "team" / "api" / source.name
     assert plans.parse_frontmatter(landed.read_text())["repo"] == "git@example.com:x/api.git"
 
 
@@ -1282,12 +1289,17 @@ def test_doctor_flags_a_repo_holding_plans_that_no_rule_routes(ws, capsys):
     assert "holds plans but no rule routes it" in capsys.readouterr().out
 
 
-def test_install_is_idempotent_and_sets_the_store_up(ws, capsys):
+def test_install_is_idempotent_and_sets_both_tiers_up(ws, capsys):
     assert plans.main(["install", "--path", str(ws.personal)]) == 0
     assert ws.config.is_file()
-    assert (ws.store / ".git").is_dir()
-    assert (ws.store / "README.md").is_file()
+    for store in (ws.store, ws.sensitive):
+        assert (store / ".git").is_dir()
+        assert (store / "README.md").is_file()
+    # Each half says what it is, so nobody has to infer the rule from the directory name.
+    assert "may have a remote" in (ws.store / "README.md").read_text()
+    assert "no remote, deliberately" in (ws.sensitive / "README.md").read_text()
     assert (ws.store / "_unscoped").is_dir()
+    assert not (ws.sensitive / "_unscoped").exists()  # repo-less ideas are shareable by definition
     edited = ws.config.read_text() + '\ndefault = "store"\n'
     ws.config.write_text(edited, encoding="utf-8")
 
@@ -1296,23 +1308,131 @@ def test_install_is_idempotent_and_sets_the_store_up(ws, capsys):
     assert ws.config.read_text() == edited  # never clobbers a config that already exists
 
 
-def test_uninstall_keeps_the_store_unless_told_twice(ws, capsys):
+def test_uninstall_keeps_both_stores_unless_told_twice(ws, capsys):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "keep-me", "--unscoped", "--path", str(ws.client)])
+    # One plan in each tier, so the refusal below has to be counted across both rather than per store.
+    plans.main(["new", "client-work", "--path", str(ws.client)])
     capsys.readouterr()
 
     assert plans.main(["uninstall", "--path", str(ws.client)]) == 0
     assert not ws.config.exists()
     assert ws.store.is_dir()
+    assert ws.sensitive.is_dir()
 
     write_config(ws, 'default = "store"\n')
-    # A store holding plans is their only copy: --purge-store alone must not delete it.
+    # A store holding plans is their only copy: --purge-store alone must not delete either half.
     assert plans.main(["uninstall", "--purge-store", "--path", str(ws.client)]) == 1
     assert ws.store.is_dir()
+    assert ws.sensitive.is_dir()
 
     write_config(ws, 'default = "store"\n')
     assert plans.main(["uninstall", "--purge-store", "--force", "--path", str(ws.client)]) == 0
     assert not ws.store.exists()
+    assert not ws.sensitive.exists()
+
+
+# --------------------------------------------------------------------------------------------
+# the store's two tiers
+#
+# The store is two git repositories: a shareable one that may have a remote, and a sensitive one
+# that may not. Both keep full history, which is the whole reason this is a split rather than a
+# `.gitignore` — an excluded directory has no history, so `archive` would retrieve nothing for
+# exactly the plans that have no other copy.
+
+
+def tiered(extra: str = "") -> str:
+    """A config with one public root and one client root, plus any top-level key under test.
+
+    `extra` goes before `[roots]` rather than after: a key appended past a table header is parsed
+    as an entry *inside* that table, which fails as a malformed route rather than as a bad value.
+    """
+    head = 'default = "store"\npublic_roots = ["github.com-personal"]\n'
+    return f'{head}{extra}[roots]\n"github.com-personal" = "repo"\n'
+
+
+TIERED = tiered()
+
+
+def test_each_root_routes_to_the_store_its_tier_names(ws):
+    write_config(ws, TIERED)
+    assert route(ws.client).dirs["store"] == ws.sensitive / "client.com-bitbucket" / "team" / "api"
+    assert route(ws.personal).dirs["store"] == ws.store / "github.com-personal" / "agent-skills"
+
+
+def test_the_unscoped_area_stays_in_the_shareable_tier(ws, capsys):
+    """A repo-less idea is the one thing most likely to become public work, so it is filed where a
+    remote can back it up. That it might still name client work is a content question `scan` owns."""
+    write_config(ws, TIERED)
+    assert plans.main(["new", "homeless", "--unscoped", "--path", str(ws.client)]) == 0
+    assert (ws.store / "_unscoped" / f"{plans.today()}-homeless.md").is_file()
+
+
+def test_shareable_roots_falls_back_to_public_roots_and_overrides_it_when_set(ws):
+    """The two questions nearly always agree, so one key answers both until they don't — a root
+    whose name may be published while its plans may not is what the second key exists for."""
+    write_config(ws, TIERED)
+    assert plans.load_config().shareable_root_names() == ("github.com-personal",)
+
+    write_config(ws, tiered('shareable_roots = ["client.com-bitbucket"]\n'))
+    cfg = plans.load_config()
+    assert cfg.public_root_names() == ("github.com-personal",)  # unchanged: still not disclosable
+    assert route(ws.client).dirs["store"] == ws.store / "client.com-bitbucket" / "team" / "api"
+    assert route(ws.personal).dirs["store"] == ws.sensitive / "github.com-personal" / "agent-skills"
+
+
+def test_the_sensitive_store_follows_the_shareable_one_and_the_environment_beats_both(ws, monkeypatch):
+    write_config(ws, TIERED)
+    assert plans.load_config().sensitive_store == ws.home / "plans-sensitive"
+
+    monkeypatch.setenv("PLANS_HOME", str(ws.home / "elsewhere"))
+    assert plans.load_config().sensitive_store == ws.home / "elsewhere-sensitive"
+
+    monkeypatch.setenv("PLANS_SENSITIVE_HOME", str(ws.home / "vault"))
+    cfg = plans.load_config()
+    assert cfg.sensitive_store == ws.home / "vault"
+    assert cfg.sensitive_store_source == "$PLANS_SENSITIVE_HOME"
+
+
+def test_pointing_both_tiers_at_one_directory_degrades_to_a_single_store(ws, capsys):
+    """The pre-split shape, still expressible — and every command that walks the stores must then
+    report and search that directory once, not twice."""
+    write_config(ws, tiered(f'sensitive_store = "{ws.store}"\n'))
+    cfg = plans.load_config()
+    assert cfg.stores() == [("shareable", ws.store)]
+    assert route(ws.client).dirs["store"] == ws.store / "client.com-bitbucket" / "team" / "api"
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert capsys.readouterr().out.count("store:  ") == 1
+
+
+def test_a_remote_is_a_problem_on_the_sensitive_tier_and_expected_on_the_shareable_one(ws, capsys):
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    subprocess.run(["git", "remote", "add", "origin", "git@example.com:me/plans.git"], cwd=ws.store, check=True)
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "[shareable, remote: origin]" in out
+    assert "[sensitive, no remote]" in out
+    assert "outcome this tier exists to avoid" not in out  # the shareable tier is meant to have one
+
+    subprocess.run(["git", "remote", "add", "origin", "git@example.com:me/x.git"], cwd=ws.sensitive, check=True)
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "outcome this tier exists to avoid" in capsys.readouterr().out
+
+
+def test_doctor_reports_a_root_filed_in_the_wrong_tier(ws, capsys):
+    """Editing `shareable_roots` moves no directory, so a root that changes side leaves its plans
+    behind — in the shareable store that is a leak waiting for the next push."""
+    write_config(ws, TIERED)
+    plan(ws.store / "client.com-bitbucket" / "team" / "api", "2026-01-01-stray.md", "status: idea\nupdated: 2026-01-01")
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "is in the shareable store but client.com-bitbucket is a sensitive root" in out
+    assert str(ws.sensitive / "client.com-bitbucket") in out  # where it should go
 
 
 # --------------------------------------------------------------------------------------------
@@ -1422,10 +1542,12 @@ def test_archive_does_not_call_a_moved_plan_retired(ws, capsys):
 
 def test_archive_all_finds_a_retirement_in_the_store_history(ws, capsys):
     write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
-    make_repo(ws.store)
+    # The client root is sensitive, so its retirement is in that tier's history — `--all` has to
+    # reach both stores or it reports a plan as unrecoverable while its deletion commit exists.
+    make_repo(ws.sensitive)
     mirrored = "client.com-bitbucket/team/api"
-    commit_plan(ws.store, f"{mirrored}/{PLAN_NAME}", RETIRED_PLAN, "plan: land it")
-    retire_plan(ws.store, f"{mirrored}/{PLAN_NAME}")
+    commit_plan(ws.sensitive, f"{mirrored}/{PLAN_NAME}", RETIRED_PLAN, "plan: land it")
+    retire_plan(ws.sensitive, f"{mirrored}/{PLAN_NAME}")
 
     assert plans.main(["archive", "--all", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
@@ -1438,7 +1560,7 @@ def test_archive_reports_a_store_that_cannot_archive_anything(ws, capsys):
     """The store is a git repository on purpose — an unversioned one silently loses every plan it
     is handed, and the only moment anyone would notice is the one this line exists for."""
     write_config(ws, 'default = "store"\n')
-    (ws.store / "client.com-bitbucket" / "team" / "api").mkdir(parents=True)
+    (ws.sensitive / "client.com-bitbucket" / "team" / "api").mkdir(parents=True)
 
     assert plans.main(["archive", "--path", str(ws.client)]) == 0
     assert "not a git repository" in capsys.readouterr().out

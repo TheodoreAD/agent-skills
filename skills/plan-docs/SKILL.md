@@ -124,6 +124,22 @@ still an edit rather than a purge decision. After that, `--mode staged` on every
 keeps history clean going forward, and `--mode history` becomes the periodic audit rather than a
 gate.
 
+**If you do rewrite, the scan keeps failing until you drop `refs/original/`.** `--mode history`
+reads `git log --all -p`, and `git filter-branch` leaves the pre-rewrite refs under
+`refs/original/`, which `--all` still walks — so a rewrite that worked reports exactly the hit count
+it started with, and reads as though it did nothing. Confirmed 2026-08-29 doing this store's first
+push. Check the branch itself before concluding anything, then drop the backup ref and let the old
+objects go:
+
+```shell
+git -C <store> log <branch> -p | grep -i <term>        # the real answer
+git -C <store> update-ref -d refs/original/refs/heads/<branch>
+git -C <store> reflog expire --expire=now --all && git -C <store> gc --prune=now
+```
+
+Take a copy of the whole directory first. It is the only copy of those plans, and a rewrite is the
+one operation in this convention that can lose them.
+
 `shareable_roots` exists as its own key, defaulting to `public_roots`, because the two questions
 nearly always agree but are not the same: a root's name may be publishable while its plans are not,
 or the reverse. Leave it unset until they actually disagree.

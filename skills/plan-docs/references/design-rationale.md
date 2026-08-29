@@ -387,6 +387,15 @@ is published yet, so a hit is an edit rather than the purge decision it becomes 
 Thereafter `--mode staged` per commit is what keeps history clean, and `--mode history` reverts to
 being the audit it already was for repo-held plans.]
 
+[PITFALL: **after a `git filter-branch`, `--mode history` reports the same hit count as before, and
+it is not because the rewrite failed.** The scan reads `git log --all -p`; filter-branch saves the
+pre-rewrite refs under `refs/original/`, and `--all` walks those too. Measured 2026-08-29 on this
+store's first push: 6 hits before the rewrite and 6 after, while the branch itself was already clean
+— `git log <branch> -p` is the question that separates them. Dropping `refs/original/`, expiring the
+reflog and pruning took it to 0. The push was never actually at risk, since a push sends only
+objects reachable from the pushed ref, but a gate that appears not to work is how someone concludes
+the term cannot be removed and pushes anyway.]
+
 The rejected alternative to two directories was one tree with the sensitive root as a nested
 repository named in the outer `.gitignore`. It keeps one browsable directory but reintroduces the
 status blindness above for any command targeting the outer repo, and nested repositories are a

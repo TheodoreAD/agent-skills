@@ -22,6 +22,27 @@ repo**, in 4 commits, with 0 retired plans. So nothing sensitive is in it today.
 "store"` routes all seven employer/client roots there, so this is a question about the
 steady state, not about today.
 
+## Status: designed, approved, deliberately unbuilt
+
+[DECISION: **two git repositories is the agreed shape, and none of it is being built yet.** Settled
+with the user 2026-08-29. The design below is approved rather than proposed — a future session
+should implement it, not redesign it — but there is no user for it today: the store holds two plans,
+both for a public personal repo, and no client work is running. Building a two-tier routing system
+for a tier nobody is writing to is the same speculative work this repo's conventions reject
+elsewhere, and the same argument that killed the `origin:` field a few hours earlier in
+`plans/2026-08-29-external-contributions.md`.
+
+**The trigger is the first plan actually written for a store-routed repo.** At that moment the
+sensitive tier acquires content, and everything below becomes worth having. Until then the store
+stays exactly as `SKILL.md` describes it: one local repository, no remote, treated as unbacked-up.]
+
+[DECISION: **the sensitive tier ships with no backup, and that is accepted rather than overlooked.**
+Settled with the user 2026-08-29, answering the objection this plan raises against itself below. It
+is acceptable precisely because the tier is unused — an empty tier loses nothing. It stops being
+acceptable the moment the trigger above fires, so whoever implements this should treat the
+non-vendor destination in the deferred note as part of the same piece of work rather than a
+follow-up.]
+
 ## Why a remote is wanted at all, stated properly
 
 [DECISION: **the argument is not "backups are nice" — it is that the convention makes a durability
@@ -74,11 +95,12 @@ standing source of confusion. Two directories is the plainer answer.
 `public_roots` already partitions roots into "names may be disclosed" versus confidential, which is
 almost exactly this axis.
 
-[NEEDS CLARIFICATION: whether to reuse `public_roots` as the tier boundary or add a separate key
-defaulting to it. Reuse is less config and no drift between two lists that would nearly always
-agree. But they are not the same question — a root could have a public name and sensitive content,
-or the reverse — and overloading one key for two purposes is the kind of thing that is cheap now and
-expensive at the moment they first disagree.]
+[DEFERRED: whether to reuse `public_roots` as the tier boundary or add a separate key defaulting to
+it. Reuse is less config and no drift between two lists that would nearly always agree. But they are
+not the same question — a root could have a public name and sensitive content, or the reverse — and
+overloading one key for two purposes is cheap now and expensive at the moment they first disagree. A
+build-time decision, not a blocker: it does not change the shape agreed above, and it is better
+answered against a real second root than in the abstract.]
 
 ### A content gate before any push, not just a path split
 
@@ -115,8 +137,8 @@ the concentration objection materially, and it does not answer a contract that f
 storage at all — and it adds a key whose loss is worse than no backup, because it looks like one.
 Out of scope until the plain split exists.]
 
-[DEFERRED: the sensitive tier is still unbacked after this change; only the shareable tier gains a
-remote. A non-vendor destination — external drive, NAS, second machine — closes that with no
-disclosure question at all, and is the obvious pairing. Worth doing at the same time so the tier
-that needs durability most is not the one left without it, which is the failure this plan opens by
-criticising.]
+[DEFERRED: a non-vendor destination for the sensitive tier — external drive, NAS, second machine —
+which closes the durability gap with no disclosure question at all. Accepted as absent for now
+because the tier is unused, per the decision at the top. **Implement it in the same pass as the
+split**, not after: the moment the tier has content, leaving it unbacked reproduces exactly the
+failure this plan criticises gitignore for, which is durability everywhere except where it matters.]

@@ -89,7 +89,10 @@ specific outcome designed against. Never symlinked into a work repo, for the rea
 
 [DEFERRED: per-root sync. A remote for one root, against that employer's actual sanctioned
 destination and policy, stays wanted and unbuilt — the store is local-only until a specific root has
-a specific answer.]
+a specific answer. Revisited 2026-08-29: `plans/2026-08-29-store-sensitivity-tiers.md` settles the
+shape one level below this — two git repositories split by sensitivity, only the shareable one ever
+gaining a remote — approved but deliberately unbuilt until the sensitive tier has content. Per-root
+destinations remain the generalisation beyond it.]
 
 [DEFERRED: what happens when an engagement ends. A client root's subtree becomes dead weight and
 possibly material that should not be retained at all; the options are delete the subtree, archive it

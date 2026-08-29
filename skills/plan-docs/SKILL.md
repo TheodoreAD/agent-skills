@@ -44,6 +44,7 @@ reaches it:
 # writing one down
 python3 <path> where                        # which directories this repo reads and writes
 python3 <path> repos --search <words>       # what each repo is for, to route a plan by
+python3 <path> new <topic> --for <repo>     # something belonging to a repo you are not in
 python3 <path> new <topic> --unscoped       # an idea with no repo yet
 python3 <path> graduate <file> --to <repo>  # …once it has one
 
@@ -210,6 +211,29 @@ Two failure modes to handle correctly:
 Confirmed live 2026-08-28: this repo had already published a plan whose measurement table listed six
 employer/client root directory names, plus one client's internal `<project>/<repo>` path — written
 by an agent with no rule telling it not to, into a repo whose own README advertises it as public.
+
+## Something that belongs to a repo you are not in
+
+**Never write a plan into another repo's working tree.** Parallel sessions on one machine share that
+tree, so a file appearing there under a session already working in it is the failure this rule
+exists to prevent — and a plan committed across repos is a commit nobody in that repo asked for.
+
+```shell
+python3 <path> new <topic> --for github.com-personal/<repo>   # or an absolute path
+```
+
+It writes into that repo's store mirror, outside every working tree, whatever that repo's route
+says. Nothing in the target changes. The session working there sees it — `list` at repo scope reads
+the store mirror regardless of route — and absorbs it on its own schedule with
+`move <file> --to repo`, committing only to its own repo.
+
+No frontmatter marks these. For a repo that keeps its own plans, a file in its store mirror is **in
+transit** by definition; for a repo routed to the store, the same file is at its permanent home.
+Route plus location already says it, so there is nothing to set and nothing to drift.
+
+**If the store has uncommitted changes, add a new plan rather than editing an existing one**, and
+reference the plan it relates to. Another session may be holding that file; a new file cannot
+conflict, while an edit to a held file is the one loss that is not recoverable.
 
 ## Plans that belong to no repo yet
 

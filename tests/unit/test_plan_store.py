@@ -725,6 +725,50 @@ def test_unscoped_plans_are_isolated_by_scope_but_visible_from_a_repo(ws, capsys
     assert "half-an-idea" in scoped
 
 
+def test_filing_for_another_repo_never_touches_its_tree(ws, capsys):
+    """The whole point: a session in one repo records something against another without a commit
+    landing in a tree a parallel session may be holding."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    before = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ws.personal, capture_output=True, text=True, check=True
+    ).stdout
+
+    target = "github.com-personal/agent-skills"
+    assert plans.main(["new", "found-elsewhere", "--for", target, "--path", str(ws.client)]) == 0
+    out = capsys.readouterr().out
+
+    filed = ws.store / "github.com-personal" / "agent-skills" / f"{plans.today()}-found-elsewhere.md"
+    assert filed.is_file()
+    assert not (ws.personal / "plans").exists()  # the target's own directory was never created
+    after = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ws.personal, capture_output=True, text=True, check=True
+    ).stdout
+    assert after == before
+    # A repo-routed target means the file is in transit, and the note has to say how it lands.
+    assert "in transit" in out
+    assert "move <file> --to repo" in out
+    assert plans.parse_frontmatter(filed.read_text())["repo"] == "git@example.com:x/agent-skills.git"
+
+
+def test_filing_accepts_an_absolute_path_and_refuses_the_current_repo(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    assert plans.main(["new", "by-abs-path", "--for", str(ws.client), "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+    assert (ws.store / "client.com-bitbucket" / "team" / "api" / f"{plans.today()}-by-abs-path.md").is_file()
+
+    # Filing against the repo you are already in is a mistake, not a shorthand.
+    assert plans.main(["new", "here", "--for", str(ws.personal), "--path", str(ws.personal)]) == 1
+    assert plans.main(["new", "here", "--for", str(ws.personal), "--to", "store", "--path", str(ws.client)]) == 1
+
+
+def test_filing_for_a_store_routed_repo_is_at_home_not_in_transit(ws, capsys):
+    """A client repo's plans live in the store permanently, so nothing is owed and the note must not
+    claim the file is waiting to be absorbed."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    assert plans.main(["new", "client-thing", "--for", str(ws.client), "--path", str(ws.personal)]) == 0
+    assert "in transit" not in capsys.readouterr().out
+
+
 def test_graduate_moves_an_idea_into_its_new_repo(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plans.main(["new", "grown-up", "--unscoped", "--path", str(ws.personal)])

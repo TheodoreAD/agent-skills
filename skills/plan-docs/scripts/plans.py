@@ -983,12 +983,31 @@ def cmd_where(args: argparse.Namespace) -> int:
     return 0 if routing.verdict == "ok" else NEEDS_DECISION
 
 
+def resolve_repo_argument(value: str, cfg: Config) -> Path:
+    """A repo named either by path or by its path relative to `projects_root`.
+
+    Both spellings appear in practice — an agent that just ran `list --scope family` has the
+    relative form in hand, and one that resolved a directory has the absolute.
+    """
+    direct = Path(value).expanduser()
+    if direct.is_dir():
+        return direct
+    candidate = cfg.projects_root / value
+    if candidate.is_dir():
+        return candidate
+    raise PlanError(f"no repo at {value!r}: tried {direct} and {candidate}")
+
+
 def cmd_new(args: argparse.Namespace) -> int:
     if not TOPIC_RE.match(args.topic):
         raise PlanError(f"topic {args.topic!r} must be kebab-case: lowercase letters, digits and single hyphens")
     cfg = load_config()
     if args.unscoped:
+        if args.to or args.for_repo:
+            raise PlanError("--unscoped belongs to no repo, so it cannot be combined with --to or --for")
         return write_plan(cfg.unscoped, args.topic, args.status, "unscoped", None, cfg)
+    if args.for_repo:
+        return file_for_repo(args, cfg)
     routing = resolve(args.path, cfg)
     if args.to is None:
         require_ok(routing)
@@ -1005,6 +1024,39 @@ def cmd_new(args: argparse.Namespace) -> int:
         # survives the clone being moved or renamed, so that is what the file itself records.
         origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
     return write_plan(target, args.topic, args.status, where, origin, cfg)
+
+
+def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
+    """File a plan against a repo this session is not working in, without touching its tree.
+
+    Always the store mirror, never the repo's own `plans/`, whatever that repo's route says. That is
+    the whole point: writing into another repo's working tree is the foreign commit this exists to
+    stop, on a machine where parallel sessions share one tree. The owning repo picks it up later,
+    from inside itself, committing only to itself.
+    """
+    if args.to:
+        raise PlanError("--for already decides where the file goes (the target's store mirror); drop --to")
+    target_root = resolve_repo_argument(args.for_repo, cfg)
+    routing = resolve(target_root, cfg)
+    if routing.repo_root is None:
+        raise PlanError(f"{target_root} is not inside a git repository")
+
+    here = resolve(args.path, cfg).repo_root
+    if here is not None and here.resolve() == routing.repo_root.resolve():
+        raise PlanError(f"--for names the repo this session is already in; use plain `new {args.topic}`")
+    if "store" not in routing.dirs:
+        raise PlanError(
+            f"{routing.repo_root} is not under projects_root ({cfg.projects_root}), so it has no store "
+            "mirror to file into; move the clone under it or plan in that repo directly"
+        )
+
+    origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
+    code = write_plan(routing.dirs["store"], args.topic, args.status, "store", origin, cfg)
+    print(f"filed for: {routing.rel or routing.repo_root}")
+    if routing.rule and routing.rule.write == "repo":
+        print("note:      that repo keeps its own plans, so this is in transit — a session working")
+        print("           there absorbs it with: plans.py move <file> --to repo")
+    return code
 
 
 def write_plan(target: Path, topic: str, status: str, where: str, repo: str | None, cfg: Config) -> int:
@@ -2155,6 +2207,12 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("topic", help="kebab-case topic, e.g. store-routing")
     new.add_argument("--status", default="idea", help="frontmatter status (default: idea)")
     new.add_argument("--to", choices=("repo", "store"), help="override the configured write target")
+    new.add_argument(
+        "--for",
+        dest="for_repo",
+        metavar="REPO",
+        help="file against another repo (path, or path under projects_root) without touching its tree",
+    )
     new.add_argument("--unscoped", action="store_true", help="an idea with no repo yet; needs no repo at all")
     new.set_defaults(func=cmd_new)
 

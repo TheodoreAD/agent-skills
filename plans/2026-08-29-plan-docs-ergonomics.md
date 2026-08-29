@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-08-29
 ---
 
@@ -32,41 +32,13 @@ the per-repo view.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: does the staleness view earn its own command, or is it a flag on the unified
-listing? An `in-progress` plan untouched for N days is the one genuinely actionable "what's next"
-signal a cross-repo view can see that no per-repo command can. But a `next` command implies a
-ranking the script cannot honestly produce — status tier, `updated`, `depends_on` and tag counts are
-the only signals available, and everything past those is the agent's judgment. Leaning `--stale N`
-on the unified listing, and no `next` command at all: the skill's prose tells the agent how to read
-the result. Decide before implementing, because it changes the command count.]
-
-[NEEDS CLARIFICATION: what is the default cap on the `idea` tier? 10 keeps the whole-machine listing
-near 30 lines, which is the token budget this work exists to fix. 20 shows roughly a month of this
-machine's idea intake. Wrong either way costs a flag, so this should not become a long discussion —
-but it should be a measured default, not a guess, and the measurement is one run of the finished
-command.]
-
-[NEEDS CLARIFICATION: what happens to `list` and `backlog` as names? They are cited in this repo's
-`SKILL.md`, in `~/AGENTS.md`, in `references/design-rationale.md`, and possibly in sibling repos'
-docs. Merging them into one command with `--scope` is the right surface, but a hard rename breaks
-every citation at once, and a permanent alias is the surface bloat the merge exists to remove.
-`plans.py refs` does not help here — it finds references to plan _files_, not to commands. Options:
-keep both names as thin aliases for one implementation and drop them at a later deliberate pass;
-rename and fix every citation in this commit; or keep `list` as the name and make `backlog` the
-alias, since `list` is the one an agent guesses.]
-
-[NEEDS CLARIFICATION: how does `config set` write TOML? The stdlib has `tomllib` for reading and
-**no writer**. The config file is a commented skeleton whose comments carry the reasoning for every
-key — a naive round-trip through a hand-rolled serializer destroys them, and the skill's rule that
-routing is configuration rather than a per-session judgement call rests on those comments being
-readable. Surgical line editing (find the key's line, replace its value, append under the right
-table if absent) preserves them but is fiddly for `[roots]`/`[repos]` table entries. A vendored
-`tomlkit` violates the stdlib-only constraint the script has held so far. This is the highest-risk
-piece of the whole plan and should be prototyped before the rest is designed around it.]
+All four are settled; each answer is a `[DECISION:]` under "Recommended direction". What is left
+open is in "What is still not done", at the end.
 
 ## Recommended direction
 
-Five changes. Ordered so each is independently shippable and testable.
+Six changes. Ordered so each is independently shippable and testable; the sixth was found while
+finishing the other five.
 
 ### 1. Make the per-repo view read everything about this repo
 
@@ -80,6 +52,12 @@ ideas with no home go — the set most in need of resurfacing is the set nothing
 Rows stay labelled by `where` (`repo` / `store` / `unscoped`) so the origin is never ambiguous.
 
 ### 2. Merge `list` and `backlog` into one command with a scope axis
+
+[DECISION: **`list` keeps the name, `backlog` is gone, and every citation was fixed in the same
+commit.** Settled with the user 2026-08-29 against keeping both as aliases. `list` is the name an
+agent guesses cold, and an alias pair is exactly the surface bloat the merge existed to remove. The
+citation sweep was smaller than feared: `~/AGENTS.md` cites only `scan`, and `design-rationale.md`
+uses "backlog" as a noun rather than as a command.]
 
 They differ only in breadth. `~/AGENTS.md`'s rule against a top-level enum branching into
 near-duplicate trees applies directly: scope is one axis, filters are others, and they combine.
@@ -108,18 +86,64 @@ to see them.]
 
 Configurable, `[view] idea_limit`, overridable per call with `--limit`.
 
-### 4. A guided `init`
+[DECISION: **the default cap is 10, and staleness is `--stale DAYS` on the listing rather than a
+`next` command.** The cap was measured, not guessed: at 10 the whole-machine listing is 64 lines
+against 117 before. The staleness shape was settled with the user 2026-08-29 — a `next` command
+implies a ranking the script cannot honestly produce beyond status tier and age, and adding a 21st
+subcommand to a surface being deliberately shrunk is the wrong trade. The prose tells the agent how
+to read the filter.]
+
+[PITFALL: **capping one tier only moves an unbounded cost unless every unbounded section is
+bounded.** With the idea tier capped, `depends_on` became the largest section in the family listing
+— 22 of 81 lines, measured 2026-08-29, and growing with the corpus exactly as the ideas had. Fixed
+by summarising edges as per-repo counts in family scope and printing the actionable list, "waiting
+on this repo", in repo scope, where it is bounded by definition and is information no command
+produced before. The general lesson: after capping the obvious tier, re-measure and look for what is
+now largest, rather than assuming the cap solved the problem.]
+
+[PITFALL: **hiding terminal-status plans silently would have broken the convention it serves.**
+Merging the two commands gave repo scope family scope's "hide landed/abandoned" default, which the
+pre-merge `list` did not have. But `plans/` is a working set that empties out, so a `landed` plan
+still sitting in one is a retirement owed — hiding it with no trace removes the only thing that ever
+prompts the retirement. Resolved with a footer counting them, which says the same thing in one line
+instead of N. Caught by an existing test failing, not by review.]
+
+### 4. A guided setup, as `install --explain`
+
+[DECISION: **the walkthrough is a flag on `install`, not a new `init` command.** `config init`
+already exists and means "write the skeleton", so a top-level `init` would be the third thing in
+this tool called some form of "init" and the second naming collision this plan had to resolve. A dry
+run of the verb that does the work reads correctly and adds no command.]
 
 [DECISION: **the script stays non-interactive; the agent is the interactive surface.** An
-interactive prompt inside a Bash call hangs the session, and the script has to keep working when a
-human runs it by hand. So `init --explain` prints the decisions as _data_ — for each: what it is,
-what is currently set, what it would default to, and what it costs to get wrong — and `SKILL.md`
-instructs the agent to walk them with `AskUserQuestion` and write the answers back.]
+interactive prompt inside a Bash call hangs the session with nothing to type into, and the script
+has to keep working when a human runs it by hand. So `install --explain` prints the decisions as
+_data_ — for each: what it is, what is currently set, what it would suggest, and what it costs to
+get wrong — and `SKILL.md` instructs the agent to walk them with `AskUserQuestion` and write the
+answers back.]
 
-The write-back is the piece that does not exist today. `SKILL.md` currently says "record the answer
-in the config" and leaves the agent hand-editing TOML — which is both the most error-prone thing in
-the skill and the one step with no gate behind it. `config set <key> <value>`, shaped like the
-existing `describe`, closes it. See the open question on how it writes.
+The write-back is the piece that did not exist. `SKILL.md` said "record the answer in the config"
+and left the agent hand-editing TOML — both the most error-prone thing in the skill and the one step
+with no gate behind it. `config set <key> <value>` closes it.
+
+[DECISION: **`config set` edits lines surgically, and the answer was already in the repo.**
+`describe` had done exactly this since it was written — find the table header, drop any existing
+line for the key, insert — so the open question resolved by reading the code rather than by
+prototyping. Generalised to any key: the table is what precedes the first dot and only when that is
+a known table name, since a `[repos]` key is a path full of dots. Values are encoded by handing the
+argument to `tomllib` and seeing whether it already parses, so `10` stays an integer and a bare
+`store` becomes a string with no second encoder able to disagree with the reader. A vendored
+`tomlkit` was never needed and would have broken the stdlib-only constraint.]
+
+[PITFALL: **validate-after-write leaves a broken config behind.** The first version wrote the value
+and then re-loaded to check it, so a rejected value stayed on disk and every subsequent command
+failed on it — a worse failure than the one being reported. The write is now rolled back before the
+error is raised. Found by writing the test for the rejection path, not by using it.]
+
+[DECISION: **the walkthrough asks one question per unrouted root only when no `default` covers
+them.** With a default set, every such root already has the same answer, and asking anyway turned a
+five-question walkthrough into a twelve-question one on this machine — questions the user pays for
+whose answers were never in doubt. Measured 2026-08-29 on the first real run.]
 
 Decisions the walkthrough covers: `projects_root`; store location and whether `PLANS_HOME` is
 exported; a route per root found under `projects_root` (derivable, so this is confirm-not-ask, one
@@ -148,9 +172,17 @@ One call, because two calls cost more than one output:
 - **Problems** — store is not a git repository; store has no git identity; store has a remote;
   `PLANS_HOME` unset; a repo holding plans that no rule routes; status drift.
 
-`config show` folds into it. The "problems" section is what `install` reports today, which means it
-is currently visible only at setup time — a store that loses its git identity afterwards goes
-unnoticed until `archive` returns nothing.
+The "problems" section is what `install` reported only at setup time — a store that lost its git
+identity afterwards went unnoticed until `archive` returned nothing and looked like an empty
+history.
+
+[PITFALL: **a per-repo enrollment listing is a roster of every employer and client on the machine.**
+The first `doctor` printed one row per clone: 80 lines, 71 of them naming a work repo — the exact
+artefact this skill's confidentiality rule exists to keep from being produced casually, and the
+opposite of the token goal that motivated the command. Routing is a per-root decision, so the root
+is the right unit; an individual repo is named only when it actually holds plans. 80 lines to 25.
+The general lesson: when a command enumerates repos, ask what the row unit discloses before asking
+whether the output is too long — the two problems had the same fix here, but only by luck.]
 
 ### Not doing: an MCP server
 
@@ -168,6 +200,15 @@ to need always-visible tools. It would be a thin wrapper importing `plans.py`, i
 the `mcp-server-shipping` skill, never a reimplementation — and `SKILL.md` would say "use the MCP
 tools if present, else the script". The trigger-reliability worry has a cheaper fix first: the
 `description` wording, which `plans/2026-08-22-skill-trigger-quality-review.md` already owns.]
+
+### 6. Say so in the description, or none of it triggers
+
+[DECISION: **the skill's `description` now names the question this work was about.** Found while
+finishing, 2026-08-29: the description listed capturing, drafting, retiring, migrating and auditing
+— and never "what plans do we have" or "what should I work on", which is the request that started
+this plan. Every command above could have been perfect and the skill would still not have loaded on
+the asking. It cost a trim elsewhere to fit the 1024-char cap, at 1020. The general lesson: a change
+that adds a new _reason to invoke a skill_ is not finished until the description says so.]
 
 ### Smaller ergonomics found while measuring
 
@@ -201,3 +242,20 @@ and "what plans do we have" is exactly what changes here, and nothing in this re
 and `/skill-doctor` are leads worth checking against this repo's non-plugin layout; neither has been
 tried. Whether an agent _following_ the revised prose does the right thing is testable only by
 dogfooding and transcript measurement, the way `session-bash-audit` does it.]
+
+## What is still not done
+
+The five changes and the description fix are implemented, tested and committed. What remains:
+
+[DEFERRED: `--json` is still missing on `tags`, `refs` and `set-status`. Each gap costs a retry when
+an agent assumes the flag is uniform, and uniformity is cheaper to finish than to document.]
+
+[DEFERRED: the `SKILL.md` command block has a "start here" of three now, but the remaining eleven
+still sit at equal weight below it rather than behind a fold.]
+
+[DEFERRED: `--since <date>` as an independent filter alongside `--stale <days>`. Not the mechanism
+that bounds default output — that is settled as the count cap — but a genuine question ("what moved
+this week") the corpus cannot currently answer.]
+
+The trigger gate is the one thing worth doing next, and it is not this plan's: it belongs to
+`plans/2026-08-22-skill-trigger-quality-review.md`, which now has a concrete first case to test.

@@ -1143,12 +1143,33 @@ def _select(entries: list[tuple[str, PlanFile]], args: argparse.Namespace) -> li
         entries = [pair for pair in entries if pair[1].tags.get(args.tag)]
     if args.stale is not None:
         entries = [pair for pair in entries if _is_stale(pair[1], args.stale)]
+    if args.since is not None:
+        entries = [pair for pair in entries if _moved_since(pair[1], args.since)]
     return entries
 
 
 def _is_stale(plan: PlanFile, days: int) -> bool:
     age = age_in_days(plan.updated)
     return age is None or age >= days
+
+
+def _moved_since(plan: PlanFile, since: str) -> bool:
+    """Whether a plan was updated on or after a date.
+
+    An unstamped plan is excluded here and *included* by `--stale`, which is not an inconsistency:
+    the questions are opposites. "What has nobody touched" must surface a file with no evidence of
+    being touched; "what moved this week" must not claim a file moved when nothing says it did.
+    """
+    return bool(plan.updated) and plan.updated >= since
+
+
+def iso_date(value: str) -> str:
+    """Validate a YYYY-MM-DD argument at parse time, so a typo fails before anything is listed."""
+    try:
+        datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a YYYY-MM-DD date") from None
+    return value
 
 
 def age_in_days(updated: str) -> int | None:
@@ -2142,6 +2163,7 @@ def build_parser() -> argparse.ArgumentParser:
     listing.add_argument("--status", help="only plans whose status starts with this")
     listing.add_argument("--tag", choices=TAG_NAMES, help="only plans carrying this open tag")
     listing.add_argument("--stale", type=int, metavar="DAYS", help="only plans not updated in this many days")
+    listing.add_argument("--since", type=iso_date, metavar="YYYY-MM-DD", help="only plans updated on or after this")
     listing.add_argument("--limit", type=int, help="cap the idea tier (0 = no cap; default: config)")
     listing.add_argument("--all", action="store_true", help="include landed, abandoned and superseded")
     listing.add_argument("--json", action="store_true")

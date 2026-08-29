@@ -249,12 +249,15 @@ dogfooding and transcript measurement, the way `session-bash-audit` does it.]
 
 ## What is still not done
 
-Every change above is implemented, tested and committed, including the two smaller ergonomics that
-were deferred on the first pass. What remains:
+Every change above is implemented, tested and committed, including the three smaller items deferred
+on the first pass.
 
-[DEFERRED: `--since <date>` as an independent filter alongside `--stale <days>`. Not the mechanism
-that bounds default output — that is settled as the count cap — but a genuine question ("what moved
-this week") the corpus cannot currently answer.]
+[DECISION: **`--since YYYY-MM-DD` landed as an independent filter, and `--stale`/`--since` treat an
+unstamped plan oppositely on purpose.** `--stale` keeps a plan with no `updated` line, `--since`
+drops it. That is not an inconsistency: "what has nobody touched" must surface a file with no
+evidence of being touched, and "what moved this week" must not claim a file moved when nothing says
+it did. Neither bounds default output; the count cap does, because a date window's size is not
+predictable, which was settled when the cap was chosen.]
 
-The trigger gate is the one thing worth doing next, and it is not this plan's: it belongs to
+What is left is the MCP deferral above, and the trigger gate in
 `plans/2026-08-22-skill-trigger-quality-review.md`, which now has a concrete first case to test.

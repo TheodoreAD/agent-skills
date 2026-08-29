@@ -395,6 +395,30 @@ def test_stale_filters_by_age_and_keeps_an_unstamped_plan(ws, capsys):
     assert "2099-01-01-fresh.md" not in out
 
 
+def test_since_and_stale_treat_an_unstamped_plan_oppositely(ws, capsys):
+    """Not an inconsistency — the questions are opposites. "What has nobody touched" must surface a
+    file with no evidence of being touched; "what moved this week" must not claim one moved."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-old.md", "status: idea\nupdated: 2026-01-01")
+    plan(ws.personal / "plans", "2026-06-01-recent.md", "status: idea\nupdated: 2026-06-01")
+    plan(ws.personal / "plans", "2026-01-01-unstamped.md", "status: idea")
+
+    assert plans.main(["list", "--since", "2026-05-01", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "2026-06-01-recent.md" in out
+    assert "2026-01-01-old.md" not in out
+    assert "2026-01-01-unstamped.md" not in out  # nothing says it moved
+
+    assert plans.main(["list", "--stale", "30", "--path", str(ws.personal)]) == 0
+    assert "2026-01-01-unstamped.md" in capsys.readouterr().out  # nothing says it did not
+
+
+def test_since_rejects_a_date_that_is_not_iso(ws):
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    with pytest.raises(SystemExit):  # argparse rejects it at parse time, before anything is listed
+        plans.main(["list", "--since", "01-01-2026", "--path", str(ws.personal)])
+
+
 def test_family_scope_summarises_depends_on_while_repo_scope_names_the_plans(ws, capsys):
     """Every edge printed is a line that grows with the corpus, so the family view counts them and
     the repo being waited on gets the actionable list."""

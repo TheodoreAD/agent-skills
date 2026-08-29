@@ -235,6 +235,7 @@ plan files.** The scope is chosen for you:
 python3 <path> list                       # auto: this repo when in one, the machine when not
 python3 <path> list --scope family        # every repo, always
 python3 <path> list --stale 14            # only what nobody has touched in a fortnight
+python3 <path> list --since 2026-08-01    # only what moved on or after a date
 python3 <path> list --tag DEFERRED        # only plans carrying that open tag
 python3 <path> list --all                 # include landed, abandoned and superseded
 python3 <path> list --limit 0             # every idea, uncapped
@@ -249,6 +250,10 @@ route says.** A route decides where a _write_ lands; letting it decide what a _r
 kept unscoped plans invisible from every repo on a machine whose roots are all `mode = "repo"`
 (confirmed 2026-08-29) — the plans with no other route back to attention were the ones nothing
 surfaced.
+
+`--stale` and `--since` are opposite questions and treat an unstamped plan oppositely: `--stale`
+keeps it (nothing says it was touched), `--since` drops it (nothing says it moved). Neither bounds
+the default output — the cap below does that, because a date window's size is not predictable.
 
 **Output is bounded, and only the `idea` tier is capped.** `in-progress`, `blocked` and `planned`
 are limited by how much work can actually be in flight; `idea` grows forever, so it is the only

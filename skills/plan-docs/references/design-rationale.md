@@ -331,15 +331,80 @@ A store-held plan additionally carries `repo:` frontmatter holding the **origin 
 the path is already the file's own location, so repeating it would be a second copy of the same
 fact, while the origin URL is the identity that survives the clone being moved or renamed.
 
-### Why the store is a local git repository with no remote
+### Why the store is two git repositories split by sensitivity
 
-Local history is the entire benefit and carries no disclosure risk. A single personal remote
-accumulating several employers' internal architecture, ticket references and code excerpts is the
-specific outcome to design against, and it is what happens by default if a remote is ever added
-casually — so `init-store` never adds one and warns if one exists. Pushing is a per-root decision
-against that employer's actual policy. The store is also never symlinked into a work repo, for the
-same reason `research-library` forbids it: that would put the content back inside the tree that
-repo-scoped agent reads walk.
+A single personal remote accumulating several employers' internal architecture, ticket references
+and code excerpts is the specific outcome to design against, and it is what happens by default if a
+remote is ever added casually to one undivided store. But refusing every remote also breaks a
+promise the convention makes elsewhere: retirement deletes a plan file _because_ `archive` reads it
+back out of git history, and for a store-held plan that history exists on exactly one disk.
+"Deletion is safe, history survives" and "treat the store as unbacked-up" cannot both be true.
+
+The split resolves it by root. The **shareable** tier — `_unscoped/` and the mirrors of the roots
+named in `shareable_roots` — is its own repository and may have a remote. The **sensitive** tier is
+every other root, its own repository, local-only, **with full history**. Pushing the sensitive tier
+stays a per-root decision against that employer's actual policy.
+
+Three reasons it is two repositories rather than one with the sensitive roots in `.gitignore`, two
+of them silent failures rather than inconveniences:
+
+- **Gitignore destroys the store's reason to be a git repository, for exactly the repos it exists to
+  serve.** The retirement rule says what survives a store-held plan's migration "stays in the
+  store's git history, which is why the store is a git repository at all". Gitignore those roots and
+  there is no history for them: `archive` retrieves nothing, retirement stops being reversible, and
+  the justification for deleting the file collapses. That is durability for the tier with another
+  copy and none for the tier that has no other copy — exactly backwards.
+- **The dirty-store check goes silently blind.** Verified 2026-08-29: a write to a gitignored path
+  does not appear in `git status --porcelain` at all. Writing a client plan would never mark the
+  store dirty, so the "add a new file rather than edit one another session may hold" fallback would
+  never fire for sensitive plans, and two sessions could edit one client plan with no signal. A
+  check that reports clean about a tier it cannot see is worse than no check, because the answer is
+  trusted.
+- **Path-based exclusion protects the wrong thing.** The risk is not "a file inside a client
+  directory", it is "a client's name inside any file" — and an unscoped idea or a plan for a
+  personal repo can easily name client work, because that is work the user thinks about. `scan` is
+  the content-shaped answer and already derives the right terms from the machine itself, so the tier
+  split is structure and `scan --mode tree` inside the shareable store is the actual push gate.
+
+The rejected alternative to two directories was one tree with the sensitive root as a nested
+repository named in the outer `.gitignore`. It keeps one browsable directory but reintroduces the
+status blindness above for any command targeting the outer repo, and nested repositories are a
+standing source of confusion.
+
+Either tier is never symlinked into a work repo, for the same reason `research-library` forbids it:
+that would put the content back inside the tree that repo-scoped agent reads walk.
+
+### Why the tier boundary is its own key defaulting to `public_roots`
+
+`public_roots` already partitions roots into "names may be disclosed" versus confidential, which is
+almost exactly this axis — so reuse was the tempting answer, and it is what `shareable_roots` does
+by default when unset. What stopped outright reuse is that they are not the same question: a root
+could have a public name and sensitive content, or the reverse, and overloading one key for two
+purposes is cheap now and expensive at the moment they first disagree. A key that defaults to the
+other costs one accessor, keeps the config exactly as short as reuse would have, and leaves the
+disagreement expressible.
+
+Evidence weighed 2026-08-29, before the key existed: for a repo cloned directly into
+`projects_root`, one `public_roots` entry already has to do two jobs — keeping the repo's name out
+of the derived private-term list, and deciding the tier. Having those disagree would mean a repo
+whose name may be published but whose plans may not, which is possible but was the case in no layout
+examined.
+
+### Why binary tiers rather than a destination per root
+
+A remote for one root, aimed at that employer's actual sanctioned destination and policy, still
+needs a real per-employer answer that does not exist. A binary shareable/local-only split is
+buildable today and generalises later, since the tier lookup is the same hook a per-root destination
+would use.
+
+Two things deliberately left out. An **encrypted remote** for the sensitive tier
+(`git-remote-gcrypt`, restic to any host) would give it durability with no vendor holding anything
+readable, but it does not answer a contract forbidding third-party storage at all, and it adds a key
+whose loss is worse than no backup because it looks like one. A **non-vendor destination** —
+external drive, NAS, second machine — closes the durability gap with no disclosure question, and is
+the one to build the moment the sensitive tier has content: leaving it unbacked then would reproduce
+exactly the failure gitignore was rejected for, which is durability everywhere except where it
+matters.
 
 ### Why the mechanics are a script rather than instructions
 
@@ -414,6 +479,10 @@ mirrored project root, and a reserved name that cannot collide with one is worth
 prettier one. `--unscoped` deliberately needs no git repo at all — the idea may well be had
 somewhere that isn't a checkout.
 
+Always in the **shareable** tier, never routed by content. A repo-less idea is the thing most likely
+to become public work, so it belongs where a remote can back it up; that one might still name client
+work is a content question, and `scan` is what answers content questions.
+
 `graduate` is the other half, and the reason the unscoped area does not become a graveyard: when the
 repo finally exists, one command routes the file through that repo's own rule and stamps its
 provenance. Without it, the plan stays in the repo-less pile while the work moves into a repo, and
@@ -435,9 +504,12 @@ above is about — for choosing a destination, never for pasting into a repo.
 
 `install` and `uninstall` are asymmetric on purpose. The config is derived, cheap, and rewritable,
 so `uninstall` removes it. The store holds the only copy of every plan for every repo that could not
-keep its own — no remote, by design — so deleting it is not the inverse of creating it. It takes
-`--purge-store`, and a store that still holds plan files takes `--force` on top of that. An
-uninstall that silently emptied it would be the single most destructive thing this skill could do.
+keep its own — and for the sensitive tier that is still literally true, since it has no remote by
+design — so deleting it is not the inverse of creating it. It takes `--purge-store`, and a store
+that still holds plan files takes `--force` on top of that. The held-file count is taken across
+**both** tiers before either is touched: purging one and refusing at the other would be a half-done
+irreversible action, which is worse than refusing the whole thing. An uninstall that silently
+emptied the store would be the single most destructive thing this skill could do.
 
 ## Prior art
 

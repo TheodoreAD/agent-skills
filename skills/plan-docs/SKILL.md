@@ -73,15 +73,50 @@ A plan normally lives in the repo it describes. That is unavailable in most empl
 repos — a `plans/` directory is not yours to add there — so there are three routes, and which one a
 repo uses is **configuration, never a judgement call made per session**:
 
-| route     | plans live in                                       | for                                    |
-| --------- | --------------------------------------------------- | -------------------------------------- |
-| **repo**  | `<repo>/plans/`, committed with the code            | a repo you own                         |
-| **store** | `$PLANS_HOME/<repo's path under the projects root>` | a repo that can't hold its own plans   |
-| **both**  | reads both, writes one                              | a repo mid-switch, in either direction |
+| route     | plans live in                                         | for                                    |
+| --------- | ----------------------------------------------------- | -------------------------------------- |
+| **repo**  | `<repo>/plans/`, committed with the code              | a repo you own                         |
+| **store** | `<the store for its tier>/<path under projects root>` | a repo that can't hold its own plans   |
+| **both**  | reads both, writes one                                | a repo mid-switch, in either direction |
 
 The store mirrors each repo's path at whatever depth it sits, so a `<root>/<project>/<repo>` clone
 gets `<store>/<root>/<project>/<repo>` — no slug, no collision between two clients' `api`. The path
 is computed from the repo root, not from the working directory.
+
+### The store is two repositories, split by sensitivity
+
+| tier          | holds                                           | remote                    |
+| ------------- | ----------------------------------------------- | ------------------------- |
+| **shareable** | `_unscoped/` and the roots in `shareable_roots` | allowed — usually private |
+| **sensitive** | every other root: employer and client work      | **none**                  |
+
+Both are ordinary git repositories with **full history**, so retirement, `archive` and the
+commit-immediately rule work identically in either. Nothing about the plan format, the status
+vocabulary or the tags changes with the tier.
+
+**You never pick a tier.** A root's tier follows from `shareable_roots` (which defaults to
+`public_roots`), and every command resolves it for you — `where` prints it, `new --for` prints it
+and the exact `git -C` line to commit with, `archive` searches both. Read what the command tells you
+rather than deriving the path.
+
+**The split is structure, not the safety mechanism.** The risk is a client's name inside _any_ file,
+not a file inside a client's directory — an unscoped idea or a plan for a personal repo can easily
+name work that is not yours to disclose. So before every push of the shareable tier:
+
+```shell
+python3 <path> scan --mode tree --path <the shareable store>
+```
+
+It exits non-zero on a hit. That is the gate; the tier boundary is only what keeps the whole of a
+client root off a remote in the first place.
+
+`shareable_roots` exists as its own key, defaulting to `public_roots`, because the two questions
+nearly always agree but are not the same: a root's name may be publishable while its plans are not,
+or the reverse. Leave it unset until they actually disagree.
+
+**Moving a root between tiers moves no files.** `doctor` reports a mirrored root sitting in the
+wrong store and names where it should go; relocating it is a `git mv` in two histories and a
+decision about what gets published, so it is never done automatically.
 
 **`where` exiting 3 is a question, not a failure.** It means no rule covers this repo. Ask the user
 which route it should use, then record the answer. Never pick a side silently: guessing "repo"
@@ -104,8 +139,12 @@ so a repo path full of dots stays one key.
 
 ```toml
 projects_root = "~/projects"
-store = "~/plans"
+store = "~/plans" # the shareable tier
+# sensitive_store = "~/plans-sensitive" # defaults to <store>-sensitive
 default = "store" # omit it and an unmatched repo asks instead
+
+public_roots = ["github.com-personal"] # names that may appear in a published repo
+# shareable_roots = ["github.com-personal"] # the tier boundary; defaults to public_roots
 
 [roots]
 "github.com-personal" = "repo" # longest matching prefix wins
@@ -116,8 +155,10 @@ default = "store" # omit it and an unmatched repo asks instead
 
 ### Environment assumptions, and setting them up
 
-`$PLANS_HOME` (default `~/plans`) is the store; `projects_root` (default `~/projects`) is the root
-the mirrored paths are relative to; `$PLAN_DOCS_CONFIG` overrides the config location.
+`$PLANS_HOME` (default `~/plans`) is the shareable store and `$PLANS_SENSITIVE_HOME` (default
+`<store>-sensitive`) the other half — pinning the first pins both, since the second derives from it;
+`projects_root` (default `~/projects`) is the root the mirrored paths are relative to;
+`$PLAN_DOCS_CONFIG` overrides the config location.
 
 **The config is per-machine, not per-user, and is deliberately not version-controlled.** It maps the
 repos that happen to be cloned on _this_ box to routes, so it says nothing meaningful anywhere else
@@ -135,21 +176,22 @@ surface:
    what it is, what is currently set, what it would suggest, and what it costs to get wrong. Writes
    nothing.
 2. Put each decision to the user with `AskUserQuestion`, using the `suggest` line as the recommended
-   option and the `cost` line as the description. Do not skip to the defaults: the `default` and
-   `public_roots` answers decide whether plans land in repos the user does not own and whether
-   `scan` will catch a client's name.
+   option and the `cost` line as the description. Do not skip to the defaults: the `default`,
+   `public_roots` and `shareable_roots` answers decide whether plans land in repos the user does not
+   own, whether `scan` will catch a client's name, and which roots may reach a remote at all.
 3. Record each answer with `config set` (above). Never edit the TOML by hand.
 4. `python3 <path> install` — idempotent: writes the config skeleton if there isn't one (never over
-   an existing one), creates the store as a **local git repository with no remote**, creates the
+   an existing one), creates **both stores** as git repositories, adds neither a remote, creates the
    repo-less area.
 5. `python3 <path> doctor` — confirm it took, and that no problem is left.
 
 It asks one question per unrouted root only when no `default` covers them; with a default set, that
 answer is already given and the walkthrough stays short.
 
-`python3 <path> uninstall` reverses it: it removes the config but **keeps the store**, because the
-store is the only copy of those plans; deleting it takes `--purge-store --force` and a deliberate
-decision.
+`python3 <path> uninstall` reverses it: it removes the config but **keeps both stores**, because the
+store is the only copy of those plans; deleting them takes `--purge-store --force` and a deliberate
+decision, and the file count that triggers the refusal is taken across both tiers before either is
+touched.
 
 ### What the projects tree has to look like
 
@@ -184,21 +226,24 @@ nothing.
 python3 <path> doctor
 ```
 
-One call for the whole picture: config and store locations, which roots are enrolled and by which
-rule, which repos actually hold plans, a tally by status and open tag, and a **problems** list — a
-store that is not a git repository or has lost its git identity, a store with a remote, an unset
-`PLANS_HOME`, a repo holding plans that no rule routes. Run it when something behaves oddly and
-before trusting `archive`, which retrieves nothing from a store with no git history.
+One call for the whole picture: config location, **both stores with their git state and which one
+has a remote**, which roots are enrolled, by which rule and into which tier, which repos actually
+hold plans, a tally by status and open tag, and a **problems** list — a store that is not a git
+repository or has lost its git identity, a remote on the sensitive tier, a mirrored root filed in
+the wrong tier, an unset `PLANS_HOME`, a repo holding plans that no rule routes. Run it when
+something behaves oddly and before trusting `archive`, which retrieves nothing from a store with no
+git history.
 
 It aggregates by root and names an individual repo only when that repo holds plans — a per-repo
 listing is one row per clone on the machine, which is a roster of employers and clients. Its output
 is for setting the machine up, never for pasting into a repo you publish.
 
-The no-remote default is the design, not an oversight: local history is the benefit, and one
-personal remote accumulating several clients' internal architecture is the outcome to avoid. Adding
-a remote is a per-root decision against that employer's actual policy, never a convenience. Never
-symlink the store, or a subtree of it, into a work repo — that puts the content back inside the tree
-repo-scoped agent reads walk. Treat it as unbacked-up unless something was arranged deliberately.
+**The sensitive tier's no-remote rule is the design, not an oversight**, and `doctor` reports a
+remote there as a problem: local history is the benefit, and one personal remote accumulating
+several clients' internal architecture is the outcome to avoid. Adding one is a per-root decision
+against that employer's actual policy, never a convenience. Until such a decision is made, treat
+that tier as unbacked-up. Never symlink either store, or a subtree of it, into a work repo — that
+puts the content back inside the tree repo-scoped agent reads walk.
 
 ## Never let a client's identity reach a repo you publish
 
@@ -304,8 +349,14 @@ Route plus location already says it, so there is nothing to set and nothing to d
 **If the store has uncommitted changes, add a new plan rather than editing an existing one**, and
 reference the plan it relates to. Another session may be holding that file; a new file cannot
 conflict, while an edit to a held file is the one loss that is not recoverable. Check with
-`git -C <store> status --porcelain` — one call, whatever the repo, because the store is one
-repository.
+`git -C <store> status --porcelain` — **against the store this write targets**, which the create
+command names for you. Checking the other tier answers a question about a different repository.
+
+The check works because both tiers are real git repositories. That is why the sensitive roots are a
+second repository rather than entries in the shareable one's `.gitignore`: verified 2026-08-29, a
+write to a gitignored path does not appear in `git status --porcelain` at all, so this check would
+report clean about the tier it cannot see — worse than having no check, because the answer is
+trusted.
 
 **Commit a store plan the moment it is written, never at the end of a session.** Every minute the
 store is dirty is a minute another session must fall back to adding a file it would rather have
@@ -319,8 +370,13 @@ git -C <store> add <the one path> && git -C <store> commit -m "<repo>: <what it 
 ```
 
 Stage by explicit path, never `git add -A` — a parallel session's half-written plan can land between
-your write and your commit, and a blanket stage would ship it under your message. The store has no
-remote, so there is nothing to push.
+your write and your commit, and a blanket stage would ship it under your message.
+
+**Pushing is a separate, gated step, and only the shareable tier has anywhere to push to.** Run
+`scan --mode tree --path <that store>` first and push only on a clean result — the tier boundary
+keeps whole client roots off the remote, but a client's name inside a personal repo's plan or an
+unscoped idea is exactly what it cannot catch. The sensitive tier has no remote, so there is nothing
+to push.
 
 ### Absorbing what was filed for this repo
 
@@ -652,7 +708,7 @@ python3 <path> archive                      # every plan deleted from this repo'
 python3 <path> archive --search "<phrase>"  # only the ones whose content ever contained it
 python3 <path> archive --show <file>        # print one back, as it stood the moment before deletion
 python3 <path> archive --file <file>        # one plan's whole lifecycle: drafting, landing, retirement
-python3 <path> archive --all                # every repo on the machine, plus the store's own history
+python3 <path> archive --all                # every repo on the machine, plus both stores' histories
 ```
 
 Each row carries the plan's final `status` and its `## Migrated to` destinations, which are usually
@@ -669,7 +725,9 @@ Three things worth knowing before trusting a result:
 - **A plan that moved between the repo and the store is not retired**, though its old location's
   history says it was deleted. Those rows say `still live` and name where it is; go read that file.
 - **A store with no git repository archives nothing.** `archive` says so in its header when it finds
-  one. Fix it with `python3 <path> install` _before_ retiring anything held there.
+  one, per tier. Fix it with `python3 <path> install` _before_ retiring anything held there. Both
+  tiers keep full history precisely so this stays true for client plans, which are the ones with no
+  other copy.
 
 ## Migrating a legacy single plan file
 

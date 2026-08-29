@@ -40,10 +40,12 @@ read the file directly.
 **Scope** says how much of the skill is a convention anyone can adopt versus a personal preference:
 _general_ is portable as written, _opinionated but general_ picks one defensible convention out of
 several and commits to it, and _personal_ depends on how one particular machine or repo family is
-set up. Nothing here reaches off the machine. Three skills do read or write outside the repo you are
-working in, and each declares it: `research-library` (`$RESEARCH_HOME`), `plan-docs` (`$PLANS_HOME`,
-for work repos that can't hold their own plans) and `session-bash-audit` (Claude Code's own
-transcripts).
+set up. No skill here sends anything off the machine on its own. Three do read or write outside the
+repo you are working in, and each declares it: `research-library` (`$RESEARCH_HOME`), `plan-docs`
+(`$PLANS_HOME` and `$PLANS_SENSITIVE_HOME`, for work repos that can't hold their own plans) and
+`session-bash-audit` (Claude Code's own transcripts). `plan-docs` also describes pushing the
+shareable half of its store to a remote you configure — behind a content scan, and never the half
+holding employer or client work.
 
 ## Layout
 

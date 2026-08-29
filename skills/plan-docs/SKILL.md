@@ -211,6 +211,10 @@ beneath it.
 - **A bare repository is neither a repo nor a collection**, and is reported as such rather than
   walked into.
 - A directory holding no repos is simply ignored — `doctor` counts them and `--strict` lists them.
+- **A repo cloned straight into `projects_root` is routed with `[repos]`, never `[roots]`.** A
+  `[roots]` key is a path _prefix_, and a repo at depth 1 has no prefix, so an entry naming it is
+  never consulted and the repo falls through to `default`. `where` and `doctor` both say so now
+  rather than leaving it silent; the fix is `config set repos.<name> <repo|store>`.
 
 **Categorise every root explicitly**, even where `default` would give the same answer. Then a root
 falling through to `default` means exactly "this appeared since you last decided anything", and
@@ -264,6 +268,11 @@ into a public repo.
 
 `[private] extra` is not optional decoration: an employer with no repo on this machine has no
 directory to derive from, and is invisible to the scan until someone adds it.
+
+Only a **collection** name is split into its organisation. A directory under `projects_root` that is
+itself a repository contributes its whole name and nothing else — splitting it is how ordinary words
+enter the term list, and a gate that flags "repo" in every document is a gate that gets switched
+off.
 
 **Never hand-roll the pattern for an audit.** `scan --list-terms` prints the list the scanner
 derives; `scan --mode history` is the audit. A regex written by hand is a narrower list whose edges

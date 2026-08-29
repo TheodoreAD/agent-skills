@@ -308,6 +308,17 @@ itself still has committed plans to read (`{ mode = "both", write = "store" }`),
 in-repo plans still has store-held ones (`{ mode = "both", write = "repo" }`). Without it, a switch
 silently orphans half the corpus.
 
+`[roots]` keys are path **prefixes** and `[repos]` keys are whole paths, which is a distinction with
+one sharp edge: a repo cloned straight into `projects_root` has no prefix, so a `[roots]` entry
+naming it is never consulted and the repo falls through to `default`. Reproduced 2026-08-29 against
+a scratch root — `where` reported `(default)` while an entry naming that exact repo sat in the
+config, unread. The entry is left inert rather than made to match, because letting `[roots]` match a
+whole path collapses "a directory containing repos" into "a repo" and that distinction is the only
+thing the two sections are for; what changed is that `where` and `doctor` now name the mistake and
+print the `[repos]` spelling that works. Worth knowing because the flat `~/projects/<repo>` layout
+is the more common one in the wild — the `<host>-<org>/<repo>` shape this skill was written against
+is the unusual one, so this was a portability defect in a published skill rather than a local quirk.
+
 ### Why an unmatched repo asks instead of defaulting
 
 Decided with the user 2026-08-28: with no matching rule and no `default`, `plans.py where` exits 3
@@ -455,6 +466,13 @@ Two details are what make it usable rather than ignored:
   `bitbucket`, …) closes that. Repo names are deliberately left whole — splitting a repo called
   `<team>-telemetry` would gate on `telemetry`, an ordinary word, and noise is how a gate stops
   being run.
+- **"Root" means collection, not "top-level directory".** The distinction only shows up in a layout
+  this machine does not use. A repo cloned straight into `projects_root` is a top-level entry _and_
+  a repo, so the split branch caught it: measured 2026-08-29 against a scratch root,
+  `~/projects/loose-repo` contributed `loose`, `loose-repo` and **`repo`** — the gate would then
+  flag the word "repo" in every document it scanned, which is the noise-then-ignored failure the
+  don't-split-repo-names rule exists to prevent. The derivation now asks the same question the walk
+  does (is this itself a repository?) and skips the split for one.
 
 Caught by the gate itself, minutes later: the first draft of this very paragraph used a real client
 repo name as the example, and `scan --mode staged` refused the commit. Commit messages are covered

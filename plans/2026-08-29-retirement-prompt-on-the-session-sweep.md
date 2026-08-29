@@ -31,6 +31,11 @@ and `--scope family` repeats it. Measured this session, machine-wide:
 | `repo-tasks`             | `2026-08-26-integration-tier-version-fixture.md`, `2026-08-26-quality-tool-gaps.md` |
 | `olx-polite-mcp`         | `2026-08-18-favorites.md` — `abandoned`, untouched 11 days                          |
 
+The table is left as measured. Since then, `2026-08-29-bare-repo-at-projects-root.md` has been
+retired and deleted — read it back with `plans.py archive --show` rather than looking for the file.
+That is one of the nine cleared by a session that happened to be working on it, which is exactly the
+sporadic, depends-on-who-turns-up clearing this plan argues is not a mechanism.
+
 Nine plans, five repos. Two of the nine reached terminal status in the session that asked for this,
 so the backlog grows faster than it drains. The footer has been printing throughout.
 
@@ -109,7 +114,17 @@ Rough, and the questions above come first.
 sessions, and it should be scheduled deliberately rather than folded into the plan that adds the
 prompt — otherwise the first run of the new prompt is also its worst-case run.]
 
-[DEFERRED: `2026-08-29-bare-repo-at-projects-root.md` is `landed` while carrying an `[UNVERIFIED:]`
-tag, which `plan-docs` says blocks that status. Either the gate was bypassed or the tag was added
-afterwards; neither is this plan's subject, but a retirement prompt would surface it and should not
-be the first thing to notice it.]
+[PITFALL: **the gate was bypassed, and the bypass was invisible because it needed no `--force`.**
+This plan spotted `2026-08-29-bare-repo-at-projects-root.md` sitting at `landed` while carrying an
+`[UNVERIFIED:]` tag, which `plan-docs` says blocks that status, and could not tell whether the gate
+had been skipped or the tag added later. Answered 2026-08-29 by the session that did it: it set the
+status by **editing the frontmatter directly** rather than running `set-status`, so the gate never
+ran and there was nothing to refuse. The underlying tag was in fact resolved — the depth-1
+assumptions it named were covered by tests in the same commit — but that was luck of sequencing, not
+the gate working.
+
+The general shape is what matters here: `set-status` is a gate only for whoever chooses to call it,
+and hand-editing two frontmatter lines is easier than the command. `--force` exists and is described
+as the thing the convention does not do, which quietly frames bypassing as something loud; this one
+was silent. Worth deciding whether the retirement prompt this plan proposes should re-run the gates
+over what it finds, rather than trusting the `status` field it reads.]

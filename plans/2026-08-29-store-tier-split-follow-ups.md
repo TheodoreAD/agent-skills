@@ -28,7 +28,10 @@ the reason it is one file rather than four.
 Absorption reported these as consolidate-with pairs exactly once. The pairing lives only in prose,
 so nothing re-surfaces it.
 
-- Check: `ls plans/ | grep -E 'session-harvest|trigger|prompt'`
+- Check: `ls plans/ | grep -E 'session-harvest|trigger|prompt|description-cap'` — expect 8 files
+  while none are merged. The `description-cap` alternative is not decoration: without it the check
+  returns 7 and silently omits one member of the skill-triggers cluster, which is how a merge ends
+  up two-thirds done. Found by running it, 2026-08-29.
 - Act: merge each cluster into one plan, keep the earliest filename, delete the others.
   - session-harvest: `2026-08-29-session-harvest-step-0-misreads-uncommitted-work.md` +
     `2026-08-29-session-harvest-plans-store-sweep.md` +

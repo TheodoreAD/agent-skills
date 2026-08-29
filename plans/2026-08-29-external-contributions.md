@@ -169,7 +169,11 @@ Two stages, in order. No frontmatter changes in either.
    so no agent has to know the trick.
 2. **`session-harvest` files rather than commits across.** A finding about the repo the session is
    in goes to that repo's plans as today; a finding about any other repo is filed. This is the rule
-   change that removes the foreign commit, and it is most of the value of the whole plan.
+   change that removes the foreign commit, and it is most of the value of the whole plan. **Landed
+   2026-08-29**, by the harvest of the session that built this: its cross-repo routing filter now
+   reaches for `new --for`, and `depends_on` keeps its distinct meaning — _this_ work cannot land
+   until another repo changes, a dependency rather than a delivery. Exercised on that same run,
+   routing two `~/AGENTS.md` corrections to the repo owning the fragments.
 
 ### Stage 2 — absorb, from inside the repo that owns it
 

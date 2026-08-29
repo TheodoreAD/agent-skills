@@ -119,6 +119,13 @@ default = "store" # omit it and an unmatched repo asks instead
 `$PLANS_HOME` (default `~/plans`) is the store; `projects_root` (default `~/projects`) is the root
 the mirrored paths are relative to; `$PLAN_DOCS_CONFIG` overrides the config location.
 
+**The config is per-machine, not per-user, and is deliberately not version-controlled.** It maps the
+repos that happen to be cloned on _this_ box to routes, so it says nothing meaningful anywhere else
+— a second machine with a different set of clones needs a different file, not a copy of this one. Do
+not propose committing it to a repo or syncing it; losing it costs one `install` and one pass of
+`config set`, which is cheaper than maintaining a shared file that is wrong on every machine but
+one.
+
 **Setting up a machine is a walkthrough, and you run it.** The script never prompts — it has to keep
 working when a human runs it by hand, and an interactive prompt inside an agent's Bash call hangs
 with nothing to type into. So the decisions are printed as data and **you** are the interactive

@@ -140,11 +140,8 @@ and useless in practice, since acting on none of them is the right answer. It mo
 
 24 down to 8, then to 0 once the roots were categorised.]
 
-[DEFERRED: the marker question. The user's proposal was a git attributes file in a specialized
-collection. Verified 2026-08-29 that a `.gitattributes` above a repo affects nothing —
-`git check-attr` reports `unspecified` — because git reads attributes from inside the working tree,
-from `$GIT_DIR/info/attributes` and from the global `core.attributesFile`, never from a parent of
-the repo root. So it works as an inert marker but not as specialization, and the mechanism that
-actually specializes a root is an `includeIf "gitdir:<path>"` in the user's git config, which lives
-in the config rather than the directory and so cannot double as a marker. Needs the user's intent
-before anything is built.]
+The marker question — whether a specialized collection should carry a git attributes file — moved to
+`plans/2026-08-29-collection-specialization-marker.md` on the user's instruction, since it is the
+one detail here they do not want to solve now and it was the only thing holding this plan open.
+Nothing in the implementation needs it: collection-ness is derived from the tree and policy comes
+from the config.

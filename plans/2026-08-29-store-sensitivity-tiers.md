@@ -1,5 +1,5 @@
 ---
-status: idea
+status: planned
 updated: 2026-08-29
 ---
 
@@ -35,6 +35,17 @@ elsewhere, and the same argument that killed the `origin:` field a few hours ear
 **The trigger is the first plan actually written for a store-routed repo.** At that moment the
 sensitive tier acquires content, and everything below becomes worth having. Until then the store
 stays exactly as `SKILL.md` describes it: one local repository, no remote, treated as unbacked-up.]
+
+[DECISION: **superseded 2026-08-29 — this is the next plan to execute.** The user named it directly
+rather than waiting for the trigger above, which stays recorded because the reasoning behind it is
+still sound; it simply is not what decided the timing. The shareable tier gets a private GitHub
+remote, the sensitive tier stays local-only and unbacked, and the argument for that asymmetry is the
+decision immediately below: the sensitive tier is empty, and an empty tier loses nothing.
+
+What tips it now rather than later is that the store has stopped being empty. Three plans were filed
+into it on 2026-08-29 that exist **nowhere else** — two for `power-user-linux-setup` and one
+carrying two `~/AGENTS.md` corrections — so the durability gap this plan opens with is no longer
+hypothetical.]
 
 [DECISION: **the sensitive tier ships with no backup, and that is accepted rather than overlooked.**
 Settled with the user 2026-08-29, answering the objection this plan raises against itself below. It

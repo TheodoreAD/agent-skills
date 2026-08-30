@@ -150,6 +150,26 @@ considered and rejected).
      `depends_on` keeps its own, different meaning: **this** work cannot land until that repo
      changes, which is a dependency rather than a delivery. Used this way on the run that added it,
      to route two `~/AGENTS.md` corrections to the repo that owns the fragments.
+   - **A skill or an instructions file that was misused, misread or ignored → filed immediately,
+     against the repo that owns it.** Not held for the report, not described in prose at the end:
+     use `plan-docs`' own routing — `plans.py new <topic>` when this repo owns the skill,
+     `plans.py new <topic> --for <repo>` when another does, committed in the store straight away —
+     and then have the report name the finding and the plan filename. The rule is "file first,
+     report second", because a finding that exists only in the report dies with the terminal.
+
+     This covers three shapes, and all three are easy to mistake for narration rather than findings:
+     - a rule that was **followed and still produced the wrong outcome** — the rule is wrong or
+       aimed at the wrong case;
+     - a rule that was **reasoned around** — the wording explains a mechanism rather than stating a
+       constraint, and a mechanism can be argued with;
+     - a rule that was simply **not followed**, repeatedly — the wording is fine and something else
+       is failing, which is a measurement question rather than a rewording one.
+
+     Say which of the three it is, since each has a different fix, and attach whatever the session
+     can count. Confirmed 2026-08-30: one session produced all three — a `~/AGENTS.md` memory rule
+     reasoned around, a status gate bypassed by editing frontmatter instead of calling `set-status`,
+     and a `head`/`tail` prohibition violated in 28% of the session's own Bash calls. Each became a
+     filed plan against the repo owning the rule; none would have survived as a paragraph.
    - **Already covered → skip.** If an existing doc already says this, don't write a duplicate —
      check first.
    - **Meta-conventions about how to build things in this ecosystem (e.g. "skills should do X by
@@ -349,14 +369,30 @@ considered and rejected).
    always-loaded instructions file). A harvest whose whole subject is "what would be lost" should
    not end by losing its own lesson.
 
-8. **Harvest report**, last, and ordered so the reader can stop early only at their own risk: least
-   urgent first, most urgent last, because the final lines are what a skimmed report actually
-   retains.
+8. **Harvest report**, last. **Bullets throughout, indented into groups — never prose paragraphs.**
+   A harvest report is scanned, not read, and an indented list is what survives scanning.
+
+   **Open with where everything went**, as four groups, because "did this land somewhere durable, or
+   is it still only in the chat?" is the question the whole report exists to answer:
+
+   - **To code** — edits to source, tests, config that are committed.
+   - **To a plan in this repo** — `plans/*.md` here, by filename.
+   - **To a plan in another repo** — filed via `plans.py new <topic> --for <repo>` and committed in
+     the store, by filename and target repo. **Say only that it was filed.** Do not restate what it
+     asks for; the owning repo's session gets the whole thing from `plans.py absorb`.
+   - **Only in this conversation** — everything not written to a file anywhere. This group is the
+     point of the list: it is exactly what the user must either decide now or carry into the next
+     session's prompt, and it disappears when the window closes. Keep it short by writing things
+     down, not by leaving them out.
+
+   Then, least urgent first, because the final lines are what a skimmed report retains:
+
    - **Settled** — verified green/clean, no action. Say what was checked, so "fine" is a measurement
      and not an impression.
-   - **Persisted this pass** — routine routings as one-liners (memory / plan / docs / dropped), plus
-     any cost worth naming, e.g. what an addition did to an always-loaded file's size.
-   - **Skill changes** — what step 6 changed, or one line saying it found nothing.
+   - **Skill and instruction misuse found** — see the routing filter in step 2; each one is already
+     filed by the time the report is written, so this section names the finding, the repo it was
+     filed against, and the plan filename. Never a list of things to file later.
+   - **Skill changes** — what step 6 changed to this skill, or one line saying it found nothing.
    - **Decisions waiting** — documented, not urgent. Name plans that must be decided _together_.
    - **Risks carried** — known and written down. For each, the falsifier: what observation would
      show the reasoning was wrong.
@@ -367,6 +403,16 @@ considered and rejected).
    Fix what is cheap and unambiguous rather than only reporting it — kill the orphaned loops, write
    the lost measurement into the plan that owns it — and report it as done. Reserve the report's
    last zone for what genuinely needs the user. Anything outward-facing (a push) still gets asked.
+
+9. **A next-session prompt covers this repo only.** If the user asks for one, build it from the
+   "only in this conversation" group plus this repo's own open work — and **leave out everything
+   filed for another repo.** That work is already routed: it sits in the store, and the session that
+   next works in that repo is handed it by `plans.py absorb`, which `SKILL.md` makes the first call
+   of every session. Repeating it in this repo's prompt creates a second copy that has to be retired
+   twice and goes stale independently, and it aims a reminder at the one session that cannot act on
+   it. Confirmed 2026-08-30: a prompt carried two cross-repo items that were already filed and
+   absorbable, which is duplication rather than a handoff. Same rule for a working-list plan in this
+   repo — record that cross-repo work was filed, not what it says.
 
 Everything this harvest writes into a repo — a `plans/*.md` entry, an `AGENTS.md` addition, a
 `docs/`/`contributing/` page, a skill's own source — goes through that repo's quality gate

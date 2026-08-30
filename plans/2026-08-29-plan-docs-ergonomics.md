@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-08-30
 ---
 
@@ -247,12 +247,11 @@ Layers 1 and 2 of skill testing are the gate here and both already exist:
   cap leaving live tiers untouched, `config set` preserving the skeleton's comments, `doctor`
   reporting each problem class.
 
-[UNVERIFIED: layers 3 and 4 have no gate. Whether the `description` triggers on "what plan is next"
-and "what plans do we have" is exactly what changes here, and nothing in this repo tests it —
-`plans/2026-08-22-skill-trigger-quality-review.md` owns that gap. Claude Code's `claude plugin eval`
-and `/skill-doctor` are leads worth checking against this repo's non-plugin layout; neither has been
-tried. Whether an agent _following_ the revised prose does the right thing is testable only by
-dogfooding and transcript measurement, the way `session-bash-audit` does it.]
+Layers 3 and 4 have no gate here and are not owed by this plan.
+`plans/2026-08-22-skill-trigger-quality-review.md` owns that concern in full: it carries the
+`claude plugin eval` and `/skill-doctor` leads with their current gated state, the transcript-
+measurement approach, and a "first case to test" section naming this work's own before/after as the
+case to author first. The residue moved there rather than blocking this plan, 2026-08-30.
 
 ## What is still not done
 
@@ -269,3 +268,27 @@ predictable, which was settled when the cap was chosen.]
 Nothing in this plan's scope is outstanding. Two things it spawned live elsewhere: the MCP wrapper
 question in `plans/2026-08-29-plan-docs-mcp-wrapper.md`, and the trigger gate in
 `plans/2026-08-22-skill-trigger-quality-review.md`, which now has a concrete first case to test.
+
+## Migrated to
+
+- **`skills/plan-docs/references/design-rationale.md`, "What it costs to ask what is open"** — every
+  `DECISION` and `PITFALL` above, reorganised by the question a reader arrives with rather than by
+  the order the work happened in: the scope axis, the route-independent per-repo read, the capped
+  idea tier and the two pitfalls that followed it, the non-interactive walkthrough and `config set`,
+  `doctor`'s name and its row unit, the description lesson, and the uniformity rules.
+- **`skills/plan-docs/SKILL.md`** — everything that is an instruction rather than a reason: the
+  command block grouped by moment, the `--json` sentence, the positional-vs-`--file` rule, the
+  scope/cap/filter prose under "Asking what is open".
+- **`skills/plan-docs/scripts/plans.py` and `tests/unit/test_plan_store.py`** — the behavior itself,
+  with the reasoning that belongs next to the code kept in the docstrings (`absorbable`,
+  `_require_own_repo`, `_print_consolidation_note` each carry their own).
+
+Deliberately not migrated:
+
+- **The measured line counts** (117 → 64, 80 → 25, 22-of-81) beyond the few that carry an argument.
+  They are evidence for decisions now settled, and they date badly as the corpus grows.
+- **"Not doing: an MCP server"** — already moved to `plans/2026-08-29-plan-docs-mcp-wrapper.md`,
+  which is live and owns it.
+- **The layers 3/4 verification residue** — owned by
+  `plans/2026-08-22-skill-trigger-quality-review.md`, which covers it in more detail than this plan
+  ever did.

@@ -92,6 +92,19 @@ clause broke on contact:
   had been implemented hours earlier by other sessions; merging them in as open work would have
   queued edits that already existed.
 
+## A third false positive, from the plainest citation shape yet
+
+Measured 2026-08-30, absorbing `2026-08-30-plan-docs-status-gate-bypassed-by-hand-editing.md` into
+this repo. Its citation is a closing paragraph that opens with the word **`Related:`** and then says
+why: the other plan "is actively reshaping this skill's CLI surface … so whatever lands here should
+be checked against it rather than designed independently." That is a request to _consult_ a sibling,
+stated as plainly as prose can state it, and `absorb` reported it as `consolidate with …`.
+
+It sharpens recommendation 1 into something almost mechanical: the report's own string is the whole
+problem, because nothing about this citation was ambiguous to a reader. The pairing was also worse
+than merely wrong here — the plan it named was being retired in the same session, so acting on the
+instruction would have folded a fresh idea into a file about to be deleted.
+
 ## Recommended direction
 
 Rough, weakest-commitment first.
@@ -100,8 +113,9 @@ Rough, weakest-commitment first.
    a verdict; `references …, check whether the separation was deliberate` reads as what it is. One
    string.
 2. **Consider a write-time marker** only if the genuine split turns out to be common enough to be
-   worth a mechanism. Two false positives against five confirmed true ones (2026-08-30, below) is
-   not that case — it is an argument for rewording the report, not for building a detector.
+   worth a mechanism. Three false positives against five confirmed true ones (both counts measured
+   2026-08-30, above) is not that case — it is an argument for rewording the report, not for
+   building a detector.
 3. **Say plainly in the skill that a cited sibling is usually just a related plan.** The current
    text only describes the dirty-store cause, so a reader who has not hit the other case has no
    reason to suspect it exists.

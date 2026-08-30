@@ -507,6 +507,16 @@ pushed: a redaction commit fixes the file and changes nothing about what is publ
 reports; whether to rewrite published history is a force-push and a support request, and that is the
 user's decision, not an edit an agent should make quietly.
 
+Two things about that rewrite, both measured 2026-08-28/29 while purging this repo's own history,
+because a scan that comes back clean too early is worse than one that never ran. **A range rewrite
+does not remove the text from `git log -p`.** The commits above the range keep the private strings
+as `-` lines, because their parents still contain them — 33 history hits remained after a clean
+range rewrite, every one traceable to the pushed commit or to a removal line deleting it. Only
+rewriting the commit that _introduced_ the text clears both, which in practice means the full
+history. And **`--prune-empty` does not always drop the redaction commit**: a formatter reflow had
+left it a two-line diff, so it survived with a message describing a redaction its diff no longer
+contained.
+
 ### Why repo-less plans live in the store, under one reserved directory
 
 An idea that has not earned a repo is exactly the thing this convention used to lose: `plans/`

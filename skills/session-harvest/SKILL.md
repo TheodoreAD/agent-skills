@@ -60,6 +60,18 @@ considered and rejected).
    own one-line note instead: nothing to re-read, but a command run _earlier_ in the session may
    have run the old script.
 
+   **When the checkout is ahead, its push state decides what may be offered as the remedy.** The
+   installer clones from the remote, so a re-install cannot deliver a commit that has not been
+   pushed — it reinstalls the identical stale copy, in a report that has just told the user
+   re-installing is what resolves the staleness. `git -C <checkout> log origin/<branch>..HEAD` is
+   the check, and the harvest is already running it for step 5. If the commit that closes the
+   staleness is unpushed, say so and name whose commit it is rather than closing on "re-install to
+   pick this up": the push is outward-facing and belongs to whoever authored it, per step 5's rule
+   about unpushed commits. Confirmed 2026-08-30: the checkout was `ahead 1`, and that one commit was
+   exactly the one carrying the wording the run had just re-read. Note the asymmetry that makes this
+   easy to miss — the session is not blocked, since reading the checkout is enough to run correctly.
+   Only the remedy is broken, which is the part nobody re-checks.
+
    **And when the session has already _acted_ on that skill, re-reading is only half the fix.** List
    what changed — `git log --oneline --since=<session start> -- skills/<name>/` — and ask whether
    anything already done was done under superseded wording. Re-reading corrects the next call; it

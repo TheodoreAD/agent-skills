@@ -228,3 +228,38 @@ directory, so `~/.agents/skills/plan-docs/scripts/plans.py` — the path this sk
 block and the new `~/AGENTS.md` rule both name — did not exist for several hours while every
 document insisted it did. The checkout worked throughout, which is why nothing surfaced it. Run a
 documented command from the installed path after any change that adds files to a skill.]
+
+## Migrated to
+
+- **The design reasoning** — `skills/plan-docs/references/design-rationale.md`, § "Where a plan
+  lives: the repo, or the store outside it" and its subsections: why the route is configuration
+  rather than a heuristic, why an unmatched repo asks, why the store mirrors the clone path (which
+  carries the depth-2 measurement), why the confidentiality gate derives its terms, why `_unscoped/`
+  is one reserved directory, why repo descriptions are metadata, and why `uninstall` will not delete
+  the store. Most of this had already moved while the plan was live.
+- **The history-rewrite pitfalls** — same file, end of § "Why the confidentiality gate derives its
+  terms instead of listing them", added 2026-08-30: a range rewrite leaves the strings as `-` lines
+  in the diffs of every commit above it, and `--prune-empty` kept the redaction commit alive because
+  a formatter reflow had left it a real two-line diff.
+- **The two open store questions**, both `[DEFERRED:]` here — per-root sync against an employer's
+  sanctioned destination, and what happens to a client's subtree when the engagement ends — →
+  `plans/2026-08-29-sensitive-tier-durability.md`, which is the plan that owns the sensitive tier's
+  fate and where they pull against each other: every copy made for durability is one that has to be
+  destroyed if the retention answer is "retain nothing".
+- **The GitHub Support request**, the third `[DEFERRED:]` — already owned in full by
+  `plans/2026-08-29-github-support-cache-purge.md`, which carries the text to send, the ordering
+  constraint between the two repos, what a support request cannot reach, and the 404 that counts as
+  verification. Nothing to move.
+- **The confidentiality rule itself** — this repo's `AGENTS.md` and the `plan-docs` skill, before
+  this retirement. The `[PITFALL:]` recording that this plan's own first draft leaked six root names
+  is in the rationale file's confidentiality section, as the measured example.
+- **The installed-path pitfall** above — `skills/skill-authoring/SKILL.md`, which already states it
+  as a step: verify a documented command from the installed path, because the listing says a skill
+  is installed, not that its files arrived.
+
+**Deliberately not migrated.** The per-root repo-count table: it is evidence for a decision already
+recorded, and the one finding that changed the design — repos sit at depth 1 _and_ depth 2 — is in
+the rationale. The command list in § 3 and the `install`/`uninstall` asymmetry: code contracts, live
+in `plans.py`, its tests and `SKILL.md`. The `## Verification` log: a record that it worked on
+2026-08-28, superseded by 167 passing tests. The `**Done**` notes: they say a thing happened, and
+git says it better.

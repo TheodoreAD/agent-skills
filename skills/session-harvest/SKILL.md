@@ -321,7 +321,20 @@ considered and rejected).
      recommendation that reads as routine. Name which are this session's and which are not, and let
      the user decide. Confirmed 2026-08-29: two commits from a parallel session appeared in the
      ahead-count between one push and the next, and asking rather than pushing was the only thing
-     that surfaced them.
+     that surfaced them. **Then ask, of this session's own unpushed commits, whether any corrects
+     something this session already pushed.** That one is not deferred work — it is a live
+     inaccuracy with a reader — and reported flat it is indistinguishable from three plan updates in
+     an ahead-count. Name it in the report's "needs action now", with what the remote currently
+     claims, so the user is deciding about a published error rather than about a backlog. The signal
+     is a path in the unpushed set that an earlier commit in the same session already published:
+     `git log origin/<branch>..HEAD --name-only` against
+     `git log <session-start-sha>..origin/<branch> --name-only`. An overlap is not proof, but it is
+     a short list to read and empty for most sessions. Confirmed 2026-08-30: a session pushed a
+     package description arguing why the package existed, learned an hour later from a parallel
+     session's filed plan that the argument was false, and committed the correction without pushing
+     — so the remote served a justification known to be wrong while its fix sat in the ahead-count
+     alongside ordinary tidying. Keep it to the same-session case; "is anything this repo currently
+     publishes known-wrong" is a different question that no harvest can answer in bounded time.
    - **Sibling repos this skill itself wrote to.** A skill self-update (step 6) commits locally and
      reaches nothing until it is pushed and re-installed, so `agent-skills` is a repo the session
      touched and it is the one most likely to be forgotten — the edit felt done when it was

@@ -558,6 +558,144 @@ that still holds plan files takes `--force` on top of that. The held-file count 
 irreversible action, which is worse than refusing the whole thing. An uninstall that silently
 emptied the store would be the single most destructive thing this skill could do.
 
+## What it costs to ask what is open
+
+Every command here is read by an agent that pays for the output in context, so the shape of the
+output is a design constraint rather than a presentation choice. The corpus that forced the
+question, measured on one machine 2026-08-29: 68 open plans across 8 repos plus the unscoped area,
+49 of them `idea`, and the cross-repo listing printing 117 lines to answer "what is open".
+
+### Why one command with a scope axis, and not two commands
+
+`list` and `backlog` differed only in breadth — one repo against every repo — which is one axis, not
+two commands. The general rule they were violating is the one against a top-level enum branching
+into near-duplicate trees: scope is an axis, the filters (`--status`, `--tag`, `--stale`, `--since`,
+`--all`) are others, and they combine. Merged, every filter works at either breadth, which neither
+command managed before.
+
+`list` kept the name because it is the one an agent guesses cold, and `backlog` was removed outright
+rather than kept as an alias: an alias pair is exactly the surface bloat the merge existed to
+remove. The default scope is `auto` — `repo` inside a routed repo, `family` outside any repo or
+inside the store — which absorbs "am I in a project" as detection rather than as a rule anyone has
+to remember.
+
+### Why the per-repo view ignores the route
+
+Repo scope reads the repo's `plans/`, its store mirror **and** `_unscoped/`, whatever the route
+says. Routing decides where a _write_ lands; letting it decide what a _read_ can see is what kept
+unscoped plans invisible from every repo on a machine whose roots are all `mode = "repo"` — and the
+unscoped area is where ideas with no home go, so the set most in need of resurfacing was the set
+nothing surfaced. Rows stay labelled `repo` / `store` / `unscoped` so the origin is never ambiguous.
+
+This is the same argument the cross-repo view had always made for itself — discovery must not depend
+on the routing config being complete — never applied to the per-repo one.
+
+### Why only the `idea` tier is capped, and by count rather than by date
+
+`in-progress`, `blocked` and `planned` are bounded by how much work can actually be in flight: 19
+rows machine-wide against 49 `idea`, measured 2026-08-29. Only `idea` grows without bound, so it is
+the only tier whose cost is worth bounding. A cap that can hide in-progress work makes the command
+unsafe to trust, and a truncated answer to "what's next" is worse than an untruncated long one.
+
+By count, not by time: a `--since 30d` window returns nothing in a quiet month and forty rows in a
+busy week, so the token cost stops being predictable — and predictable token cost was the entire
+motivation. The default is 10, measured rather than guessed (the whole-machine listing goes from 117
+lines to 64), configurable as `[view] idea_limit`, overridable with `--limit`, and the footer always
+says how many rows were elided. `--stale` and `--since` exist as independent filters; neither bounds
+default output.
+
+**Capping one tier only moves an unbounded cost unless every unbounded section is bounded.** With
+the ideas capped, `depends_on` became the largest section in the family listing — 22 of 81 lines,
+and growing with the corpus exactly as the ideas had. Fixed by summarising the edges as per-repo
+counts at family scope and printing the actionable half, "waiting on this repo", at repo scope,
+where it is bounded by definition. The general lesson: after capping the obvious tier, re-measure
+and look for what is now largest, rather than assuming the cap solved the problem.
+
+**Hiding terminal-status plans silently would have broken the convention the listing serves.** The
+merge gave repo scope the cross-repo view's "hide landed/abandoned" default, which the per-repo
+listing never had. But `plans/` is a working set that empties out, so a `landed` plan still sitting
+in one is a retirement owed, and hiding it with no trace removes the only thing that ever prompts
+that retirement. Resolved with a footer counting them — the same information in one line instead of
+N. Caught by an existing test failing, not by review.
+
+### Why the setup walkthrough is a flag, and why the script never prompts
+
+`install --explain` prints the setup decisions as data — for each: what it is, what is currently
+set, what it would suggest, and what it costs to get wrong — and `SKILL.md` instructs the agent to
+walk them with `AskUserQuestion`. The script stays non-interactive because a prompt inside an
+agent's Bash call hangs the session with nothing to type into, and because the script has to keep
+working when a human runs it by hand. So the agent is the interactive surface, and a dry run of the
+verb that does the work is the natural place to hang it: a top-level `init` would have been the
+third thing in this tool called some form of "init", since `config init` already means "write the
+skeleton".
+
+The piece that did not exist was the write-back. The skill said "record the answer in the config"
+and left the agent hand-editing TOML — the most error-prone step in the whole convention and the
+only one with no gate behind it. `config set <key> <value>` closes it, editing lines surgically the
+way `describe` already did: find the table header, drop any existing line for the key, insert. The
+key's table is whatever precedes its first dot, and only when that is a known table name, since a
+`[repos]` key is a path full of dots. Values are encoded by handing the argument to `tomllib` and
+seeing whether it already parses, so `10` stays an integer and a bare `store` becomes a string with
+no second encoder able to disagree with the reader. A vendored TOML writer was never needed, and
+would have broken the stdlib-only constraint.
+
+[PITFALL: **validate-after-write leaves a broken config behind.** The first version wrote the value
+and then re-loaded to check it, so a rejected value stayed on disk and every subsequent command
+failed on it — a worse failure than the one being reported. The write is rolled back before the
+error is raised. Found by writing the test for the rejection path, not by using it.]
+
+The walkthrough asks one question per unrouted root **only when no `default` covers them**. With a
+default set, every such root already has the same answer, and asking anyway turned a five-question
+walkthrough into a twelve-question one on the first real machine — questions the user pays for whose
+answers were never in doubt. It also does not ask about the display cap: nobody has an opinion on a
+row limit before they have used the tool, and every question added to setup is paid by everyone who
+just wants the defaults. It ships with a default, `doctor` prints it, and `config set` changes it.
+
+### Why the inspection command is `doctor` and reports by root
+
+Not `status`: `set-status` already exists and `status:` is a plan's frontmatter field, so
+`plans.py status` would read as "the status of a plan" to every future session. Pick the unambiguous
+name rather than a near-miss.
+
+It answers enrollment, locations, tally and problems in one call, because two calls cost more than
+one output. The problems list is what `install` used to report only at setup time — a store that
+lost its git identity afterwards went unnoticed until `archive` returned nothing and looked like an
+empty history.
+
+[PITFALL: **a per-repo enrollment listing is a roster of every employer and client on the machine.**
+The first version printed one row per clone: 80 lines, 71 of them naming a work repo — the exact
+artefact this skill's confidentiality rule exists to keep from being produced casually, and the
+opposite of the token goal that motivated the command. Routing is a per-root decision, so the root
+is the right unit, and an individual repo is named only when it actually holds plans. 80 lines to
+25. The general lesson: when a command enumerates repos, ask what the row unit discloses before
+asking whether the output is too long — the two problems had the same fix here, but only by luck.]
+
+### Why a new command is not finished until the description mentions it
+
+Found while finishing this work, 2026-08-29: the skill's `description` listed capturing, drafting,
+retiring, migrating and auditing — and never "what plans do we have" or "what should I work on",
+which is the request the whole consolidation existed to answer. Every command could have been
+perfect and the skill would still not have loaded on the asking. **A change that adds a new reason
+to invoke a skill is not done until the description says so**, and the cost is real: the description
+has a 1024-character cap, so naming the new reason cost a trim elsewhere.
+
+### Small uniformity rules that each cost a retry
+
+- **`--json` is on every reading command.** A flag available on some commands and not others costs a
+  retry each time an agent assumes uniformity, which is cheaper to finish than to document.
+- **The file argument is positional where a command requires one, `--file` where it narrows a
+  default of every plan.** The split is principled, and a session still ran `refs --file <name>`
+  seven times in one loop after using `tags --file … --tag DEFERRED` a minute earlier (2026-08-30) —
+  because the surrounding usage is what an agent pattern-matches off, and it does not run `--help`
+  on a command it has just seen a sibling of. Stated once in the command block; changing signatures
+  for uniformity would cost more than it buys.
+- **A `P=…` shell variable in documented examples is a fiction.** Shell environment does not persist
+  between an agent's Bash calls — only the working directory does — so every documented invocation
+  is the whole path.
+- **The command list is grouped by the moment each command is needed**, behind a "start here" of
+  three, rather than one flat list at equal weight. Lifecycle order was the wrong axis: an agent
+  does not read the file front to back, it arrives already knowing which moment it is in.
+
 ## Prior art
 
 Checked how established communities solve "dated proposal document with a lifecycle" before settling

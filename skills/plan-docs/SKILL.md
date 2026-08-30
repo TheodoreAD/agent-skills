@@ -67,6 +67,12 @@ python3 <path> install --explain            # set the machine up, one decision a
 
 Every command that reads takes `--json`, so nothing here has to be parsed out of its text output.
 
+**The file argument is positional where a command requires one** — `set-status`, `move`, `refs`,
+`graduate` — **and `--file` where it narrows a default of every plan**: `tags`, `archive`. Measured
+2026-08-30: a session that had just run `tags --file <name> --tag DEFERRED` reached for the same
+shape on the next command, ran `refs --file <name>` for seven files in one loop, got
+`unrecognized arguments: --file` seven times, and re-ran the whole loop.
+
 ## Where a plan file goes
 
 A plan normally lives in the repo it describes. That is unavailable in most employer and client

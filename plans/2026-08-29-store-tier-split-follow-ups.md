@@ -10,8 +10,8 @@ updated: 2026-08-30
 The session of 2026-08-29 split the plans store into a shareable tier (`~/plans`, pushed to the
 private `TheodoreAD/plans`) and a sensitive tier (`~/plans-sensitive`, local-only, currently empty).
 It left work undone, and this file is what carries it — `plans.py list` surfaces it, because
-`in-progress` sorts above everything else. Five items as of 2026-08-30; the list grows as sessions
-add to it, so trust the sections below rather than a count in this sentence.
+`in-progress` sorts above everything else. **Only work this repo can do itself** — anything owed to
+another repo is filed there and travels via the store, per the section at the end.
 
 **Each item is a check to run before acting, not a fact to trust.** This machine runs parallel
 sessions and state moves underneath you: `plans/2026-08-29-next-session-prompt.md` measured five
@@ -54,24 +54,7 @@ so nothing re-surfaces it.
 on 2026-08-29 and is written up as a `[PITFALL:]` in
 `plans/2026-08-29-retirement-prompt-on-the-session-sweep.md`.
 
-### 3. Absorb what is filed for `power-user-linux-setup` — three plans now, all `~/AGENTS.md` edits
-
-Only a session inside that repo can do it. Each pairs with a plan already there, so `absorb` should
-report the consolidations.
-
-- Check: `plans.py absorb`, from inside that repo
-- Act: absorb each, consolidate, then make the `config/agents-md/` fragment edits and
-  `inv deploy.all --name agents-md`. Never edit the deployed `~/AGENTS.md`.
-  - `2026-08-29-ssh-sock-prefix-only-after-failure.md` → pairs with
-    `2026-08-29-ssh-prefix-applied-without-a-failure.md`. Plain `git push` is the norm; the
-    `SSH_AUTH_SOCK` prefix is a remedy after a failure, not a default.
-  - `2026-08-29-no-harness-memory-stores.md` → the memory ban, stated as a prohibition rather than
-    as the mechanism explanation that got reasoned around.
-  - `2026-08-30-head-tail-piping-survived-the-bash-recut.md` → pairs with
-    `2026-08-23-global-agents-md-adherence-watch.md`, which is `in-progress` and already owns the
-    question. Carries the measurement that plan's `[DECISION:]` asked for.
-
-### 4. `~/plans` has a remote now, so committing there is no longer the end
+### 3. `~/plans` has a remote now, so committing there is no longer the end
 
 Push it too, after `plans.py scan --mode staged`. Before the first push from any new clone, use
 `--mode history`: a push ships history, not the working tree.
@@ -86,24 +69,18 @@ session's history under a routine push is what the check exists to stop.
 - Act: push once the other sessions' commits are ones you are happy to publish, or wait for those
   sessions to push their own.
 
-### 5. Migrate `ingesta`'s two memory entries out of the harness
+## Filed elsewhere — not this repo's work, and deliberately not listed here
 
-Only a session inside that repo. Filed there as
-`2026-08-29-migrate-memory-entries-out-of-the-harness.md`. Until it is done, the no-memory rule is
-not fully applied on this machine.
+Four plans were filed for other repos while this list was being written: three for
+`power-user-linux-setup` and one for `ingesta`. **What they ask for is not repeated here**, and
+should not be added back.
 
-- Check: `plans.py absorb`, from inside `ingesta`
-- Act: the two entries hold content with no other copy, so this is a **migration** into that repo's
-  own `AGENTS.md` and `plans/` followed by a delete — never a delete on its own.
+They are already routed: each sits in the store, and `plans.py absorb` hands it to the session that
+next works in that repo, which `plan-docs` makes the first call of every session. A copy here would
+be a second thing to retire, would go stale on its own, and aims a reminder at the one repo that
+cannot act on it. Nothing in this file is blocked on any of them.
 
 ## Verification
 
-Done when `plans.py list` shows the three clusters as single files, the `landed` plan is retired or
-carries a recorded reason not to be, `absorb` is silent in both `power-user-linux-setup` and
-`ingesta`, and
-
-```shell
-find ~/.claude/projects -type d -name memory -exec sh -c 'n=$(find "$1" -type f | wc -l); [ "$n" -gt 0 ] && echo "$n  $1"' _ {} \;
-```
-
-prints nothing. Then delete this file.
+Done when `plans.py list` shows the three clusters as single files, and the `landed` plan is either
+retired or carries a recorded reason not to be. Then delete this file.

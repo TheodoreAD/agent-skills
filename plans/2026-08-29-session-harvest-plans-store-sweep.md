@@ -134,6 +134,11 @@ Rough, and the questions above come first.
    reported; then clean up. A bullet that describes a check nobody has executed is how gap 2 got
    written in the first place.
 
+Land it in the same pass as `plans/2026-08-30-session-harvest-filed-plan-may-be-absorbed.md`, which
+adds the store's other half to the same skill — a line in the report format rather than a bullet in
+this sweep, because a plan this session filed may have been absorbed and pushed by another before
+the report names it.
+
 [DEFERRED: this plan covers `session-harvest` only. Whether any _other_ skill's checks quietly
 assume "a store outside a repo is not version-controlled" was not surveyed — `session-bash-audit`
 and `research-library` both touch shared locations and were not read.]

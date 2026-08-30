@@ -298,6 +298,33 @@ def test_move_relocates_and_stamps_the_repo_field(ws, capsys):
     assert plans.parse_frontmatter(moved.read_text())["repo"] == "git@example.com:x/api.git"
 
 
+def test_moving_back_to_the_repo_drops_the_repo_field(ws, capsys):
+    """The round trip, which is the path no single command performs.
+
+    `--to store` adds `repo:` because the store mirror's location no longer names the origin;
+    coming back, the location says it again, so the key is drift rather than information.
+    """
+    write_config(ws, '[repos]\n"client.com-bitbucket/team/api" = { mode = "both", write = "store" }\n')
+    source = ws.client / "plans" / "2026-01-01-old.md"
+    source.parent.mkdir()
+    source.write_text("---\nstatus: idea\nupdated: 2026-01-02\n---\n\n## Context\n", encoding="utf-8")
+    assert plans.main(["move", "2026-01-01-old.md", "--to", "store", "--path", str(ws.client)]) == 0
+    assert plans.main(["move", "2026-01-01-old.md", "--to", "repo", "--path", str(ws.client)]) == 0
+    capsys.readouterr()
+    assert "repo" not in plans.parse_frontmatter(source.read_text())
+    assert "## Context" in source.read_text()
+
+
+def test_strip_frontmatter_key_leaves_the_body_and_a_fenceless_file_alone():
+    """Two ways the naive version would corrupt a file rather than edit it."""
+    body_line = "---\nstatus: idea\n---\n\nrepo: this is prose, not frontmatter\n"
+    assert plans.strip_frontmatter_key(body_line, "repo") == body_line
+    unfenced = "status: idea\nrepo: x\n\n## Context\n"
+    assert plans.strip_frontmatter_key(unfenced, "repo") == unfenced
+    no_close = "---\nstatus: idea\nrepo: x\n"
+    assert plans.strip_frontmatter_key(no_close, "repo") == no_close
+
+
 # --------------------------------------------------------------------------------------------
 # the listing, at each scope
 
@@ -1024,10 +1051,15 @@ def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys, monke
     assert "awaiting absorption" in capsys.readouterr().out
     assert mirror.is_file()
 
+    assert mirror.read_text().count("repo:") == 1  # the store copy names its origin
+
     assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 0
     assert "absorbed:" in capsys.readouterr().out
-    assert (ws.personal / "plans" / name).is_file()
+    absorbed = ws.personal / "plans" / name
+    assert absorbed.is_file()
     assert not mirror.exists()
+    # …and the repo copy does not: its location names the repo again.
+    assert "repo" not in plans.parse_frontmatter(absorbed.read_text())
 
     assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
     assert capsys.readouterr().out == ""  # silent once drained

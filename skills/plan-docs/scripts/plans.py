@@ -615,6 +615,25 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return fields
 
 
+def strip_frontmatter_key(text: str, key: str) -> str:
+    """Drop `key:` from the frontmatter block, leaving the body untouched.
+
+    The counterpart to the insertion `move --to store` makes. Scoped to the block between the
+    opening and closing `---`, so a body line that happens to begin with the key is never touched,
+    and a file with no closing fence is returned unchanged rather than truncated.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return text
+    kept = [lines[0]]
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "".join(kept) + "".join(lines[index:])
+        if not line.startswith(f"{key}:"):
+            kept.append(line)
+    return text
+
+
 def parse_depends_on(value: str) -> tuple[str, ...]:
     """`depends_on: [repo-a, repo-b]` — the flat inline list the convention specifies, nothing more."""
     return tuple(part.strip().strip("\"'") for part in value.strip().strip("[]").split(",") if part.strip())
@@ -2023,6 +2042,11 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFi
 
     A collision is never renamed around: two plans sharing a name is the moment a merge is wanted,
     and a silent rename hides exactly that.
+
+    `repo:` is dropped on the way in. It exists because a plan in the store mirror has no directory
+    naming its origin, and absorption gives it one back, so keeping the key leaves a second and
+    redundant answer to a question the location now answers — the same argument the skill makes
+    against marking in-transit plans at all.
     """
     moved: list[tuple[PlanFile, Path]] = []
     blocked: list[PlanFile] = []
@@ -2032,7 +2056,8 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFi
             blocked.append(plan)
             continue
         target.mkdir(parents=True, exist_ok=True)
-        destination.write_text(plan.path.read_text(encoding="utf-8"), encoding="utf-8")
+        text = strip_frontmatter_key(plan.path.read_text(encoding="utf-8"), "repo")
+        destination.write_text(text, encoding="utf-8")
         plan.path.unlink()
         moved.append((plan, destination))
     return moved, blocked
@@ -2056,6 +2081,11 @@ def cmd_move(args: argparse.Namespace) -> int:
     if args.to == "store" and "repo:" not in parse_frontmatter(text):
         origin = git(["remote", "get-url", "origin"], routing.repo_root) if routing.repo_root else None
         text = text.replace("\nupdated:", f"\nrepo: {origin or routing.rel}\nupdated:", 1)
+    if args.to == "repo":
+        # The other half of the round trip. Without it the key is added going out and never removed
+        # coming back, so a repo-held plan carries a field the skill defines as meaning "in the
+        # store" — drift that no single command performs, which is why it survived unnoticed.
+        text = strip_frontmatter_key(text, "repo")
     target.mkdir(parents=True, exist_ok=True)
     destination.write_text(text, encoding="utf-8")
     plan.path.unlink()

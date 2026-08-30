@@ -36,6 +36,7 @@ read the file directly.
 | [`session-bash-audit`](skills/session-bash-audit/)           | Measuring how agent sessions actually use the Bash tool from real transcripts, and routing each finding to the mechanism that owns it                                                                           | Opinionated but general |
 | [`session-harvest`](skills/session-harvest/)                 | Deciding what from a session is worth persisting, and where it goes — a plan, a repo's `AGENTS.md`, a global preference, or nowhere                                                                             | Opinionated but general |
 | [`skill-authoring`](skills/skill-authoring/)                 | Writing a new skill, editing an existing `SKILL.md`, or getting a skill change actually deployed — and when it should be an `AGENTS.md` rule instead                                                            | General                 |
+| [`skill-fitness`](skills/skill-fitness/)                     | Measuring whether installed skills work — why one never fires, which two compete for a request, what the listing costs, and which repeated one-liners should become skill code                                  | Opinionated but general |
 
 **Scope** says how much of the skill is a convention anyone can adopt versus a personal preference:
 _general_ is portable as written, _opinionated but general_ picks one defensible convention out of

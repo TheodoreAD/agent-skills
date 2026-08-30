@@ -1107,13 +1107,13 @@ def test_absorb_pairs_up_the_split_a_dirty_store_forced(ws, capsys, monkeypatch)
 
     assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
-    assert "consolidate with 2026-01-01-caching.md" in out
-    assert "two halves of one topic" in out
-    assert "2026-01-03-unrelated.md" in out  # listed, but carries no consolidation note
+    assert "references 2026-01-01-caching.md" in out
+    assert "A reference is not by itself a reason to merge" in out
+    assert "2026-01-03-unrelated.md" in out  # listed, but carries no pairing note
 
     assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
-    assert "consolidate: 2026-01-02-caching-more.md with 2026-01-01-caching.md" in out
+    assert "references: 2026-01-02-caching-more.md cites 2026-01-01-caching.md" in out
     assert (ws.personal / "plans" / "2026-01-01-caching.md").is_file()
     assert (ws.personal / "plans" / "2026-01-02-caching-more.md").is_file()
 
@@ -1136,7 +1136,7 @@ def test_absorb_pairs_against_a_plan_already_committed_in_the_repo(ws, capsys):
 
 def test_a_reference_to_a_plan_that_does_not_exist_is_not_a_pair(ws, capsys):
     """Plans cite retired and foreign plans in prose all the time; only a name that resolves to a
-    real file on either side is a consolidation."""
+    real file on either side is reported as a pairing at all."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plan(
         ws.store / "github.com-personal" / "agent-skills",
@@ -1147,7 +1147,7 @@ def test_a_reference_to_a_plan_that_does_not_exist_is_not_a_pair(ws, capsys):
 
     assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
-    assert "consolidate" not in out
+    assert "references" not in out
     assert "2026-01-02-thing.md" in out
 
 

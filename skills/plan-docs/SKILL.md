@@ -454,13 +454,31 @@ question and stays allowed.
 exists in `plans/`, exits non-zero, and destroys neither copy — two plans sharing a name means both
 cover the topic, and that is the moment to combine them by hand.
 
-**Absorption is also where a dirty-store split gets reconciled.** When a harvest found the store
-dirty it added a new plan referencing an existing one rather than editing a file another session
-might have been holding. `absorb` finds those pairs — by the reference itself, checked against both
-directories — and prints `consolidate with …` beside each. Do it as part of the same acceptance:
-merge the two into one plan, keep the earlier filename, delete the other. **Nothing re-surfaces this
-after absorption**, because the pairing lives in prose, so a pair skipped here is a pair nobody is
-reminded of again.
+**Absorption is where a dirty-store split gets reconciled — and `absorb` can only tell you a
+reference exists, never why.** When a harvest found the store dirty it added a new plan referencing
+an existing one rather than editing a file another session might have been holding; those two halves
+want merging. But **the common case for one plan citing another is simply that they are related**,
+and several say so outright — "filed alongside it", "this is a new concern rather than an addition
+to that one", "not re-raised here". So `absorb` prints `references …` beside each pair and the
+judgement is yours: read both, then merge only when they are two halves of one topic.
+
+Measured across two absorptions, 2026-08-29 and 2026-08-30: seven of twelve pairings were deliberate
+separations. The failure is asymmetric, which is why the report states no cause — a missed genuine
+split costs one duplicated topic that someone notices later, while a wrongly-merged pair destroys a
+separation someone reasoned about in writing, and the reasoning goes with it. **Nothing re-surfaces
+a genuine pair after absorption**, because the pairing lives in prose, so a real split skipped here
+is one nobody is reminded of again.
+
+When it _is_ a merge, four rules, each derived at the point of needing it:
+
+- **Keep the name that describes the merged subject**, not one case of it. "The earlier filename" is
+  undefined when both plans share a date, which is the common case.
+- **A correction is merged in place, not appended** — otherwise the wrong argument stands above the
+  right one and the reader has to arbitrate.
+- **Name the merged-away file** in the surviving plan, or `archive` cannot find it: the deleted plan
+  is in git, and that line is the only thing pointing at the name to search for.
+- **A cluster member already implemented is marked done, not carried**, so the merge does not queue
+  edits that already exist.
 
 A cited filename that resolves to no actual file is not a pair — plans legitimately reference
 retired and foreign plans in prose, and only a name matching a real file on either side counts.

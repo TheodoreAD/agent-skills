@@ -1961,7 +1961,7 @@ def cmd_absorb(args: argparse.Namespace) -> int:
     if owed:
         print()
         for name, related in owed.items():
-            print(f"consolidate: {name} with {', '.join(related)} — now both in {target}")
+            print(f"references: {name} cites {', '.join(related)} — now both in {target}")
         _print_consolidation_note()
     return 1 if blocked else 0
 
@@ -1989,7 +1989,7 @@ def _report_absorbable(routing: Routing, pending: list[PlanFile], pairs: dict[st
     print(f"{len(pending)} plan(s) filed for {routing.rel or routing.repo_root}, awaiting absorption:")
     for plan in pending:
         related = pairs.get(plan.path.name)
-        note = f"  -> consolidate with {', '.join(related)}" if related else ""
+        note = f"  -> references {', '.join(related)}" if related else ""
         print(f"  {plan.path.name:<52} {plan.status}  updated {plan.updated or '?'}{note}")
     if pairs:
         _print_consolidation_note()
@@ -1999,15 +1999,23 @@ def _report_absorbable(routing: Routing, pending: list[PlanFile], pairs: dict[st
 
 
 def _print_consolidation_note() -> None:
-    """Why these exist, said once rather than per pair.
+    """State the reference, never a cause, said once rather than per pair.
 
-    They are not an accident: a harvest that found the store dirty was told to add a file rather
-    than edit one another session might be holding. Absorption is where that debt is paid, because
-    it is the first moment both halves are in one tree and one session owns them.
+    A pairing is a citation and nothing more. It can mean two halves of one topic, split because a
+    harvest found the store dirty and had to add a file rather than edit one another session might
+    be holding — the case absorption exists to reconcile. It far more often means the two are simply
+    related, and the newer plan usually says so in its own words. Measured across two absorptions,
+    2026-08-29 and 2026-08-30: seven of twelve pairings were deliberate separations.
+
+    So this prints what is known and stops. Asserting the cause is what makes an agent act on the
+    common case, and the error is asymmetric: a missed genuine split costs one duplicated topic
+    somebody notices later, while a wrong merge destroys a separation someone reasoned about in
+    writing, taking the reasoning with it.
     """
-    print("\nThese are two halves of one topic, split because the store was dirty when the second")
-    print("was written. Merge them into one plan, keep the earlier filename, and delete the other")
-    print("— the reference that paired them is prose, so nothing re-surfaces this once absorbed.")
+    print("\nA reference is not by itself a reason to merge. Read both: two halves of one topic")
+    print("(a store that was dirty when the second was written) get merged, keeping the name that")
+    print("describes the merged subject; plans that merely cite each other stay apart, and often")
+    print("say so in their own words. Nothing re-surfaces a genuine pair once absorbed.")
 
 
 def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFile, Path]], list[PlanFile]]:

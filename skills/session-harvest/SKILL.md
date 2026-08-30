@@ -42,8 +42,13 @@ considered and rejected).
    against the first `timestamp` in this session's transcript (step 4 already opens that file, so
    the cost is one more line). Compare them as instants, never as strings — the transcript stamp is
    UTC `Z` and git's is local-with-offset, so a lexical comparison is wrong by the offset. If the
-   skill moved after the session started, **re-read the installed `SKILL.md` from disk before
-   relying on it**, whatever the diff said.
+   skill moved after the session started, **re-read the `SKILL.md` from disk before relying on it**,
+   whatever the diff said — **from the checkout when the checkout is the one that is ahead.**
+   Re-reading the installed copy is the fix for a stale _context_ against a current install; when
+   the install is itself behind, it hands back the same superseded text the session already holds,
+   and the instruction reads as satisfied. Confirmed 2026-08-30: a harvest ran fourteen minutes
+   after a commit to this very skill, re-read the installed copy as written, and got its own stale
+   wording back; the checkout was clean, pushed, and two paragraphs ahead.
 
    **And when the session has already _acted_ on that skill, re-reading is only half the fix.** List
    what changed — `git log --oneline --since=<session start> -- skills/<name>/` — and ask whether

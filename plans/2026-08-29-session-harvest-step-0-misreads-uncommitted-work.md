@@ -1,26 +1,17 @@
 ---
 status: idea
-updated: 2026-08-29
+updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
-# `session-harvest` step 0 reads another session's uncommitted work as a stale install
+# `session-harvest` step 0: a difference has three causes, and a clean diff has a fourth
 
-**Overlaps `2026-08-29-session-harvest-stale-install-third-case.md`, which reached the same
-conclusion four minutes earlier from a parallel session** and states the three-cause fix more
-crisply — consolidate into that one and keep only what is listed as additive below. This file was
-written without re-checking `absorb`, which had been clean for this repo ten minutes before and was
-not re-run; that miss is itself worth a line in the skill.
-
-Additive over that plan: the step 6 reconciliation question below, and the `[DEFERRED:]` warning
-that the two-tier store split undercuts the companion plan's no-remote argument. Everything else
-here is duplicated.
-
-Companion to `2026-08-29-session-harvest-plans-store-sweep.md`, filed the same day from the same
-`repo-tasks` session. **Separate file rather than an edit to that one because the store was dirty**
-— a parallel session had a modified `README.md` and an untracked plan of its own in flight — which
-is the fallback `plan-docs` prescribes and, incidentally, a live demonstration of the hazard the
-companion plan is about. Consolidate the two on absorption.
+Merged 2026-08-30 from three plans that were the same finding reached from three sessions:
+`2026-08-29-session-harvest-stale-install-third-case.md` (filed minutes earlier from a parallel
+session), this file, and `2026-08-29-session-harvest-step-0-cannot-see-a-stale-loaded-copy.md`. Each
+of the first two nominated the other as the survivor; this filename won because it names the step's
+subject rather than one case of it. The collision is itself evidence for the finding — two sessions
+hit the same gap within hours, and neither could see the other's work until one wrote to the store.
 
 ## Context
 
@@ -29,14 +20,17 @@ Step 0 says to diff the installed skill copy against the checkout before startin
 > If they differ, say so and offer to re-install first; a stale harvest is worse than no harvest,
 > because its report reads identical.
 
-Run on 2026-08-29, that check fired. `session-harvest/SKILL.md` and `plan-docs/SKILL.md` matched;
-`plan-docs/scripts/plans.py` **differed**. Following the instruction literally, the next move is to
-offer a re-install.
+Run on 2026-08-29, that check fired twice, in two sessions, for the same reason.
+`session-harvest/SKILL.md` and `plan-docs/SKILL.md` matched; `plan-docs/scripts/plans.py`
+**differed**. In the second run the checkout carried 672 uncommitted insertions across
+`skills/plan-docs/`, `tests/unit/test_plan_store.py` and `README.md` — a parallel session
+mid-implementation of the two-tier store split, nothing ahead of `origin/main`, mtimes in the same
+minute as the check.
 
-That would have been wrong, in a way the step cannot currently distinguish:
+Following the instruction literally, the next move is to offer a re-install. That would have been
+wrong, in a way the step cannot currently distinguish:
 
-- The difference was **uncommitted work in the checkout** — a parallel session mid-restructure, four
-  modified files, mtimes in the same minute as the check. Not a stale install.
+- The difference was **uncommitted work in the checkout**, not a stale install.
 - **Re-installing would have changed nothing**, because the installer clones the remote. The remote
   has the committed version, which is exactly what was already installed. The offer is not merely
   unhelpful, it is a no-op dressed as a remedy.
@@ -54,10 +48,31 @@ differ, and it is not the one that occurred:
 | checkout ahead by **uncommitted** work | leave it alone; it is someone's work in progress |
 
 [PITFALL: the diff alone cannot tell these apart, and the cheap disambiguator is not the diff but
-`git -C <checkout> status --short` plus the file's mtime. In this run the mtime and the wall clock
-agreed to the minute, which is what made "another session is editing this right now" obvious rather
-than inferred. `git log` would not have shown it — the work is uncommitted, so the history looks
-settled.]
+`git -C <checkout> status --short` plus the file's mtime. In the second run the mtime and the wall
+clock agreed to the minute, which is what made "another session is editing this right now" obvious
+rather than inferred. `git log` would not have shown it — the work is uncommitted, so the history
+looks settled.]
+
+Neither run was actually harmed: the commands each needed (`tags`, `set-status`, `scan`) predated
+the diff, which was one coherent feature. That confirmation is cheap when the diff is coherent and
+would not be on one touching argument parsing broadly.
+
+## The fourth outcome — landed, kept for the reasoning
+
+A clean diff is not the whole answer: the installed copy can be current while the copy frozen in the
+**session's context** at load time is old, which no filesystem comparison reaches. Confirmed
+2026-08-29 — a session held `plan-docs` from before `bd6c55d`, which changed the store's pre-push
+gate from `scan --mode tree` to `scan --mode history`, and filed the opposite claim into a plan. A
+confidentiality gate, reasoned about from stale wording.
+
+This half is **done**: `965af2e` added the check to step 0 — compare
+`git -C <checkout> log -1 --format='%cI' -- skills/<name>/` against the session transcript's first
+timestamp, as instants rather than strings, and re-read the installed `SKILL.md` from disk if the
+skill moved after the session began. Only the three-cause split below is still open.
+
+[NEEDS CLARIFICATION: should the same window check generalise past `SKILL.md` to the always-loaded
+instructions file? `~/AGENTS.md` is loaded once per session and regenerated by a deploy task, so the
+window exists and is longer. Not investigated.]
 
 ## Open questions
 
@@ -68,33 +83,36 @@ I did not conclude", which is honest but hands the user a decision at the least 
 the run.]
 
 [NEEDS CLARIFICATION: does an uncommitted-checkout finding block the run, or only the self-update?
-The harvest itself was unaffected here — the installed `plans.py` behaved consistently all session,
-and every command it ran was against the committed version. What it blocked was step 6/7: the skill
-edit could not be made in a checkout another session is editing. That suggests the finding belongs
-to the self-update mechanics rather than to step 0's go/no-go, and that step 0 should say so.]
+The harvest itself was unaffected in both runs — the installed `plans.py` behaved consistently, and
+every command it ran was against the committed version. What it blocked was step 6/7: the skill edit
+could not be made in a checkout another session is editing. That suggests the finding belongs to the
+self-update mechanics rather than to step 0's go/no-go, and that step 0 should say so.]
 
-[NEEDS CLARIFICATION: what should step 6 do when the checkout is unavailable? This run answered it
-by filing the finding as a store plan for `agent-skills`, which is the routing filter the skill
-already has for a candidate belonging to another repo. But step 6 says "default to editing the
-source now, not filing it for later; a deferred skill fix is a skill fix that does not happen" —
-which reads as an instruction to override exactly the routing that was correct here. The two need
-reconciling, and the honest reconciliation is probably that "file it" and "defer it" are different
-things: a filed plan has a mechanism that surfaces it (`absorb`), and that is what makes it not a
-deferral.]
+[NEEDS CLARIFICATION: is "confirm the commands this run needs are not in the diff" worth spelling
+out as a mechanical check, or does it stay a judgment call?]
 
 ## Recommended direction
 
 1. **Split step 0's remedy by cause**, using the table above. The diff stays the trigger; the
-   response depends on `status --short`, not on the diff.
+   response depends on `status --short`, not on the diff. Roughly:
+
+   > A difference has three causes, not one. Check `git -C <checkout> status --short` and
+   > `git log origin/<branch>..HEAD` before offering anything: a **clean checkout ahead of the
+   > install** is the stale install the step assumes, and a re-install fixes it. A **dirty
+   > checkout** is unpushed work in progress — very likely a parallel session's — and a re-install
+   > would fetch the last pushed version, which is what is already installed; report it as in-flight
+   > rather than stale, confirm the commands this run needs are not in the diff, and use the
+   > installed copy. Confirmed 2026-08-29 on `plan-docs`, mid-store-split.
+
 2. **Say plainly that a re-install cannot fix a checkout-ahead difference**, since that is the
    non-obvious half — the installer's source is the remote, not the working tree, so the natural
    mental model ("re-install syncs them") is wrong in both of the last two rows.
-3. **Reconcile step 6's "edit now, do not file" with the cross-repo filing filter**, so a run that
-   cannot touch the checkout has an unambiguous path rather than two rules pointing opposite ways.
+3. **Reconcile step 6's "edit now, do not file" with the cross-repo filing filter.** Both merged
+   sources reached this from opposite ends and it is no longer this plan's to settle: it is the
+   subject of `plans/2026-08-29-plan-docs-cross-repo-work-is-a-filed-plan.md`, which argues filing
+   is the default rather than the exception. Step 0 only needs to point at whatever that lands as.
 
-[DEFERRED: the same run found `plan-docs` mid-restructure toward a two-tier store (`$PLANS_HOME`
-shareable, which **may have a remote**, plus a local-only sensitive tier). The companion plan's gap
-2 argues the harvest's ahead-count check cannot reach the store _because it has no remote_ — which
-stays true for the sensitive tier and stops being true for the shareable one. Whoever absorbs these
-two should re-check that argument against whatever the split actually lands as, rather than carrying
-it across.]
+The `[DEFERRED:]` this file carried — that the two-tier store split undercut the companion sweep
+plan's no-remote argument — is **resolved**, and the re-check it asked for was done: see
+`plans/2026-08-29-session-harvest-plans-store-sweep.md`, whose gap 2 now argues from uncommitted
+work rather than from the absent remote.

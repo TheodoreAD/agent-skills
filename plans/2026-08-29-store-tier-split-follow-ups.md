@@ -24,25 +24,35 @@ the reason it is one file rather than several.
 
 ## Design
 
-### 1. Merge three plan clusters `absorb` will never mention again
+### 1. Merge the plan clusters `absorb` will never mention again — done 2026-08-30
 
 Absorption reported these as consolidate-with pairs exactly once. The pairing lives only in prose,
 so nothing re-surfaces it.
 
-- Check: `ls plans/ | grep -E 'session-harvest|trigger|prompt|description-cap'` — expect 8 files
-  while none are merged. The `description-cap` alternative is not decoration: without it the check
-  returns 7 and silently omits one member of the skill-triggers cluster, which is how a merge ends
-  up two-thirds done. Found by running it, 2026-08-29.
-- Act: merge each cluster into one plan, keep the earliest filename, delete the others.
-  - session-harvest: `2026-08-29-session-harvest-step-0-misreads-uncommitted-work.md` +
-    `2026-08-29-session-harvest-plans-store-sweep.md` +
-    `2026-08-29-session-harvest-stale-install-third-case.md`
-  - skill triggers: `2026-08-22-skill-trigger-quality-review.md` +
-    `2026-08-29-skill-description-cap-gate-blind-to-wrapped-yaml.md` +
-    `2026-08-29-trigger-contention-scanner.md`
-  - prompts: `2026-08-29-next-session-prompt.md` +
-    `2026-08-29-retirement-prompt-on-the-session-sweep.md` — these two are explicitly meant to be
-    decided together rather than bolted onto `absorb` independently
+Twelve files became five, after item 3's absorption grew the clusters from the eight the original
+check counted:
+
+- **step 0 staleness** → `2026-08-29-session-harvest-step-0-misreads-uncommitted-work.md`, absorbing
+  `2026-08-29-session-harvest-stale-install-third-case.md` and
+  `2026-08-29-session-harvest-step-0-cannot-see-a-stale-loaded-copy.md`. Each of the first two
+  nominated the other as the survivor; the kept filename names the step rather than one case of it.
+  The fourth-outcome half is already landed in the skill at `965af2e`.
+- **the store sweep** → `2026-08-29-session-harvest-plans-store-sweep.md`, absorbing
+  `2026-08-29-plans-store-sweep-no-remote-premise-is-stale.md`, whose corrections to gap 2 and
+  recommendation 2 are applied in place rather than appended.
+- **cross-repo writes** → `2026-08-29-plan-docs-cross-repo-work-is-a-filed-plan.md`, absorbing
+  `2026-08-30-session-harvest-self-update-crosses-repos.md`. One rule, two skills contradicting it.
+- **skill triggers** → `2026-08-22-skill-trigger-quality-review.md`, absorbing
+  `2026-08-29-skill-description-cap-gate-blind-to-wrapped-yaml.md` and
+  `2026-08-29-trigger-contention-scanner.md`.
+- **prompts** → `2026-08-29-next-session-prompt.md`, absorbing
+  `2026-08-29-retirement-prompt-on-the-session-sweep.md`. They were always one decision — both
+  propose bolting onto `absorb` — and the merged plan says to settle that surface once before
+  building either.
+
+The `description-cap` alternative in the original check was not decoration: without it the grep
+returns one fewer and silently omits a member of the skill-triggers cluster, which is how a merge
+ends up two-thirds done. Found by running it, 2026-08-29.
 
 ### 2. Retire `2026-08-28-plans-outside-the-repo.md`, or record why not
 
@@ -51,8 +61,8 @@ so nothing re-surfaces it.
   retire.
 
 **Use `set-status`, never a frontmatter edit.** A hand-edit skips the gate silently; that happened
-on 2026-08-29 and is written up as a `[PITFALL:]` in
-`plans/2026-08-29-retirement-prompt-on-the-session-sweep.md`.
+on 2026-08-29 and is written up as a `[PITFALL:]` in `plans/2026-08-29-next-session-prompt.md`,
+part 2.
 
 ### 3. Absorb what other sessions have filed for this repo — done as the first call, every session
 

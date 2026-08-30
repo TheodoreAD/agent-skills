@@ -1,10 +1,14 @@
 ---
 status: idea
-updated: 2026-08-29
+updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
 # `session-harvest`'s loose-state sweep never looks at the plans store
+
+Merged 2026-08-30 with `2026-08-29-plans-store-sweep-no-remote-premise-is-stale.md`, a correction
+filed from a parallel session hours after this was written. Its edits are applied below; gap 2's
+conclusion is unchanged and its justification is rewritten.
 
 ## Context
 
@@ -27,11 +31,14 @@ name. What is missing is any check that would ever _find_ one.
 Four specific gaps, each verified against the installed files rather than inferred:
 
 1. **`$PLANS_HOME` is never named.** Zero hits across `SKILL.md` and `references/rationale.md`.
+   Still zero on 2026-08-30.
 2. **The git bullet cannot reach it.** "Git state, every repo the session touched" is built entirely
-   around `git log origin/<branch>..HEAD`, a fetch, and who authored the unpushed commits. The store
-   is created by `plan-docs install` as a local git repository **with no remote** — confirmed on
-   this machine, `git -C ~/plans remote -v` is empty. So a dirty store has nothing to push, the
-   ahead-count is zero, and the bullet reads clean while an uncommitted plan sits there.
+   around `git log origin/<branch>..HEAD`, a fetch, and who authored the unpushed commits. An
+   **uncommitted** plan is not a commit, so no ahead-count sees it on any repository, with or
+   without a remote — `git log origin/<branch>..HEAD` is the wrong instrument for a dirty working
+   tree everywhere, not just here. And the store is not a repo the session "touched" in the sense
+   that bullet means: it sits outside every working tree and nothing walks to it. So a dirty store
+   reads clean while an uncommitted plan sits there.
 3. **The "shared stores outside any repo" bullet excludes it by its own reasoning.** It names only
    `$RESEARCH_HOME`, and justifies the check with "invisible to every other check here precisely
    because the store is not version-controlled" — which is exactly false for `$PLANS_HOME`. A reader
@@ -48,12 +55,38 @@ nothing in any working tree, nothing in any ahead-count, and nothing in CI. And 
 cost is not hypothetical — every minute the store is dirty is a minute another session must fall
 back to adding a file it would rather have edited.
 
-Nothing was actually dangling when this was found: `~/plans` was clean at `11b27e4`.
+Nothing was actually dangling when this was found: `~/plans` was clean at `11b27e4`. Still true when
+the correction below was written.
 
 [PITFALL: the reason this survived a skill whose whole subject is unswept state is that the store
 looks like it is already covered twice over — it is a git repository (so the git bullet seems to own
 it) and it is a shared store outside any repo (so that bullet seems to own it). Each bullet's
 framing hands it to the other. A check written for either one alone would still miss it.]
+
+## The premise that rotted, and the conclusion that did not
+
+Gap 2 originally read: the store "is created by `plan-docs install` as a local git repository **with
+no remote** — confirmed on this machine, `git -C ~/plans remote -v` is empty. So a dirty store has
+nothing to push, the ahead-count is zero".
+
+Checked hours later, after the two-tier split landed: `~/plans` has an `origin` pointing at a
+private repo on the personal account. Only the sensitive tier is remote-less, and that is now by
+design rather than by default — `plans.py doctor` reports a remote _there_ as a problem.
+
+**The remote was never what made gap 2 a gap**, which is why this is a correction rather than a
+retraction: the conclusion stands on uncommitted work, which no ahead-count sees anywhere. Gap 2 is
+rewritten above; the old phrasing is the natural one to write again, so it is recorded here rather
+than deleted.
+
+Two consequences beyond the wording. The shareable tier having a remote makes committed-but-unpushed
+plans a genuine _second_ failure the sweep could catch — gated by the content scan before any push —
+while the sensitive tier has nothing to push. And the `doctor` question below now means specifically
+a remote on the _sensitive_ tier, plus a mirrored root filed in the wrong tier.
+
+[PITFALL: a plan's reasoning can rot faster than its conclusion. This one was verified live, cited a
+command and its output, and was wrong a few hours later because a different piece of work landed.
+When a plan's argument rests on a machine-state fact, it should say which part of the conclusion
+would fall if that fact changed — here, none of it.]
 
 ## Open questions
 
@@ -64,11 +97,11 @@ another session's gift — but they are one command each against the same direct
 them across two bullets risks one being read as covering both, which is how gap 3 happened.]
 
 [NEEDS CLARIFICATION: should the sweep run `plans.py doctor`? It reports a store that lost its git
-identity, a store that has grown a remote, an unset `PLANS_HOME`, and repos holding plans no rule
-routes — all of which are silent, machine-level breakage rather than session state. That argues it
-belongs in a periodic check rather than in every harvest. Against: it is one call, and the failures
-it names make `archive` silently retrieve nothing, which is the kind of thing discovered far too
-late.]
+identity, a remote on the sensitive tier, an unset `PLANS_HOME`, a mirrored root in the wrong tier,
+and repos holding plans no rule routes — all of which are silent, machine-level breakage rather than
+session state. That argues it belongs in a periodic check rather than in every harvest. Against: it
+is one call, and the failures it names make `archive` silently retrieve nothing, which is the kind
+of thing discovered far too late.]
 
 [NEEDS CLARIFICATION: does the `$RESEARCH_HOME` bullet's justification need rewriting, or just
 widening? "Invisible to every other check here precisely because the store is not version-
@@ -89,9 +122,11 @@ Rough, and the questions above come first.
 
 1. **Add the store to the loose-state sweep**, as its own bullet rather than folded into either
    existing one — the pitfall above is that both existing bullets appear to cover it.
-2. **State the no-remote fact explicitly** wherever the bullet lands. It is the whole reason the
-   ahead-count check does not apply, and without it the next reader deletes the bullet as
-   duplicating the git one.
+2. **State why the git bullet does not cover it**: the check is for uncommitted work in a directory
+   no repo walk reaches. Per tier — the shareable tier has a remote, so committed-but-unpushed plans
+   there are a second thing the sweep could catch, gated by the content scan before any push; the
+   sensitive tier has nothing to push. Do **not** write "the store has no remote"; that sentence was
+   true for a few hours and would now ship false into the skill.
 3. **Fix the `$RESEARCH_HOME` justification** either way, since it is currently a sentence that
    would mislead anyone reasoning from it about any other store.
 4. **Verify by running it, not by reading it** — the same rule that bullet list already applies to

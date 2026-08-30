@@ -1,7 +1,6 @@
 ---
 status: idea
 updated: 2026-08-30
-repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
 # A plan filed earlier in the session may be gone by the time the report names it

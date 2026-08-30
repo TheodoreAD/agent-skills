@@ -1,7 +1,6 @@
 ---
 status: idea
 updated: 2026-08-29
-repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
 ## Context

@@ -1,7 +1,6 @@
 ---
 status: idea
 updated: 2026-08-30
-repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
 # A session bumps `status:` with an editor, and `set-status`' gate never runs

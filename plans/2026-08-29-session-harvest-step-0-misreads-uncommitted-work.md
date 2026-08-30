@@ -1,7 +1,6 @@
 ---
 status: idea
 updated: 2026-08-30
-repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
 # `session-harvest` step 0: a difference has three causes, and a clean diff has a fourth

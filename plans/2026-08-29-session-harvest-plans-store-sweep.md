@@ -1,7 +1,6 @@
 ---
 status: idea
 updated: 2026-08-30
-repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
 # `session-harvest`'s loose-state sweep never looks at the plans store

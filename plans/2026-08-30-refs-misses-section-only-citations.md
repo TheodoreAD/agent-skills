@@ -1,7 +1,6 @@
 ---
 status: idea
 updated: 2026-08-30
-repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
 # `plans.py refs` misses citations that name a section but not a file

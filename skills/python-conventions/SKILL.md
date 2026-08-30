@@ -284,6 +284,24 @@ or following the all-or-nothing alternative above.
   "tests shouldn't touch the disk" reads as the disciplined choice. It is the wrong instinct
   wherever the suite could simply own the real thing.
 
+## Command-line interfaces
+
+- Default: **Typer**, for anything with subcommands, options, or a `[project.scripts]` entry.
+  Annotated types carry the CLI metadata, which is the same rule this skill already applies to data
+  modeling — the metadata rides in the annotation, not on the right-hand side of a default.
+- **`argparse` only under a genuine standard-library-only constraint**, and name the constraint
+  rather than assuming it. The real ones are narrow: a script that must run on a bare interpreter
+  with no install step, a bootstrap that runs before any environment exists, and code shipped
+  somewhere dependencies cannot follow (a Pyodide payload). "It's only a small script" is not one.
+- **Typer over raw Click.** Typer is built on Click, so these are not opposites — but a project
+  reaching for raw Click is choosing more boilerplate for the same result. Click stays what it is
+  underneath, and is the escape hatch for a Typer limitation, not a starting point.
+- **Not a rule about task runners.** `inv` is for repo-local work — see `invoke-task-conventions` —
+  and a CLI is the program a user installs. They do not compete, and a new command belongs to
+  whichever of those two it actually is.
+- Model default: **overrides.** Left alone a model writes `argparse`, because that is what the
+  standard library offers and what most training data shows.
+
 ## Type hygiene
 
 - Scope `# type: ignore`/`# pyright: ignore` comments to a specific error code — never blanket-

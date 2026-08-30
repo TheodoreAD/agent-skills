@@ -55,14 +55,20 @@ just confirm what you'd already do, weight the ones that don't.
   boundary and would otherwise run two record idioms, leaving an agent to guess which to mimic; the
   split's own reasoning (measured plain-attribute-access cost, dependency weight) is what you are
   trading away, so decide once, at the top of the project, not per module.
+- **The strongest reason to take it is not consistency.** Measured on a project that migrated ~30
+  frozen dataclasses: a single `Annotated` alias replaced thirteen hand-maintained
+  `object.__setattr__` normalisation sites of that codebase's most load-bearing invariant.
+  Validation that a frozen dataclass can only express in `__post_init__` gymnastics is the real
+  trade, and it is a better argument than "one idiom, not two".
 - Model default: **overrides.** Left alone, a model mixes Pydantic/dataclass/TypedDict/NamedTuple
   inconsistently across a codebase depending on what it last saw — there's no strong single default
   instinct here to confirm.
 
 ### Pydantic traps a dataclass never had
 
-Three measured against pydantic 2.13.5, all of which bite a project migrating dataclasses → Pydantic
-or following the all-or-nothing alternative above.
+Four measured against pydantic 2.13.5, all of which bite a project migrating dataclasses → Pydantic
+or following the all-or-nothing alternative above. The last is the one that changes a public API
+rather than a call site.
 
 - **`model_copy(update=...)` performs no validation** — its own docstring says so. A frozen model
   copied with `update=` accepts a naive datetime, or a cross-field violation, that every other
@@ -75,8 +81,26 @@ or following the all-or-nothing alternative above.
 - **Config belongs in the class declaration.** `class Q(BaseModel, frozen=True)` is verified
   equivalent to `model_config = ConfigDict(frozen=True)`, composes with other keywords, and reads on
   the line that names the class rather than as an attribute assignment that looks like data.
+- **A validator's `ValueError` is swallowed and re-raised as `pydantic.ValidationError`** — anything
+  that is not a `ValueError` propagates untouched. Harmless until the project's own exception
+  hierarchy is rooted at `ValueError`, which is a common and well-reasoned choice made so callers
+  handling bad input generically keep working. After the migration every class in that hierarchy
+  stops reaching a caller: a construction that raised `MyValidationError` now raises
+  `pydantic.ValidationError`, and the subclass distinction survives only in message text. Measured
+  on a project whose two classes were a validation error and a unit-mismatch error, where telling
+  them apart is the entire point of having both. The fix is to drop `ValueError` from the base — and
+  to write down the consequence, since `pydantic.ValidationError` _is_ a `ValueError`: catching
+  everything a construction can raise becomes `(ProjectError, ValueError)`, the project's own
+  complaints plus the structural ones pydantic raises on its own.
+  - **The inverse is equally right at a parsing boundary**: raise plain `ValueError` deliberately so
+    pydantic _does_ capture it, attach the field's location, and collect several complaints into one
+    report — then render that report back into the project's own error type at the boundary. So the
+    rule is not "never subclass `ValueError`"; it is that the choice now decides whether an error
+    carries a **type** or a **location**, and it is made per layer.
 - Model default: **overrides.** `model_copy(update=...)` reads as the obvious `replace` equivalent
-  and is the natural first reach; nothing about the call site suggests validation was skipped.
+  and is the natural first reach; nothing about the call site suggests validation was skipped. The
+  `ValueError` trap is worse in the same way — the base class is chosen once, long before the
+  migration, and nothing at the point of the change points back at it.
 
 ## Dates, times, and timezones
 

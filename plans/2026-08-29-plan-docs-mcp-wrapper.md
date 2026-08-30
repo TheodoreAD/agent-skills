@@ -46,8 +46,8 @@ Any one of these, and none of them is true today:
   on requests it should own _after_ the description work, that is evidence. The cheaper fix was
   applied first: the description now names "what plans do we have" and "what should I work on next",
   which it did not before. Whether that was enough is exactly what
-  `plans/2026-08-22-skill-trigger-quality-review.md` is for — so **that plan's outcome is the input
-  to this one**, and this should not be reopened before it produces a result.
+  `plans/2026-08-30-skill-fitness-analyzer.md` is for — so **that plan's outcome is the input to
+  this one**, and this should not be reopened before it produces a result.
 - **A second consumer.** One machine's agent sessions do not justify a server. Something else
   needing programmatic access to plan state might.
 

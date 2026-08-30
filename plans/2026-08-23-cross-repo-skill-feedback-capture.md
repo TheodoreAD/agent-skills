@@ -15,9 +15,10 @@ The evidence — the actual prompt, what the agent did, the correction verbatim,
 it — lives in _that_ session, in _that_ repo. By the time a session here picks the topic up, that
 evidence is gone and what is left is a second-hand paraphrase.
 
-Symptom already on record: this repo's `plans/2026-08-22-skill-trigger-quality-review.md` opens with
-"Surfaced 2026-08-22 while working in `repo-tasks`" and then re-narrates the failure in prose,
-because there was no mechanism to point at the real turns.
+Symptom already on record: the trigger-quality work (now
+`plans/2026-08-30-skill-fitness-analyzer.md`, which merged the earlier plan) opened with "Surfaced
+2026-08-22 while working in `repo-tasks`" and then re-narrated the failure in prose, because there
+was no mechanism to point at the real turns.
 
 Two existing mechanisms touch this and neither closes it:
 
@@ -149,7 +150,7 @@ distinctive quoted phrase — cheap, and either one alone can miss.]
   procedure extends `session-harvest` (which already owns "route durable knowledge to its right
   home", and already has the self-update section this bounds) and `plan-docs` (which already owns
   plan shape). This also keeps the trigger off the mechanism
-  `plans/2026-08-22-skill-trigger-quality-review.md` shows is the weak link.
+  `plans/2026-08-30-skill-fitness-analyzer.md` shows is the weak link.
 - **No `.learnings/` file in the consumer repo.** That is the siloing this design exists to avoid.
 - **No hook, no automation.** Same call `session-harvest` already made, for the same reason.
 - **No second backlog — in this plan.** Issues stay a fallback so this can land without first

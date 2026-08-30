@@ -18,6 +18,11 @@ low-boilerplate API a coding agent can use correctly without much ceremony or in
 favor the best-fit tool per concern over minimizing the number of technologies in a project — don't
 force a consolidation the categories below don't call for.
 
+**Cash in the testability criterion: don't mock these.** The whole point of picking a store the
+suite can start and stop is that tests run the real one, so a double here throws away what the
+choice bought. `python-conventions`, "Don't double anything the suite can run for real", states the
+rule and the boundary.
+
 **Security is deliberately not a selection factor.** Every default here is chosen for local,
 personal-scale use — nothing on this page should be treated as a production/multi-tenant/internet-
 facing recommendation. Each category's "Escalate to" line is the pick for that situation instead.

@@ -258,6 +258,32 @@ or following the all-or-nothing alternative above.
   as the safe choice) — this entry blocks that instinct in tests specifically, where it silently
   narrows what the test can catch.
 
+### Don't double anything the suite can run for real
+
+- Default: **no mock, fake or stub for a dependency the suite can own the whole lifetime of** —
+  in-process, or as a subprocess it starts and stops. A SQLite file, a temp directory, a local
+  queue, your own entrypoint under a subprocess: run the real thing. A third-party HTTP API is the
+  other side of the line, and a hand-written stand-in for one is correct rather than a compromise.
+- The deciding question is that lifetime test, not a list of technologies — a list goes stale and
+  invites arguing about membership, while "can this suite start it and stop it" answers a new case
+  on its own.
+- Why: it is the premise `db-defaults` already selects on. Every default there is chosen partly for
+  "pytest-local testability with no docker/cloud", and doubling the database throws away the thing
+  the dependency was picked for. You get to run the real thing _because_ the choice was made to let
+  you.
+- **Real is not the same as sandboxed, and running real services makes the difference matter more.**
+  The `tmp_path` rule above is the sharp version: a test that reaches `Path.home()` writes into the
+  real one. A real service under test needs its own temporary state as much as a fake would.
+- **Where a framework singleton makes an in-process arrangement dishonest, the answer is a
+  subprocess fixture, not a mock.** Starting the real entrypoint against its own temporary state
+  reproduces the deployment shape instead of pretending the coupling is absent. Give it a bounded
+  readiness wait that fails with the child's output — an unbounded condition that can never become
+  true hangs rather than failing.
+- Model default: **overrides.** Left alone a model reaches for an in-memory fake the moment a test
+  would otherwise open a file or a socket; patching is the shape most training data shows, and
+  "tests shouldn't touch the disk" reads as the disciplined choice. It is the wrong instinct
+  wherever the suite could simply own the real thing.
+
 ## Type hygiene
 
 - Scope `# type: ignore`/`# pyright: ignore` comments to a specific error code — never blanket-

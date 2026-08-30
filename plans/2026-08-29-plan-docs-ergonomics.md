@@ -228,14 +228,14 @@ seven times, and re-ran the whole loop. It had reached for the flag because the 
 minute earlier was `tags --file … --tag DEFERRED`, which is the surrounding usage an agent
 pattern-matches off.
 
-Checked before proposing anything, because the split turns out to be principled rather than
-accidental: `refs`, `set-status`, `move` and `graduate` **require** a file, and take it
-positionally; `tags` and `archive` **default to every plan** and take `--file` as a narrowing
-option. That is a defensible rule and the retry still happened, which makes this a documentation
-problem rather than a signature one — the rule is discoverable only from `--help` on both commands,
-and an agent that has just used one does not run `--help` on the next. Stating it once in the
-command block ("the file is positional where it is required, `--file` where it narrows an all-plans
-default") is the cheap fix; changing signatures for uniformity would cost more than it buys.
+[DECISION: **the split is documented, not changed.** Checked against the parser before proposing
+anything, because it turns out to be principled rather than accidental: `refs`, `set-status`, `move`
+and `graduate` **require** a file and take it positionally; `tags` and `archive` **default to every
+plan** and take `--file` as a narrowing option. A defensible rule, and the retry still happened —
+which makes it a documentation problem rather than a signature one, since the rule is discoverable
+only from `--help` on both commands and an agent that has just used one does not run `--help` on the
+next. Stated once in the command block, 2026-08-30; changing signatures for uniformity would cost
+more than it buys.]
 
 ## Verification
 

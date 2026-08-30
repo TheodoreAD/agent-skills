@@ -470,6 +470,6 @@ straight to its own file.
 
 This file is _copied_ into `~/.agents/skills/python-conventions` at install time, never symlinked.
 Edit the source in the [`agent-skills`](https://github.com/TheodoreAD/agent-skills) repo, push, then
-re-run the install (`npx skills add TheodoreAD/agent-skills --skill python-conventions`) to refresh
-every project's copy. Editing the deployed copy in place is local drift — the exact thing this skill
-exists to prevent — and it reaches no other machine.
+re-run the install (`npx skills add TheodoreAD/agent-skills --global --skill python-conventions`) to
+refresh every project's copy. Editing the deployed copy in place is local drift — the exact thing
+this skill exists to prevent — and it reaches no other machine.

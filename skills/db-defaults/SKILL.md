@@ -214,7 +214,7 @@ facing recommendation. Each category's "Escalate to" line is the pick for that s
 
 This file is _copied_ into `~/.agents/skills/db-defaults` at install time, never symlinked. Edit the
 source in the [`agent-skills`](https://github.com/TheodoreAD/agent-skills) repo, push, then re-run
-the install (`npx skills add TheodoreAD/agent-skills --skill db-defaults`) to refresh every
+the install (`npx skills add TheodoreAD/agent-skills --global --skill db-defaults`) to refresh every
 project's copy. Editing the deployed copy in place is local drift — the exact thing this skill
 exists to prevent — and it reaches no other machine.
 

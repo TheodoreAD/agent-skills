@@ -510,11 +510,11 @@ the current session:
   changed.
 - **Say plainly that a committed edit still reaches nothing.** The installer clones from the remote,
   so the change takes effect only once it is pushed _and_ re-installed
-  (`npx skills add TheodoreAD/agent-skills --skill session-harvest`) — including for other projects
-  on the same machine, whose `~/.agents/skills/` copy is now stale against the source. **If the user
-  declines the re-install, that is not a licence to state what the machine is now running** — on a
-  machine with parallel sessions the installer may already have been run by one of them, so the
-  install state is shared and has to be measured before it is reported. Diff it. Confirmed
+  (`npx skills add TheodoreAD/agent-skills --global --skill session-harvest`) — including for other
+  projects on the same machine, whose `~/.agents/skills/` copy is now stale against the source. **If
+  the user declines the re-install, that is not a licence to state what the machine is now running**
+  — on a machine with parallel sessions the installer may already have been run by one of them, so
+  the install state is shared and has to be measured before it is reported. Diff it. Confirmed
   2026-08-30: a harvest closed with "this one keeps running the old copy", the user asked, and the
   installed copy already carried the fix, re-installed by another session twenty minutes earlier — a
   confident, specific, wrong sentence in the zone of the report reserved for what needs action. Ask

@@ -12,7 +12,7 @@ Gemini CLI, Zed and the rest.
 
 ```shell
 npx skills add TheodoreAD/agent-skills --global          # every skill, user-level
-npx skills add TheodoreAD/agent-skills --skill plan-docs # just one
+npx skills add TheodoreAD/agent-skills --global --skill plan-docs # just one
 ```
 
 The [`skills` CLI](https://github.com/vercel-labs/skills) copies the skill into the canonical

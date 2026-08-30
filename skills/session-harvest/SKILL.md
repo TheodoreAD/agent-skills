@@ -28,6 +28,32 @@ considered and rejected).
    Added 2026-08-29 after the user asked for a harvest "with the latest versions" — behaviour the
    skill did not have, and could not have confirmed if asked.
 
+   **A clean diff is not the whole answer, and this is the outcome it cannot see.** The comparison
+   comes back identical whenever the installer has already run — while the copy frozen in _this
+   session's context_ at load time is still the old one. No filesystem comparison reaches that. The
+   consequence is worse than running stale code: it produces confident, specific, wrong statements
+   about the very skills the harvest is auditing, in the report nobody re-checks. So compare the
+   skill's last change against when this session began:
+
+   ```shell
+   git -C <checkout> log -1 --format='%cI' -- skills/<name>/     # ISO with offset, not %cd
+   ```
+
+   against the first `timestamp` in this session's transcript (step 4 already opens that file, so
+   the cost is one more line). Compare them as instants, never as strings — the transcript stamp is
+   UTC `Z` and git's is local-with-offset, so a lexical comparison is wrong by the offset. If the
+   skill moved after the session started, **re-read the installed `SKILL.md` from disk before
+   relying on it**, whatever the diff said.
+
+   Confirmed twice, 2026-08-29/30. Once as the failure: a session held `plan-docs` from load time,
+   was told by a later commit that the store's pre-push gate is `scan --mode history` rather than
+   `--mode tree`, never saw it, and filed the opposite claim into a plan — a confidentiality gate,
+   reasoned about from stale wording. Once as the near-miss: the run that added this check was saved
+   only because the install happened to be stale _too_, so the diff fired for the wrong reason; had
+   the installer already run, the check would have passed clean and the session would have applied a
+   superseded bullet without knowing. The check above, run on that same session, correctly reports
+   the skill as having moved after it began.
+
 1. **Significance test first.** Re-read the conversation for candidates. For each one, before
    anything else: _if this were lost, would a future session go wrong?_ Anything that fails this is
    dropped (optionally noted in the report as "considered, not worth persisting"), not proposed.

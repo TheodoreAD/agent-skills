@@ -34,9 +34,10 @@ MAX_NAME_CHARS = 64
 NAME_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 # Everything a skill directory is allowed to contain. `references/` is read on demand, `scripts/`
-# holds anything the skill runs. A fourth entry means either a typo or a layout decision that
-# should be made deliberately, in AGENTS.md, before it ships.
-ALLOWED_ENTRIES = {"SKILL.md", "references", "scripts"}
+# holds anything the skill runs, and `evals/` holds trigger cases for the skill — added 2026-08-31
+# with the first suite, and recorded in AGENTS.md. A fifth entry means either a typo or a layout
+# decision that should be made deliberately, in AGENTS.md, before it ships.
+ALLOWED_ENTRIES = {"SKILL.md", "references", "scripts", "evals"}
 
 # Skills knowingly over the cap, each with the plan that owns the fix. An entry here is a debt on
 # the record, not an exemption: `test_no_stale_cap_debt` fails once the skill comes back under the

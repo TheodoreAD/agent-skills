@@ -10,9 +10,9 @@ content.
 A published set of Agent Skills, installed by consumers through the
 [`skills` CLI](https://github.com/vercel-labs/skills) (`npx skills add TheodoreAD/agent-skills`). It
 is not a machine setup, not a library, and not a Claude Code plugin. The only artifact formats
-admitted here are the vendor-neutral ones: `SKILL.md` (plus its `references/` and `scripts/`),
-`AGENTS.md`, and MCP. A vendor manifest — `.claude-plugin/`, a marketplace entry, a harness-specific
-rules directory — does not belong in this repo even as a convenience.
+admitted here are the vendor-neutral ones: `SKILL.md` (plus its `references/`, `scripts/`,
+`evals/`), `AGENTS.md`, and MCP. A vendor manifest — `.claude-plugin/`, a marketplace entry, a
+harness-specific rules directory — does not belong in this repo even as a convenience.
 
 ## Build & test
 
@@ -41,6 +41,18 @@ description more carefully.
   the next editor who disagrees with it.
 - When a rule is observed being missed in practice, strengthen its language rather than lengthen its
   explanation.
+- A skill directory may hold `references/`, `scripts/` and `evals/`, and nothing else. `evals/` was
+  added 2026-08-31 for trigger cases — JSON files of prompts with the skill each should select, run
+  by `skills/skill-fitness/scripts/trigger.py`. Write them for a **pair** the fitness analyzer
+  flagged rather than a fixed number per skill, and include should-not-trigger cases: a suite of
+  positives alone passes for a description that fires on everything.
+
+**Don't reword a description on a hunch — measure it.** `skills/skill-fitness/` reports which skills
+compete, which never fire, and what the skill listing costs; its `trigger.py candidate` mode scores
+a proposed description against the real installed set before it is adopted. Published measurement
+(SkillsBench, 47,150 skills) puts unmeasured model-authored skills _below_ having no skill at all,
+while curated ones are well above it — so drafting wording is fine and shipping it unmeasured is
+not.
 
 ## Skill scope, and what must not be here
 

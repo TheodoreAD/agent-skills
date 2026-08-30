@@ -11,6 +11,11 @@ filed from a parallel session hours after this was written and now **merged away
 (`plans.py archive --show` reads it back). Its edits are applied below; gap 2's conclusion is
 unchanged and its justification is rewritten.
 
+Merged again 2026-08-30 with `2026-08-30-absorb-on-first-call-misses-mid-session-filings.md`,
+likewise **merged away and deleted** and readable with the same command. It answered the last open
+question below with a measurement, and that answer is now recorded there rather than in a second
+file.
+
 ## Context
 
 Asked directly in a `repo-tasks` session, 2026-08-29: do `plan-docs` and `session-harvest`, as
@@ -110,12 +115,35 @@ controlled" is a true statement about `$RESEARCH_HOME` and a false one about `$P
 it a two-item bullet with one shared rationale would reintroduce the same wrong reasoning; the
 honest fix may be to keep them separate and say why each is invisible for a _different_ reason.]
 
-[NEEDS CLARIFICATION: is `absorb`-on-first-call already enough? `plan-docs` tells every session to
-run `absorb` as its first plan-docs call, so a session that follows that rule has already drained
-what was filed for it. The harvest bullet would then only catch sessions that never invoked
-`plan-docs` at all — which is most of them, since the rule fires on the skill being loaded and a
-session that never planned anything never loads it. Worth stating that reasoning in the bullet, so
-it is not later deleted as redundant with `plan-docs`.]
+[DECISION: **`absorb`-on-first-call is not enough, measured rather than argued.** The concern was
+that the harvest bullet would be redundant with `plan-docs`' own first-call rule. It is not: the
+queue is not drained once, it refills for as long as the session runs, because the sessions filing
+into it are running concurrently. Measured 2026-08-30 in a long `power-user-linux-setup` session
+that followed the rule correctly — 4 plans at session start, 4 more about two hours in, and 1 more
+at the five-hour mark. Redundancy was never the risk; a rule that fires only at the beginning covers
+the state of the world at the beginning.]
+
+[PITFALL: the five-hour one is what makes this a bullet rather than a nicety. It reported a
+credential exposure — an API id and hash written into another session's transcript and a
+`~/.claude/file-history` snapshot, with a cleanup only the user can run — and it sat in the store
+for half an hour while the session that needed it was still working. It surfaced only because the
+harvest happened to be investigating why the store had uncommitted changes, not because any step
+asked. That is step 6's second signal for a mis-aimed procedure: the run's best finding came from
+something no step required. Confirmed again the same day from the other side — those uncommitted
+changes were a parallel session's absorption in progress.]
+
+[NEEDS CLARIFICATION: should the sweep _absorb_ what it finds, or only report it? Absorbing is a
+repo write plus two commits at the very end of a session, which is a lot of state change for a step
+whose job is to report; reporting alone risks the finding dying with the terminal, which is the
+failure the "file first, report second" rule exists to prevent. The run above absorbed, because the
+content was a credential exposure and leaving it unread was the worse option — a judgement about
+severity, not a general answer.]
+
+[NEEDS CLARIFICATION: should a dirty store change that answer? On the run above the store held nine
+uncommitted deletions from a parallel session mid-absorb, so committing safely needed a pathspec
+commit rather than a plain `git add` — already a `~/AGENTS.md` rule, so the skill need not restate
+it. But the harvest should probably _report_ a mid-transaction store rather than quietly working
+around one, since it means another session is actively holding that directory.]
 
 ## Recommended direction
 

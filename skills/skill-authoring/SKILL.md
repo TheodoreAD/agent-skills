@@ -50,6 +50,23 @@ finding the source repo.
    Where a machine installs skills declaratively (a setup repo, a dotfile manager), run that
    mechanism instead so its own record stays accurate — it will call the same CLI underneath.
 
+   [PITFALL: **`-g`/`--global` is not a default — without it the scope depends on where you are
+   standing, silently, with a green summary either way.** The flag is documented as "install skill
+   globally (user-level) **instead of project-level**"; omitted, the CLI resolves project-level in a
+   project and global outside one. Run from inside a repo it therefore writes `.agents/skills/`, a
+   `.claude/skills` symlink and `skills-lock.json` into that working tree, while the user-scope copy
+   you meant to update stays stale. Worst inside a skills repo itself: it deposits a consumer copy
+   of a skill that repo authors, plus a harness-specific directory a vendor-neutral repo may refuse
+   on principle, and none of the three is gitignored, so the next `git add` sweeps them in.
+
+   **Standing somewhere else is not the fix; the flag is.** `skills-lock.json` is a _project_
+   artifact — `skills experimental_install` restores from it — so a scope-by-cwd run still drops one
+   wherever you ran it, listing only the skills that invocation touched. Confirmed 2026-08-30, both
+   halves in one session: the first run, from the repo, installed into the repo and updated nothing
+   global; the second, from `$HOME`, installed correctly and left a `~/skills-lock.json` naming one
+   of the machine's ten skills, which reads as a manifest and is not one. Pass `-g` and the answer
+   stops depending on cwd. Check `git status` afterwards if the session's cwd was a repo.]
+
 7. **Verify, don't assume.** `skills ls -g --json` lists each installed skill with the agents that
    can see it. **If the skill ships a `scripts/` directory, run one of its documented commands from
    the installed path** — the listing says a skill is installed, not that its files arrived.

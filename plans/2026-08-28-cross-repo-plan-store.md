@@ -381,14 +381,15 @@ not an oversight. Precedent already exists in the same repo: `session-bash-audit
 is stdlib-only and invoked as `python3 $S/scripts/audit.py`.]
 
 [DECISION: **the script learns where the repos are from its own config, not from an installer or a
-sibling scan.** Answered 2026-08-29 by `plans/2026-08-28-plans-outside-the-repo.md`: `plans.py`
-reads `projects_root` from `~/.config/plan-docs/config.toml` (default `~/projects`,
-`$PLAN_DOCS_CONFIG` overriding the file's location), and `known_repos()` walks it, stopping at the
-first `.git` so a repo's own subdirectories are never descended into. That is the `research-library`
-shape the four options were being weighed against — one declared environment assumption, written by
-`plans.py install`, with nothing supplied by whatever installed the skill. The aggregator therefore
-needs no new registration mechanism, and PULSE needs no config entry: it already exports
-`PLANS_HOME` and installs the skill, which is all it does.]
+sibling scan.** Answered 2026-08-29 by the now-retired `plans/2026-08-28-plans-outside-the-repo.md`
+(`plans.py archive --show` reads it back): `plans.py` reads `projects_root` from
+`~/.config/plan-docs/config.toml` (default `~/projects`, `$PLAN_DOCS_CONFIG` overriding the file's
+location), and `known_repos()` walks it, stopping at the first `.git` so a repo's own subdirectories
+are never descended into. That is the `research-library` shape the four options were being weighed
+against — one declared environment assumption, written by `plans.py install`, with nothing supplied
+by whatever installed the skill. The aggregator therefore needs no new registration mechanism, and
+PULSE needs no config entry: it already exports `PLANS_HOME` and installs the skill, which is all it
+does.]
 
 [DECISION: **the aggregator reports status drift; nothing enforces it.** Taken 2026-08-29, the
 cheapest of the three options weighed here — a per-repo `quality.check` validating frontmatter would
@@ -437,10 +438,10 @@ would catch on its first run.
 ## Recommended direction
 
 [DECISION: **the discovery-vs-relocation question is settled — discovery, and the store is a
-parallel path rather than a relocation.** Answered 2026-08-29 by
-`plans/2026-08-28-plans-outside-the-repo.md`, now `landed`: repos that can hold their own plans keep
-holding them and nothing moved, while repos that cannot route to `$PLANS_HOME` under a mirrored
-path. That plan also built most of the machinery this one assumed it would have to design —
+parallel path rather than a relocation.** Answered 2026-08-29 by the now-retired
+`plans/2026-08-28-plans-outside-the-repo.md`: repos that can hold their own plans keep holding them
+and nothing moved, while repos that cannot route to `$PLANS_HOME` under a mirrored path. That plan
+also built most of the machinery this one assumed it would have to design —
 `skills/plan-docs/scripts/plans.py` already resolves routes from config, parses frontmatter, groups
 by status and counts open tags per file, and `known_repos()`/`repo_paths()` already walk the
 projects root and stop at each `.git`. What is left here is genuinely only the cross-repo view:

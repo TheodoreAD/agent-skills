@@ -127,10 +127,13 @@ and `--scope family` repeats it. Measured 2026-08-29, machine-wide:
 | `repo-tasks`             | `2026-08-26-integration-tier-version-fixture.md`, `2026-08-26-quality-tool-gaps.md` |
 | `olx-polite-mcp`         | `2026-08-18-favorites.md` — `abandoned`, untouched 11 days                          |
 
-The table is left as measured. Since then, `2026-08-29-bare-repo-at-projects-root.md` has been
-retired and deleted — read it back with `plans.py archive --show` rather than looking for the file.
-That is one of the nine cleared by a session that happened to be working on it, which is exactly the
-sporadic, depends-on-who-turns-up clearing this argues is not a mechanism.
+The table is left as measured. Two of its rows are gone since:
+`2026-08-29-bare-repo-at-projects-
+root.md`, and `2026-08-28-plans-outside-the-repo.md` on
+2026-08-30 — read either back with `plans.py archive --show` rather than looking for the file. Both
+were cleared by a session that happened to be working on that repo, which is exactly the sporadic,
+depends-on-who-turns-up clearing this argues is not a mechanism: seven remain, and nothing has asked
+about any of them.
 
 Nine plans, five repos. Two of the nine reached terminal status in the session that asked for this,
 so the backlog grows faster than it drains. The footer has been printing throughout.

@@ -64,13 +64,18 @@ facts.]
 [DECISION: **the prompt was re-filed as an ordinary plan, and the "prompt" framing was the thing
 that had to go.** Settled 2026-08-29 by writing a real one twice. The four items it carried were
 follow-up work — merge these plans, retire that one, absorb across repos — which is what `plans/`
-already exists for, and `plans.py list` already surfaces `in-progress` above everything else. See
-`plans/2026-08-29-store-tier-split-follow-ups.md`.
+already exists for, and `plans.py list` already surfaces `in-progress` above everything else. It was
+written as the now-retired `plans/2026-08-29-store-tier-split-follow-ups.md`
+(`plans.py archive --show` reads it back).
 
-This weakens the case for building anything. The honest answer from one real attempt is that most of
-a handoff falls on the `plans/` side of the boundary, and what is left may not justify a mechanism.
+**The experiment ran to completion on 2026-08-30 and it worked**, which weakens the case for
+building anything further: a session opened on that plan, ran each item's check, and every item was
+either done or turned out to have grown since it was written. The plan was retired the same day —
+the delete-when-done expiry happened on its own, because a plan with a status has a retirement
+procedure and a "prompt" would not have. The honest answer from two real attempts is that most of a
+handoff falls on the `plans/` side of the boundary, and what is left may not justify a mechanism.
 The residue worth measuring is ordering and immediacy — a plan file says what is open, not what to
-do first — plus the delete-when-done expiry, which nothing else provides.]
+do first.]
 
 [NEEDS CLARIFICATION: does the prompt assert state or name the checks that re-derive it? Asserting
 is what makes it useful — "push `103b0b6`, then absorb the incoming plan" is actionable in a way

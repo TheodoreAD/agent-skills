@@ -23,10 +23,37 @@ considered and rejected).
    exactly the checks most recently added, and reporting a clean run because it never looked. Diff
    the installed copy against the checkout before starting
    (`diff -q ~/.agents/skills/session-harvest/SKILL.md <checkout>/skills/session-harvest/SKILL.md`),
-   and do the same for any other skill this run leans on. If they differ, say so and offer to
-   re-install first; a stale harvest is worse than no harvest, because its report reads identical.
-   Added 2026-08-29 after the user asked for a harvest "with the latest versions" — behaviour the
-   skill did not have, and could not have confirmed if asked.
+   and do the same for any other skill this run leans on. If they differ, say so; a stale harvest is
+   worse than no harvest, because its report reads identical. Added 2026-08-29 after the user asked
+   for a harvest "with the latest versions" — behaviour the skill did not have, and could not have
+   confirmed if asked.
+
+   **A difference has three causes, and only one of them is the stale install this step assumes.**
+   The diff is the trigger; what to offer depends on `git -C <checkout> status --short` and
+   `git log origin/<branch>..HEAD`, not on the diff:
+
+   | the checkout is              | what it means        | what to offer                      |
+   | ---------------------------- | -------------------- | ---------------------------------- |
+   | clean, level with the remote | the install is stale | a re-install — the assumed case    |
+   | clean, ahead by commits      | unpushed skill work  | see the push-state paragraph below |
+   | **dirty**                    | work in progress     | nothing; report it and move on     |
+
+   **Say plainly that a re-install cannot fix either of the last two**, because the natural mental
+   model — "re-installing syncs them" — is wrong in both: the installer's source is the remote, not
+   the working tree. Offering one against a dirty checkout is a no-op dressed as a remedy, and
+   worse, it reframes another session's live restructure as an install-hygiene problem and invites
+   exactly the cross-repo interference the global rules forbid. Confirmed 2026-08-29 on `plan-docs`,
+   mid two-tier-store-split: 672 uncommitted insertions, nothing ahead of the remote, mtimes in the
+   same minute as the check — `git log` showed a settled history, and only `status --short` saw it.
+   Confirmed in the other direction 2026-08-30: same non-empty diff, clean checkout level with the
+   remote, two commits pushed minutes earlier — row one exactly as written, and a re-install was the
+   right answer. The same diff meant opposite things a day apart.
+
+   A dirty checkout does **not** block the run. Both sessions above harvested correctly, because
+   every command they ran was against the committed version. What it blocks is the self-update in
+   step 6 — an edit into a checkout another session is holding — so treat it as a finding about the
+   fold-back, and confirm in passing that the commands this run needs are not themselves inside the
+   uncommitted diff.
 
    **A clean diff is not the whole answer, and this is the outcome it cannot see.** The comparison
    comes back identical whenever the installer has already run — while the copy frozen in _this

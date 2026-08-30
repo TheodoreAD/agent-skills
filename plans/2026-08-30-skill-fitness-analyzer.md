@@ -389,6 +389,28 @@ same case, so scoring them as separate skills reports a failure every time the i
 first candidate run reported two such failures while the case the candidate was written to fix
 passed 3/3 — the proposal was working and the scoreboard said otherwise.]
 
+**Both never-invoked skills are fine, and that corrects this plan's own framing.**
+`mcp-server-shipping` and `polite-mcp-conventions` have zero invocations across 593 transcripts and
+sit first in the listing-drop order, which this plan wrote up as a death spiral with them as the
+worked example. A live suite scored them **7/7** with their existing descriptions. There had been no
+demand. The budget mechanic is still real; these two were not evidence for it.
+
+[PITFALL: **an invocation count of zero has two causes needing opposite responses** — the request
+came up and the skill lost it, or the request never came up — and no usage table can separate them.
+Read as a defect, a zero sends someone to rewrite a description that works. The only thing that
+answers it is a trigger suite phrased in the words a request would actually use.]
+
+[DECISION: **no automated demand proxy; it was built twice and removed.** Counting sessions whose
+user turns contained three or more of a skill's distinctive terms gave 370–430 for all eleven skills
+across 593 transcripts, including one written that day. Tightening it to per-turn matches on terms
+claimed by at most two skills made the numbers larger rather than sharper. Skill descriptions share
+too much ordinary technical English — "install", "command", "check", "repo" — for a bag-of-words
+proxy to separate them. Both constructions are recorded in `fitness.py` where the function used to
+be, so the next person does not rebuild them. This is the third check this session that could not
+discriminate, after the vendor's Jaccard 0.7 and this tool's own first absolute shadow cut; the
+pattern is free heuristics over prose, and the fix each time was either a corpus-relative measure or
+paying for a real run.]
+
 [DECISION: **cases are JSON, reversing this plan's earlier choice of `case.yaml`.** The reason for
 `case.yaml` was forward-compatibility with the still-gated official runner, and that reason stands —
 but this family's skills are stdlib-only, there is no YAML parser in the standard library, and

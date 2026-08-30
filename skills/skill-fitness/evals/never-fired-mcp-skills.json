@@ -1,0 +1,48 @@
+{
+  "about": [
+    "The two skills with zero invocations, ever, across 437 transcripts: mcp-server-shipping and",
+    "polite-mcp-conventions. They also sit first in the listing-drop order, so if the budget ever",
+    "overflows they lose their descriptions before anything else - a skill at zero stays at zero.",
+    "",
+    "Both descriptions lead with tool vocabulary - `[project.scripts]`, `uv tool install`,",
+    "`claude mcp add`, `inv dev-env.setup`, `AskUserQuestion`, `CDP` - which is the exact shape that",
+    "produced a silent miss for invoke-task-conventions on 2026-08-31. These prompts are phrased the",
+    "way the problem is felt rather than the way the tool is named.",
+    "",
+    "CONFOUND, stated because it changes how a failure here should be read: polite-mcp-conventions",
+    "triggers partly on which repo the session is in, and this harness runs every case in a scratch",
+    "directory with no repo context at all. Its cases therefore name the repo in the prompt, the way",
+    "a person would when asking about it from elsewhere. A miss on those is weaker evidence than a",
+    "miss on the mcp-server-shipping cases, which carry no such dependency."
+  ],
+  "cases": [
+    {
+      "prompt": "I've finished writing an MCP server. How do I get Claude Code to actually use it on this machine?",
+      "expect": "mcp-server-shipping"
+    },
+    {
+      "prompt": "Do I have to publish this MCP server to PyPI before I can install it, or is there a lighter way?",
+      "expect": "mcp-server-shipping"
+    },
+    {
+      "prompt": "I want to keep editing my MCP server's code while it stays registered. How do I avoid re-registering it constantly?",
+      "expect": "mcp-server-shipping"
+    },
+    {
+      "prompt": "I'm in olx-polite-mcp and I'm about to run a tool that posts something to my real account for the first time. Anything I should do before that?",
+      "expect": "polite-mcp-conventions"
+    },
+    {
+      "prompt": "Working on freshful-polite-mcp: I need to ask the user quantities for about twelve items in a reorder flow. What's the right way to ask?",
+      "expect": "polite-mcp-conventions"
+    },
+    {
+      "prompt": "Set up a connection pool for Postgres in this FastAPI application.",
+      "expect": null
+    },
+    {
+      "prompt": "Write a bash script that renames files based on their modification date.",
+      "expect": null
+    }
+  ]
+}

@@ -67,6 +67,20 @@ explicit, another 69 against 12 — opposite stories, and either column read alo
 one. A skill with high `explicit` and near-zero `auto` has a description problem; the person keeps
 having to ask for it by name.
 
+**A zero is not a verdict, and treating it as one wastes the effort it seems to demand.** It means
+either the request came up and this skill lost it, or the request never came up — opposite problems,
+and no invocation count can separate them. Confirmed 2026-08-31: this repo's two never-invoked
+skills looked like the worst cases in the corpus, and a live trigger suite scored them **7/7** with
+their existing descriptions. There had simply been no demand. Rewriting them would have damaged two
+descriptions that work.
+
+Resist the free heuristic here. Inferring demand from whether a skill's vocabulary appears in past
+requests was built twice and measured nothing both times — skill descriptions share too much
+ordinary technical English for a bag-of-words proxy to separate them, and the first version reported
+comparable "demand" for all eleven skills including one written that day. The answer that works is
+the one that costs something: write a few cases in the words a request would actually use, and run
+them.
+
 **`overlap` ranks, it never gates.** Similarity between prose descriptions is low in absolute terms,
 so any fixed cutoff either never fires or fires on everything — an AI-security scanner in this space
 uses Jaccard > 0.7, which on real descriptions is close to never, and this script's own first draft

@@ -347,6 +347,26 @@ def scan_usage(exclude: set[str] | None = None) -> Usage:
     return u
 
 
+# A "demand" signal was built here and removed on 2026-08-31, and the removal is worth recording
+# so it is not rebuilt the same way. The question is real: an invocation count of zero has two
+# causes needing opposite responses — the request came up and the skill lost it, or the request
+# never came up at all. Both of this repo's never-invoked skills turned out to be the second case,
+# scoring 7/7 on a live trigger suite; reporting their zero as a defect would have sent someone to
+# rewrite two working descriptions.
+#
+# What does not work is inferring demand from words. Two constructions were measured, both useless:
+# counting sessions whose user turns contained 3+ of a skill's distinctive terms gave 370-430 for
+# all eleven skills across 593 transcripts, including one written that day; tightening to per-turn
+# matches on terms claimed by at most two skills made the numbers larger, not sharper. Skill
+# descriptions share too much ordinary technical English — "install", "command", "check", "repo" —
+# for a bag-of-words proxy to separate them, and a column that cannot discriminate is worse than no
+# column, because it still gets read as a finding.
+#
+# The working answer to the same question is `trigger.py`: write a handful of cases in the words a
+# request would actually use and see whether the skill fires. That costs tokens and takes judgement,
+# which is precisely why it works where a free heuristic did not.
+
+
 def _payload(cmd: str) -> str | None:
     try:
         parts = shlex.split(cmd)
@@ -551,6 +571,9 @@ def _render_usage(skills: list[Skill], usage: Usage) -> None:
     ]
     rows.sort(key=lambda r: -int(r["total"]))
     _print_table(rows, ["skill", "auto", "explicit", "total", "last_seen"])
+    print("\n  A zero is not a verdict. It means either the request came up and this skill lost it,")
+    print("  or the request never came up — opposite problems, and this table cannot tell them")
+    print("  apart. Write a few trigger cases in the words a request would use and run trigger.py.")
 
 
 def _render_absorbable(out: dict[str, Any]) -> None:

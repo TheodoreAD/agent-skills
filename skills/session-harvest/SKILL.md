@@ -326,30 +326,40 @@ considered and rejected).
    - **Git state, every repo the session touched** — not just the primary one. Dirty tree, unpushed
      commits (`git log origin/<branch>..HEAD`), and whether the remote moved under you. An unpushed
      commit is the most common real loose end, and a session that ends with one usually believes it
-     pushed. **Check that the `git fetch` actually succeeded before trusting either answer**: on
-     this machine a fetch needs the Zenity SSH-passphrase dialog, which fails with
-     `Permission denied (publickey)` when nobody is at the keyboard — and a failed fetch leaves
-     `origin/<branch>` exactly where it was, so the ahead-count still prints a plausible number
-     computed against a stale ref. Same silent-by-construction shape as the CI loop above: the wrong
-     answer and the right one are indistinguishable. Read the fetch's exit code, and when it failed
-     say how old the ref is (`git log -1 --format=%cr origin/<branch>`) rather than reporting the
-     count flat. **The command is `git fetch origin`, alone in its own call, with nothing after it**
-     — then read the ahead-count in a second call. Any `| tail`, `; echo $?` or `2>/dev/null` on
-     that line reports the filter's exit rather than git's, so the very check meant to catch a stale
-     ref reads clean while the fetch is failing. Confirmed 2026-08-28; again 2026-08-29 by this
-     bullet failing to prevent it; and a third time 2026-08-30, by a run that had this sentence in
-     front of it and piped anyway — which is why the rule now opens on the command to type instead
-     of the mistake to avoid. When it is the empty-agent case, the machine's own diagnostic names
-     the fix (`inv ssh.check` on this machine) — do not reach for `ssh-add`, and apply that fix as a
-     per-call environment prefix rather than an `export`, which does not survive to the next Bash
-     call. **Then check who wrote the unpushed commits before recommending a push.** Where sessions
-     run in parallel the ahead-count is not necessarily this session's work, and "you have two
-     unpushed commits, push them" publishes another session's unfinished history under a
-     recommendation that reads as routine. Name which are this session's and which are not, and let
-     the user decide. Confirmed 2026-08-29: two commits from a parallel session appeared in the
-     ahead-count between one push and the next, and asking rather than pushing was the only thing
-     that surfaced them. **Then ask, of this session's own unpushed commits, whether any corrects
-     something this session already pushed.** That one is not deferred work — it is a live
+     pushed. **Resolve the branch before counting, and do not type `main`** —
+     `git -C <repo> rev-parse --abbrev-ref '@{u}'` prints the ref that belongs on the left of `..`.
+     Measured 2026-08-30 across this machine's clones: 22 of 71 were on `main`, fewer than were on
+     `master`, with the remaining third on a feature branch — so the substitution a session reaches
+     for is wrong more often than it is right. **Then run the count unpiped**, because a wrong
+     branch is only loud unpiped: `git log` exits 128 with `fatal: ambiguous argument`, while
+     `git log origin/main..HEAD --oneline | wc -l` discards that exit code and prints a calm `0`.
+     Confirmed 2026-08-30: that exact pipeline reported `0` for a store 32 commits ahead, and the
+     run caught it only because a later command happened to name the branch. This goes before the
+     fetch check rather than after it — a fetch that succeeds against the right remote still leaves
+     the count wrong if the branch is wrong. **Check that the `git fetch` actually succeeded before
+     trusting either answer**: on this machine a fetch needs the Zenity SSH-passphrase dialog, which
+     fails with `Permission denied (publickey)` when nobody is at the keyboard — and a failed fetch
+     leaves `origin/<branch>` exactly where it was, so the ahead-count still prints a plausible
+     number computed against a stale ref. Same silent-by-construction shape as the CI loop above:
+     the wrong answer and the right one are indistinguishable. Read the fetch's exit code, and when
+     it failed say how old the ref is (`git log -1 --format=%cr origin/<branch>`) rather than
+     reporting the count flat. **The command is `git fetch origin`, alone in its own call, with
+     nothing after it** — then read the ahead-count in a second call. Any `| tail`, `; echo $?` or
+     `2>/dev/null` on that line reports the filter's exit rather than git's, so the very check meant
+     to catch a stale ref reads clean while the fetch is failing. Confirmed 2026-08-28; again
+     2026-08-29 by this bullet failing to prevent it; and a third time 2026-08-30, by a run that had
+     this sentence in front of it and piped anyway — which is why the rule now opens on the command
+     to type instead of the mistake to avoid. When it is the empty-agent case, the machine's own
+     diagnostic names the fix (`inv ssh.check` on this machine) — do not reach for `ssh-add`, and
+     apply that fix as a per-call environment prefix rather than an `export`, which does not survive
+     to the next Bash call. **Then check who wrote the unpushed commits before recommending a
+     push.** Where sessions run in parallel the ahead-count is not necessarily this session's work,
+     and "you have two unpushed commits, push them" publishes another session's unfinished history
+     under a recommendation that reads as routine. Name which are this session's and which are not,
+     and let the user decide. Confirmed 2026-08-29: two commits from a parallel session appeared in
+     the ahead-count between one push and the next, and asking rather than pushing was the only
+     thing that surfaced them. **Then ask, of this session's own unpushed commits, whether any
+     corrects something this session already pushed.** That one is not deferred work — it is a live
      inaccuracy with a reader — and reported flat it is indistinguishable from three plan updates in
      an ahead-count. Name it in the report's "needs action now", with what the remote currently
      claims, so the user is deciding about a published error rather than about a backlog. The signal

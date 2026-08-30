@@ -10,8 +10,10 @@ Merged 2026-08-30 from three plans that were the same finding reached from three
 `2026-08-29-session-harvest-stale-install-third-case.md` (filed minutes earlier from a parallel
 session), this file, and `2026-08-29-session-harvest-step-0-cannot-see-a-stale-loaded-copy.md`. Each
 of the first two nominated the other as the survivor; this filename won because it names the step's
-subject rather than one case of it. The collision is itself evidence for the finding — two sessions
-hit the same gap within hours, and neither could see the other's work until one wrote to the store.
+subject rather than one case of it. Both other files are **merged away and deleted** —
+`plans.py archive --show <name>` reads either back rather than the working tree. The collision is
+itself evidence for the finding — two sessions hit the same gap within hours, and neither could see
+the other's work until one wrote to the store.
 
 ## Context
 

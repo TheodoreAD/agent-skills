@@ -6,9 +6,10 @@ repo: git@github.com:TheodoreAD/agent-skills.git
 
 # Work that belongs to another repo is filed as a plan, not performed
 
-Merged 2026-08-30 with `2026-08-30-session-harvest-self-update-crosses-repos.md`. One rule, two
-skills that contradict it: `plan-docs` states it about plan files only, and `session-harvest`'s
-self-update mechanics instruct the opposite outright.
+Merged 2026-08-30 with `2026-08-30-session-harvest-self-update-crosses-repos.md`, now **merged away
+and deleted** (`plans.py archive --show` reads it back). One rule, two skills that contradict it:
+`plan-docs` states it about plan files only, and `session-harvest`'s self-update mechanics instruct
+the opposite outright.
 
 ## Context
 

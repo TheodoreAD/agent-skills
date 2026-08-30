@@ -6,11 +6,11 @@ repo: git@github.com:TheodoreAD/agent-skills.git
 
 # Two proposed additions to `absorb`: a next-session prompt, and a retirement prompt
 
-Merged 2026-08-30 with `2026-08-29-retirement-prompt-on-the-session-sweep.md`. They were always one
-decision: both were requested on 2026-08-29, both concluded that `plans.py absorb` is the only
-once-per-session call and therefore the carrier, and two independent additions to one command is how
-a single surface acquires two half-designs. **Decide the surface once, for both, before building
-either.**
+Merged 2026-08-30 with `2026-08-29-retirement-prompt-on-the-session-sweep.md`, now **merged away and
+deleted** (`plans.py archive --show` reads it back). They were always one decision: both were
+requested on 2026-08-29, both concluded that `plans.py absorb` is the only once-per-session call and
+therefore the carrier, and two independent additions to one command is how a single surface acquires
+two half-designs. **Decide the surface once, for both, before building either.**
 
 The two are not equally alive. The next-session prompt has been argued down to a small residue by an
 actual attempt; the retirement prompt has a measured backlog behind it and is the stronger of the

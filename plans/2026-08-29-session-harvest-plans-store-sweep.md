@@ -7,8 +7,9 @@ repo: git@github.com:TheodoreAD/agent-skills.git
 # `session-harvest`'s loose-state sweep never looks at the plans store
 
 Merged 2026-08-30 with `2026-08-29-plans-store-sweep-no-remote-premise-is-stale.md`, a correction
-filed from a parallel session hours after this was written. Its edits are applied below; gap 2's
-conclusion is unchanged and its justification is rewritten.
+filed from a parallel session hours after this was written and now **merged away and deleted**
+(`plans.py archive --show` reads it back). Its edits are applied below; gap 2's conclusion is
+unchanged and its justification is rewritten.
 
 ## Context
 

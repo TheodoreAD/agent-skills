@@ -8,7 +8,8 @@ updated: 2026-08-30
 Merged 2026-08-30 from three plans on one subject:
 `2026-08-29-skill-description-cap-gate-blind-to-wrapped-yaml.md` (the mechanical gate that cannot
 see its own violation) and `2026-08-29-trigger-contention-scanner.md` (the cross-skill half), folded
-into this one, which owns the per-skill question and holds the research.
+into this one, which owns the per-skill question and holds the research. Both are **merged away and
+deleted** — `plans.py archive --show <name>` reads either back.
 
 ## Context
 

@@ -362,6 +362,13 @@ considered and rejected).
      — so the remote served a justification known to be wrong while its fix sat in the ahead-count
      alongside ordinary tidying. Keep it to the same-session case; "is anything this repo currently
      publishes known-wrong" is a different question that no harvest can answer in bounded time.
+     **Re-read every count at report time; one taken earlier in the session is not evidence about
+     now.** The whole point of this bullet is that the session's memory is not the current state,
+     and a number carried forward from an hour ago is exactly that memory wearing a measurement's
+     clothes. Confirmed 2026-08-30: a session reported the plans store as "7 unpushed commits, 4 of
+     them other sessions'", correct when counted; at harvest it was 27, of which 25 were other
+     sessions'. On a machine this parallel the count moves fastest in the repositories several
+     sessions share, which are the ones a harvest is most likely to be asked about.
    - **Sibling repos this skill itself wrote to.** A skill self-update (step 6) commits locally and
      reaches nothing until it is pushed and re-installed, so `agent-skills` is a repo the session
      touched and it is the one most likely to be forgotten — the edit felt done when it was

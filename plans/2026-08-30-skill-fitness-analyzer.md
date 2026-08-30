@@ -222,6 +222,68 @@ on.]
 - **`/doctor`** is not gated and reports the listing's context cost and its biggest contributors —
   the merged-away plan recorded it as gated and undocumented, which is no longer true.
 
+## What the ecosystem has measured, and what it constrains
+
+`SkillsBench` (preprint 2026-02-13; copy at `$RESEARCH_HOME/docs/skillsbench-2026.pdf`) is the only
+large study of whether skills work: 84 tasks over 11 domains, 7 agent-model configurations, 7,308
+trajectories, with skills drawn from a deduplicated corpus of 47,150 public ones. Four findings bear
+directly on this plan.
+
+| finding                         | effect vs. no skills |
+| ------------------------------- | -------------------- |
+| curated skills, overall         | +16.2pp              |
+| **self-generated skills**       | **−1.3pp**           |
+| 1 skill provided                | +17.8pp              |
+| **2–3 skills provided**         | **+18.6pp**          |
+| 4+ skills provided              | +5.9pp               |
+| detailed / compact skill bodies | +18.8 / +17.1pp      |
+| **comprehensive skill bodies**  | **−2.9pp**           |
+
+[DECISION: **the tool measures; it never authors unaided — but "unaided" is the operative word, not
+"a model wrote it".** The −1.3pp result is a model asked to generate procedural knowledge for a task
+from nothing, with no evidence loop and nothing to score it against; the paper's own reading is that
+effective skills need curated domain expertise. It is _not_ evidence against an agent drafting a
+description that a trigger harness then scores and a person accepts or rejects — which is what
+`skill-creator`'s description tuning does, with improved triggering on 5 of 6 public skills. So the
+loop is: agent drafts, harness measures against held-out cases, the user decides which version
+ships. The thing to refuse is a generated skill nobody measured, not a generated sentence.]
+
+[PITFALL: the skill-count rows measure skills **provided to the agent for one task**, not skills
+installed. Claude Code lists every installed skill but loads only what it invokes, so those numbers
+are suggestive for a ten-skill corpus and not conclusive about it. Quoting "2–3 is optimal, you have
+ten" as though it were the same measurement would be exactly the inference this plan exists to
+prevent.]
+
+The rubric that corpus was scored on is worth adopting verbatim rather than inventing a private
+scale: **Completeness, Clarity, Specificity, Examples, 0–3 each, 12 total**, ecosystem mean 6.2 (SD
+2.8), top quartile ≥9. Reporting on that scale makes this repo's skills comparable to 47,150 others
+instead of to nothing.
+
+Two further results shape what the harness may conclude. **Harness behaviour is a variable, not a
+constant**: Claude Code has the highest skills-utilisation rate of the three commercial CLIs
+studied, while one competitor "frequently neglects provided Skills — agents acknowledge Skills
+content but often implement solutions independently". And **skills partly substitute for model
+scale** — a small model with skills beat a large one without. Both argue for reporting which harness
+and model a measurement came from rather than stating a bare rate.
+
+## The structure this suggests
+
+The community has converged on a little, and diverged on the rest.
+
+- **Flat `skills/<name>/SKILL.md` is universal.** One widely-copied community collection nests a
+  `skills/meta/` category, but the `.agents/skills/` convention and the `skills` CLI are flat, so
+  nesting risks discovery. [DECISION: group skills with the spec's own `metadata:` map (a
+  string→string mapping, explicitly for client-defined properties) rather than by directory —
+  vendor-neutral, spec-legal, and invisible to a flat installer.]
+- **Two rival eval layouts exist.** `skill-creator` uses `evals/evals.json`; `claude plugin eval`
+  uses `<eval dir>/**/case.yaml` with `graders/*.md`. [DECISION: author cases in the `case.yaml`
+  shape. It is what the official runner will consume when its gate lifts, it is YAML rather than a
+  bespoke JSON schema, and the harness we can run today reads either. Choosing the format that is
+  gated is the cheap option precisely because the gate is the thing expected to change.]
+- **`spec/` and `template/` at the repo root** are how the reference collection publishes its format
+  and a starting skeleton. Worth copying: a `template/SKILL.md` is the concrete answer to "what does
+  a new skill look like here", which `skill-authoring` currently answers only in prose.
+
 ## Recommended direction
 
 Cheapest and most certain first. Each stage is independently useful, which matters because stage 3
@@ -246,6 +308,15 @@ is the only one that costs tokens.
       closest to losing their descriptions first.
    6. **`AGENTS.md` rule-heading ↔ skill-description matches**, each a demotion candidate or a
       two-sources-of-truth risk, not guessed between.
+   7. **The 12-point rubric score per skill**, on the ecosystem's own dimensions, reported beside
+      that corpus's mean of 6.2 and its top-quartile line of 9.
+
+   [DECISION: **rank, never gate, for everything above the structural checks.** A similarity
+   threshold either never fires or fires on everything — the AI-security vendor's hard-coded 0.7 is
+   the worked example of the first — and one calibrated on ten skills will not survive twenty. A
+   ranked pair list showing the shared terms needs no calibration and stays useful at any corpus
+   size. Only stage 1's structural checks (cap, non-empty, no XML tags, name collisions) fail CI,
+   because those have real answers rather than scores.]
 
 3. **The cold-trigger harness**, built on `claude -p` in the shape `skill-creator` already proved:
    synthetic command file, stream-watched, killed on detection. Scored among the installed set,
@@ -257,34 +328,52 @@ is the only one that costs tokens.
 4. **The absorption miner**, which nothing else in the ecosystem does against _real sessions_:
    cluster `python -c` payloads by import set, then by AST shape within a cluster; rank by session
    count and project spread; and report each cluster beside the skills that were loaded in those
-   sessions. Output is a candidate list for a human — "these 7 sessions hand-rolled a transcript
-   reader; `session-bash-audit` ships one" — never an automatic edit.
+   sessions. Output is a candidate list — "these 7 sessions hand-rolled a transcript reader;
+   `session-bash-audit` ships one" — proposed as a diff, never applied.
+
+5. **`evals/` per skill, written only where stage 2 or 3 says one is needed.** Not 20 cases × 10
+   skills as a matter of course: the static pass names the contending pairs and the never-fired
+   skills, and those are where cases earn their cost. The layout is `case.yaml` + `graders/`, so the
+   same files serve the official runner later.
+
+### Where it lives
+
+[DECISION: a **`skill-fitness`** skill owns measurement, separate from `skill-authoring`, which
+keeps the authoring guidance. The merged-away plan's objection — that a contention detector would
+contend with `skill-authoring`, the joke version of its own bug — is answered by the triggers being
+genuinely different: "how do I write a skill / get one deployed" against "audit my skills, why isn't
+this one firing, what should I split". The transcript-reading machinery is shared with
+`session-bash-audit` as a module rather than copied, since that skill already reads the same store
+and already declares the dependency.]
+
+[DECISION: **accept the Claude-Code-specific signals and declare them.** Invocation stats and
+listing-budget accounting are the two most valuable outputs and neither is portable.
+`session-bash-audit` sets the precedent — it reads `~/.claude/projects/*.jsonl` and says so plainly
+rather than failing mysteriously. The static analysis and the rubric score work anywhere; the
+harness-specific sections report themselves unavailable rather than being silently absent, so a
+consumer on another harness is told what they are not getting.]
+
+## Settled by the user, 2026-08-30
+
+- **The corpus is measured before it is restructured.** `python-conventions` stays over-cap for now;
+  the split is a real authoring decision with its own contention risk, and the analyzer should be
+  able to say whether the pieces would contend before anyone commits to one. Trimming to fit is
+  still ruled out, because it deletes trigger vocabulary to satisfy a length check.
+- **Cases are written for flagged pairs**, not twenty per skill as a matter of course.
+- **Rank, don't gate**, except for the structural checks.
+- **The user's working mode is the constraint on the whole design**: prompts, ideas, decisions and
+  argument, not writing prose word by word. So every output of this tool has to be either a number,
+  a ranked list, or a proposed diff to accept or reject — a report whose remedy is "now go write a
+  better description yourself" is a report that does not land. This is what makes the
+  evidence-in-the-loop decision above load-bearing rather than a nicety.
 
 ## Open questions
 
-These are the decisions to take before any of it is built.
-
-[NEEDS CLARIFICATION: **is this one skill or an extension of `skill-authoring`?** The merged-away
-plan argued strongly for `skills/skill-authoring/scripts/` — "a skill for detecting skill contention
-would contend with `skill-authoring` on every request about skill quality, which is the joke version
-of the bug it detects". That reasoning still holds for the _trigger_ half. It holds much less for
-the absorption miner, whose trigger is "audit my sessions", overlaps `session-bash-audit` instead,
-and shares that skill's transcript-reading machinery. Three shapes: one script under
-`skill-authoring`; two scripts in two skills; or a third skill that both call, accepting that a
-skill nobody triggers directly is fine when its callers are skills.]
-
-[NEEDS CLARIFICATION: **what does the analyzer do about `python-conventions` being 278 characters
-over?** Trimming to fit removes trigger vocabulary, which is the opposite of the goal — the plan
-before this one already established that. The likelier reading is that the skill is over-scoped
-rather than over-described, and the fix is a split. But a split is a real authoring decision with
-its own contention risk, and the analyzer should be able to say whether the pieces would contend
-before anyone commits to it.]
-
-[NEEDS CLARIFICATION: **which similarity measure, and is there a threshold at all?** The vendor's
-Jaccard-at-0.7 is evidence for reporting rather than gating: a hard threshold either never fires or
-fires on everything, and one calibrated on ten skills will not survive twenty. A ranked pair list
-with the shared terms shown needs no calibration and is useful at any corpus size. Against: nothing
-then fails CI, and the merged-away plan wanted this gateable.]
+[NEEDS CLARIFICATION: **which similarity measure?** Ranking rather than gating removes the threshold
+problem but not this one. Whole-description cosine or Jaccard mixes "what it does" prose with
+trigger vocabulary; TF-IDF over the corpus itself is stdlib-implementable and weights the terms that
+actually distinguish skills, but on a ten-document corpus the IDF is noisy. Whatever is chosen has
+to be legible enough that the shared terms it reports are the ones worth rewriting.]
 
 [NEEDS CLARIFICATION: **how is the trigger clause extracted, given `when_to_use` is off the table?**
 Whole-description similarity mixes "what it does" prose with trigger vocabulary and only the second

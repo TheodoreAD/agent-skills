@@ -356,11 +356,13 @@ outcome could remove items 2.3 and 2.4 from this plan entirely.]
 ## A first case to test, whenever the harness exists
 
 `plan-docs` gained a new reason to be invoked on 2026-08-29 — "what plans do we have", "what should
-I work on next" — and its description was edited to name it
-(`plans/2026-08-29-plan-docs-ergonomics.md` records why). That is a concrete, dated positive case
-whose before/after is known: the same prompt against the old description should not have selected
-the skill, and against the new one should. It is worth being the first case authored here, because
-it is the rare one where the expected answer is known independently of the harness being trusted.
+I work on next" — and its description was edited to name it. The reason is under "Why a new command
+is not finished until the description mentions it" in the skill's own `design-rationale.md`; the
+work was planned in the now-retired `plans/2026-08-29-plan-docs-ergonomics.md`. That is a concrete,
+dated positive case whose before/after is known: the same prompt against the old description should
+not have selected the skill, and against the new one should. It is worth being the first case
+authored here, because it is the rare one where the expected answer is known independently of the
+harness being trusted.
 
 The negative case it needs pairing with is `session-harvest`, whose description also covers "what's
 worth saving before compacting" — a request about outstanding work that must **not** route to

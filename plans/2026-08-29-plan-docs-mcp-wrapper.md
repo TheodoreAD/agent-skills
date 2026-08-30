@@ -5,10 +5,10 @@ updated: 2026-08-29
 
 ## Context
 
-Raised 2026-08-29 while reworking `plan-docs`' command surface
-(`plans/2026-08-29-plan-docs-ergonomics.md`): should the skill be an MCP server instead of, or as
-well as, a skill? Split out of that plan once it was settled as "not now", so the ergonomics work
-could close with nothing outstanding while the question stays answerable later rather than lost.
+Raised 2026-08-29 while reworking `plan-docs`' command surface, in the now-retired
+`plans/2026-08-29-plan-docs-ergonomics.md`: should the skill be an MCP server instead of, or as well
+as, a skill? Split out of that plan once it was settled as "not now", so the ergonomics work could
+close with nothing outstanding while the question stays answerable later rather than lost.
 
 **The answer for now is no, and the bar for revisiting is deliberately high.** The user's position,
 stated the same day: get the skill working well first, and do not do this any time soon if that

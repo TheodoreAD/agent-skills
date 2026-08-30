@@ -68,6 +68,8 @@ gate — but "these two lines are the command's output, not yours to type", whic
 file rather than about the transition, and so does not depend on the session having classified what
 kind of transition it is making.
 
-Related: `2026-08-29-plan-docs-ergonomics.md` is actively reshaping this skill's CLI surface and
-already carries a `DECISION` about `set-status`' naming, so whatever lands here should be checked
-against it rather than designed independently.
+Related: the skill's command surface was reshaped in the same week, and the reasoning — including
+why `set-status` keeps its name and why the inspection command could not be called `status` — is in
+`skills/plan-docs/references/design-rationale.md`. Whatever lands here should be checked against
+that rather than designed independently. (That work was planned in
+`plans/2026-08-29-plan-docs-ergonomics.md`, now retired.)

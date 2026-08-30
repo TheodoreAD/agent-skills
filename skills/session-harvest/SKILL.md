@@ -36,7 +36,7 @@ considered and rejected).
    skill's last change against when this session began:
 
    ```shell
-   git -C <checkout> log -1 --format='%cI' -- skills/<name>/     # ISO with offset, not %cd
+   git -C <checkout> log -1 --format='%cI' -- skills/<name>/SKILL.md   # ISO with offset, not %cd
    ```
 
    against the first `timestamp` in this session's transcript (step 4 already opens that file, so
@@ -49,6 +49,16 @@ considered and rejected).
    and the instruction reads as satisfied. Confirmed 2026-08-30: a harvest ran fourteen minutes
    after a commit to this very skill, re-read the installed copy as written, and got its own stale
    wording back; the checkout was clean, pushed, and two paragraphs ahead.
+
+   **Scope that path to `SKILL.md`, not to the skill's directory.** The three subdirectories fail
+   differently: only `SKILL.md` is held in this session's context, so only it can go stale there.
+   `scripts/` is shelled out to, so the next call already runs the new code, and `references/` is
+   read on demand and is inert. A directory-scoped query cannot tell them apart, and the branch it
+   triggers — re-read plus an audit of everything already done — is the most expensive one in this
+   procedure. Confirmed 2026-08-30: it fired on a commit that touched only a `references/` page, and
+   the audit was empty because the held wording had never changed. A `scripts/` change is worth its
+   own one-line note instead: nothing to re-read, but a command run _earlier_ in the session may
+   have run the old script.
 
    **And when the session has already _acted_ on that skill, re-reading is only half the fix.** List
    what changed — `git log --oneline --since=<session start> -- skills/<name>/` — and ask whether

@@ -380,14 +380,19 @@ considered and rejected).
      `~/.agents/skills/<name>/scripts/<file>` while the installed skill still had no `scripts/`
      directory, so a machine-wide rule instructed every future session to run a file that did not
      exist. The checkout worked perfectly throughout, which is why nothing surfaced it.
-   - **CI, for anything this session pushed.** A green local gate is not a green CI run. Use a
-     bounded waiter (`gh run watch <id> --exit-status`), never a hand-rolled `until` loop. **Do not
-     pipe it.** `gh run watch <id> --exit-status | tail -5; echo $?` reports `tail`'s exit, so the
-     `--exit-status` flag that exists to turn a red run into a non-zero exit is discarded by the
-     very command reading it, and a failed run prints `0`. Run it bare, or read the conclusion as
-     data (`gh run view <id> --json status,conclusion`). Same shape as the `git fetch` bullet above,
-     and confirmed the same way, 2026-08-29: a harvest reported `WATCH_EXIT=0` from `tail` while
-     executing this very checklist. Both bullets now exist because the pipe defeated the check.
+   - **CI, for anything this session pushed. The command is
+     `gh run view <id> --json status,conclusion`, or `gh run watch <id> --exit-status` bare, with
+     nothing after it** — then read the result. A green local gate is not a green CI run, and a
+     hand-rolled `until` loop is never the waiter. **Any pipe destroys the check**: `| tail` reports
+     `tail`'s exit, so `--exit-status` — the flag whose whole purpose is turning a red run into a
+     non-zero exit — is discarded by the very command reading it, and a failed run prints `0`.
+     Confirmed three times, each by a harvest executing this checklist with this bullet in front of
+     it: 2026-08-29 a run reported `WATCH_EXIT=0` from `tail`; 2026-08-30 twice more, piped both
+     times, and the runs happened to be green so nothing surfaced it until the session counted its
+     own Bash calls. That is the argument for reading the conclusion as JSON rather than watching at
+     all — `--json` has no exit code to lose, so there is nothing for a pipe to take away. Same
+     shape as the `git fetch` bullet above, and rewritten the same way, to open on the command
+     rather than the mistake, after the prose version failed to prevent it twice more.
    - **Shared stores outside any repo.** `$RESEARCH_HOME` clones, caches, anything the session added
      to a location no `git status` covers. The failure is a half-finished convention rather than a
      missing file — a clone without its `SOURCE.md`, or one that failed partway — and it is

@@ -739,16 +739,15 @@ Code contracts and verification logs are usually the bulk of the deletable volum
    comments and docstrings cite plan paths too) plus the store, on the bare filename rather than the
    full `plans/` path, since short-form references are the easy miss.
 
-   **Then grep for section-shaped citations, which `refs` cannot see** —
-   `rg -n '§' plans/ <the
-   repo's docs directories>`. A sentence citing "that plan's §9 decision"
-   names no filename, so nothing in the deletion gate reaches it, and a link checker does not
-   either: a bare `§11` is not a link. Confirmed 2026-08-30 retiring two plans: `refs` found 9 real
-   hits across seven files and missed two more, both written by earlier sessions that had the plan
-   open and cited its sections the way a reader in context would. Both dangled at deletion, and both
-   were found only because that session ran the grep on a hunch. The output is short enough to
-   eyeball — 17 lines on one repo, of which 2 were the finding — and a plan organised into numbered
-   sections is precisely the one whose citations will be section-shaped.
+   **Then grep for section-shaped citations, which `refs` cannot see** — `rg -n '§'` over `plans/`
+   and whatever docs directories the repo has. A sentence citing "that plan's §9 decision" names no
+   filename, so nothing in the deletion gate reaches it, and a link checker does not either: a bare
+   `§11` is not a link. Confirmed 2026-08-30 retiring two plans: `refs` found 9 real hits across
+   seven files and missed two more, both written by earlier sessions that had the plan open and
+   cited its sections the way a reader in context would. Both dangled at deletion, and both were
+   found only because that session ran the grep on a hunch. The output is short enough to eyeball —
+   17 lines on one repo, of which 2 were the finding — and a plan organised into numbered sections
+   is precisely the one whose citations will be section-shaped.
 4. **Add a `## Migrated to` section** naming each destination, and name what you deliberately did
    _not_ migrate and why. **Commit this addition on its own, before deleting the file** —
    add-and-delete in one commit means the section is never recorded in history at all, which defeats

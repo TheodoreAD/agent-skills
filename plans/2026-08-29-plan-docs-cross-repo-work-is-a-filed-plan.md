@@ -92,14 +92,14 @@ change that cannot be described faster than it can be done jointly.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: where does this rule live — `plan-docs`, `session-harvest`, or `~/AGENTS.md`?
-The user said "plan-docs should clear this up", which answers the _mechanism_ half. But the rule
-fires when no plan is being written, which is when the skill is least likely to have loaded, and
-`~/AGENTS.md`'s "Running a command against a different repo than the session's project" already says
-substantial cross-repo work belongs in its own session — what it does not say is that a _commit_ in
-another repo is out regardless of size, which is the part every skill's self-update section walked
-past. Possibly all three: the always-loaded file states "file it, don't do it" and the skills defer
-to it.]
+[DECISION: all three, and the always-loaded file already held its share — checked 2026-08-30 against
+the canonical fragment source rather than a deployed copy. `~/AGENTS.md` does say a commit in
+another repo is out regardless of size, in as many words: "Writing to another repo is out entirely,
+not merely discouraged — no edit and no commit, however small, however obviously correct, however
+much a skill's own instructions tell you to." So the placement question had a false premise. The
+rule was never missing from the file that fires when no plan is being written; what was missing was
+the two skills deferring to it, and both now do. Nothing is owed to that repo, which is why this
+plan files nothing there.]
 
 [DECISION: it was not the only one. Checked 2026-08-30 — `skill-authoring` carries the same
 assumption one step earlier, its step 2 saying "edit the source" with no clause about which repo the

@@ -58,3 +58,17 @@ with the exit-128 evidence.
 - The same command with `| wc -l` → `0`, exit 0. The two runs are the whole finding.
 - Branch tally across the projects root: 22 `main`, 23 `master`, 26 other, 71 total.
 - `inv quality.precommit`.
+
+## Migrated to
+
+- **The rule itself** → `skills/session-harvest/SKILL.md`, step 5's git bullet: resolve the branch
+  with `git rev-parse --abbrev-ref '@{u}'`, run the count unpiped, placed ahead of the fetch check.
+- **Both decisions and the corrected mechanism** → `skills/session-harvest/references/rationale.md`,
+  "Why the sweep's checks name a command rather than the mistake (2026-08-30)". It is written as the
+  general case rather than as this plan's story, because the same pipe failure already governs the
+  `git fetch` and `gh run watch` bullets and had never been stated once in one place.
+
+Not migrated: the verification transcript above — the two commands are in the rationale section that
+needs them, and re-running them is cheaper than reading a log of someone else having run them. No
+inbound references (`refs` returned 0) and no section-shaped citations, so nothing needed
+repointing.

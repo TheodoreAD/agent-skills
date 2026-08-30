@@ -219,6 +219,40 @@ them would be a worse outcome than killing them, and the same holds for a measur
 nowhere but the transcript: write it into the plan that owns it. What stays reserved for the user is
 what is genuinely theirs — anything outward-facing, and anything with a real trade-off.
 
+## Why the sweep's checks name a command rather than the mistake (2026-08-30)
+
+Three of step 5's checks now open on the exact command to type — `git fetch origin` alone in its own
+call, `gh run view --json`, and an ahead-count against a resolved branch. Each began as prose
+describing the mistake to avoid, and each was rewritten only after a run executed the prose version
+and made the mistake anyway, with the wording in front of it.
+
+The failure is the same in all three, which is the argument for the shape rather than for three
+unrelated warnings: a pipe reports the _filter's_ exit code. `| tail` turns
+`gh run watch --exit-status` — a flag whose entire purpose is converting a red run into a non-zero
+exit — into a guaranteed `0`. `| wc -l` turns `git log <bad ref>..HEAD`, which exits 128 with
+`fatal: ambiguous argument`, into a calm `0` that reads exactly like a clean tree. Each time, the
+check meant to catch a silent failure fails silently itself, and the number it prints is
+indistinguishable from the true one.
+
+The branch case adds a second layer worth stating separately, because it is a substitution rather
+than a syntax error: the bullet is written `origin/<branch>`, and every run has to put something
+there. Measured 2026-08-30 across every clone under this machine's projects root — 71 repos, 22 on
+`main`, 23 on `master`, the remaining 26 on a feature branch — so `main` is the wrong guess more
+often than the right one. That is why the rule is unconditional rather than a caveat about the one
+store where it was caught.
+
+The counter-argument, considered and rejected: three "type this exact command" bullets make the step
+read as a script rather than as guidance. It loses because the two earlier ones were themselves
+rewritten into that shape after prose failed repeatedly, and the third arrived carrying the same
+evidence — a session that had the prose in front of it and piped anyway.
+
+One correction belongs here, because the plan that filed the finding stated the cause wrongly: it
+recorded `git log` as treating an unknown revision on the left of `..` as empty when the output is
+being counted. It does not. Unpiped, the command is loud and exits 128; only the pipe makes it
+quiet. A mechanism inferred from an observed symptom is not a measured one, and this wrong mechanism
+would have aimed the fix at git's ref resolution rather than at the pipeline — which is the part
+that also breaks the two neighbouring checks.
+
 ## Why "the invocation asked for something the skill lacks" is a self-update trigger (2026-08-28)
 
 The original two triggers both assumed the skill did something and it went wrong — an ambiguous

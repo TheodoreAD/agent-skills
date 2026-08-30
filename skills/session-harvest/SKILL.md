@@ -559,6 +559,17 @@ considered and rejected).
    - **To a plan in another repo** — filed via `plans.py new <topic> --for <repo>` and committed in
      the store, by filename and target repo. **Say only that it was filed.** Do not restate what it
      asks for; the owning repo's session gets the whole thing from `plans.py absorb`.
+
+     **Confirm the file is still there before naming it**, and check whether your store commit was
+     pushed by someone else — `ls` the store directory, and
+     `git -C $PLANS_HOME branch -r --contains <sha>`. A parallel session may have absorbed it into
+     the target repo, which is normal and means the work arrived; say that instead. Confirmed
+     2026-08-30: a plan filed early in a session had been absorbed, merged into an existing plan
+     there, and its store-side deletion committed and pushed hours before the harvest ran. A report
+     written from the session's own memory would have named a path that no longer existed and called
+     a published commit unpushed — two ordinary-looking status lines, neither of which reads as a
+     guess. Same class as the parallel-session rule on the ahead-count: this session's record of
+     what it did is not evidence about the current state.
    - **Only in this conversation** — everything not written to a file anywhere. This group is the
      point of the list: it is exactly what the user must either decide now or carry into the next
      session's prompt, and it disappears when the window closes. Keep it short by writing things

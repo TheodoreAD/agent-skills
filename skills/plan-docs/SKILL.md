@@ -339,15 +339,32 @@ by an agent with no rule telling it not to, into a repo whose own README adverti
 
 ## Something that belongs to a repo you are not in
 
-**Never write a plan into another repo's working tree.** Parallel sessions on one machine share that
-tree, so a file appearing there under a session already working in it is the failure this rule
-exists to prevent — and a plan committed across repos is a commit nobody in that repo asked for.
+**Work that belongs to another repo is filed as a plan for that repo, not performed** — a plan file
+least of all, but the rule is about the work, not about the file type. Parallel sessions on one
+machine share that tree, so anything appearing there under a session already working in it is the
+failure this rule exists to prevent, and a commit across repos is one nobody in that repo asked for.
 
-The script enforces this rather than trusting anyone to remember: `new` **refuses** to create a plan
-in a repo other than the one the session is in, and names `--for` in the error. Commands that act on
-files which already exist — `graduate`, and anything reached by `--path` — **warn** instead, because
-those have legitimate uses; when you see that warning, prefer doing the work from a session inside
-that repo, and if you continue, tell the user exactly what landed where.
+**The rule being stated about plan files is how sessions walk past it.** A session reads it, uses
+`--for` correctly, concludes it has complied, and then edits that repo's source anyway — because the
+thing being written was not a plan. Confirmed live 2026-08-29: a session did exactly that within the
+hour, proposing as its recommended option to edit two files in another repo and run that repo's
+deploy task. An edit is arguably the worse case: a stray plan file is inert and obvious, while an
+edit to a file that repo's session is holding is a real conflict.
+
+The escape hatch is narrow, and worth quoting rather than paraphrasing — it is "unless it's a very
+complex process that requires a lot of back and forth to fix". That is **not** "unless it is small":
+a one-line fragment edit is exactly the case that feels too small to file and is not. It is about a
+change that cannot be described faster than it can be done jointly, and that one wants its own
+session in the owning repo rather than a relay.
+
+Reading another repo stays fine, and is how a filed plan gets written accurately enough to act on.
+The prohibition is on writing.
+
+For plan files the script enforces it rather than trusting anyone to remember: `new` **refuses** to
+create a plan in a repo other than the one the session is in, and names `--for` in the error.
+Commands that act on files which already exist — `graduate`, and anything reached by `--path` —
+**warn** instead, because those have legitimate uses; when you see that warning, prefer doing the
+work from a session inside that repo, and if you continue, tell the user exactly what landed where.
 
 **The guard is anchored to the repo the session started in, not to the working directory**, because
 cwd is unreliable in both directions — a reset and a persisted `cd` were both observed inside one

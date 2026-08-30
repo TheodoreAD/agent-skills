@@ -1,6 +1,6 @@
 ---
 status: in-progress
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 ## Context
@@ -220,6 +220,22 @@ in.]
 each. `tags`, `refs` and `set-status` were the three that lacked it; a flag available on some
 commands and not others costs a retry each time an agent assumes uniformity, which is cheaper to
 finish than to document.]
+
+The same non-uniformity exists one level down, on the file argument, and it costs the same retry:
+**`tags` takes it as `--file <name>`, `refs` takes it positionally.** Measured 2026-08-30 — a
+session ran `refs --file <name>` for seven files in one loop, got `unrecognized arguments: --file`
+seven times, and re-ran the whole loop. It had reached for the flag because the command it ran a
+minute earlier was `tags --file … --tag DEFERRED`, which is the surrounding usage an agent
+pattern-matches off.
+
+Checked before proposing anything, because the split turns out to be principled rather than
+accidental: `refs`, `set-status`, `move` and `graduate` **require** a file, and take it
+positionally; `tags` and `archive` **default to every plan** and take `--file` as a narrowing
+option. That is a defensible rule and the retry still happened, which makes this a documentation
+problem rather than a signature one — the rule is discoverable only from `--help` on both commands,
+and an agent that has just used one does not run `--help` on the next. Stating it once in the
+command block ("the file is positional where it is required, `--file` where it narrows an all-plans
+default") is the cheap fix; changing signatures for uniformity would cost more than it buys.
 
 ## Verification
 

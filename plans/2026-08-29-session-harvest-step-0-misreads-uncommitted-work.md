@@ -57,6 +57,15 @@ Neither run was actually harmed: the commands each needed (`tags`, `set-status`,
 the diff, which was one coherent feature. That confirmation is cheap when the diff is coherent and
 would not be on one touching argument parsing broadly.
 
+**The first run where re-installing was the right answer, 2026-08-30**, which matters because every
+case recorded here until now argued against the step's own instruction and the table's first row had
+no observation behind it. A harvest found both `session-harvest` and `plan-docs` differing; the
+checkout was **clean and level with `origin/main`**, and the two commits accounting for the diff had
+been pushed minutes earlier. Row one, exactly as written — the install was stale and a re-install is
+what fixes it. So the disambiguator earns its place in both directions: the same non-empty diff
+meant "leave it alone" on 2026-08-29 and "re-install" on 2026-08-30, and only `status --short` plus
+the ahead-count separates them.
+
 ## The fourth outcome — landed, kept for the reasoning
 
 A clean diff is not the whole answer: the installed copy can be current while the copy frozen in the

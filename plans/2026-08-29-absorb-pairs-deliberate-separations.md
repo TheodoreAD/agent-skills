@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-08-29
+updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
 
@@ -58,6 +58,40 @@ is. It loses the property that a genuine split is actively pushed toward consoli
 the point of the pairing. Probably still the right trade, since the report is advice to an agent
 that is about to read both files anyway.]
 
+## The first true positives, and a second gap they exposed
+
+Measured 2026-08-30, in this repo, by acting on the pairings rather than judging them: **five
+clusters, twelve files, and every pairing was genuine.** That is the confirmed-true count this plan
+recorded as zero, against the two false positives above. It does not overturn the asymmetry argument
+— a wrong merge is still the expensive direction — but "two false, zero true" is now "two false,
+five true", and recommendation 2's threshold for a write-time marker is further away, not closer.
+
+One pair was correctly left alone, and `absorb` never proposed it: a plan filed mid-session
+(`2026-08-30-session-harvest-filed-plan-may-be-absorbed.md`) is about the same skill and the same
+store as `2026-08-29-session-harvest-plans-store-sweep.md`, but edits a different section of it. The
+judgement that separated them was the one recommendation 3 asks the skill to state — and it had to
+be made without the skill stating it.
+
+**The second gap: `absorb` says "consolidate" and nothing says how.** `SKILL.md:454` is the whole
+procedure — "merge the two into one plan, keep the earlier filename, delete the other" — and each
+clause broke on contact:
+
+- **"The earlier filename" is undefined when both plans share a date**, which is the common case,
+  because the pairing is usually two sessions hitting one thing on one day. Two of the five had each
+  file explicitly nominating _the other_ as the survivor. The tiebreak used, and worth stating: keep
+  the name that describes the merged subject rather than one case of it.
+- **A correction is merged in place, not appended.** Two of the five were corrections to plans this
+  repo had already absorbed. Appending would leave the wrong argument standing above the right one
+  and make the reader arbitrate; rewriting the argument and recording that the premise was corrected
+  keeps one document with one claim.
+- **Provenance has to name the merged-away file**, or `archive` cannot find it — the deleted plan is
+  in git and the merged file's opening line is the only thing pointing at the name to search for.
+  Retirement's step 5 already has this rule for retired plans ("must say _retired_"); merges have no
+  equivalent and need one.
+- **A cluster member already landed in the skill is marked done, not carried.** Two of the twelve
+  had been implemented hours earlier by other sessions; merging them in as open work would have
+  queued edits that already existed.
+
 ## Recommended direction
 
 Rough, weakest-commitment first.
@@ -66,11 +100,14 @@ Rough, weakest-commitment first.
    a verdict; `references …, check whether the separation was deliberate` reads as what it is. One
    string.
 2. **Consider a write-time marker** only if the genuine split turns out to be common enough to be
-   worth a mechanism. It has happened at least once — the skill documents it from experience — but
-   two consecutive false positives against zero confirmed true ones is not yet a case for one.
+   worth a mechanism. Two false positives against five confirmed true ones (2026-08-30, below) is
+   not that case — it is an argument for rewording the report, not for building a detector.
 3. **Say plainly in the skill that a cited sibling is usually just a related plan.** The current
    text only describes the dirty-store cause, so a reader who has not hit the other case has no
    reason to suspect it exists.
+4. **Write the merge procedure down**, since the instruction to merge already exists and the four
+   rules above were each derived at the point of needing them. Four sentences beside `SKILL.md:454`,
+   not a section.
 
 [DEFERRED: the same asymmetry may apply to the collision rule one paragraph up — "a name collision
 is a merge, not a rename", justified as "two plans sharing a name means both cover the topic". That

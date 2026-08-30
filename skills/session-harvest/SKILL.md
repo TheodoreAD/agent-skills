@@ -384,15 +384,46 @@ considered and rejected).
    - **Shared stores outside any repo.** `$RESEARCH_HOME` clones, caches, anything the session added
      to a location no `git status` covers. The failure is a half-finished convention rather than a
      missing file — a clone without its `SOURCE.md`, or one that failed partway — and it is
-     invisible to every other check here precisely because the store is not version-controlled.
-     Cheap to verify (does each new entry exist, and does it carry whatever metadata that store's
-     convention requires), and nothing else will. **Also check the entries the session _changed_,
-     not only the ones it added** — a deliberate divergence from the store's shape is invisible to
-     the same checks and reads as conformant, because the entry is present and its metadata is
-     intact. Confirmed 2026-08-30: a session deepened a `--depth 1` reference clone to ~436 commits
-     to read a dependency's constraint history, which was the right call and left the store holding
-     one entry that silently no longer matched its own convention. Record the divergence and why, in
-     whatever file that store uses for per-entry metadata.
+     invisible to every other check here precisely because _this_ store is not version-controlled.
+     (That reasoning is specific to it. The plans store below is a git repository and is invisible
+     for a different reason, which is why the two are separate bullets rather than one with a shared
+     rationale.) Cheap to verify (does each new entry exist, and does it carry whatever metadata
+     that store's convention requires), and nothing else will. **Also check the entries the session
+     _changed_, not only the ones it added** — a deliberate divergence from the store's shape is
+     invisible to the same checks and reads as conformant, because the entry is present and its
+     metadata is intact. Confirmed 2026-08-30: a session deepened a `--depth 1` reference clone to
+     ~436 commits to read a dependency's constraint history, which was the right call and left the
+     store holding one entry that silently no longer matched its own convention. Record the
+     divergence and why, in whatever file that store uses for per-entry metadata.
+   - **The plans store, `$PLANS_HOME` — a separate bullet, for a different reason.** Two commands,
+     both cheap:
+
+     ```shell
+     git -C $PLANS_HOME status --porcelain    # an uncommitted plan this session left
+     python3 <plans.py> absorb                # plans filed FOR this repo that nobody took
+     ```
+
+     The first is this session's own mess, the second another session's gift — separate failures
+     with separate owners. **The reason this went unnoticed in a skill whose whole subject is
+     unswept state is that both neighbouring bullets appear to own it**: the store is a git
+     repository (so the git bullet seems to cover it) and it sits outside every working tree (so the
+     shared-stores bullet seems to). Each framing hands it to the other.
+
+     What the git bullet actually misses is **uncommitted** work: an uncommitted plan is not a
+     commit, so no ahead-count sees it on any repository, and nothing walks to a directory outside
+     every working tree. Do not write "the store has no remote" — the shareable tier has one and the
+     sensitive tier deliberately does not, so committed-but-unpushed plans are a real second finding
+     on the shareable half, gated by that skill's content scan before any push.
+
+     **Run `absorb` here even though `plan-docs` already tells every session to run it first.** Not
+     redundant: the queue refills for as long as the session runs, because the sessions filing into
+     it run concurrently. Measured 2026-08-30 in a session that followed the first-call rule
+     correctly — 4 plans at session start, 4 more two hours in, and 1 more at five hours, that last
+     one a credential exposure that sat unread for half an hour and surfaced only because the
+     harvest happened to be looking at the store for another reason. `absorb` prints nothing when
+     nothing is waiting, which is what makes it cheap enough to run every time. Report a
+     mid-transaction store — uncommitted changes that are not yours — rather than working around it;
+     it means another session is actively holding that directory.
    - **Work the session promised but never verified** — a test tier it added to but never ran, a
      consumer it changed but never swept. "I'll report when it lands" in the last message is a
      promise the harvest has to either keep or retract.

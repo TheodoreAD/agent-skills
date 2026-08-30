@@ -212,11 +212,14 @@ considered and rejected).
      computed against a stale ref. Same silent-by-construction shape as the CI loop above: the wrong
      answer and the right one are indistinguishable. Read the fetch's exit code, and when it failed
      say how old the ref is (`git log -1 --format=%cr origin/<branch>`) rather than reporting the
-     count flat. Run the fetch on its own, unpiped: `git fetch origin 2>&1 | tail -3; echo $?`
-     reports `tail`'s exit, not git's, so the very check meant to catch a stale ref reads clean
-     while the fetch is failing. Confirmed 2026-08-28, and again 2026-08-29 by this bullet failing
-     to prevent it. When it is the empty-agent case, the machine's own diagnostic names the fix
-     (`inv ssh.check` on this machine) — do not reach for `ssh-add`, and apply that fix as a
+     count flat. **The command is `git fetch origin`, alone in its own call, with nothing after it**
+     — then read the ahead-count in a second call. Any `| tail`, `; echo $?` or `2>/dev/null` on
+     that line reports the filter's exit rather than git's, so the very check meant to catch a stale
+     ref reads clean while the fetch is failing. Confirmed 2026-08-28; again 2026-08-29 by this
+     bullet failing to prevent it; and a third time 2026-08-30, by a run that had this sentence in
+     front of it and piped anyway — which is why the rule now opens on the command to type instead
+     of the mistake to avoid. When it is the empty-agent case, the machine's own diagnostic names
+     the fix (`inv ssh.check` on this machine) — do not reach for `ssh-add`, and apply that fix as a
      per-call environment prefix rather than an `export`, which does not survive to the next Bash
      call. **Then check who wrote the unpushed commits before recommending a push.** Where sessions
      run in parallel the ahead-count is not necessarily this session's work, and "you have two

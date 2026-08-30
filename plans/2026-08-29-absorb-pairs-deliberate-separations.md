@@ -65,11 +65,12 @@ recorded as zero, against the two false positives above. It does not overturn th
 — a wrong merge is still the expensive direction — but "two false, zero true" is now "two false,
 five true", and recommendation 2's threshold for a write-time marker is further away, not closer.
 
-One pair was correctly left alone, and `absorb` never proposed it: a plan filed mid-session
-(`2026-08-30-session-harvest-filed-plan-may-be-absorbed.md`) is about the same skill and the same
-store as `2026-08-29-session-harvest-plans-store-sweep.md`, but edits a different section of it. The
-judgement that separated them was the one recommendation 3 asks the skill to state — and it had to
-be made without the skill stating it.
+One pair was correctly left alone, and `absorb` never proposed it: a plan filed mid-session about
+the harvest's report format was about the same skill and the same store as one about the harvest's
+live-state sweep, but edited a different section of it. Both are retired now — `archive --search`
+finds them — and both landed as separate commits, which is what the separation predicted. The
+judgement that made it was the one recommendation 3 asks the skill to state, and it had to be made
+without the skill stating it.
 
 **The second gap: `absorb` says "consolidate" and nothing says how.** `SKILL.md:454` is the whole
 procedure — "merge the two into one plan, keep the earlier filename, delete the other" — and each

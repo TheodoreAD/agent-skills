@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 ---
 
@@ -123,6 +123,32 @@ out as a mechanical check, or does it stay a judgment call?]
    is the default rather than the exception. Step 0 only needs to point at whatever that lands as.
 
 The `[DEFERRED:]` this file carried — that the two-tier store split undercut the companion sweep
-plan's no-remote argument — is **resolved**, and the re-check it asked for was done: see
-`plans/2026-08-29-session-harvest-plans-store-sweep.md`, whose gap 2 now argues from uncommitted
-work rather than from the absent remote.
+plan's no-remote argument — is **resolved**, and the re-check it asked for was done: the sweep plan
+(now retired, landed the same day) rewrote its gap 2 to argue from uncommitted work rather than from
+the absent remote.
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`, step 0** — the three-cause table, the disambiguators
+  (`status --short` and the ahead-count) with both dated observations, the explicit statement that a
+  re-install cannot fix a checkout-ahead difference, and the answer to the second open question: a
+  dirty checkout blocks the step 6 fold-back, not the run.
+
+Both remaining open questions were answered in the writing:
+
+[DECISION: step 0 does the disambiguation itself rather than stopping to report. Two extra calls per
+skill checked is cheap against handing the user a decision at the least informed moment of the run —
+which is what "these differ, and here is what I did not conclude" amounts to. The step already
+diffs; reading `status --short` beside it costs one more line and turns a wrong recommendation into
+a right one.]
+
+[DECISION: "confirm the commands this run needs are not in the diff" stays a judgment call, phrased
+as something to confirm in passing rather than a mechanical check. It is cheap when the diff is one
+coherent feature, as it was in both observed runs, and would not be on a diff touching argument
+parsing broadly — which is exactly the shape a mechanical rule cannot capture.]
+
+Deliberately not migrated: the fourth outcome (a stale copy frozen in the session's context), which
+was already landed in the skill before this plan was retired and is recorded here only as history.
+The `~/AGENTS.md` question it raises — whether the same window check should cover the always-loaded
+instructions file — is a different repo's concern and was never investigated; it is dropped rather
+than carried, since nothing here can act on it.

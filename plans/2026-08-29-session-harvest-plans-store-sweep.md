@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 ---
 
@@ -167,6 +167,32 @@ adds the store's other half to the same skill — a line in the report format ra
 this sweep, because a plan this session filed may have been absorbed and pushed by another before
 the report names it.
 
-[DEFERRED: this plan covers `session-harvest` only. Whether any _other_ skill's checks quietly
-assume "a store outside a repo is not version-controlled" was not surveyed — `session-bash-audit`
-and `research-library` both touch shared locations and were not read.]
+[DECISION: the survey the deferral asked for was done, 2026-08-30, and found nothing. Neither
+`session-bash-audit` nor `research-library` carries a check that reasons from "a store outside a
+repo is not version-controlled": the first only _reads_ `~/.claude/projects/*.jsonl` and never
+sweeps a store it wrote to, and the second describes `$RESEARCH_HOME`, which genuinely is not
+version- controlled as a whole. The wrong generalisation existed in exactly one sentence, in the
+skill this plan is about, and it is fixed there.]
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`, step 5's live-state sweep** — the plans store as its own
+  bullet, with both commands, the "why the git bullet cannot reach it" argument from gap 2 (framed
+  on uncommitted work, never on the absent remote), the reason it needs a separate bullet rather
+  than folding into a neighbour, and the measured case for running `absorb` here despite the
+  first-call rule.
+- **`skills/session-harvest/SKILL.md`, the `$RESEARCH_HOME` bullet** — its justification narrowed to
+  the store it is actually true of, with a pointer saying the plans store is invisible for a
+  different reason. That answers the third open question in the direction the question itself
+  favoured: keep them separate and say why each is invisible.
+
+Deliberately not migrated:
+
+- **The four-gap enumeration and the "premise that rotted" section.** The gaps are closed and the
+  rotted premise is a lesson about plan-writing rather than about this skill — its `[PITFALL:]` (a
+  plan's reasoning can rot faster than its conclusion) is the part worth having, and it belongs to
+  whoever next writes a plan, not to `session-harvest`.
+- **The `doctor`-in-the-sweep question.** Answered by not doing it: what `doctor` reports is
+  machine-level breakage rather than session state, so it belongs in a periodic check. The failures
+  it names are still real, and `plan-docs` already tells you to run it "when something behaves oddly
+  and before trusting `archive`".

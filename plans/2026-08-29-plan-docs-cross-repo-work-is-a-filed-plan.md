@@ -65,14 +65,14 @@ document states two sections earlier. The inconsistency is invisible from inside
 self-update section reads as the authoritative instruction for skill fixes, and following it feels
 like compliance.
 
-`plans/2026-08-29-session-harvest-step-0-misreads-uncommitted-work.md` reaches the same mechanism
-from the other end — a harvest that wanted to edit `agent-skills` directly and filed instead — but
-justified filing as an **exception**, on two contingent facts: a parallel session was live in that
-repo, and that repo's gate auto-formats the whole tree, so committing would have rewritten files
-someone else was editing. Both facts are true and neither is the reason. Under the rule as the user
-states it, filing is the **default**, and it does not depend on whether a session happens to be live
-there — a repo with no live session today has one tomorrow, and a rule that requires checking first
-is a rule every session re-litigates.
+The now-retired `plans/2026-08-29-session-harvest-step-0-misreads-uncommitted-work.md` reached the
+same mechanism from the other end — a harvest that wanted to edit `agent-skills` directly and filed
+instead — but justified filing as an **exception**, on two contingent facts: a parallel session was
+live in that repo, and that repo's gate auto-formats the whole tree, so committing would have
+rewritten files someone else was editing. Both facts are true and neither is the reason. Under the
+rule as the user states it, filing is the **default**, and it does not depend on whether a session
+happens to be live there — a repo with no live session today has one tomorrow, and a rule that
+requires checking first is a rule every session re-litigates.
 
 [DECISION: change the default rather than adding a condition to it. A conditional default is one
 each session evaluates differently, which is how a session ended up proposing to edit two files in
@@ -101,8 +101,11 @@ another repo is out regardless of size, which is the part every skill's self-upd
 past. Possibly all three: the always-loaded file states "file it, don't do it" and the skills defer
 to it.]
 
-[NEEDS CLARIFICATION: is `session-harvest` the only skill instructing a cross-repo commit? One grep
-across the skills answers it, and doing them in one pass is cheaper than one at a time.]
+[DECISION: it was not the only one. Checked 2026-08-30 — `skill-authoring` carries the same
+assumption one step earlier, its step 2 saying "edit the source" with no clause about which repo the
+session is in, which matters because its whole subject is the edit → gate → commit → push →
+re-install sequence. Both took the clause in one commit, so the "one pass" this question asked for
+is what happened.]
 
 [NEEDS CLARIFICATION: what happens to the "very complex work that needs back and forth" exception
 inside a harvest? A multi-step skill redesign genuinely wants a session in `agent-skills`, not a
@@ -119,6 +122,24 @@ they never verified was needed.]
 never will — a scratch clone, a vendor checkout? The rule reads as absolute, which is probably right
 (the cost of exceptions is that every session re-litigates whether this one qualifies), but it has
 not been stated either way.]
+
+## What landed, 2026-08-30
+
+Recommendations 1 and 2 are both done, in separate commits.
+
+`session-harvest`'s step 6 and self-update mechanics now split on where the session is — edit and
+commit in the skills repo, file with `--for` anywhere else — carrying the `[DECISION:]` about why
+the global rule wins into the skill body. `skill-authoring` took the same clause, which answers the
+grep question above.
+
+`plan-docs`' own section is widened from plan files to work in general, with the walked-past
+mechanism as its evidence, the escape hatch quoted rather than paraphrased, and reading explicitly
+left permitted.
+
+What stays open is the placement question and the two scope questions below. The placement half that
+matters most — whether `~/AGENTS.md` should carry it, since the rule fires exactly when no plan is
+being written and this skill is least likely to have loaded — is a change to a different repo, so it
+is filed rather than made from here.
 
 ## Recommended direction
 

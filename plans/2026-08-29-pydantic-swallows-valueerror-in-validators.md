@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-29
+status: landed
+updated: 2026-08-30
 ---
 
 # `python-conventions`: a fourth Pydantic trap, and the override it needs recording
@@ -79,3 +79,18 @@ currently carrying it.
 
 Two bullets, no restructuring. The measurements are done and quoted above; nothing here needs
 re-verifying beyond confirming the pydantic version the section claims.
+
+## Migrated to
+
+- **`skills/python-conventions/SKILL.md`, "Pydantic traps a dataclass never had"** — a fourth
+  bullet, with the inverse case (raise plain `ValueError` at a parsing boundary) as a sub-bullet,
+  and the section's opening count and Model-default line updated to carry it.
+- **`skills/python-conventions/SKILL.md`, the project-wide alternative** — one bullet naming what
+  actually argues for it: one `Annotated` alias against thirteen hand-maintained
+  `object.__setattr__` normalisation sites, which is stronger than the consistency argument that was
+  carrying it alone.
+
+[DECISION: a fourth bullet rather than a promotion one level up, which was the open question. It is
+the smaller edit, it keeps the section's "measured against 2.13.5" framing intact, and the section's
+opening line now says which of the four changes a public API rather than a call site — so the reader
+gets the distinction without the trap leaving the company of its three siblings.]

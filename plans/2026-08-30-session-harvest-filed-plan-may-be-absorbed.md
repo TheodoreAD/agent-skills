@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 ---
 
@@ -53,3 +53,11 @@ absorption 2026-08-30, though both are about the harvest and the store: that one
 step 5's loose-state sweep and this one adds a line to the report format, which is the distinction
 this plan draws itself. Land them in one pass — they touch the same file for the same reason — but
 they are not one edit.
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`, the report format's "to a plan in another repo" group** — the
+  bullet above, close to verbatim, with the confirming commands and the 2026-08-30 case.
+
+They did land in one pass, as separate commits, and the separation held: one edits step 5, the other
+edits the report format, and neither touches the other's text. Nothing was left behind.

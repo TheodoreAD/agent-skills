@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 ---
 
@@ -55,3 +55,33 @@ Rough. Strip in `_take_plans` and in `move --to repo`, so the key's meaning stay
 without a migration commit. Test it in `tests/unit/test_plan_store.py` against the `ws` fixture as a
 round trip — repo → store → repo — since that is the path no single command exercises and the reason
 the gap survived.
+
+## Migrated to
+
+- **`skills/plan-docs/scripts/plans.py`** — `strip_frontmatter_key`, called from `_take_plans` and
+  from `move --to repo`. The reasoning sits in those two docstrings/comments, where the next reader
+  of either write path finds it.
+- **`tests/unit/test_plan_store.py`** — the repo → store → repo round trip, the absorb path
+  asserting the key present in the store copy and absent in the repo copy, and the two corruption
+  cases (`repo:` as a body line, a file with no closing fence).
+- **The thirteen affected plans**, cleared with the same helper in its own commit.
+
+All three open questions answered:
+
+[DECISION: strip, rather than redefine the key as durable provenance. The key exists because a plan
+in the store mirror has no directory naming its origin; absorption gives it one back, so keeping it
+leaves a second and redundant answer to a question the location answers — which is the argument the
+skill already makes against marking in-transit plans at all. Redefining it would have made
+`SKILL.md` follow the code rather than the other way round.]
+
+[DECISION: the existing files were fixed by running the new helper over them, not by hand. That
+sidesteps the concern this plan raised — that a sweep is the frontmatter hand-editing
+`2026-08-30-plan-docs-status-gate-bypassed-by-hand-editing.md` argues against — because the edit is
+the tool's own, and it is a stale key rather than a status or an `updated:` stamp, which is what
+that plan is actually about.]
+
+[DECISION: no `doctor` check. With both write paths fixed and the existing files cleared there is
+nothing left to report and no path that can produce another, so the check would be machinery
+guarding an empty set. That is this plan's own third question answered in the negative — it asked
+whether reporting might be "the whole fix", and fixing the round trip turned out to be cheaper than
+reporting on it forever.]

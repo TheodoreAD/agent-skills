@@ -143,11 +143,51 @@ Say so rather than reporting a smaller number as if it were the whole one.
 
 ## Trigger cases, when the static pass is not enough
 
-`overlap` says which pairs are suspicious; only a live run says which one actually wins. Write cases
-for the flagged pairs rather than a fixed number per skill — the pair is the unit of the failure.
+`overlap` says which pairs are suspicious; only a live run says which one actually wins. That run is
+`scripts/trigger.py`, and it is the only thing here that costs tokens.
 
-Put them in the skill's own `evals/` directory as `case.yaml` files with `graders/`, the layout
-Claude Code's own eval runner consumes, so the cases keep working when that runner leaves early
-access. The check is cheap only if it stops at selection: assert the skill fired and end the run.
-Never let a trigger case proceed into the skill's actual work — a case for a skill whose commands
-enumerate private directories would otherwise print them into a report.
+```shell
+python3 <this skill>/scripts/trigger.py run <cases>.json --dry-run   # count the runs, spend nothing
+python3 <this skill>/scripts/trigger.py run <cases>.json --runs 3
+```
+
+Cases are JSON, in the skill's own `evals/`, with `expect` naming the skill that should fire and
+`null` for should-not-trigger. Write them **for a flagged pair**, not a fixed number per skill — the
+pair is the unit of the failure. Each run is killed the moment a skill is named, so a case never
+proceeds into the skill's work; a case for a skill whose commands enumerate private directories
+cannot print them.
+
+**Write the hard cases, or the suite proves nothing.** Measured 2026-08-31 on this repo: a first
+suite of eight cases passed 24/24 at three runs each — and every prompt in it named something only
+one skill claims (`tasks.py`, `inv`, "full-text search"). A suite like that cannot tell "these
+skills do not contend" apart from "these cases were too easy". A second suite, phrased in the region
+a broad skill's description actually claims, is what produced a finding.
+
+**Expect the failure to be a miss, not a steal.** The static pass predicted that a broad skill was
+shadowing two narrow ones. It was not: across both suites the narrow skills won every case they
+should have, including the ones written to be ambiguous. The one real failure was a request phrased
+the way a person phrases it — "our automation scripts have grown messy, where do I start" — for
+which **nothing fired at all**. A description built from the tool's vocabulary rather than the
+request's does not lose to a competitor; it loses to silence, and only a should-trigger case in
+plain language finds it.
+
+## Testing a proposed description before adopting it
+
+This is the "measure" in draft → measure → decide, and it is what makes drafting a description
+legitimate rather than the unmeasured authoring that scores below having no skill at all.
+
+```shell
+python3 <this skill>/scripts/trigger.py candidate <cases>.json \
+  --skill <name> --description @<file> --runs 3
+```
+
+The proposal joins the listing under a temporary name alongside every real skill, so it is scored in
+the same competition it will actually face. Adopt it only if it wins cases the incumbent lost
+without losing cases the incumbent won.
+
+**The candidate competes against its own installed twin**, and reading that as failure is the trap.
+Both names satisfy the same case, so the run scores them together and reports the split separately.
+Confirmed 2026-08-31: the first candidate run reported two cases failed because the _incumbent_ won
+them, while the case the candidate was written to fix passed 3/3 — the proposal was working and the
+scoreboard said otherwise. A candidate that never wins any fire is simply not more attractive than
+the wording already in place, which is also a result.

@@ -1,0 +1,46 @@
+{
+  "about": [
+    "The hard half of the same question, and the half that carries the evidence.",
+    "contention-python-family.json passed 24/24, but every one of its prompts names something only",
+    "one skill claims - 'tasks.py', 'inv', 'full-text search'. A suite like that cannot tell 'these",
+    "skills do not contend' apart from 'these cases were too easy', which is the same warning",
+    "skill-creator gives about negative cases.",
+    "",
+    "Each prompt below sits in the region python-conventions' description actually claims - it says",
+    "'writing, reviewing, or refactoring Python code', plus data modeling and settings - while the",
+    "work belongs to a narrower skill. `expect` names the narrow skill in every case. A failure here",
+    "is the shadowing the static pass predicted, caught."
+  ],
+  "cases": [
+    {
+      "prompt": "I'm writing a new function in this project's tasks.py that clears build caches. What conventions apply?",
+      "expect": "invoke-task-conventions",
+      "why": "python-conventions claims 'writing Python code'; the work is task naming"
+    },
+    {
+      "prompt": "Refactoring our task module - some of these are verbs and some are nouns and it's inconsistent. Advice?",
+      "expect": "invoke-task-conventions",
+      "why": "'refactoring' is python-conventions' own trigger word"
+    },
+    {
+      "prompt": "How should I model these few thousand records and persist them in a Python project?",
+      "expect": "db-defaults",
+      "why": "python-conventions explicitly claims data modeling; persistence is db-defaults'"
+    },
+    {
+      "prompt": "I need to keep some structured application data around between runs. What's the standard choice here?",
+      "expect": "db-defaults",
+      "why": "no storage vocabulary at all, so nothing lexical points at db-defaults"
+    },
+    {
+      "prompt": "Reviewing a Python module that shells out to run background jobs on a schedule. What should it be using?",
+      "expect": "db-defaults",
+      "why": "'reviewing Python' is python-conventions; scheduled jobs are a db-defaults category"
+    },
+    {
+      "prompt": "Our automation scripts have grown messy and inconsistent. Where do I start cleaning them up?",
+      "expect": "invoke-task-conventions",
+      "why": "genuinely ambiguous; a wrong pick here is informative rather than a bug"
+    }
+  ]
+}

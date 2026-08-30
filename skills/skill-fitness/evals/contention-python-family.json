@@ -1,0 +1,44 @@
+{
+  "about": [
+    "Written for the pair fitness.py flagged, not for one skill in isolation: python-conventions",
+    "covers python-conventions -> invoke-task-conventions at 0.176 and -> db-defaults at 0.139,",
+    "both above this corpus's shadow cut of 0.089. The question these cases answer is whether that",
+    "static signal is real - does a request meant for a narrow skill actually go to the broad one.",
+    "Negative cases are half the suite on purpose: a description that fires on everything passes",
+    "every positive case, so positives alone measure nothing."
+  ],
+  "cases": [
+    {
+      "prompt": "I'm adding a task to tasks.py that wipes the build directory. What should I call it?",
+      "expect": "invoke-task-conventions"
+    },
+    {
+      "prompt": "Is `inv verify.all` a reasonable name, or should the namespace be a noun?",
+      "expect": "invoke-task-conventions"
+    },
+    {
+      "prompt": "This Python service needs a local cache that survives restarts. What should I reach for?",
+      "expect": "db-defaults"
+    },
+    {
+      "prompt": "I want full-text search over a few thousand documents, locally, no Docker. What do I use?",
+      "expect": "db-defaults"
+    },
+    {
+      "prompt": "Should this config object be a dataclass or a Pydantic model?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "How should I store and compare timestamps across timezones in this Python module?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "What is the capital of France?",
+      "expect": null
+    },
+    {
+      "prompt": "Rename the variable `tmp2` in this function to something readable.",
+      "expect": null
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
@@ -57,3 +57,21 @@ What the entry should carry:
 Not `~/AGENTS.md`. It is a Python library default, which is exactly what `python-conventions` exists
 to hold, and the global file is already long enough that adding per-language library picks to it
 would start it down that road.
+
+## Migrated to
+
+- **`skills/python-conventions/SKILL.md`, "Command-line interfaces"** — a topic in the skill's own
+  shape: the default, the carve-out, the Model-default line saying it overrides.
+
+Both open questions were answered in the writing rather than deferred:
+
+[DECISION: the standard-library carve-out is named as three concrete cases — a script that must run
+on a bare interpreter with no install step, a bootstrap that runs before any environment exists, and
+code shipped where dependencies cannot follow (a Pyodide payload) — plus an explicit "it's only a
+small script is not one". A carve-out that gestures at a constraint swallows the rule, because every
+script feels small while it is being written.]
+
+[DECISION: the entry says Typer over raw Click and explains why they are not opposites. Typer is
+built on Click, so a project reaching for raw Click chooses more boilerplate for the same result;
+Click stays the escape hatch for a Typer limitation rather than a starting point. A rule that left
+this unsaid would have been worth nothing, since Click is the obvious second reach.]

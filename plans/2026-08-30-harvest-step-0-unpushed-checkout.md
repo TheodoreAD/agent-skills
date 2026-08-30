@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
@@ -77,3 +77,16 @@ up". The push is the outward-facing action and belongs to whoever authored the c
 Worth pairing with the `2026-08-30-skill-install-command-and-cross-repo-write-rule.md` decision when
 that is taken, since both are about the same seam — what a harvest may do to `agent-skills` from
 outside it, versus what it may only report.
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`, step 0** — one paragraph where the step says to re-read from
+  the checkout, carrying both open questions' answers: report the unpushed commit and name whose it
+  is, never offer to push it (step 5 already owns that rule, and this restates the pointer rather
+  than the rule); and test it with `git log origin/<branch>..HEAD`, which the harvest is already
+  running, rather than a fetch-and-compare against what the remote holds. The asymmetry — the
+  session is not blocked, only the remedy is wrong — went with it, because it is why the case is
+  easy to miss.
+
+Nothing was left behind: the run's transcript detail (the two bullets, the ahead-count of one) was
+the evidence for a change now made, and the skill carries the general form.

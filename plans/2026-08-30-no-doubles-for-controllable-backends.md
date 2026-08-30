@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
@@ -56,3 +56,21 @@ out loud because they are what the rule costs:
 
 Worth checking whether the same gap exists in the `polite-mcp-conventions` testing guidance before
 writing, so the rule lands once rather than in two half-versions.
+
+## Migrated to
+
+- **`skills/python-conventions/SKILL.md`, "Don't double anything the suite can run for real"** — a
+  subsection of the testing conventions, where an agent writing a test is already reading.
+- **`skills/db-defaults/SKILL.md`, the selection criteria** — one paragraph cashing the testability
+  premise in and pointing at the rule, rather than a second copy of it.
+
+[DECISION: `python-conventions` owns the rule and `db-defaults` points at it. The ownership question
+splits cleanly once the two halves are separated: the _choice_ of a runnable dependency is
+`db-defaults`' subject, and it already states that criterion — what was missing was the conclusion,
+and the conclusion is read at the moment someone writes a test. Checked 2026-08-30:
+`polite-mcp-conventions` says nothing about doubles either way, so there is no half-version to
+reconcile and no third copy to keep in step.]
+
+[DECISION: the boundary is the lifetime question — can this suite own the service's whole lifetime,
+in-process or as a subprocess it starts and stops — rather than a list of technologies. A list goes
+stale, invites arguing about membership, and answers nothing about a case not on it.]

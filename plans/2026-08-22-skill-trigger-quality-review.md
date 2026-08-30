@@ -71,6 +71,15 @@ The cap is not this repo's invention: Anthropic's skill-authoring reference stat
 must be non-empty and at most 1,024 characters, and the file's own comment already records it as the
 tightest limit among the agents that read this format.
 
+[NEEDS CLARIFICATION: whether the same gate should also assert that an install command in a
+`SKILL.md` carries `--global`. Migrated here 2026-08-30 from the now-retired
+`plans/2026-08-30-skill-install-command-and-cross-repo-write-rule.md`, whose fix corrected four such
+commands that had drifted without it — mechanical, and exactly the kind of thing that comes back one
+skill at a time. It is the same shape of check as the cap and belongs to the same gate, which is why
+it lives here rather than on its own. Against: a bare `npx skills add ../my-skills --skill <name>`
+is legitimate while drafting and `skill-authoring` documents it, so the rule needs an exemption and
+may not earn its keep.]
+
 ## The cross-skill half: contention
 
 **Resolved 2026-08-26 (user): non-contention is a requirement, not a nice-to-have.** Stated while

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
@@ -44,12 +44,8 @@ The two `AGENTS.md` hits and the plan hit are prose rather than commands to copy
 fine as they stand — worth a judgement per line rather than a blanket rewrite. The three `SKILL.md`
 lines and `README.md:15` are copy-and-run instructions and are wrong.
 
-[NEEDS CLARIFICATION: whether `skill-layout`'s test suite should assert this. It already enforces
-real limits on frontmatter, and "an install command in a `SKILL.md` names `--global`" is the same
-shape of check — mechanical, and exactly the kind of thing that drifts back in one skill at a time.
-The counter-argument is that a bare `npx skills add ../my-skills --skill <name>` is legitimate while
-drafting, which `skill-authoring` documents, so the rule needs an exemption and may not be worth
-it.]
+Whether `test_skill_layout` should assert this moved to
+`plans/2026-08-22-skill-trigger-quality-review.md`, which already owns that gate's other blind spot.
 
 ## 2. `session-harvest` tells the agent to break a hard `~/AGENTS.md` rule
 
@@ -96,13 +92,33 @@ it", and the "Self-update mechanics" section repeats the instruction a third tim
   `plans.py new <topic> --for github.com-personal/agent-skills`, commit it in the store, and report
   the filename. Same discipline, one hop.
 
-[NEEDS CLARIFICATION: whether any other skill carries the same instruction. `skill-authoring` is the
-obvious candidate, since its whole subject is the edit → gate → commit → push → re-install sequence,
-and a session invoking it from another project would hit the identical contradiction. Worth a grep
-for `commit` across every `SKILL.md` before deciding this is a one-skill fix.]
+[DECISION: it was not a one-skill fix. Checked 2026-08-30 — `skill-authoring` carries the same
+assumption one step earlier: its step 2 says "edit the source" with no clause about which repo the
+session is in, and its whole subject is the edit → gate → commit → push → re-install sequence, so a
+session invoking it from another project hits the identical contradiction. Both skills took the
+clause in the same commit.]
 
-[DEFERRED: what to do with `6b0330d` itself. It is unpushed and its content is two genuine
-improvements — checking whether a misuse is already filed before filing it, and sweeping
-shared-store entries a session _changed_ rather than only those it added. Reverting it is itself a
-write to this repo, so the session that made it stopped and reported instead. Whoever picks this up
-should decide whether to keep the commit, re-author it, or drop it and take the content from here.]
+[DECISION: `6b0330d` is kept as it stands. Settled with the user 2026-08-30. Its content is two
+genuine improvements — checking whether a misuse is already filed before filing it, and sweeping
+shared-store entries a session _changed_ rather than only those it added — and re-authoring them
+would produce the same file under a different signature. It is pushed with the rest of the session's
+work.]
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`, step 6 and "Self-update mechanics"** — the split: in the
+  skills repo, edit and commit; anywhere else, file with `--for` and commit in the store. The
+  `[DECISION:]` above travels with it, in the skill body, because the next session to read that step
+  needs the reason as much as the rule.
+- **`skills/skill-authoring/SKILL.md`, step 2** — the same clause, one step earlier in that skill's
+  sequence.
+- **`README.md`, `skills/session-harvest`, `skills/python-conventions`, `skills/db-defaults`** — the
+  four copy-and-run install commands now carry `--global`. The two `AGENTS.md` occurrences were
+  judged per line and left: they are prose about how the repo is consumed, not commands to copy.
+
+Deliberately not migrated:
+
+- **The table of occurrences.** It was the working list for a fix that is done, and it dates the
+  moment it is written.
+- **The `test_skill_layout` question**, which moved to
+  `plans/2026-08-22-skill-trigger-quality-review.md`.

@@ -105,6 +105,19 @@ problem, because nothing about this citation was ambiguous to a reader. The pair
 than merely wrong here — the plan it named was being retired in the same session, so acting on the
 instruction would have folded a fresh idea into a file about to be deleted.
 
+## What landed, 2026-08-30
+
+Recommendations 1, 3 and 4 are done, in one commit: `absorb` now prints `references …` rather than
+`consolidate with …`; `SKILL.md`'s absorption section says plainly that the common case for one plan
+citing another is that they are related, several saying so in their own words; and the four merge
+rules from the section above are written down beside it.
+
+That leaves only recommendation 2, the write-time marker, which this plan already argues against on
+the numbers — and the numbers moved further against it in the same pass. A fourth absorption the
+same day produced four more pairings, every one a cross-reference, taking the tally to **seven false
+against five true**. One of the four cited its sibling in a table row listing files that needed
+fixing, which is about as far from a dirty-store split as a citation gets.
+
 ## Recommended direction
 
 Rough, weakest-commitment first.

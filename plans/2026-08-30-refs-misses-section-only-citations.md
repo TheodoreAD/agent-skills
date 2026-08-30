@@ -61,6 +61,12 @@ Rough. Add the section sweep to the retirement procedure first, as a documented 
 `refs` — it is one line in `SKILL.md`, it costs nothing, and it is what actually found the two
 misses. Decide afterwards, with a second data point, whether it earns a place in `plans.py` itself.
 
+**The first half landed 2026-08-30**: `plan-docs`' retirement step 3 now carries the sweep, with the
+17-lines-of-which-2-were-real measurement as its cost estimate. What stays open is only the second
+question — whether it belongs in `plans.py` — and that waits on a second retirement run measuring
+the same thing on a different corpus, which is the data point the first `[NEEDS CLARIFICATION:]`
+above asks for. Nothing else in this plan is outstanding.
+
 Worth noting what already works and should not change: `refs` searching on the bare filename rather
 than the full `plans/` path is exactly right, and it is what caught 7 of the 9 real hits — every one
 of which cited the file from a sibling plan as a markdown link whose text and target were both the

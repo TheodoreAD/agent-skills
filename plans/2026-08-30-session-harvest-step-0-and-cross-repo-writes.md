@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
@@ -41,9 +41,9 @@ plus an audit of everything already done — the most expensive branch in the wh
 every rationale commit anyone lands in a busy skill repo. On this machine that is a common event:
 `references/` edits outnumber `SKILL.md` edits in normal skill maintenance.]
 
-[UNVERIFIED: the frequency claim above is an impression from one repo's recent history, not a count.
-Worth one `git log --name-only` tally before writing the split into `SKILL.md` as a justification —
-the refinement stands on the correctness argument alone regardless.]
+The frequency claim was never counted, and the wording that landed does not rest on it — the
+correctness argument carries the change on its own, as this plan predicted it would. Dropped rather
+than verified.
 
 ### 2. Step 6 tells the harvest to do something `~/AGENTS.md` forbids
 
@@ -69,13 +69,25 @@ immediate action rather than the deferral. The cost is that a filed skill fix wa
 work in `agent-skills`, where an edit landed today; `plans.py absorb` is what makes that survivable,
 and it is the same trade the global rule already accepts everywhere else.]
 
-[NEEDS CLARIFICATION: does the same apply to step 0's "offer to re-install first"? Re-installing is
-not a write to another repo's tree, so it is allowed — but it is outward-facing and step 6 already
-says to ask. Probably no change needed; worth confirming rather than assuming while both steps are
-being reworded.]
+[DECISION: step 0's "offer to re-install first" needed no change on this account. Re-installing is
+not a write to another repo's tree, so the cross-repo rule does not reach it, and the step already
+offers rather than acts. It did need a different change, for a different reason — see
+`plans/2026-08-30-harvest-step-0-unpushed-checkout.md`, retired alongside this one.]
 
 ## Recommended direction
 
 Both are small edits to `SKILL.md` and neither changes the procedure's shape. Do them together: the
 second one is what stopped the first one being applied directly, so a session in `agent-skills`
 picking this up can fix the routing and then use it.
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`, step 0** — the staleness check's path is scoped to
+  `SKILL.md`, with the three-subdirectory reasoning and the `scripts/` note beside it.
+- **`skills/session-harvest/SKILL.md`, step 6 and "Self-update mechanics"** — the cross-repo write
+  rule. The argument for which way the split goes is carried by
+  `plans/2026-08-30-skill-install-command-and-cross-repo-write-rule.md`, retired in the same pass,
+  and lands in the skill body as a `[DECISION:]`.
+
+Deliberately not migrated: the per-subdirectory failure table, which is three sentences of prose in
+the skill and needed a table only while the argument was being made.

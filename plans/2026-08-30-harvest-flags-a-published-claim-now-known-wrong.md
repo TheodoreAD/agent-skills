@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 repo: git@github.com:TheodoreAD/agent-skills.git
 ---
@@ -73,7 +73,18 @@ push by this session to intersect with. Arguably a different and much harder que
 this repo currently publishes known-wrong?"), which no harvest can answer in bounded time, so the
 narrow same-session version may be the whole of what is worth building.]
 
-[NEEDS CLARIFICATION: whether the report should distinguish "published and wrong" from "published
-and now merely incomplete". This run's case was a false claim; a session that pushes something
-true-but-thin and then learns more has a weaker obligation. Overfiring would train the reader to
-skim the one zone of the report that must not be skimmed.]
+[DECISION: neither refinement was built, and the clause ships narrow. "Published and wrong" versus
+"published and now merely incomplete" is a judgement the agent makes while reading the short overlap
+list, not a distinction the check can draw — and the clause names one signal rather than a category,
+so it has nothing to overfire on. The other-session case is excluded by the same reasoning the plan
+already gives: it has no push to intersect with, and the general question behind it is unbounded.]
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`, step 5's git bullet** — one clause after the "check who wrote
+  the unpushed commits" rule, with the two-`git log` overlap signal, the instruction to name it in
+  "needs action now" with what the remote currently claims, and the boundary that keeps it to the
+  same-session case.
+
+Deliberately not migrated: the session's own narrative (which package, which description). The shape
+is what generalises, and the specifics belong to a repo this one does not name.

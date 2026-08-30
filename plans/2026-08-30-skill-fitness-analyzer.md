@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-30
+status: in-progress
+updated: 2026-08-31
 ---
 
 # A skill that measures and improves skills: triggers, contention, and absorbed scripts
@@ -352,6 +352,48 @@ listing-budget accounting are the two most valuable outputs and neither is porta
 rather than failing mysteriously. The static analysis and the rubric score work anywhere; the
 harness-specific sections report themselves unavailable rather than being silently absent, so a
 consumer on another harness is told what they are not getting.]
+
+## Built, and what it measured — 2026-08-31
+
+Stages 1 to 5 are implemented. `skills/skill-fitness/` holds `scripts/fitness.py` (static, free) and
+`scripts/trigger.py` (live, the only part that costs tokens), plus two eval suites.
+
+**The static shadowing flag did not reproduce, and that is the headline.** `fitness.py overlap`
+predicted `python-conventions` shadowing both `invoke-task-conventions` (coverage 0.176) and
+`db-defaults` (0.139), against a corpus shadow cut of 0.089. Across 14 live cases at 3 runs each, it
+stole **none of them** — including six written deliberately to sit inside the region its own
+description claims ("writing, reviewing, or refactoring Python code", data modeling, settings).
+
+[DECISION: this vindicates ranking over gating, and the plan should keep saying so. A CI gate on the
+overlap score would have blocked on a hypothesis the live run refuted. The static pass is a
+generator of questions worth paying to answer, and its output is never a verdict on its own.]
+
+**The real failure is a miss, not a steal.** The one failing case was _"Our automation scripts have
+grown messy and inconsistent. Where do I start cleaning them up?"_ — for which **nothing fired at
+all**, three times out of three. A description written in the tool's vocabulary (`tasks.py`, `inv`,
+"namespace") does not lose the request to a competitor; it loses it to silence. That is the
+2026-08-22 observation this plan started from, now reproduced on demand and measurable, which it
+never was before.
+
+Then the loop closed: a candidate description adding request-side vocabulary ("automation scripts,
+task runner or build commands have grown messy, inconsistent or hard to find") won that case 3/3
+while taking nothing from the incumbent on the cases it already handled.
+
+[PITFALL: **an easy suite cannot tell "no contention" from "cases too easy".** The first suite of
+eight cases passed 24/24 — and every prompt in it named something only one skill claims. It was only
+the second suite, phrased in the contested region, that produced a finding. This is the same warning
+`skill-creator` gives about negative cases, and it applies just as hard to positives.]
+
+[PITFALL: **a candidate description competes with its own installed twin.** Both names satisfy the
+same case, so scoring them as separate skills reports a failure every time the incumbent wins. The
+first candidate run reported two such failures while the case the candidate was written to fix
+passed 3/3 — the proposal was working and the scoreboard said otherwise.]
+
+[DECISION: **cases are JSON, reversing this plan's earlier choice of `case.yaml`.** The reason for
+`case.yaml` was forward-compatibility with the still-gated official runner, and that reason stands —
+but this family's skills are stdlib-only, there is no YAML parser in the standard library, and
+hand-rolling one for prompts full of colons is precisely the ad-hoc-script pattern `absorb` exists
+to detect. Converting is mechanical once that runner is usable.]
 
 ## Settled by the user, 2026-08-30
 

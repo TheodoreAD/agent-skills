@@ -84,3 +84,17 @@ The counter-argument, recorded honestly: a skill only fires if its description m
 `~/AGENTS.md` is always loaded. `plans/2026-08-30-skill-fitness-analyzer.md` covers that risk for
 this family's skills generally — the description here deliberately uses request-side vocabulary
 ("what to call", "rename", "tasks.py") rather than the internal jargon of the convention.
+
+That was not sufficient, and the gap was found by measurement rather than by reading. Confirmed
+2026-08-31 with `skill-fitness`' trigger harness: the request _"our automation scripts have grown
+messy and inconsistent, where do I start cleaning them up?"_ selected **no skill at all**, three
+runs out of three. Every trigger term in the old description named the tool — `tasks.py`, `inv`,
+"namespace", "invoke task" — and a person describing the same problem in their own words hit none of
+them. The failure was not that another skill won; nothing did.
+
+The clause about "automation scripts, task runner or build commands" that have "grown messy,
+inconsistent or hard to find" was added for exactly that request, and was adopted only after
+`trigger.py candidate` showed it winning that case 3/3 while taking nothing from the incumbent
+wording on the cases that already worked. The lesson generalises past this skill: request-side
+vocabulary means the words describing the _problem_, not the words describing the tool that solves
+it.

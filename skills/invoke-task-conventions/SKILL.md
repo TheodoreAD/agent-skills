@@ -1,6 +1,6 @@
 ---
 name: invoke-task-conventions
-description: "Use when adding, renaming, or reviewing an invoke task in a tasks.py or tasks/ package — deciding what to call `inv <namespace>.<task>`, whether a name should be a verb or a noun, where a new task belongs, or whether an existing name is worth changing. Also covers what a rename actually costs (task names are cited in docs, CI, Dockerfiles and other repos, and the Python function name changes with the CLI name), and the invoke wiring traps that silently publish tasks nobody declared. Applies across the personal repo family — power-user-linux-setup, repo-tasks, scaffoldapy-generated projects, the *-polite-mcp repos."
+description: "Use when adding, renaming, or reviewing an invoke task in a tasks.py or tasks/ package — deciding what to call `inv <namespace>.<task>`, whether a name should be a verb or a noun, where a new task belongs, or whether an existing name is worth changing. Also use when a project's automation scripts, task runner or build commands have grown messy, inconsistent or hard to find, and you want to know where to start cleaning them up. Covers what a rename actually costs (task names are cited in docs, CI, Dockerfiles and other repos, and the Python function name changes with the CLI name), and the invoke wiring traps that silently publish tasks nobody declared. Applies across the personal repo family — power-user-linux-setup, repo-tasks, scaffoldapy-generated projects, the *-polite-mcp repos."
 ---
 
 # Naming and wiring invoke tasks

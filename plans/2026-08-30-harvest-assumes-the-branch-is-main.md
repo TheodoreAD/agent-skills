@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-08-30
 ---
 
@@ -16,34 +16,45 @@ Measured 2026-08-30 during a harvest: the plans store is on **`master`**, so
 plausible, calm zero, for a store that was in fact **32 commits ahead**, six of them the session's
 own. The run only caught it because the next command listed the branch for an unrelated reason.
 
-[PITFALL: This is the same failure the sweep's own `git fetch` bullet is written about — a count
-computed against a ref that does not answer the question, printing a number indistinguishable from
-the true one — and the existing wording does not catch it, because that bullet is about a _stale_
-ref and this is a _nonexistent_ one. `git log` treats an unknown revision on the left of `..` as
-empty rather than as an error when the output is being counted, so nothing surfaces it. A harvest
-whose entire purpose is finding unpushed work reported the opposite of the truth.]
+[PITFALL: The calm zero is the pipe, not `git log`. This plan originally recorded the cause as git
+treating an unknown revision on the left of `..` as empty when the output is being counted. Checked
+2026-08-30 against the same store: `git log origin/main..HEAD --oneline` exits **128** with
+`fatal: ambiguous argument 'origin/main..HEAD': unknown revision or path not in the working tree` —
+loud, and unmissable. Adding `| wc -l` is what discards the exit code and leaves `0` as the only
+number on the line. So this is the third instance of the failure the sweep already prohibits twice —
+a pipe destroying the signal on `git fetch` and on `gh run watch` — landing this time on the
+ahead-count itself, compounded by a branch name nobody resolved.]
 
-## Open questions
+[DECISION: name the command, not the failure — resolved in favour of
+`git rev-parse --abbrev-ref '@{u}'`. The counter-argument was that the sweep already carries two
+"type this exact command" bullets and a third makes the step read as a script. It loses because the
+two existing ones were themselves rewritten into that shape after prose versions failed repeatedly,
+and this bullet's own evidence is a session that had the prose in front of it.]
 
-[NEEDS CLARIFICATION: Whether to name the command or the failure. The rest of the sweep's bullets
-were rewritten to open on the command to type, after prose versions failed repeatedly — this would
-follow that pattern with `git rev-parse --abbrev-ref @{u}` (or
-`git rev-parse --abbrev-ref
-origin/HEAD`) rather than a sentence about branch names. The
-counter-argument is that the sweep already has two "type this exact command" bullets and a third
-makes the step read as a script.]
+[DECISION: assuming `main` is wrong more often than it is right, so the rule is unconditional rather
+than a caveat about the store. Measured 2026-08-30 across every clone under this machine's projects
+root: 71 repos, of which 22 are on `main` — fewer than the 23 on `master`, with the remaining 26 on
+a feature branch. The exception framing the plan was drafted with does not survive the count.]
 
-[NEEDS CLARIFICATION: Whether anything else in the family assumes `main`. The store is the known
-case; `plans.py` resolves its own remote correctly, and the harness repos are all `main`. Worth one
-`git -C <repo> branch --show-current` sweep across the machine's repos before wording the rule, so
-it says how common the exception actually is.]
+## Design
 
-## Recommended direction
+One insertion in `skills/session-harvest/SKILL.md`, step 5's git bullet, placed **before** the
+`git fetch` sentence: a fetch that succeeds against the right remote still leaves the count wrong if
+the branch is wrong, so the existing "read the fetch's exit code" advice passes cleanly through this
+bug. It carries the resolve-the-branch command, the 22-of-71 measurement, and the unpiped-count rule
+with the exit-128 evidence.
 
-One line in the live-state sweep's git bullet: resolve the branch rather than assuming it, and say
-that an unknown ref on the left of `..` counts as zero rather than failing — which is what makes
-this indistinguishable from a clean result.
+## Files touched
 
-Worth noting where it goes in the bullet: **before** the `git fetch` sentence, not after. A fetch
-that succeeds against the right remote still leaves the count wrong if the branch is wrong, so the
-existing "read the fetch's exit code" advice passes cleanly through this bug.
+- `skills/session-harvest/SKILL.md` — step 5, the "Git state, every repo the session touched"
+  bullet.
+
+## Verification
+
+- `git -C <the plans store> rev-parse --abbrev-ref '@{u}'` → `origin/master`, the ref the bullet now
+  tells a run to compute.
+- `git -C <the plans store> log origin/main..HEAD --oneline` → exit 128,
+  `fatal: ambiguous argument`.
+- The same command with `| wc -l` → `0`, exit 0. The two runs are the whole finding.
+- Branch tally across the projects root: 22 `main`, 23 `master`, 26 other, 71 total.
+- `inv quality.precommit`.

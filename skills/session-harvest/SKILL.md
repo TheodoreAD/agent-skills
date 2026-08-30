@@ -210,6 +210,18 @@ considered and rejected).
      reasoned around, a status gate bypassed by editing frontmatter instead of calling `set-status`,
      and a `head`/`tail` prohibition violated in 28% of the session's own Bash calls. Each became a
      filed plan against the repo owning the rule; none would have survived as a paragraph.
+
+     **Check whether the misuse is already filed before filing it, and search the store as well as
+     the repo.** On a machine running parallel sessions the likeliest explanation for a rule being
+     broken is that somebody has already noticed — the same reasoning as step 5's already-owned
+     bullet, which is written for the live-state sweep and is easy not to apply here. When it is
+     owned, the session's numbers are _evidence for that plan_, so they go into it rather than into
+     a new file; `plan-docs` prefers one plan per topic, and a second one splits the corpus the
+     first is accumulating. Confirmed 2026-08-30: a session measured its own Bash calls against
+     `~/AGENTS.md`, found 36% piped through `head`/`tail`, and was about to file it — two plans
+     already owned the contradiction, one of them citing "25–36% for two other sessions the same
+     day". What survived as genuinely new was one row nobody had measured, and it landed in the
+     existing plan as a fourth sample.
    - **Already covered → skip.** If an existing doc already says this, don't write a duplicate —
      check first.
    - **Meta-conventions about how to build things in this ecosystem (e.g. "skills should do X by
@@ -312,7 +324,13 @@ considered and rejected).
      missing file — a clone without its `SOURCE.md`, or one that failed partway — and it is
      invisible to every other check here precisely because the store is not version-controlled.
      Cheap to verify (does each new entry exist, and does it carry whatever metadata that store's
-     convention requires), and nothing else will.
+     convention requires), and nothing else will. **Also check the entries the session _changed_,
+     not only the ones it added** — a deliberate divergence from the store's shape is invisible to
+     the same checks and reads as conformant, because the entry is present and its metadata is
+     intact. Confirmed 2026-08-30: a session deepened a `--depth 1` reference clone to ~436 commits
+     to read a dependency's constraint history, which was the right call and left the store holding
+     one entry that silently no longer matched its own convention. Record the divergence and why, in
+     whatever file that store uses for per-entry metadata.
    - **Work the session promised but never verified** — a test tier it added to but never ran, a
      consumer it changed but never swept. "I'll report when it lands" in the last message is a
      promise the harvest has to either keep or retract.

@@ -25,9 +25,17 @@ finding the source repo.
    shows what is installed and from where, and the repo is a normal `git clone` away. If you cannot
    establish which repo owns a skill, ask rather than editing the installed copy as a fallback.
 
-2. **Edit the source.** Keep it additive and small — a bullet under the rule it refines, not a
-   rewrite. Reasoning for _why_ goes in `references/`, not the body (see "What goes in the body"
-   below).
+2. **Edit the source — if your session is in the repo that owns it.** Keep it additive and small — a
+   bullet under the rule it refines, not a rewrite. Reasoning for _why_ goes in `references/`, not
+   the body (see "What goes in the body" below).
+
+   **From a session working in a different repo, this sequence stops here.** Editing and committing
+   in a checkout that is not your session's is a commit in someone else's working tree, and on a
+   machine running parallel sessions it looks routine in `git log` — the session that owns the repo
+   may push it without knowing it was not theirs. File the change instead, against the skill's own
+   repo, and let the next session working there apply it. Confirmed 2026-08-30: a run made two
+   correct, gate-green edits to a skill from an unrelated project and committed them there, which is
+   how this clause came to exist.
 
 3. **Run the repo's quality gate.** Markdown is not exempt: a formatter that reflows prose will
    rewrite a `SKILL.md`, and a doc-only change that skipped the gate is the most common way to

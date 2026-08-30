@@ -426,18 +426,39 @@ considered and rejected).
    - Anything the user had to say twice, or ask about after the fact.
    - The skill contradicted itself, or an instruction turned out ambiguous when applied.
 
-   Default to editing the source now, not filing it for later; a deferred skill fix is a skill fix
-   that does not happen. Keep the change small and additive. If a run genuinely surfaces nothing,
-   say so in the report in one line — an explicit "no skill changes needed this run" is the evidence
-   the check happened, and it should be the exception rather than the norm while the skill is young.
+   Act on it now rather than filing it for later; a deferred skill fix is a skill fix that does not
+   happen. Keep the change small and additive. If a run genuinely surfaces nothing, say so in the
+   report in one line — an explicit "no skill changes needed this run" is the evidence the check
+   happened, and it should be the exception rather than the norm while the skill is young.
 
-   **Committing and deploying the skill edit.** Commit it locally without asking — it is reversible,
-   reviewable as a diff, and pausing for approval mid-run is what makes the fix get dropped. Pushing
-   and re-installing is outward-facing and always asked, because that is the step that changes what
-   other sessions and machines load. Confirmed 2026-08-28: `Bash(git commit:*)` and
-   `Bash(git push:*)` are both allowlisted on this machine, so no permission prompt guards either —
-   the discipline is entirely instruction-side, deliberately (see `~/AGENTS.md`, "Proposing an
-   enforcement mechanism for agent behavior"). Do not read the absence of a prompt as permission.
+   **Where the session is decides whether "act on it now" means an edit or a filing**, and this is
+   not a preference:
+
+   - **In the skills repo** (`agent-skills`, wherever this skill's source lives): edit the source
+     and commit it locally without asking — it is reversible, reviewable as a diff, and pausing for
+     approval mid-run is what makes the fix get dropped.
+   - **Anywhere else**, which is nearly every harvest: **do not edit and do not commit.** File it —
+     `plans.py new <topic> --for github.com-personal/agent-skills` — commit the plan in the store,
+     and name the filename in the report. Filing is the immediate action, not the deferral, so the
+     "do it now" pressure is unchanged.
+
+   [DECISION: the global rule wins over this skill's own instruction, and it is not close.
+   `~/AGENTS.md` says writing to another repo is out entirely, "however much a skill's own
+   instructions tell you to" — a clause that reads as though written about this exact step. The
+   skill's justification for committing directly was that a deferred fix does not happen; that was
+   true when it was written and is not now, because `plans.py new --for` did not exist then and
+   `absorb` gives a filed skill fix a real trigger in the next session working there. The reasons
+   are also asymmetric: a silent commit in a parallel session's tree is a correctness problem, a
+   deferred fix is a latency problem. Confirmed 2026-08-30 by the failure — a harvest run from an
+   unrelated project made two correct, gate-green edits to this file and committed them in a repo it
+   had no business writing to, left sitting in `git log` for whichever session pushed next.]
+
+   **Deploying the skill edit.** Pushing and re-installing is outward-facing and always asked,
+   because that is the step that changes what other sessions and machines load. Confirmed
+   2026-08-28: `Bash(git commit:*)` and `Bash(git push:*)` are both allowlisted on this machine, so
+   no permission prompt guards either — the discipline is entirely instruction-side, deliberately
+   (see `~/AGENTS.md`, "Proposing an enforcement mechanism for agent behavior"). Do not read the
+   absence of a prompt as permission.
 
 7. **On friction, ask — then self-update the skill, not just this session.** Three triggers:
    - A candidate doesn't clearly fit any routing filter in step 2 (e.g. arguably both plan-specific
@@ -529,16 +550,18 @@ the current session:
   `.agents/skills/session-harvest/`) — is a plain file copy dropped there at install time.
   Hand-editing it is silently clobbered by the next install and never reaches any other project or
   machine anyway. Never edit it directly.
-- Find the canonical source: the [`agent-skills`](https://github.com/TheodoreAD/agent-skills) repo,
-  normally at `~/projects/github.com-personal/agent-skills`. If that isn't obviously reachable from
-  the current session (invoked from an unrelated project), locate it (e.g.
-  `fd -td agent-skills ~/projects -d 4`), clone it, or ask the user for its path — don't guess or
-  silently skip the update.
-- Edit `skills/session-harvest/SKILL.md` there: a small, additive change — a new bullet under the
-  relevant routing filter, or a note under "On friction, ask" if the friction was about the
-  escalation process itself. Not a rewrite. Rationale for _why_ a resolution was made a particular
-  way goes in `references/rationale.md` instead, matching the split already used for the rest of
-  this skill.
+- The canonical source is the [`agent-skills`](https://github.com/TheodoreAD/agent-skills) repo,
+  normally at `~/projects/github.com-personal/agent-skills`.
+- **Only a session already working in that repo edits it.** From anywhere else the fold-back is a
+  filing, per step 6 — `plans.py new <topic> --for github.com-personal/agent-skills`, committed in
+  the store. Do not locate the checkout in order to write to it: an edit there is a commit in
+  another session's working tree, which is what the global rule forbids outright. The filing is not
+  a weaker outcome; `absorb` hands it to the next session that works there.
+- When you _are_ in that repo, edit `skills/session-harvest/SKILL.md`: a small, additive change — a
+  new bullet under the relevant routing filter, or a note under "On friction, ask" if the friction
+  was about the escalation process itself. Not a rewrite. Rationale for _why_ a resolution was made
+  a particular way goes in `references/rationale.md` instead, matching the split already used for
+  the rest of this skill.
 - Run that repo's quality gate, then commit — locally, without asking, per step 7. Its own
   `tests/unit/test_skill_layout.py` is part of that gate and enforces real limits (the description
   cap among them), so run it rather than eyeballing the frontmatter. Then tell the user what

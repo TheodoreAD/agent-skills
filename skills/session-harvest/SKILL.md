@@ -412,6 +412,13 @@ considered and rejected).
 8. **Harvest report**, last. **Bullets throughout, indented into groups — never prose paragraphs.**
    A harvest report is scanned, not read, and an indented list is what survives scanning.
 
+   **A second harvest in one session re-runs the whole sweep and reports only the delta.** Those
+   pull in opposite directions and both are right: step 5 has to run again because live state moves
+   between the two — confirmed 2026-08-30, twenty minutes apart, a parallel session had committed to
+   the store in the gap and only the re-run saw it — while re-listing the findings the user read
+   twenty minutes ago buries the two lines that are new. Say what changed since the last report and
+   name the earlier one, rather than restating it.
+
    **Open with where everything went**, as four groups, because "did this land somewhere durable, or
    is it still only in the chat?" is the question the whole report exists to answer:
 

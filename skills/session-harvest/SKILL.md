@@ -642,6 +642,14 @@ the current session:
   `tests/unit/test_skill_layout.py` is part of that gate and enforces real limits (the description
   cap among them), so run it rather than eyeballing the frontmatter. Then tell the user what
   changed.
+- **A `scripts/` edit does not reach this session either, and that bites during the run rather than
+  after it.** Every `python3 ~/.agents/skills/<name>/scripts/<file>` call keeps executing the
+  installed copy until a re-install, so between committing a script change and re-installing, the
+  session is reading output from the code it just replaced. Confirmed 2026-08-30: a session renamed
+  `absorb`'s pairing output, committed it, then ran `absorb --apply` and got the old wording back —
+  harmless there, and it would not have been if the change had altered behaviour rather than a
+  string. Either call the checkout's copy for the rest of the run, or note which results predate the
+  re-install; do not re-derive the results from the new source and assume they match.
 - **Say plainly that a committed edit still reaches nothing.** The installer clones from the remote,
   so the change takes effect only once it is pushed _and_ re-installed
   (`npx skills add TheodoreAD/agent-skills --global --skill session-harvest`) — including for other

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-08-30
 ---
 
@@ -54,11 +54,15 @@ The `description-cap` alternative in the original check was not decoration: with
 returns one fewer and silently omits a member of the skill-triggers cluster, which is how a merge
 ends up two-thirds done. Found by running it, 2026-08-29.
 
-### 2. Retire `2026-08-28-plans-outside-the-repo.md`, or record why not
+### 2. Retire `2026-08-28-plans-outside-the-repo.md` — done 2026-08-30
 
-- Check: `plans.py tags --file 2026-08-28-plans-outside-the-repo.md --tag DEFERRED`
-- Act: it is `landed` with DEFERRED tags blocking deletion. Move each into an open plan first, then
-  retire.
+Retired and deleted; `plans.py archive --show 2026-08-28-plans-outside-the-repo.md` reads it back.
+Of the three `[DEFERRED:]` tags that blocked deletion, two — per-root sync and end-of-engagement
+retention — moved to `plans/2026-08-29-sensitive-tier-durability.md`, which owns the sensitive tier
+and is where they pull against each other; the third, the GitHub Support request, was already owned
+in full by `plans/2026-08-29-github-support-cache-purge.md` and needed no move. The one piece of
+durable reasoning with no home yet — a range rewrite leaves the private strings as `-` lines in
+every commit above the range — went into `skills/plan-docs/references/design-rationale.md`.
 
 **Use `set-status`, never a frontmatter edit.** A hand-edit skips the gate silently; that happened
 on 2026-08-29 and is written up as a `[PITFALL:]` in `plans/2026-08-29-next-session-prompt.md`,
@@ -102,3 +106,8 @@ cannot act on it. Nothing in this file is blocked on any of them.
 
 Done when `plans.py list` shows the three clusters as single files, and the `landed` plan is either
 retired or carries a recorded reason not to be. Then delete this file.
+
+**Both met 2026-08-30.** The clusters are five single files (item 3's absorption added two the
+original count did not know about), and the `landed` plan is retired. Item 3 is not unfinished work
+left behind: it is the standing `absorb`-first rule, which `plan-docs` already states as the first
+call of every session, so it needs no carrier here. This file is deletable.

@@ -85,6 +85,11 @@ so without them the total is a floor; the probe runs the CLI once with the budge
 makes it log the real listing size, and kills it the moment the line appears. It costs a fraction of
 a cent and is the only thing in `fitness.py` that costs anything at all.
 
+**The probe's own number is still a floor**, because it runs headless: measured 2026-08-31, 42
+bundled skills were loaded and only 25 entries listed, several bundled skills being conditional on a
+capability or flag a `-p` run does not have. An interactive session lists more. Do not pick a budget
+setting that clears the probed total by a small margin.
+
 **`usage` counts two mechanisms and neither alone is the rate.** `auto` is the model choosing the
 skill through the `Skill` tool. `explicit` is a person typing `/name`, which often injects the body
 directly and produces no tool call at all. Measured 2026-08-30: one skill showed 11 auto against 84

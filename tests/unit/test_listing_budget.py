@@ -151,6 +151,24 @@ def test_bundled_chars_come_out_of_the_users_share():
     assert squeezed["demoted"] == ["dropped"]
 
 
+def test_a_listing_is_read_back_entry_by_entry():
+    """A bare `- name` is a demoted entry; `- name: text` kept its description."""
+    content = "- alpha: does alpha things\n- beta\n- gamma: does gamma things"
+    kept = fitness._entries_in_order(content, ["alpha", "beta", "gamma"])
+    assert kept == {"alpha": True, "beta": False, "gamma": True}
+
+
+def test_prose_that_looks_like_an_entry_is_not_counted_as_one():
+    """The reason the walk is order-aware.
+
+    A description is free to contain a line reading exactly `- init`, and `init` is also a real
+    skill. A free-text search would read that line as init's own entry and report it demoted.
+    """
+    content = "- alpha: runs these steps:\n- init\n- build\n- init: initialize a thing"
+    kept = fitness._entries_in_order(content, ["alpha", "init"])
+    assert kept == {"alpha": True, "init": True}
+
+
 def test_demotion_is_a_greedy_fit_not_a_cut_off():
     """A long description loses to the budget while a shorter, lower-priority one survives."""
     skills = [

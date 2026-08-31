@@ -318,6 +318,108 @@ def overlap_pairs(skills: list[Skill]) -> tuple[list[dict[str, Any]], dict[str, 
 
 
 # --------------------------------------------------------------------------------------------
+# Transcript store: the listings actually sent
+
+
+@dataclass
+class Listing:
+    """One `skill_listing` attachment: the exact text the harness sent the model that turn."""
+
+    session: str
+    project: str
+    date: str
+    chars: int
+    count: int
+    demoted: list[str]
+    transient: bool  # from a temporary working directory, so possibly a probe rather than work
+
+
+def _entries_in_order(content: str, names: list[str]) -> dict[str, bool]:
+    """Map each listed name to whether it kept its description, walking the declared order.
+
+    Descriptions may contain newlines, so a continuation line can look exactly like an entry —
+    `- init` is a plausible thing to write inside prose, and `init` is also a real skill. Two
+    cheap defences, because a miscount here reports a working skill as demoted:
+
+    - **the walk is order-aware**, so a stray line only misleads if it names the *next* expected
+      entry rather than any entry;
+    - **an entry cannot be both demoted and described**, so a bare `- name` line is only read as a
+      demotion when that name appears nowhere in the text with a description after it.
+
+    Neither is a proof. A description whose text contains a bare line naming the next entry, where
+    that entry is genuinely demoted, is still ambiguous — and is left counted as a demotion, which
+    is the safe direction: it over-reports a problem rather than hiding one.
+    """
+    described = {n for n in names if re.search(rf"(?m)^- {re.escape(n)}: ", content)}
+    kept: dict[str, bool] = {}
+    i = 0
+    for line in content.split("\n"):
+        if i >= len(names):
+            break
+        want = names[i]
+        if line.startswith(f"- {want}: "):
+            kept[want] = True
+            i += 1
+        elif line == f"- {want}" and want not in described:
+            kept[want] = False
+            i += 1
+    return kept
+
+
+def scan_listings() -> list[Listing]:
+    """Every listing the harness actually sent, read back out of the transcript store.
+
+    This is ground truth and it outranks any model of the budget, including this file's own. The
+    attachment carries the rendered text, the entry count and the names, so a demoted entry — one
+    rendered as a bare `- name` — is directly observable rather than simulated. Two things it
+    settled that the arithmetic got wrong:
+
+    - **The exempt set is not "everything bundled".** Measured 2026-08-31 in a real listing:
+      `security-review` was demoted while `code-review`, `run` and `init` kept their descriptions,
+      so exemption tracks something narrower than "the harness shipped it" and cannot be inferred
+      from a skill's origin. An observed listing is the only reliable split.
+    - **The interactive listing is larger than any headless probe of it**: 18,109 characters over
+      30 entries observed, against 15,486 over 25 from `probe_listing`.
+
+    `transient` marks a listing captured under a temporary working directory. A trigger or budget
+    probe lands there, and so does a tool run in a scratch checkout — worth separating from real
+    sessions, worth reporting rather than dropping.
+    """
+    listings: list[Listing] = []
+    if not TRANSCRIPTS.exists():
+        return listings
+    for path in TRANSCRIPTS.rglob("*.jsonl"):
+        transient = path.parent.name.startswith("-tmp-")
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if '"skill_listing"' not in line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                att = obj.get("attachment")
+                if not (isinstance(att, dict) and att.get("type") == "skill_listing"):
+                    continue
+                content = str(att.get("content") or "")
+                names = [str(n) for n in (att.get("names") or [])]
+                kept = _entries_in_order(content, names)
+                listings.append(
+                    Listing(
+                        session=path.stem[:8],
+                        project=path.parent.name,
+                        date=str(obj.get("timestamp") or "")[:10],
+                        chars=len(content),
+                        count=int(att.get("skillCount") or len(names)),
+                        demoted=sorted(n for n, k in kept.items() if not k),
+                        transient=transient,
+                    )
+                )
+    listings.sort(key=lambda listing: listing.date)
+    return listings
+
+
+# --------------------------------------------------------------------------------------------
 # Transcript store: real usage, and absorbable scripts
 
 
@@ -654,6 +756,56 @@ def _print_table(rows: list[dict[str, Any]], columns: list[str]) -> None:
         print("  " + "  ".join(str(r.get(c, "")).ljust(widths[c]) for c in columns))
 
 
+def observed_summary(listings: list[Listing]) -> dict[str, Any]:
+    """Roll up the listings the harness actually sent, keeping probe traffic countable."""
+    truncated = [listing for listing in listings if listing.demoted]
+    seen: Counter[str] = Counter()
+    last: dict[str, str] = {}
+    for listing in truncated:
+        for name in listing.demoted:
+            seen[name] += 1
+            last[name] = max(last.get(name, ""), listing.date)
+    return {
+        "listings": len(listings),
+        "from_real_sessions": sum(1 for listing in listings if not listing.transient),
+        "largest_chars": max((listing.chars for listing in listings), default=0),
+        "largest_count": max((listing.count for listing in listings), default=0),
+        "truncated_listings": len(truncated),
+        "truncated_real": sum(1 for listing in truncated if not listing.transient),
+        "demoted": [{"skill": name, "listings": n, "last": last[name]} for name, n in seen.most_common()],
+    }
+
+
+def collect_budget(skills: list[Skill], usage: Usage, args: argparse.Namespace) -> dict[str, Any]:
+    """The budget section: what the listing costs, who is forecast to lose a description, and
+    what the harness has actually been sending."""
+    priority = harness_priority()
+    rows = budget_rows(skills, usage, priority)
+    own_chars = sum(int(r["listing_chars"]) for r in rows)
+    out: dict[str, Any] = {
+        "budget": rows,
+        "priority_source": "~/.claude.json skillUsage" if priority else "unavailable",
+        "listing_own_chars": own_chars,
+    }
+
+    exempt_chars, exempt_count = 0, 0
+    if getattr(args, "probe", False):
+        probed = probe_listing()
+        out["probe"] = probed
+        if probed:
+            exempt_count = max(0, probed["listed_skills"] - len(skills))
+            exempt_chars = probed["listing_chars"] - own_chars - max(0, probed["listed_skills"] - 1)
+            if exempt_chars < 0:  # some of ours are hidden or off; the split is not derivable
+                out["probe_note"] = "listed skills do not account for every skill found on disk"
+                exempt_chars, exempt_count = 0, 0
+    out["listing_exempt_chars"] = exempt_chars
+    out["simulation"] = simulate_listing(
+        skills, priority, listing_budget(args.context_window), exempt_chars, exempt_count
+    )
+    out["observed"] = observed_summary(scan_listings())
+    return out
+
+
 def collect(want: str, skills: list[Skill], args: argparse.Namespace) -> tuple[dict[str, Any], Usage]:
     """Everything the requested sections need, gathered before anything is printed."""
     out: dict[str, Any] = {
@@ -687,27 +839,7 @@ def collect(want: str, skills: list[Skill], args: argparse.Namespace) -> tuple[d
         }
 
     if want in ("budget", "report"):
-        priority = harness_priority()
-        rows = budget_rows(skills, usage, priority)
-        out["budget"] = rows
-        out["priority_source"] = "~/.claude.json skillUsage" if priority else "unavailable"
-        own_chars = sum(int(r["listing_chars"]) for r in rows)
-        out["listing_own_chars"] = own_chars
-
-        exempt_chars, exempt_count = 0, 0
-        if getattr(args, "probe", False):
-            probed = probe_listing()
-            out["probe"] = probed
-            if probed:
-                exempt_count = max(0, probed["listed_skills"] - len(skills))
-                exempt_chars = probed["listing_chars"] - own_chars - max(0, probed["listed_skills"] - 1)
-                if exempt_chars < 0:  # some of ours are hidden or off; the split is not derivable
-                    out["probe_note"] = "listed skills do not account for every skill found on disk"
-                    exempt_chars, exempt_count = 0, 0
-        out["listing_exempt_chars"] = exempt_chars
-        out["simulation"] = simulate_listing(
-            skills, priority, listing_budget(args.context_window), exempt_chars, exempt_count
-        )
+        out.update(collect_budget(skills, usage, args))
 
     if want in ("overlap", "report"):
         pairs, stats = overlap_pairs(skills)
@@ -776,6 +908,25 @@ def _render_budget(out: dict[str, Any], args: argparse.Namespace) -> None:
     print("  ordered by who loses their description first when the listing overflows")
     columns = ["skill", "listing_chars", "priority", "over_spec_cap", "auto", "explicit", "last_seen"]
     _print_table(out["budget"], columns)
+    _render_observed(out["observed"])
+
+
+def _render_observed(obs: dict[str, Any]) -> None:
+    """What was actually sent, which outranks the simulation above whenever the two disagree."""
+    print(f"\n## listings actually sent — {obs['listings']} observed, {obs['from_real_sessions']} from real sessions")
+    if not obs["listings"]:
+        print("  none recorded; the transcript store keeps these only on recent CLI versions")
+        return
+    print(f"  largest: {obs['largest_chars']} chars over {obs['largest_count']} entries")
+    if not obs["truncated_listings"]:
+        print("  no listing was ever truncated here — the simulation above is a forecast, not a record")
+        return
+    print(
+        f"  truncated: {obs['truncated_listings']} listing(s), "
+        f"{obs['truncated_real']} of them from real sessions rather than a probe"
+    )
+    print("  skills observed listed as a bare name, with no description to be matched on:")
+    _print_table(obs["demoted"], ["skill", "listings", "last"])
 
 
 def _render_absorbable(out: dict[str, Any]) -> None:

@@ -600,6 +600,48 @@ measure — it is a way to find requests that fire _nothing_, which no static pa
 alone can see, because the missing half is the request. That is the same wall the demand proxy hit
 twice, and it is now the tool's main open problem rather than a side note.]
 
+[DECISION: **gap detection was then attempted the same day, and it does not work lexically either,
+so it is not being built.** The transcript store looks like it holds the missing half — 165 real
+opening requests from real sessions. Three constructions, all measured, all noise: terms frequent in
+requests but present in no description ("look", "need", "don", "let", "get"); the discriminative
+version contrasting sessions where nothing fired against sessions where something did, whose ratios
+rested on counts like 5-against-1 and whose winners were "previous", "latest", "either"; and the
+non-lexical one, harvesting the user's own words from just before an explicitly typed `/name`, where
+nearly every preceding turn turned out to be harness boilerplate — a compact summary, an injected
+skill body — and the two genuine finds were spotted by reading the output rather than by any rule in
+it. Recorded in `fitness.py` beside the demand proxy's removal, because the store's apparent promise
+here is inviting enough to be rebuilt. **Five free heuristics over prose have now failed in this
+project**: the vendor's Jaccard 0.7, this tool's own absolute shadow cut, the demand proxy twice,
+and gap detection twice.]
+
+[DECISION: **the usable pointer is behavioural rather than lexical, and the tool already reports
+it.** The `auto` versus `explicit` split names the skill a person keeps having to ask for by name,
+with no vocabulary matching anywhere in it. One skill on this corpus has that profile and it is
+stark: `session-harvest` at **13 auto against 87 explicit**, where `plan-docs` runs 70 against 15.
+That is where the next suite goes — with the caveat that `session-harvest`'s description opens "Use
+when invoked explicitly as `/session-harvest`", so part of that 87 is by design, and the suite has
+to test the auto-trigger phrasings the description separately lists rather than assume a defect.]
+
+[PITFALL: **that suite refuted the behavioural pointer too, so it joins the list.** Built as a
+controlled comparison — the description's own trigger phrasings as the control, the same needs in a
+person's words as the test, two of them lifted from real transcripts in this store — precisely so
+that a control passing while the paraphrases failed would isolate the variable. **10/10, precision
+1.0**: controls and paraphrases alike, no steal from `plan-docs`, and nothing fired on the two
+should-not-trigger cases even though the description names commits, pushes and CI. The 13-against-87
+split is the skill working as designed plus a person's habit of typing it. So `auto` versus
+`explicit` is a reason to write a suite, never the diagnosis — corrected in the skill, which had
+stated it as a rule.]
+
+[DECISION: **the pattern across the whole session is now the finding, and it should govern how this
+tool is read.** Every signal it produces — static overlap, directional shadowing, a zero invocation
+count, an inverted auto/explicit split — has generated a hypothesis that a live run then refuted.
+**119 runs across six suites, 0 cross-steals**, three "defects" that were not defects (two
+never-invoked skills at 7/7, a shadowing prediction at 0-for-14, this one at 10/10), against two
+real failures — both misses, both found only by a should-trigger case phrased in a stranger's words.
+The tool's honest job is generating questions cheaply and ranking which are worth paying to answer.
+Nothing it prints is a verdict, and the skill now says so in each section rather than once at the
+top.]
+
 [RESOLVED 2026-08-31: **which similarity measure?** It does not matter on a corpus this size, which
 is a measured answer rather than a shrug. IDF-weighted and unweighted variants were ranked against
 each other over all 78 pairs: **they agree on seven of the top eight**, by similarity and by

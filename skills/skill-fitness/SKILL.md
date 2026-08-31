@@ -114,8 +114,17 @@ Read that section with two cautions:
 skill through the `Skill` tool. `explicit` is a person typing `/name`, which often injects the body
 directly and produces no tool call at all. Measured 2026-08-30: one skill showed 11 auto against 84
 explicit, another 69 against 12 — opposite stories, and either column read alone gives the wrong
-one. A skill with high `explicit` and near-zero `auto` has a description problem; the person keeps
-having to ask for it by name.
+one.
+
+**A high `explicit` count is a hypothesis, not a diagnosis**, and it failed its first test here.
+"The person keeps having to ask for it by name" is the obvious reading, so the corpus's one inverted
+skill — 13 auto against 87 explicit, where its neighbour ran 70 against 15 — got a suite built as a
+controlled comparison: the description's own trigger phrasings as the control, the same needs in a
+person's words as the test, two of those lifted from real transcripts. **10/10.** Controls and
+paraphrases alike, precision 1.0, nothing stolen and nothing fired on the should-not-trigger cases.
+The description opens "Use when invoked explicitly as `/name`" and every auto-trigger phrasing it
+lists works; the split was the skill behaving as designed plus a person's habit. Read the column as
+a reason to write a suite, never as the finding itself.
 
 **A zero is not a verdict, and treating it as one wastes the effort it seems to demand.** It means
 either the request came up and this skill lost it, or the request never came up — opposite problems,

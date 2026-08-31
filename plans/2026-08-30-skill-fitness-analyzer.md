@@ -122,6 +122,10 @@ less. Two of this repo's skills have never fired at all. The budget is also **sh
 bundled skill** (`/code-review`, `/design`, `/dataviz`, the artifact skills, ...), so this repo's
 7,411 bytes are not the denominator — the machine's whole listing is, and it is much larger.]
 
+Both paragraphs above are the documentation's account and both are **wrong in the details that
+decide the outcome**. Read from the binary and measured on 2026-08-31; see "The listing budget,
+measured rather than paraphrased" below.
+
 Levers, all Claude-Code-specific: `skillListingBudgetFraction` (e.g. `0.02`), the
 `SLASH_COMMAND_TOOL_CHAR_BUDGET` environment variable, and `skillOverrides` entries of `"name-only"`
 to free budget by listing a low-priority skill without its description. `/doctor` estimates the
@@ -432,6 +436,66 @@ but this family's skills are stdlib-only, there is no YAML parser in the standar
 hand-rolling one for prompts full of colons is precisely the ad-hoc-script pattern `absorb` exists
 to detect. Converting is mechanical once that runner is usable.]
 
+## The listing budget, measured rather than paraphrased — 2026-08-31
+
+The budget section had been written from the documentation and from `/doctor`'s description. Both
+were read this pass out of the Claude Code 2.1.251 binary itself and confirmed against the CLI's own
+overflow warning. The mechanism is materially different from the account above, in ways that change
+who gets hurt.
+
+| the question         | the answer, from the binary                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| what units           | **characters**: `context_window_tokens × 4 × skillListingBudgetFraction` (default 0.01)              |
+| the number           | **8,000 characters on a 200k-token model**; the env var `SLASH_COMMAND_TOOL_CHAR_BUDGET` is absolute |
+| what an entry costs  | `- <name>: <description>`, description capped at `skillListingMaxDescChars` (1536), plus 1 per gap   |
+| who can be truncated | **only user and project skills** — a bundled skill is exempt                                         |
+| what truncation does | drops the description **whole**; the entry becomes `- <name>`. Nothing is "shortened"                |
+| the order            | descending `usageCount × max(0.5^(days_since_last_use / 7), 0.1)`, from `~/.claude.json`             |
+| and it is greedy     | each entry keeps its description if the room left allows, so a long one is dropped past a short one  |
+
+[DECISION: **the budget is model-dependent, and that is the headline.** The same corpus is
+comfortable on a large-window model and truncated on a 200k one. Measured the same hour: this
+machine's listing is **15,486 characters over 25 entries**, which drew the overflow warning under
+`--model claude-haiku-4-5-20251001` (8,000 budget) and no warning at all on the session's own model.
+So "is my listing over budget" has no machine-wide answer — every report has to name the window it
+assumed, which is why `fitness.py budget` takes `--context-window` and defaults to the pessimistic
+200,000.]
+
+[PITFALL: **the bundled skills' cost is not shared pain — it is taken off the top.** They are
+charged first and never demoted, so the 5,912 characters of bundled entries on this machine come
+straight out of the 8,000 available to the user's own thirteen. The simulation says that on a 200k
+model **eleven of thirteen are demoted to name-only**, leaving only `session-harvest` and
+`research-library` with descriptions. Every claim this plan made about a death spiral was
+directionally right and quantitatively far too mild.]
+
+[PITFALL: **priority is decayed usage, not the invocation count this plan kept reasoning about.**
+Recency dominates at a 7-day half-life, so a skill used thirty times two months ago scores 3 and
+sits below one used four times yesterday. The 0.1 floor is the only thing keeping a long-unused
+favourite ahead of a never-used skill. A ranking built from raw transcript counts would put the
+wrong skills at the top of the at-risk table.]
+
+**And the bundled-enumeration question is answered without enumerating them.** The bundled skills
+are compiled into the CLI binary, so no file-based inventory can price them — but the harness will
+say: forcing `SLASH_COMMAND_TOOL_CHAR_BUDGET=1` makes it log
+`Skill listing over budget: N skills, C chars > B budget` unconditionally, and `--debug-file` puts
+that where a script can read it. `fitness.py budget --probe` runs the CLI once and kills it the
+moment the line lands. Sub-cent, reproducible, and it does not become a number the user pastes in.
+
+The levers, now that the mechanism is known rather than guessed: `skillListingBudgetFraction` and
+`skillListingMaxDescChars` raise the two caps; `disableBundledSkills` (or
+`CLAUDE_CODE_DISABLE_BUNDLED_SKILLS`) removes the exempt entries that are taking the top off the
+budget; and `skillOverrides` takes four values per skill — `on`, `name-only` (listed without its
+description, deliberately, to free budget for the rest), `user-invocable-only` (still typable as
+`/name`, hidden from the model) and `off`. The last is the interesting one for this corpus: a skill
+the user only ever types is paying full listing price for a description no model needs.
+
+[PITFALL: **the debug log is the only place this is visible non-interactively, and only on
+overflow.** A plain `claude -p ... --debug` printed nothing — the warning goes to the log file, not
+to stderr — and it is not emitted at all when the listing fits, which is why the probe forces a
+budget of 1 rather than reading the real one. The line also reports the count of _listed_ entries,
+which is smaller than the count of _loaded_ skills: 13 user plus 42 bundled were loaded here and 25
+were listed.]
+
 ## Settled by the user, 2026-08-30
 
 - **The corpus is measured before it is restructured.** `python-conventions` stays over-cap for now;
@@ -459,10 +523,12 @@ Whole-description similarity mixes "what it does" prose with trigger vocabulary 
 should count. Candidates: the span after "Use when", the comma-separated topic list, quoted phrases.
 All three are conventions this repo happens to follow and a consumer's skills may not.]
 
-[NEEDS CLARIFICATION: **how are the bundled skills enumerated?** The listing budget is shared with
-them and they are not on disk under `~/.agents/skills`. Without them the budget report is wrong in
-the optimistic direction. `/doctor` knows, but it is interactive and Claude-Code-specific. Is there
-a file-backed source, or does this become a number the user pastes in once?]
+[RESOLVED 2026-08-31: **how are the bundled skills enumerated?** They are not, and they do not need
+to be. `budget --probe` asks the harness for the listing's real size instead of pricing its parts;
+see "The listing budget, measured rather than paraphrased". Enumerating them _is_ possible — each
+bundled skill's description sits in the binary as a `var name` / `var description` pair — but that
+is a scrape of a compiled artifact with no stable shape across versions, and the probe needs
+neither.]
 
 [NEEDS CLARIFICATION: **how much of this may depend on one harness?** The invocation stats and the
 budget accounting are the two most valuable signals and both are Claude-Code-specific.
@@ -479,10 +545,10 @@ skills is 600 agent runs, so this cannot be on any automatic path.]
 comes from its own marketing page. Run it before writing any structural check it may already
 perform.]
 
-[UNVERIFIED: the listing budget's units. The documentation says the budget "scales at 1% of the
-model's context window" and elsewhere describes it as a character budget, which are not the same
-number. The total measured here (7,411 characters for ten skills) is only alarming under one of the
-two readings. `/doctor`'s own estimate settles it and has not been read.]
+[RESOLVED 2026-08-31: the listing budget's units. Both readings are right and they compose: the
+budget is in **characters**, at 1% of the context window measured in **tokens**, converted at four
+characters per token. 8,000 characters on a 200k model. The two readings were never in conflict; the
+missing term was the conversion, and it is what makes the budget model-dependent.]
 
 [DEFERRED: the merged-away plan's question of whether the layout gate should also assert that an
 install command in a `SKILL.md` carries `--global`. Still wanted, still mechanical, still the same

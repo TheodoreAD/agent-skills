@@ -42,13 +42,12 @@ ALLOWED_ENTRIES = {"SKILL.md", "references", "scripts", "evals"}
 # Skills knowingly over the cap, each with the plan that owns the fix. An entry here is a debt on
 # the record, not an exemption: `test_no_stale_cap_debt` fails once the skill comes back under the
 # limit, so the entry cannot outlive the breach it documents.
-KNOWN_OVER_CAP = {
-    "python-conventions": (
-        "1302 chars. Trimming would delete trigger vocabulary, which is backwards; the likely fix "
-        "is a split, and plans/2026-08-30-skill-fitness-analyzer.md holds it until the analyzer "
-        "can say whether the pieces would contend."
-    ),
-}
+#
+# Empty since 2026-08-31, when `python-conventions` was split into three skills rather than trimmed.
+# Trimming would have deleted trigger vocabulary to satisfy a length check, which is backwards; the
+# split was measured first — each piece was checked against real requests to confirm it wins its own
+# and steals none.
+KNOWN_OVER_CAP: dict[str, str] = {}
 
 
 def skill_dirs() -> list[Path]:

@@ -1,7 +1,8 @@
 ---
 name: python-conventions
-description: "Use when writing, reviewing, or refactoring Python code in a personal/agent-maintained project — data modeling (Pydantic vs dataclass vs NamedTuple vs TypedDict vs attrs vs msgspec), dates/times/timezones (aware-only, UTC at the boundary, DST folds and gaps), settings/secrets management, early returns/guard clauses/fail-fast/EAFP, modularity/DRY/readability/encapsulation, the module-singleton + lazy-property pattern, statelessness/immutability, test structure (DAMP vs DRY, fixture scope), exception hierarchies, type-ignore hygiene, `src/`-layout package structure, async/concurrency, and HTTP client/retry
-  conventions — plus MCP-server-specific conventions (stdio logging discipline, tool-boundary error handling, LLM-facing tool docstrings) for the *-polite-mcp family. Gives the default answer per topic, researched against reputable sources and community precedent, so choices stay consistent across projects instead of drifting session to session. Each topic notes whether it overrides a model's own default instinct or just documents an already-sound one, so the skill steers rather than fights normal agent behavior. Covers design/style guidance only — for type-checker/linter/formatter/shell-check *tool configuration*, see power-user-linux-setup's contributing/quality-tooling.md instead."
+description: "Use when writing, reviewing or refactoring Python and you want one settled answer rather than an evaluation — choosing between a dataclass, a Pydantic model, a NamedTuple, a TypedDict, attrs or msgspec; handling dates, times and timezones, including DST folds and gaps and where to convert to UTC; loading settings and secrets; when to use a guard clause, an early return or EAFP; designing an exception hierarchy; keeping type ignores honest; laying a package out under `src/`; building a CLI; async and concurrency; and how an HTTP client should handle sessions, timeouts and retries. Also when a module has accumulated global state, grown hard to follow, or needs restructuring — how far to break it up, when a module-level singleton with lazy properties is the right shape, and how to keep objects immutable and functions stateless. For tests see the Python testing skill; for MCP server internals see the MCP Python skill."
+metadata:
+  family: python
 ---
 
 # Python design and style defaults
@@ -11,6 +12,11 @@ against one of the topics below without an explicit "evaluate alternatives" requ
 default, don't re-litigate from scratch each session. Deviating is fine when a case genuinely
 matches one of the named escalation paths — the point is to stop a fresh session/model from silently
 picking something different for no reason, not to forbid judgment calls.
+
+**Two topics were split out on 2026-08-31** and are separate installs: test-suite conventions are in
+`python-testing-conventions`, and the stdio-logging, tool-boundary and tool-docstring rules for MCP
+servers are in `mcp-python-conventions`. The split was measured before it was made — the pieces were
+checked against real requests to confirm each wins its own and none steals from the others.
 
 **This is design guidance, not tool config.** Nothing here tells you which type checker or linter to
 install or how to configure it — that's `power-user-linux-setup`'s `contributing/quality-tooling.md`
@@ -24,9 +30,9 @@ runtime lookups, reasonable async code, `pathlib` over `os.path`. This skill isn
 relitigate those; it exists for the choices where a model left alone drifts (six equally-plausible
 data-modeling options, a DRY instinct that over-abstracts, a settings pattern borrowed from the last
 framework seen in training data) or where a convention is genuinely non-obvious/project-specific
-rather than general Python knowledge (the `globals.py` singleton shape, MCP's stdio stdout
-constraint). Each **Model default** line below says which case you're in — skim past the ones that
-just confirm what you'd already do, weight the ones that don't.
+rather than general Python knowledge (the `globals.py` singleton shape). Each **Model default** line
+below says which case you're in — skim past the ones that just confirm what you'd already do, weight
+the ones that don't.
 
 ## Data modeling
 
@@ -236,78 +242,6 @@ rather than a call site.
 - Model default: **overrides.** Models don't default to `frozen=True` — mutable-by-default matches
   Python's own language default, so this is a deliberate opt-in a model won't reach for unassisted.
 
-## Testing conventions
-
-- Snippet: [`references/snippets/testing.py`](references/snippets/testing.py)
-- Fixtures first, always. Any setup a test needs — a tmp tree, a fake `HOME`, a stubbed `c.run`, a
-  constructed object, a monkeypatched env — is a `pytest` fixture (in `conftest.py` once two files
-  want it), not lines hand-rolled at the top of each test body. Two reasons, and the second is the
-  bigger one: it removes the mechanical duplication, and it **surfaces when the suite is doing the
-  same thing three different ways** — three hand-rolled versions of "make a fake repo" hide in three
-  test bodies indefinitely; three fixtures named `fake_repo`, `tmp_repo`, and `repo_dir` sit next to
-  each other in `conftest.py` and get merged. Reach for the built-ins (`tmp_path`, `monkeypatch`,
-  `capsys`, `caplog`) before writing a helper that reimplements one. A helper _function_ is the
-  fallback only for setup that needs per-call arguments a fixture can't take — and even then, a
-  fixture returning a factory (`make_repo(name)`) usually fits.
-- Fixture scope: narrowest that stays correct. For the module-singleton pattern above — construct
-  the expensive object at module/session scope, but reset its _mutable_ state via a function-scoped
-  fixture. A `monkeypatch` inside a broad-scoped fixture stays live for the whole scope, not just
-  one test — a real, silent cross-test leak source.
-- DAMP vs. DRY — a different axis from the production-code DRY decision above, not a re-derivation
-  of it: setup mechanics (fixtures/helpers, the _how_) stay DRY; the scenario a test verifies (the
-  _what_) stays explicit and readable top-to-bottom in that test. `parametrize` is the sanctioned
-  everyday tool for a real input→expected matrix, and is _more_ explicit than N copy-pasted bodies,
-  because the varying values are isolated from the fixed logic — attach `ids` once values stop being
-  self-explanatory. The line: **if adding a case means adding a value, parametrize; if it means
-  changing the test's logic (a branch, a different setup, a different assertion), write a new
-  test.** What's actually warned against is collapsing genuinely different scenarios into one
-  branching mega-test, or hiding the scenario inside a helper whose name doesn't say what it
-  asserts.
-- Model default: **mostly confirms, overrides in one direction.** A model parametrizes value
-  matrices unprompted, and that's right. What it does _not_ reliably do is promote setup to fixtures
-  — left alone it inlines the same three-line arrange block into every test it writes, which is the
-  "same thing three ways" failure above. The other narrow override: the modularity section's
-  abstraction instinct can leak into folding scenarios that differ in _logic_ into one
-  parametrized-with-branches test, or into a `check_*` helper that owns the assertion.
-- Never run a code-mutating command as part of a test's exercised behavior unless the test's actual
-  subject is that mutation. A fix/format/autocorrect command run before the assertion silently masks
-  the exact defect a check-only equivalent would have caught. Confirmed live 2026-08-23 in
-  `scaffoldapy`: an e2e test ran `inv quality.precommit` (fixes formatting, _then_ checks) against a
-  freshly generated repo — real CI runs the check-only `inv quality.check` with no such gate, so a
-  dprint markdown-wrapping bug in the generated `README.md`/`SKILL.md` passed this test while
-  failing every generated repo's actual first CI run. Prefer the check-only/dry-run form of a
-  command in a test unless the mutation itself is under test.
-- Model default: **overrides.** A model reaches for the "full" fix-then-check invocation of a
-  quality/build tool by habit (it's the everyday command, and "make sure everything's clean" reads
-  as the safe choice) — this entry blocks that instinct in tests specifically, where it silently
-  narrows what the test can catch.
-
-### Don't double anything the suite can run for real
-
-- Default: **no mock, fake or stub for a dependency the suite can own the whole lifetime of** —
-  in-process, or as a subprocess it starts and stops. A SQLite file, a temp directory, a local
-  queue, your own entrypoint under a subprocess: run the real thing. A third-party HTTP API is the
-  other side of the line, and a hand-written stand-in for one is correct rather than a compromise.
-- The deciding question is that lifetime test, not a list of technologies — a list goes stale and
-  invites arguing about membership, while "can this suite start it and stop it" answers a new case
-  on its own.
-- Why: it is the premise `db-defaults` already selects on. Every default there is chosen partly for
-  "pytest-local testability with no docker/cloud", and doubling the database throws away the thing
-  the dependency was picked for. You get to run the real thing _because_ the choice was made to let
-  you.
-- **Real is not the same as sandboxed, and running real services makes the difference matter more.**
-  The `tmp_path` rule above is the sharp version: a test that reaches `Path.home()` writes into the
-  real one. A real service under test needs its own temporary state as much as a fake would.
-- **Where a framework singleton makes an in-process arrangement dishonest, the answer is a
-  subprocess fixture, not a mock.** Starting the real entrypoint against its own temporary state
-  reproduces the deployment shape instead of pretending the coupling is absent. Give it a bounded
-  readiness wait that fails with the child's output — an unbounded condition that can never become
-  true hangs rather than failing.
-- Model default: **overrides.** Left alone a model reaches for an in-memory fake the moment a test
-  would otherwise open a file or a socket; patching is the shape most training data shows, and
-  "tests shouldn't touch the disk" reads as the disciplined choice. It is the wrong instinct
-  wherever the suite could simply own the real thing.
-
 ## Command-line interfaces
 
 - Default: **Typer**, for anything with subcommands, options, or a `[project.scripts]` entry.
@@ -450,83 +384,17 @@ points confirmed at source.
   linear/exponential) backoff or to honoring `Retry-After` — the retry-scoping specifics are the
   real add here.
 
-## MCP-stdio logging discipline
-
-_Scope: stdio-transport MCP servers only (the `*-polite-mcp` family) — not applicable to
-`power-user-linux-setup` itself, which has no MCP server._
-
-- Snippet: [`references/snippets/mcp-tool-boundary.py`](references/snippets/mcp-tool-boundary.py)
-- Default: never a bare `print()` in server package code. Route all logging through the stdlib
-  `logging` module, explicitly configured to write to stderr at startup (or defer to FastMCP's own
-  `configure_logging()`, which already defaults there).
-- Why: the MCP stdio spec is unambiguous — a server **MUST NOT** write anything to stdout that isn't
-  a valid MCP message; a single stray `print()` or a dependency's stdout-bound log handler corrupts
-  the JSON-RPC stream. stderr is the sanctioned outlet for everything, logs included.
-- **Don't**: trust that "no `print()` in my code" is sufficient — a dependency that logs to stdout
-  on its own initiative isn't caught by explicit stderr configuration of your own logging. The
-  robust check is exercising the real stdio transport end-to-end, not code review alone.
-- Model default: **overrides — sharply, not a style nudge.** This is protocol-specific knowledge a
-  model has no general-Python reason to know; without it, a model reaches for `print()` debugging
-  exactly as it would in any other script, silently breaking the server.
-
-## Error handling at the MCP tool boundary
-
-_Scope: stdio-transport MCP servers only, same as above._
-
-- Snippet: [`references/snippets/mcp-tool-boundary.py`](references/snippets/mcp-tool-boundary.py)
-- Default: at the point an internal exception is about to cross back to the client, decide
-  deliberately what's safe to expose — either re-raise as `fastmcp.exceptions.ToolError` with an
-  explicit, hand-written message, or let a plain exception raise (FastMCP's default already surfaces
-  it, unmasked, to the client). Never assume `str(exc)` of an arbitrarily caught exception is safe
-  by default, especially inside a broad per-item `except Exception` (a legitimate pattern for
-  isolating one bad item in a batch call — just don't let its caught exception's message reach the
-  client unreviewed).
-- Why: FastMCP's default (`mask_error_details=False`) already includes full exception detail in the
-  client-facing response — this isn't an opt-in risk, it's the out-of-the-box behavior. The same
-  shape as this skill's `SecretStr` caveat: a broad safety switch doesn't sanitize text you
-  deliberately choose to expose.
-- **Don't**: flip `mask_error_details=True` project-wide as a blanket fix — it suppresses
-  legitimately useful validation detail (a bad argument, a batch-size violation) that plain
-  `raise ValueError(...)` call sites rely on being visible to the calling agent. Prefer the
-  finer-grained per-message `ToolError` choice.
-- Model default: **overrides.** A model doesn't know `ToolError` exists or that FastMCP unmasks
-  exceptions by default unless told — without this, it either leaves exceptions to propagate as-is
-  (today's actual state in this family) or reaches for a blanket masking flag, both worse than the
-  deliberate per-boundary choice.
-
-## MCP tool docstrings
-
-_Scope: any function decorated as an MCP tool (`@mcp.tool()` in this family). A genuinely distinct
-concern from general docstring style — no general docstring-content rule exists elsewhere in this
-skill to extend._
-
-- Default: write the docstring to Anthropic's tool-definition bar, not PEP 257's — what the tool
-  does and how it differs from its nearest sibling by name, when to use/not use it, where each
-  non-obvious parameter's value comes from, response shape/size caveats, **at least 3–4 sentences,
-  more for a complex tool**. See `references/rationale.md` §11 for the concrete template and this
-  family's own strongest real examples.
-- Why: the docstring becomes the wire-level `Tool.description` an LLM client reads at inference time
-  to decide whether/how to call the tool — a weak one causes wrong-tool-picked, wrong-arguments, or
-  never-invoked failures, a correctness cost paid by every future call, not a comprehension-speed
-  one the way a weak human-facing docstring is.
-- Escalate to: `Annotated[x, Field(description=...)]` for per-parameter descriptions once free-form
-  prose isn't enough (so the JSON-Schema `inputSchema` itself carries them); `annotations=`
-  (`readOnlyHint`/`destructiveHint`/etc.) on any tool with real side effects, since clients use it
-  to decide when to skip or require confirmation prompts.
-- Model default: **overrides.** A model's default docstring instinct is PEP 257's — a concise
-  one-line summary — which is actively worse here; the entire point of this section is that the bar
-  for an LLM-facing description is different from, not a stricter version of, ordinary docstring
-  style.
-
 ## Full rationale
 
 See [`references/rationale.md`](references/rationale.md) — the full citation trail: sources
 consulted, options considered and rejected per topic, and the reasoning behind every branch/
-escalation path above. §1–8 were originally researched and written up in
+escalation path above. Sections keep their original numbers, so the file has gaps where the testing
+and MCP sections were moved out to their own skills on 2026-08-31 — the numbers are stable
+references, not a sequence. §1–8 were originally researched and written up in
 `plans/2026-08-15-python-conventions.md`, migrated here once that plan promoted from `idea` to this
-built skill (the plan file has since been retired — see git history if you need it). §9 onward
-(async/concurrency, HTTP/retry, the MCP-specific sections, and `src/`-layout) were researched
-directly against this skill after that promotion, with no separate plan-file stage.
+built skill (the plan file has since been retired — see git history if you need it). §12 onward
+(async/concurrency, HTTP/retry, and `src/`-layout) were researched directly against this skill after
+that promotion, with no separate plan-file stage.
 
 ## Starter snippets
 

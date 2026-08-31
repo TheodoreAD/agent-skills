@@ -578,6 +578,13 @@ likely to go wrong ("help me word this new skill's description so it doesn't poa
 other ones", which is composition sitting inside the diagnosis skill's claimed region). Running
 total across the three suites: **59 runs, 0 steals**, against two misses.
 
+And the loop closed on it the same day, for the second time. A candidate description carrying the
+request's own words — "grown too big, or covers several different things at once, should be broken
+up or split" — took that case from **0/3 to 2/3, with the candidate name winning both fires and the
+incumbent winning none**, while taking nothing from the three cases the incumbent already handled
+3/3. Adopted on exactly the documented rule, and the shipped figure should be better than 2/3, since
+a candidate score is a lower bound.
+
 Both misses have the same shape, and it is not contention: the skill claimed the situation in its
 own vocabulary and the person described it in theirs. "Over-scoped … should be split" against "grown
 to cover three different things … worth breaking up"; `tasks.py`/`inv`/"namespace" against "our

@@ -22,7 +22,13 @@
     "times out of three: 'grown to cover three different things ... worth breaking up' shares no",
     "vocabulary with the description's 'deciding whether an over-scoped skill should be split'.",
     "Recall 0.75 for skill-fitness and 0.83 for skill-authoring, both from silence rather than from",
-    "losing to each other."
+    "losing to each other.",
+    "",
+    "FIX 2026-08-31: a candidate description carrying the request's own vocabulary - 'grown too big,",
+    "or covers several different things at once, should be broken up or split' - took case 4 from",
+    "0/3 to 2/3, and the candidate name won both fires while the incumbent won none of them. It took",
+    "nothing from cases 1-3, which the incumbent kept 3/3 each. Adopted on that split, which is the",
+    "adoption rule exactly: wins what the incumbent lost, loses nothing the incumbent won."
   ],
   "cases": [
     {

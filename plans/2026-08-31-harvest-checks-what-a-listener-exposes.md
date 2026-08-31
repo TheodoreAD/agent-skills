@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-31
+status: landed
+updated: 2026-09-01
 ---
 
 # The harvest's process check asks whether something is running, not what it exposes
@@ -78,3 +78,22 @@ thing that differs is who else can reach it.
   `.env`. Fixed in that repo the same session, in its driver and its `serve` task.
 - Filed from that session's harvest, which found it while running step 5 and not because step 5
   asked.
+
+## Migrated to
+
+`skills/session-harvest/SKILL.md`, step 5's process bullet — extended rather than given its own
+heading, which is what the first open question was leaning toward and what step 2's guidance
+prefers. It names `ss -ltnp`, drops "this session started" for the listener case, and carries the
+instance and the general fact about default bind addresses.
+
+**The second open question — how wide the check should be — was answered by not answering it.** No
+filter is prescribed. `ss -ltnp` is short enough to read whole on a personal machine, and any rule
+for "listeners a repo's own tooling started" needs a signal the harvest does not have; a wrong
+filter hides the reused process that made this a finding at all. The noise objection stands and is
+the thing to watch: if a run reports a browser debug port as a finding, that is the trigger to
+revisit.
+
+**The third — whether the fix belongs to the harvest or to the repo owning the tooling — is both,
+and they do not compete.** That repo took the one-line `--bind 127.0.0.1`; the harvest keeps the
+check because the exposure is invisible to that repo's own gate, the code being identical either
+way.

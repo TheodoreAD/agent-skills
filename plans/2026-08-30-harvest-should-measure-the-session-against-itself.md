@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-30
+status: landed
+updated: 2026-09-01
 ---
 
 # `session-harvest` should have the session measure itself, not just its output
@@ -95,3 +95,30 @@ resolves it by its own terms, but the skill reads as though the fold-back is alw
 clause in step 6's self-update mechanics naming `plans.py new --for` as the route when the session
 is not in `agent-skills` — otherwise every harvest run from another repo hits this and has to
 re-derive the resolution, and some will resolve it the other way.]
+
+## Migrated to
+
+- **The counter**: `skills/session-bash-audit/scripts/audit.py`, as
+  `--session <id> [--compare
+  <baseline>]`. This answers the first open question the way it leaned
+  — one implementation, in the skill that owns the patterns and the research, with `session-harvest`
+  calling it rather than duplicating its regexes.
+- **The bullet that calls it**: `skills/session-harvest/SKILL.md`, step 5.
+- **The observation that produced the plan**, plus a second and cleaner instance of it:
+  `skills/session-bash-audit/references/research.md`, "Authoring a rule does not make an agent
+  follow it".
+
+**The second open question — what the harvest does with a bad number — is settled as the plan
+proposed**: report the two numbers and the comparison in the skill-and-instruction-misuse group, not
+in the verdict, because a self-flagellating report buries the findings the user needs.
+
+**The third — which patterns to count — needed no decision.** `audit.py` already tags every one of
+them, including the exit-code-bearing split, and already strips heredocs before splitting a chain,
+which is the over-count the plan worried about. Reusing the tagger rather than writing a second one
+is what made the answer free.
+
+**Not migrated**: the plan's `[PITFALL:]` about step 6 telling a harvest to edit its own source
+cross-repo. Step 6 had already been rewritten to file from anywhere but the skills repo before this
+plan was read, so the clause it asks for exists. What the pitfall did surface is that step 0's
+dirty-checkout note had not been updated to match — retired separately as
+`2026-08-30-harvest-dirty-checkout-blocks-nothing-when-filing.md`.

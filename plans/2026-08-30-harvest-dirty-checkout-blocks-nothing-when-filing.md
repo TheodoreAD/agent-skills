@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-30
+status: landed
+updated: 2026-09-01
 ---
 
 # `session-harvest` step 0's dirty-checkout note describes a block that no longer exists
@@ -86,3 +86,21 @@ the diff said "same" for everything and would have prompted nothing. The re-chec
 because the listing looked different, and it was worth doing — `invoke-task-conventions` had been
 used earlier in the session, and confirming its change was description-only is what established that
 the naming decision made under the older wording did not need re-auditing.
+
+## Migrated to
+
+`skills/session-harvest/SKILL.md`, all three sections:
+
+- **Step 0's stranded note** is now conditional — it warns about the fold-back only when the session
+  is working in the skills repo, which is the one case where the fold-back is an edit. The open
+  question was delete-or-condition; conditioning won because the information is true for that case
+  and the clause is one line, where deleting would under-warn the run that can actually be blocked.
+- **The `main`/`master` data point** went to step 5's branch rule rather than to
+  `2026-08-30-harvest-assumes-the-branch-is-main.md`, which this plan proposed merging into — that
+  plan had already landed and retired. The point worth keeping is the one the plan named: whether
+  the mistake is loud is decided by which filter you reached for, not by anything you did right, and
+  it is the second occurrence after the rule existed and was in context.
+- **The skill-listing-changed trigger** is a paragraph in step 0 rather than a fourth check, which
+  is the open question's own leaning: it tells you _when_ to run the checks step 0 already has. It
+  is placed immediately before the checks it triggers, which answers the objection that a trigger
+  buried in a paragraph is easy to miss.

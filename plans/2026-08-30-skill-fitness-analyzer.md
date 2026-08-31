@@ -582,8 +582,15 @@ And the loop closed on it the same day, for the second time. A candidate descrip
 request's own words — "grown too big, or covers several different things at once, should be broken
 up or split" — took that case from **0/3 to 2/3, with the candidate name winning both fires and the
 incumbent winning none**, while taking nothing from the three cases the incumbent already handled
-3/3. Adopted on exactly the documented rule, and the shipped figure should be better than 2/3, since
-a candidate score is a lower bound.
+3/3. Adopted on exactly the documented rule, installed through `power-user-linux-setup`'s
+`inv ai.install-skills`, and verified against the installed set: **10/10, precision 1.0 everywhere,
+and `skill-authoring` at 12/12** — the longer description took nothing from its nearest neighbour,
+which is the risk a description change actually carries.
+
+[PITFALL: the shipped figure came in at **2/3, equal to its candidate score rather than better**.
+The one previous observation went 1/3 as a candidate to 3/3 shipped, and this plan had generalised
+an uplift from it. The bound is what holds — shipped is never worse — and the uplift is not owed.
+One more instance of describing a set from a single member.]
 
 Both misses have the same shape, and it is not contention: the skill claimed the situation in its
 own vocabulary and the person described it in theirs. "Over-scoped … should be split" against "grown

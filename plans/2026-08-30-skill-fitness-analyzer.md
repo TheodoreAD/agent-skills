@@ -737,7 +737,18 @@ budget is in **characters**, at 1% of the context window measured in **tokens**,
 characters per token. 8,000 characters on a 200k model. The two readings were never in conflict; the
 missing term was the conversion, and it is what makes the budget model-dependent.]
 
-[DEFERRED: the merged-away plan's question of whether the layout gate should also assert that an
-install command in a `SKILL.md` carries `--global`. Still wanted, still mechanical, still the same
-gate — and still carrying the same objection, that a bare `npx skills add ../my-skills` is
-legitimate while drafting.]
+[RESOLVED 2026-09-01: **the `--global` gate is in, and the objection that deferred it turned out to
+name the rule.** A bare `npx skills add ../my-skills` really is legitimate while drafting — which
+means the check was never "every install command carries `--global`". It is **remote sources must**:
+an `owner/repo` argument installs for real and its scope must not depend on the reader's cwd, while
+a local path is the documented drafting form and is exempt. Scoped to fenced code blocks, so a prose
+mention of the CLI is not treated as an instruction.
+
+The corpus already passes — eight remote installs, all global, and the one local-path example is
+`skill-authoring`'s drafting note. A gate that fires on nothing today is still worth having here,
+because the failure it catches is silent in both directions: without the flag the CLI writes
+`.agents/skills/`, a `.claude/skills` symlink and a `skills-lock.json` into whatever tree you are
+standing in — none gitignored, one of them a vendor directory this repo refuses on principle — while
+printing the same green summary as a correct run. Verified against a synthetic bad skill rather than
+assumed, since a gate whose corpus is already clean is exactly the kind that can be inert without
+anyone noticing.]

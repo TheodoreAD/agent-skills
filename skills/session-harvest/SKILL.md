@@ -315,6 +315,21 @@ considered and rejected).
    brief's own "this needs a full tier run afterwards, only one common cause was established"
    survived into no summary, and neither did an explicitly-declined consumer sweep.
 
+   **Extract the `AskUserQuestion` answers too, not only the user turns — on a session driven by
+   this tool they carry the entire brief.** A user turn is `type == "user"` with text; an answer to
+   a question is not, so a transcript scan written for the first finds none of the second. Confirmed
+   2026-08-31: a five-hour session's extraction returned ten "user turns", of which most were slash
+   command wrappers and one was `/clear` — while every substantive instruction in the session
+   ("propose an entirely new structure based on what the community is doing", "I write prompts,
+   ideas, make decisions, but not things word by word", "come up with questions at the end of the
+   analysis, before implementation") had arrived as an `AskUserQuestion` answer and appeared in none
+   of them. A harvest reading only the turns would have concluded the user said almost nothing and
+   harvested against its own summary — the exact failure this step exists to prevent, reached by a
+   different route. The tool's answers come back in the tool-result blocks, so scan those for the
+   question-and-answer text rather than filtering them out as tool noise. This skill's own steps 2
+   and 7 tell you to reach for `AskUserQuestion`, so the gap is self-inflicted and grows with how
+   well the rest of the skill is followed.
+
 5. **Live-state sweep** — the parts of "dangling" that are not in the conversation at all. The
    transcript says what was _intended_; these say what is actually true now. Run them even when the
    session felt tidy, because every one of them has been wrong at least once:

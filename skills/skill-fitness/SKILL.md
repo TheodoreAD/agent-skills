@@ -70,11 +70,11 @@ warning; re-check after an upgrade, since none of it is documented behaviour.
   case rather than the wrong one.
 - **Most of the harness's own entries are exempt.** They are charged against the budget first and
   never demoted, so their cost is not shared pain — it comes off the top of what is left for yours.
-  Measured on this machine: 5,912 characters of them against a 200k-model budget of 8,000, before
-  any of the user's thirteen skills were priced. **The exempt set is narrower than "the harness
-  shipped it", and is not derivable from a skill's origin**: in a real listing on 2026-08-31,
-  `security-review` was demoted while `code-review`, `run` and `init` kept their descriptions. Read
-  an observed listing rather than reasoning about which entries qualify.
+  Measured on this machine: **8,530 characters of them against a 200k-model budget of 8,000** — over
+  the whole budget before any of the user's thirteen skills is priced. **The exempt set is narrower
+  than "the harness shipped it", and is not derivable from a skill's origin**: in a real listing on
+  2026-08-31, `security-review` was demoted while `code-review`, `run` and `init` kept their
+  descriptions. Read an observed listing rather than reasoning about which entries qualify.
 - **Demotion is a greedy fit, not a cut-off.** Entries are walked in descending priority and each
   keeps its description if the room left allows, so a long description is dropped while a shorter,
   _lower_-priority one survives. The demoted set is not the bottom of the table.
@@ -135,6 +135,21 @@ so any fixed cutoff either never fires or fires on everything — an AI-security
 uses Jaccard > 0.7, which on real descriptions is close to never, and this script's own first draft
 used an absolute 0.5 and flagged nothing. Shadowing is therefore judged against the corpus's own
 distribution and the numbers are always printed, because the judgement is the reader's.
+
+**Treat it as a way to choose which pair to spend a live run on, never as a finding.** That is not
+modesty; it is what the audit of 2026-08-31 measured on this corpus:
+
+| the mechanism                                        | what it actually did           |
+| ---------------------------------------------------- | ------------------------------ |
+| isolating the trigger clause from the description    | stripped nothing from 12 of 13 |
+| the corpus-derived stop list, on 13 skills           | dropped one term               |
+| the one static shadowing prediction ever tested live | refuted, 0 steals in 14 cases  |
+
+The consequence is visible in the output: the shared-term lists are full of ordinary English —
+`working`, `writing`, `rather`, `before`, `asking` — because nothing in a small corpus removes it.
+The ranking still orders pairs sensibly, and both an IDF-weighted and an unweighted measure pick the
+same seven of the top eight pairs, so the choice of measure is not what is limiting it. Corpus size
+is. Read the rank, then go and measure the pair.
 
 Three distinct failures hide under "skills competing", and each has a different fix:
 

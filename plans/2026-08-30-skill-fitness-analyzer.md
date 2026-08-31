@@ -569,16 +569,32 @@ half the reason the probe was removed.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **which similarity measure?** Ranking rather than gating removes the threshold
-problem but not this one. Whole-description cosine or Jaccard mixes "what it does" prose with
-trigger vocabulary; TF-IDF over the corpus itself is stdlib-implementable and weights the terms that
-actually distinguish skills, but on a ten-document corpus the IDF is noisy. Whatever is chosen has
-to be legible enough that the shared terms it reports are the ones worth rewriting.]
+[RESOLVED 2026-08-31: **which similarity measure?** It does not matter on a corpus this size, which
+is a measured answer rather than a shrug. IDF-weighted and unweighted variants were ranked against
+each other over all 78 pairs: **they agree on seven of the top eight**, by similarity and by
+containment alike, and the disagreements are reorderings inside a near-tied band. So the measure is
+not what limits the signal. The IDF weighting stays, because it also supplies the corpus-derived
+stop list and because it costs nothing — not because it was shown to be better.]
 
-[NEEDS CLARIFICATION: **how is the trigger clause extracted, given `when_to_use` is off the table?**
-Whole-description similarity mixes "what it does" prose with trigger vocabulary and only the second
-should count. Candidates: the span after "Use when", the comma-separated topic list, quoted phrases.
-All three are conventions this repo happens to follow and a consumer's skills may not.]
+[RESOLVED 2026-08-31: **how is the trigger clause extracted?** It is not, and the attempt was
+deleted. `Skill.trigger_text` took the span from a `Use when` lead-in onward; measured against the
+installed corpus it **stripped nothing from 12 of 13 descriptions and three characters from the
+thirteenth**, because this repo's own convention puts the trigger clause first, so the lead-in
+matches at position zero. The prose it was meant to exclude _trails_ the trigger clause, and
+locating that boundary means guessing at sentence openers ("Covers", "Also", "For X see Y") — which
+is the same repo-specific fragility that ruled out adopting a `when_to_use` field. Similarity now
+runs on the whole description and says so.]
+
+[PITFALL: **the audit those two answers came from is unflattering and belongs next to them.** Three
+measurements on this corpus, same day: the trigger extraction stripped nothing; the corpus-derived
+stop list dropped exactly one term (`instead`) because its cut needs a term in half the corpus and
+prose spreads thinner than that; and the single static shadowing prediction ever tested live was
+refuted, 0 steals in 14 cases. The visible symptom is that the shared-term lists are ordinary
+English — `working`, `writing`, `rather`, `before`, `asking`. The ranking is still worth having as a
+way to choose which pair to pay for a live run on. It is not evidence about that pair, and the skill
+now says so in those words. What would actually raise the signal is a bigger corpus (the stop list
+strengthens with it) or phrase-level terms rather than single words — untested, and testable only by
+the live runs it would be trying to save.]
 
 [RESOLVED 2026-08-31: **how are the bundled skills enumerated?** They are not, and they do not need
 to be. `budget` subtracts the installed set from a listing the harness really sent and reports the

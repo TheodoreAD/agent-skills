@@ -20,6 +20,13 @@ Measures whether a set of skills works, so the fix is chosen from numbers rather
 Authoring guidance is `skill-authoring`'s job and this skill does not repeat it; Bash-usage auditing
 is `session-bash-audit`'s.
 
+Evidence behind the rules below, loaded only when you need it:
+[`references/measurements.md`](references/measurements.md) for what was measured here — the 119-run
+trigger ledger, the listing budget read from the binary, and the ledger of five heuristics that
+failed; [`references/research.md`](references/research.md) for published work and other people's
+tools — SkillsBench, the quality rubric, `skill-creator`, and what the scanners in this space do and
+do not detect.
+
 ## The one rule that shapes everything here
 
 **Never ship a skill, or a description, that nothing measured.** `SkillsBench` (84 tasks, 7,308

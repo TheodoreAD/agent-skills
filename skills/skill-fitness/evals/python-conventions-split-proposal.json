@@ -1,0 +1,18 @@
+{
+  "replaces": "python-conventions",
+  "note": "Three clusters, cut at the seams the SKILL.md already has. 543 lines becomes roughly 300 / 90 / 90, which is the 'detailed' band rather than the 'comprehensive' one that measures below baseline.",
+  "skills": [
+    {
+      "name": "python-conventions",
+      "description": "Use when writing, reviewing or refactoring Python and you want one settled answer rather than an evaluation — choosing between a dataclass, a Pydantic model, a NamedTuple, a TypedDict, attrs or msgspec; handling dates, times and timezones, including DST folds and gaps and where to convert to UTC; loading settings and secrets; when to use a guard clause, an early return or EAFP; designing an exception hierarchy; keeping type ignores honest; laying a package out under src/; async and concurrency; and how an HTTP client should handle sessions, timeouts and retries. Also when a module has accumulated global state, grown hard to follow, or needs restructuring — how far to break it up, when a module-level singleton with lazy properties is the right shape, and how to keep objects immutable and functions stateless."
+    },
+    {
+      "name": "python-testing-conventions",
+      "description": "Use when writing or restructuring Python tests — deciding how much duplication a test should carry before it stops being readable, what a fixture should cover and at what scope, when a test is asserting on implementation instead of behaviour, how to name and organise test modules, what belongs in a fast default suite versus a slower marked tier, and whether a given check is worth a test at all. Also for pytest specifics: parametrize, fixtures, markers, conftest placement, and keeping a suite from writing into the real home directory."
+    },
+    {
+      "name": "mcp-python-conventions",
+      "description": "Use when writing the Python inside an MCP server and deciding how it should behave — where log output may go when stdout carries JSON-RPC framing, what an exception at a tool boundary should turn into for the calling model, how much detail an error may safely expose, and how to write a tool docstring the model reads as its instructions. For a server's packaging, installation and registration rather than its code, see the shipping skill instead."
+    }
+  ]
+}

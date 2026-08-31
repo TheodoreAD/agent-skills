@@ -197,6 +197,19 @@ def write_candidate(root: Path, name: str, description: str) -> str:
     return unique
 
 
+def write_proposal(root: Path, proposal: dict[str, Any]) -> dict[str, str]:
+    """Register every skill in a proposed split at once, and map proposed name to registered name.
+
+    Testing a split one description at a time cannot answer the question a split actually raises,
+    which is how requests *distribute* across the pieces. They have to compete simultaneously, and
+    against the incumbent, which is still installed.
+    """
+    mapping: dict[str, str] = {}
+    for skill in proposal["skills"]:
+        mapping[skill["name"]] = write_candidate(root, skill["name"], skill["description"])
+    return mapping
+
+
 def load_cases(path: Path) -> list[dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     cases = data["cases"] if isinstance(data, dict) else data
@@ -255,27 +268,47 @@ def summarise(results: list[Result], collapse: dict[str, str] | None = None) -> 
     return {"per_skill": rows}
 
 
-def execute(cases: list[dict[str, Any]], args: argparse.Namespace) -> tuple[list[Result], frozenset[str]]:
+def execute(
+    cases: list[dict[str, Any]], args: argparse.Namespace
+) -> tuple[list[Result], frozenset[str], dict[str, str]]:
     """Run every case in a scratch project, so only globally installed skills are in the listing."""
     with tempfile.TemporaryDirectory(prefix="skill-trigger-") as tmp:
         root = Path(tmp)
         expect_override: str | None = None
-        if args.mode == "candidate":
+        remap: dict[str, str] = {}
+
+        incumbent_twins: frozenset[str] = frozenset()
+        if args.mode == "split":
+            proposal = json.loads(Path(args.proposal).read_text(encoding="utf-8"))
+            remap = write_proposal(root, proposal)
+            for proposed, registered in remap.items():
+                print(f"proposed {proposed} registered as {registered}", file=sys.stderr)
+            replaces = proposal.get("replaces")
+            print(f"incumbent still installed: {replaces}", file=sys.stderr)
+            # A split usually keeps the original name for the piece that inherits the core, so that
+            # piece and the still-installed incumbent are the same skill under two names — the same
+            # twin problem candidate mode already has, and it has to be scored the same way.
+            if replaces in remap:
+                incumbent_twins = frozenset({replaces, remap[replaces]})
+        elif args.mode == "candidate":
             if not args.skill or not args.description:
                 raise SystemExit("candidate mode needs --skill and --description")
             desc = args.description
             if desc.startswith("@"):
                 desc = Path(desc[1:]).read_text(encoding="utf-8").strip()
             expect_override = write_candidate(root, args.skill, desc)
+            remap = {args.skill: expect_override}
             print(f"candidate registered as {expect_override}", file=sys.stderr)
 
-        twins = frozenset({expect_override, args.skill}) if expect_override and args.skill else frozenset()
+        twins = incumbent_twins or (
+            frozenset({expect_override, args.skill}) if expect_override and args.skill else frozenset()
+        )
 
         results: list[Result] = []
         for i, case in enumerate(cases, 1):
             expect = case.get("expect")
-            if expect_override and expect == args.skill:
-                expect = expect_override
+            if expect in remap:
+                expect = remap[expect]
             fired: list[str | None] = [
                 run_query(str(case["prompt"]), root, args.timeout, args.model) for _ in range(args.runs)
             ]
@@ -286,18 +319,19 @@ def execute(cases: list[dict[str, Any]], args: argparse.Namespace) -> tuple[list
             got_text = ", ".join(f"{k}x{v}" for k, v in got.most_common())
             print(f"  [{i}/{len(cases)}] {mark} want={expect or '(none)'} got={got_text}", file=sys.stderr)
 
-    return results, twins
+    return results, twins, remap
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("mode", choices=["run", "candidate"])
+    p.add_argument("mode", choices=["run", "candidate", "split"])
     p.add_argument("cases", type=Path, help="a JSON file of cases")
     p.add_argument("--runs", type=int, default=3, help="repeats per case; selection is not deterministic")
     p.add_argument("--timeout", type=int, default=90, help="seconds per run")
     p.add_argument("--model", default=None, help="override the model used for the probe")
     p.add_argument("--skill", help="candidate mode: the skill name the proposed description is for")
     p.add_argument("--description", help="candidate mode: the proposed description, or @<file>")
+    p.add_argument("--proposal", help="split mode: JSON with `replaces` and a list of proposed skills")
     p.add_argument("--json", action="store_true")
     p.add_argument("--dry-run", action="store_true", help="print what would run, spend nothing")
     args = p.parse_args()
@@ -310,7 +344,7 @@ def main() -> int:
             print(f"  expect={c.get('expect')!r:32} {c['prompt'][:90]}")
         return 0
 
-    results, twins = execute(cases, args)
+    results, _twins, remap = execute(cases, args)
     passed = sum(1 for r in results if r.passed)
     out: dict[str, Any] = {
         "cases": len(results),
@@ -319,7 +353,9 @@ def main() -> int:
         "results": [
             {"prompt": r.prompt, "expect": r.expect, "fired": r.fired, "rate": round(r.rate, 2)} for r in results
         ],
-        **summarise(results, {t: args.skill for t in twins if t != args.skill} if twins else None),
+        # Fold every registered candidate name back onto the name it is a proposal for, so the
+        # table reads in the names the author chose rather than in generated ones.
+        **summarise(results, {registered: proposed for proposed, registered in remap.items()}),
     }
 
     if args.json:
@@ -332,6 +368,21 @@ def main() -> int:
             f"  {row['skill']:34s} precision={row['precision']:<5} recall={row['recall']:<5} "
             f"tp={row['tp']} fp={row['fp']} fn={row['fn']}"
         )
+
+    if args.mode == "split":
+        proposal = json.loads(Path(args.proposal).read_text(encoding="utf-8"))
+        incumbent = proposal.get("replaces")
+        fires = Counter(f for r in results for f in r.fired if f)
+        reverse = {v: k for k, v in remap.items()}
+        print("\n  where the requests went:")
+        for name, n in fires.most_common():
+            label = reverse.get(name, name)
+            note = "  <- INCUMBENT, not the split" if name == incumbent else ""
+            print(f"    {n:3d}  {label}{note}")
+        if fires.get(incumbent):
+            print(f"\n  {incumbent} is still installed and won some cases. That is not automatically")
+            print("  wrong — it means those requests match the old wording at least as well, and a")
+            print("  split has to earn each one. Read it per case rather than in aggregate.")
 
     if args.mode == "candidate" and args.skill:
         fires = Counter(f for r in results for f in r.fired if f)

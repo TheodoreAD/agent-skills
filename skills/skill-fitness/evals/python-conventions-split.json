@@ -1,0 +1,65 @@
+{
+  "about": [
+    "Does the proposed three-way split of python-conventions route requests correctly, and does it",
+    "collide with the two skills already flagged as living inside its trigger region?",
+    "",
+    "python-conventions is 1302 chars against a 1024 spec cap. Trimming is ruled out - it would",
+    "delete trigger vocabulary - and published measurement says comprehensive skills score below",
+    "having no skill at all while detailed ones score well above, so over-scoped is the likelier",
+    "reading. This suite is the check that has to pass before the split is worth doing.",
+    "",
+    "Three things it has to show: each piece wins its own requests; the pieces do not steal from",
+    "each other; and neither invoke-task-conventions nor db-defaults loses ground, since the whole",
+    "reason python-conventions was suspected of shadowing them was its breadth."
+  ],
+  "cases": [
+    {
+      "prompt": "Should this config object be a dataclass or a Pydantic model?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "How should I store and compare timestamps across timezones in this Python module?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "This module has grown a lot of global state. How should I restructure it?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "How much duplication is acceptable in a test before it stops being readable?",
+      "expect": "python-testing-conventions"
+    },
+    {
+      "prompt": "What scope should this pytest fixture have, and should it go in conftest?",
+      "expect": "python-testing-conventions"
+    },
+    {
+      "prompt": "My test suite keeps writing into my real home directory. How should I isolate it?",
+      "expect": "python-testing-conventions"
+    },
+    {
+      "prompt": "My MCP server's logging is corrupting the protocol. Where is log output supposed to go?",
+      "expect": "mcp-python-conventions"
+    },
+    {
+      "prompt": "When a tool in my MCP server raises, what should the calling model actually see?",
+      "expect": "mcp-python-conventions"
+    },
+    {
+      "prompt": "I've finished writing an MCP server. How do I get Claude Code to actually use it on this machine?",
+      "expect": "mcp-server-shipping"
+    },
+    {
+      "prompt": "I'm adding a task to tasks.py that wipes the build directory. What should I call it?",
+      "expect": "invoke-task-conventions"
+    },
+    {
+      "prompt": "This Python service needs a local cache that survives restarts. What should I reach for?",
+      "expect": "db-defaults"
+    },
+    {
+      "prompt": "What is the capital of France?",
+      "expect": null
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "about": [
+    "skill-authoring vs skill-fitness: the corpus's top-ranked pair by similarity (0.088) and its",
+    "most mutual by coverage (0.149 / 0.177), and the one boundary this repo drew on purpose - the",
+    "measuring was split out of the authoring skill rather than growing inside it. Until now the",
+    "split was argued and never measured, which is the thing this skill exists to object to.",
+    "",
+    "The contested region is narrow and real. skill-authoring claims 'how to word a description so",
+    "it triggers on real requests without stealing another skill's'; skill-fitness claims 'why a",
+    "skill never fires or fires on the wrong requests' and scoring a candidate description. So a",
+    "request about a description that is not working could plausibly go either way, and the intended",
+    "line is diagnosis against composition: finding out whether a description works is fitness,",
+    "deciding what it should say is authoring.",
+    "",
+    "The last two cases are should-not-steal rather than should-not-trigger: a meta-skill that wins",
+    "an ordinary request is a worse failure than one that loses a contested one, and a suite of",
+    "positives alone cannot see it.",
+    "",
+    "RESULT 2026-08-31, 10 cases x 3 runs against the installed set: 9/10, and precision 1.0 for",
+    "every skill - not one cross-steal in 30 runs, including case 6, written to be the most likely",
+    "to go wrong. The split holds. The single failure is case 4, where nothing fired at all, three",
+    "times out of three: 'grown to cover three different things ... worth breaking up' shares no",
+    "vocabulary with the description's 'deciding whether an over-scoped skill should be split'.",
+    "Recall 0.75 for skill-fitness and 0.83 for skill-authoring, both from silence rather than from",
+    "losing to each other."
+  ],
+  "cases": [
+    {
+      "prompt": "One of my skills has never fired once. Is its description wrong?",
+      "expect": "skill-fitness",
+      "why": "sits inside skill-authoring's 'how to word a description so it triggers'; the ask is diagnosis"
+    },
+    {
+      "prompt": "I rewrote a skill's description. How do I know the new wording is actually better than the old one?",
+      "expect": "skill-fitness",
+      "why": "candidate scoring; 'rewrote a description' is authoring vocabulary throughout"
+    },
+    {
+      "prompt": "Two of my skills keep getting picked for the same kind of request. Which one is winning?",
+      "expect": "skill-fitness",
+      "why": "contention, and both descriptions name the situation"
+    },
+    {
+      "prompt": "This skill has grown to cover three different things. Is it worth breaking up?",
+      "expect": "skill-fitness",
+      "why": "splitting an over-scoped skill is fitness', but reads like an authoring decision"
+    },
+    {
+      "prompt": "I edited a SKILL.md an hour ago and my session still behaves like the old version.",
+      "expect": "skill-authoring",
+      "why": "source versus installed copy; 'skill behaves wrongly' is fitness-shaped phrasing"
+    },
+    {
+      "prompt": "Help me word this new skill's description so it doesn't poach requests from my other ones.",
+      "expect": "skill-authoring",
+      "why": "composition, not diagnosis - the mirror of case 1 and the case most likely to go wrong"
+    },
+    {
+      "prompt": "I want to publish my skills so a teammate can install them from GitHub.",
+      "expect": "skill-authoring",
+      "why": "publishing and installation are authoring's; nothing here is measurable"
+    },
+    {
+      "prompt": "Should this convention be its own skill, or just a rule in AGENTS.md?",
+      "expect": "skill-authoring",
+      "why": "authoring owns 'when something should be an instructions-file rule instead of a skill at all'"
+    },
+    {
+      "prompt": "Add a task to this repo's tasks.py that rebuilds the docs, and name it properly.",
+      "expect": "invoke-task-conventions",
+      "why": "should-not-steal: an ordinary request neither meta-skill may take"
+    },
+    {
+      "prompt": "What's a good way to structure the tests for this Python package?",
+      "expect": "python-testing-conventions",
+      "why": "should-not-steal: 'structure' and 'package' are ordinary words both meta-skills share"
+    }
+  ]
+}

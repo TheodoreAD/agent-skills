@@ -475,6 +475,22 @@ sits below one used four times yesterday. The 0.1 floor is the only thing keepin
 favourite ahead of a never-used skill. A ranking built from raw transcript counts would put the
 wrong skills at the top of the at-risk table.]
 
+[DECISION: **the listings the harness sent are in the transcript store, and reading them back beats
+every model of the budget — including this plan's own.** Each `skill_listing` attachment carries the
+rendered text, the entry count and the names, so a demoted entry is visible as a bare `- name`.
+Free, exact, and retrospective. It immediately corrected two things stated above as settled: the
+exempt set is **not** every bundled entry (`security-review` demoted in a real listing while
+`code-review`, `run` and `init` kept their descriptions, so exemption is not derivable from origin),
+and the interactive listing is **18,109 characters over 30 entries**, not the probe's 15,486
+over 25. The simulation stays for forecasting a corpus or a model that has not run yet; where the
+two disagree, the simulation is the one that is wrong.]
+
+[PITFALL: **half the recorded listings are this tool measuring itself** — 541 of 1,086 come from
+`trigger.py`'s scratch directories. Listings from a temporary working directory are counted
+separately rather than dropped, because the same bucket also holds real headless pipeline runs. This
+is the third form the probe-contamination problem has taken, after the synthetic skill in the usage
+counts and the `zorbnak-ledger` entry in the harness's own `skillUsage` map.]
+
 **And the bundled-enumeration question is answered without enumerating them.** The bundled skills
 are compiled into the CLI binary, so no file-based inventory can price them — but the harness will
 say: forcing `SLASH_COMMAND_TOOL_CHAR_BUDGET=1` makes it log
@@ -482,15 +498,36 @@ say: forcing `SLASH_COMMAND_TOOL_CHAR_BUDGET=1` makes it log
 that where a script can read it. `fitness.py budget --probe` runs the CLI once and kills it the
 moment the line lands. Sub-cent, reproducible, and it does not become a number the user pastes in.
 
-**Acted on the same day, and it is not this repo's change to make.** Which sessions actually pay was
-measured before anything was proposed: `claude-opus-5`, `claude-sonnet-5` and `claude-fable-5` all
-fit the listing, and `claude-haiku-4-5` is the only model that overflows — which is the whole
-subagent tier, 181 of 443 transcripts, all `agent-*`. The remedy is a `skillListingBudgetFraction`
-of 0.03 declared in `power-user-linux-setup`'s `setup.toml` and synced the way `claude_default_mode`
-already is, so it reaches the next machine rather than one file on this one. Filed there as
-`2026-08-31-skill-listing-budget-truncates-subagents.md`, with the counter-evidence attached: across
-84 `agent-*` transcripts there are **zero** `Skill` calls, and the data cannot say whether that is
-the truncation, the subagent types defined without the `Skill` tool at all, or no demand.
+**Acted on the same day, and it is not this repo's change to make.** `claude-opus-5`,
+`claude-sonnet-5` and `claude-fable-5` all fit the listing; `claude-haiku-4-5` is the only model
+that overflows. The remedy is a `skillListingBudgetFraction` of 0.03 declared in
+`power-user-linux-setup`'s `setup.toml` and synced the way `claude_default_mode` already is, so it
+reaches the next machine rather than one file on this one. Filed there as
+`2026-08-31-skill-listing-budget-truncates-subagents.md`.
+
+[PITFALL: **the urgency in the first version of that filing was manufactured by a sampling error,
+and the error is the lesson.** It said the overflow hits "the whole subagent tier, 181 of 443
+transcripts". The 181 figure was sessions whose dominant model is `haiku-4-5`; the largest few were
+inspected, they were `agent-*` subagents doing real work, and the set was described from them. The
+set is not like its largest members. Cross-tabulated properly: **168 of those 181 are headless runs
+under a temporary directory** — this tool's own `trigger.py` probes and the allowlist pipeline's
+`claude -p` calls — averaging four assistant messages. Real subagents run on `sonnet-5`, 71 sessions
+against 13, and `sonnet-5` fits the listing. This is the "generalizing from a sample" failure with a
+worked example: the sample was self-selected by size, the outliers were the whole finding, and a
+recommendation was filed on it before anything cross-checked the set.]
+
+The corrected exposure, now read from the listings the harness actually sent rather than from a
+model of them: **truncation has occurred in real work exactly twice**, both `agent-*` sessions on
+2026-08-22, CLI 2.1.237, when the corpus and the harness were both different. Nine further
+truncations are recorded and every one of them is a probe or a pipeline run in a scratch directory —
+six from `power-user-linux-setup`'s allowlist runs, three from this session's own budget probes. So
+the mechanism is real, it has fired, and it currently fires on nothing: every model in use clears
+the listing. It becomes live again if a 200k-window model returns to real use, or if the listing
+grows past the larger windows' budget.
+
+The counter-evidence stays worth keeping: across 84 `agent-*` transcripts there are **zero** `Skill`
+calls, and the data cannot say whether that is truncation, the subagent types defined without the
+`Skill` tool at all, or no demand.
 
 The levers, now that the mechanism is known rather than guessed: `skillListingBudgetFraction` and
 `skillListingMaxDescChars` raise the two caps; `disableBundledSkills` (or

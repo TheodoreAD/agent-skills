@@ -569,6 +569,23 @@ half the reason the probe was removed.]
 
 ## Open questions
 
+[DECISION: **the static pass predicts contention and contention is not what happens.** Third live
+test, third refutation: `skill-authoring` ↔ `skill-fitness` is the corpus's top pair by similarity
+(0.088) and its most mutual by coverage (0.149 / 0.177), and it is the one boundary this repo drew
+deliberately rather than inherited. 10 cases × 3 runs against the installed set: **9/10, precision
+1.0 for every skill, not one cross-steal in 30 runs** — including the case written to be the most
+likely to go wrong ("help me word this new skill's description so it doesn't poach requests from my
+other ones", which is composition sitting inside the diagnosis skill's claimed region). Running
+total across the three suites: **59 runs, 0 steals**, against two misses.
+
+Both misses have the same shape, and it is not contention: the skill claimed the situation in its
+own vocabulary and the person described it in theirs. "Over-scoped … should be split" against "grown
+to cover three different things … worth breaking up"; `tasks.py`/`inv`/"namespace" against "our
+automation scripts have grown messy". So the thing worth building next is not a better similarity
+measure — it is a way to find requests that fire _nothing_, which no static pass over descriptions
+alone can see, because the missing half is the request. That is the same wall the demand proxy hit
+twice, and it is now the tool's main open problem rather than a side note.]
+
 [RESOLVED 2026-08-31: **which similarity measure?** It does not matter on a corpus this size, which
 is a measured answer rather than a shrug. IDF-weighted and unweighted variants were ranked against
 each other over all 78 pairs: **they agree on seven of the top eight**, by similarity and by
@@ -609,10 +626,13 @@ budget accounting are the two most valuable signals and both are Claude-Code-spe
 so precedent exists — but a skill whose best signals only work on one harness reports less on every
 other, against this repo's stated premise.]
 
-[NEEDS CLARIFICATION: **where do the trigger cases live, and who writes them?** `skill-creator`'s
-answer is ~20 per skill in `evals/evals.json` inside the skill. Ours would be per _pair_ rather than
-per skill, which has no obvious home. And the honest cadence question: 20 queries × 3 runs × 10
-skills is 600 agent runs, so this cannot be on any automatic path.]
+[RESOLVED 2026-08-31: **where do the trigger cases live?** In `skill-fitness/evals/`, named for the
+pair rather than for a skill — `contention-python-family.json`, `contention-skill-meta-pair.json`.
+Four suites now sit there and none of them belongs to the skill it tests, which is the point: the
+unit is the pair, the measuring skill owns the measurement, and a suite naming three skills has one
+obvious home instead of three ambiguous ones. Cadence stays manual and stays the reason cases are
+written per flagged pair: 59 runs bought three findings, where 20 queries × 3 runs × 13 skills would
+be 780.]
 
 [RESOLVED 2026-08-31: `npx agentlinter` was run against this corpus (v0.3.3, MIT, no dependencies,
 last published 2026-02-08 — seven months stale, so "actively maintained" was the marketing page's

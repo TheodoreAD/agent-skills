@@ -241,13 +241,25 @@ one skill claims (`tasks.py`, `inv`, "full-text search"). A suite like that cann
 skills do not contend" apart from "these cases were too easy". A second suite, phrased in the region
 a broad skill's description actually claims, is what produced a finding.
 
-**Expect the failure to be a miss, not a steal.** The static pass predicted that a broad skill was
-shadowing two narrow ones. It was not: across both suites the narrow skills won every case they
-should have, including the ones written to be ambiguous. The one real failure was a request phrased
-the way a person phrases it — "our automation scripts have grown messy, where do I start" — for
-which **nothing fired at all**. A description built from the tool's vocabulary rather than the
-request's does not lose to a competitor; it loses to silence, and only a should-trigger case in
-plain language finds it.
+**Expect the failure to be a miss, not a steal.** This is now the strongest pattern in the data, and
+it should change what you go looking for.
+
+| static prediction, tested live                          | cases | steals | what actually failed                                                                 |
+| ------------------------------------------------------- | ----- | ------ | ------------------------------------------------------------------------------------ |
+| a broad skill shadowing two narrow ones                 | 14    | **0**  | one miss: "our automation scripts have grown messy, where do I start"                |
+| a new skill taking its two nearest neighbours' requests | 15    | **0**  | nothing                                                                              |
+| the corpus's top-ranked pair, split on purpose          | 30    | **0**  | one miss: "this skill has grown to cover three different things, worth breaking up?" |
+
+**Three predictions of contention, three refutations, 59 runs, not one steal** — while every real
+failure was a request that fired nothing. A description built from the tool's vocabulary rather than
+the request's does not lose to a competitor; it loses to silence. Both misses above are the same
+shape: the skill claimed the situation in its own words ("over-scoped", "split"; `tasks.py`, `inv`)
+and the person described it in theirs ("grown to cover three things", "breaking up"; "messy
+automation scripts").
+
+So write the should-trigger cases in a stranger's vocabulary, and read a passing suite as weak
+evidence: it says these skills do not fight, which they mostly do not, and says nothing about the
+requests none of them answer.
 
 ## Testing a proposed description before adopting it
 

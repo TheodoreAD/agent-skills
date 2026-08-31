@@ -510,9 +510,31 @@ def scan_usage(exclude: set[str] | None = None) -> Usage:
 # for a bag-of-words proxy to separate them, and a column that cannot discriminate is worse than no
 # column, because it still gets read as a finding.
 #
-# The working answer to the same question is `trigger.py`: write a handful of cases in the words a
-# request would actually use and see whether the skill fires. That costs tokens and takes judgement,
-# which is precisely why it works where a free heuristic did not.
+# **Gap detection was attempted here too, on 2026-08-31, and it does not work lexically either.**
+# The live suites had shown that contention is not what fails — 89 runs, 0 steals — while every real
+# failure was a request that fired nothing. That made "find the requests nothing answers" the tool's
+# main open problem, and the transcript store looks like it holds the missing half. It does not, in
+# any form a rule can read. Three constructions, all measured against 165 real opening requests:
+#
+#   1. Terms frequent in real requests but absent from every description. Top of the list: "look",
+#      "need", "don", "let", "get", "now", "make". Ordinary English, exactly as before.
+#   2. The discriminative version — terms over-represented in sessions where no skill fired versus
+#      sessions where one did. Ratios rested on counts like 5-against-1, and the winners were
+#      "previous", "latest", "either", "lot", "true".
+#   3. The non-lexical one, and the closest to working: an explicitly typed `/name` means the model
+#      did not route the request, so the user's own words just before it are a real gap example.
+#      Of ~130 typed invocations, nearly every preceding turn was harness boilerplate — a compact
+#      summary, an injected skill body. Two were genuine, and they were found by reading the output,
+#      not by any rule in it.
+#
+# So there is no gap detector here, and building one is not the next step. What the tool does have
+# is a *behavioural* pointer at which skill to go and test: the `auto` versus `explicit` split in
+# `scan_usage`. A person typing `/name` is a person the description did not serve, and that signal
+# needs no vocabulary matching at all.
+#
+# The working answer to every version of this question is `trigger.py`: write a handful of cases in
+# the words a request would actually use and see whether the skill fires. That costs tokens and takes
+# judgement, which is precisely why it works where five free heuristics over prose did not.
 
 
 def _payload(cmd: str) -> str | None:

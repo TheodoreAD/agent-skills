@@ -679,6 +679,34 @@ don't change:
 Optional `depends_on: [<repo-name>, ...]` frontmatter names sibling repos this plan can't fully land
 without. Omit it for the ordinary single-repo case.
 
+## Plans that arrive from another repo
+
+`new --for` writes three more fields and an `## Evidence` section — the inbound mirror of
+`depends_on`, for the case where the plan is read in one repo and the thing that produced it
+happened in another:
+
+```yaml
+source_repo: repo-tasks # filled in for you, from where the session was
+source_session: 8f3c….jsonl # the harness's transcript for that session
+source_moment: 2026-08-22T16:50:15Z # plus a distinctive quoted phrase in the body
+```
+
+**The point is that a triage session can re-read the original turns instead of trusting a summary.**
+Record a timestamp **and** a quoted phrase — either alone can miss in a multi-megabyte transcript —
+and note that a cited transcript only survives while the harness keeps it (30 days by default), so a
+capture worth acting on is worth acting on soon.
+
+**A plan carrying `source_repo` is not done until its `## Verification` names the original repro**,
+checked in the repo where it happened and after the fix is installed there. A fix verified only
+where it was written has not been tested against the case that produced it.
+
+[PITFALL: **the template asks because judgement does not.** Filling these in is the whole value and
+it is exactly what gets skipped. Measured twice: 2026-08-23, a session captured this kind of
+friction unprompted and correctly, then paraphrased the incident instead of citing it — by an agent
+that had every reason to do better. 2026-09-01, the session _reading the plan that describes that
+failure_ filed a cross-repo plan and paraphrased it too. Two for two, which is why the fields are
+emitted as blanks in the file rather than described in a skill someone might not open.]
+
 ## Where retired content goes
 
 Three destinations, named by **role** rather than by path, because every repo lays them out

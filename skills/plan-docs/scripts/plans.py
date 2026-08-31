@@ -1464,7 +1464,17 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
     origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
     tier = cfg.tier_of(routing.rel)
     store = cfg.store_of(tier)
-    code = write_plan(routing.dirs["store"], args.topic, args.status, "store", origin, cfg, store=store)
+    source = resolve(args.path, cfg)
+    code = write_plan(
+        routing.dirs["store"],
+        args.topic,
+        args.status,
+        "store",
+        origin,
+        cfg,
+        store=store,
+        source_repo=source.rel or (str(source.repo_root) if source.repo_root else None),
+    )
     print(f"filed for: {routing.rel or routing.repo_root}")
     print(f"tier:      {tier}")
     if routing.rule and routing.rule.write == "repo":
@@ -1485,6 +1495,7 @@ def write_plan(
     *,
     belongs_to: str | None = None,
     store: Path | None = None,
+    source_repo: str | None = None,
 ) -> int:
     path = target / f"{today()}-{topic}.md"
     if path.exists():
@@ -1493,7 +1504,31 @@ def write_plan(
     lines = ["---", f"status: {status}", f"updated: {today()}"]
     if repo:
         lines.append(f"repo: {repo}")
-    lines += ["---", "", "## Context", "", "## Open questions", "", "## Recommended direction", ""]
+    # Inbound provenance, the mirror of `depends_on`. Emitted only when filing across repos, because
+    # that is the case where the evidence lives in a session the reading repo cannot see. The fields
+    # are written as blanks rather than left out: a template that asks is the only thing measured to
+    # work here. Twice now a session filed a cross-repo plan that paraphrased the incident instead of
+    # citing it — once 2026-08-23 by an agent that had every reason to do better, once 2026-09-01 by
+    # the session that was reading the plan describing that failure. Judgement is not the lever.
+    if source_repo is not None:
+        lines += [
+            f"source_repo: {source_repo}",
+            "source_session: # transcript filename, or blank",
+            "source_moment: # ISO timestamp of the turn",
+        ]
+    lines += ["---", "", "## Context", ""]
+    if source_repo is not None:
+        lines += [
+            "## Evidence",
+            "",
+            "<!-- The point of a cross-repo capture: cite the turns, do not summarise them.",
+            "     - the transcript path, and an ISO timestamp *and* a distinctive quoted phrase",
+            "       (either alone can miss in a multi-megabyte file)",
+            "     - the user's correction, verbatim",
+            "     - the repro: what was asked, what happened, what should have happened -->",
+            "",
+        ]
+    lines += ["## Open questions", "", "## Recommended direction", ""]
 
     target.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")

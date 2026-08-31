@@ -1051,7 +1051,16 @@ def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys, monke
     assert "awaiting absorption" in capsys.readouterr().out
     assert mirror.is_file()
 
-    assert mirror.read_text().count("repo:") == 1  # the store copy names its origin
+    # The store copy names its origin exactly once. Matched at line start: `source_repo:` contains
+    # `repo:` as a substring, so a plain count silently passed for the wrong reason before the
+    # provenance fields existed, and would have kept passing if the origin were emitted twice.
+    filed = mirror.read_text()
+    assert len([ln for ln in filed.splitlines() if ln.startswith("repo:")]) == 1
+    # Inbound provenance: the repo the friction happened in, filled from where the session was.
+    source = [ln for ln in filed.splitlines() if ln.startswith("source_repo:")]
+    assert len(source) == 1
+    assert source[0].split(":", 1)[1].strip(), "source_repo must name the repo, not be left blank"
+    assert "## Evidence" in filed  # a cross-repo capture is prompted to cite, not summarise
 
     assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 0
     assert "absorbed:" in capsys.readouterr().out

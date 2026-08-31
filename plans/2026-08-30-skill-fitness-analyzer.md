@@ -1,6 +1,6 @@
 ---
-status: in-progress
-updated: 2026-08-31
+status: landed
+updated: 2026-09-01
 ---
 
 # A skill that measures and improves skills: triggers, contention, and absorbed scripts
@@ -752,3 +752,32 @@ standing in — none gitignored, one of them a vendor directory this repo refuse
 printing the same green summary as a correct run. Verified against a synthetic bad skill rather than
 assumed, since a gate whose corpus is already clean is exactly the kind that can be inert without
 anyone noticing.]
+
+## Migrated to
+
+Retired 2026-09-01. Everything below has a permanent home; this file's deletion takes it off the
+working set, not out of the repository —
+`plans.py archive --show 2026-08-30-skill-fitness-analyzer.md` reads it back.
+
+| what                                                                                                                                                                                                                       | where                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| the rules an agent follows — how to read each section, and what each output is worth                                                                                                                                       | `skills/skill-fitness/SKILL.md`                                                                |
+| published research and other people's tools: SkillsBench, the rubric, `skill-creator`, the vendor scanners, `agentlinter`, the two caps, why `when_to_use` is vendor coupling                                              | `skills/skill-fitness/references/research.md`                                                  |
+| this machine's measurements: the 119-run trigger ledger, the listing budget read from the binary with its levers and debug recipe, the observed-listing source, the failed-heuristic ledger, the absorption miner's design | `skills/skill-fitness/references/measurements.md`                                              |
+| the implementation, and the removals recorded where they would otherwise be rebuilt (the demand proxy, gap detection, the live probe)                                                                                      | `skills/skill-fitness/scripts/fitness.py`                                                      |
+| the trigger cases, each carrying its own result and the wording that fixed it                                                                                                                                              | `skills/skill-fitness/evals/*.json`                                                            |
+| the repo rules this produced — `evals/` in a skill directory, `--global` on a remote install                                                                                                                               | `AGENTS.md`, `tests/unit/test_skill_layout.py`                                                 |
+| the listing-budget change this machine still needs                                                                                                                                                                         | filed for `power-user-linux-setup` as `2026-08-31-skill-listing-budget-truncates-subagents.md` |
+
+**Deliberately not migrated:**
+
+- **The process narration** — what was merged from where, what the user settled on which day, the
+  stage-by-stage "recommended direction". All of it is implemented, so the code and its tests are
+  the record; a reader who wants the sequence has `git log`.
+- **The passages kept in place to show a wrong argument standing beside its correction.** They did
+  their job here, in a file whose purpose is the journey. A reference file should carry the right
+  answer with its evidence, not a debate, so each was migrated as its conclusion plus the pitfall
+  that produced it.
+- **The 2026-08-30 corpus numbers superseded the next day** — the description table, the first
+  invocation counts, the pre-split `python-conventions` figures. `measurements.md` carries the
+  current ones; keeping both invites a reader to quote whichever they find first.

@@ -6,7 +6,8 @@ description: >-
   costing in context and which skill loses its description first, which skills have never been
   invoked at all, or which repeated one-off scripts an agent keeps writing should become code
   inside a skill. Also for scoring a skill against the published quality rubric before shipping it,
-  and for deciding whether an over-scoped skill should be split. Measures an installed set from
+  and for deciding whether a skill that has grown too big, or covers several different things at
+  once, should be broken up or split into separate skills. Measures an installed set from
   frontmatter and from the session transcript store; it does not teach how to write or deploy a
   skill.
 metadata:

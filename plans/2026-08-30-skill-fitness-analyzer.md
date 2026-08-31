@@ -208,9 +208,10 @@ on.]
   integration page). Security-framed, CI-integration-shaped. Neither is named here: both vendor
   names are also work roots on this machine, so `scan` flags them, and it cannot tell a citation
   from a disclosure.
-- **`npx agentlinter`** — MIT, local-first, no config, scores 8 dimensions including a skills
-  linter, a cross-file reference validator and an MCP validator. Closest thing to a general quality
-  linter. Unrun; worth one pass before writing any structural check of our own.
+- **`npx agentlinter`** — MIT, no config, scores 8 dimensions including a skills linter, a
+  cross-file reference validator and an MCP validator. Described as local-first, which is not what
+  it is. **Run 2026-08-31 and rejected**; the verdict and its reasons are in the open-questions
+  section below.
 - **Academic work on distilling agent traces into reusable skills.** The relevant method normalises
   traces, segments them into subgoal-level operations, clusters by _parameterised execution
   structure_ rather than by text, scores each cluster by coverage across traces, gives the survivors
@@ -541,9 +542,36 @@ answer is ~20 per skill in `evals/evals.json` inside the skill. Ours would be pe
 per skill, which has no obvious home. And the honest cadence question: 20 queries × 3 runs × 10
 skills is 600 agent runs, so this cannot be on any automatic path.]
 
-[UNVERIFIED: `npx agentlinter` has not been run against this corpus. Every statement above about it
-comes from its own marketing page. Run it before writing any structural check it may already
-perform.]
+[RESOLVED 2026-08-31: `npx agentlinter` was run against this corpus (v0.3.3, MIT, no dependencies,
+last published 2026-02-08 — seven months stale, so "actively maintained" was the marketing page's
+claim and not a fact). **Nothing to adopt.** Score 80/100 over 26 files, and every finding is either
+already gated here or actively wrong for this repo. Details below, because "we checked and it was
+useless" is only worth recording with the reasons attached.]
+
+- **It never looks at what a description triggers on.** No overlap, no contention, no listing
+  budget, no invocation data — it scores prose hygiene over `CLAUDE.md`/`AGENTS.md` and skill
+  frontmatter. It is not a competitor to any part of `fitness.py`, and there is no structural check
+  in it that the repo's own layout test does not already do better.
+- **Its 11 "duplicate instruction" warnings are an artefact of this machine's own convention.**
+  `CLAUDE.md` is a symlink to `AGENTS.md`, so the linter read one file twice and reported every rule
+  in it as duplicated across two files. Any tool that walks a file list without resolving symlinks
+  will do this; worth knowing before trusting a cross-file check from anyone.
+- **`clarity/escape-hatch-missing` is advice this repo must not take.** It fired 14 times, including
+  on the heading `## This repo is published: never name a client in it`, and its proposed fix is to
+  append "unless the user explicitly requests it". That would soften the one rule here whose whole
+  value is being absolute, and it is the exact inverse of this repo's own instruction to
+  _strengthen_ a rule that gets missed. It also fires on headings rather than rules, so it cannot
+  tell a section title from an imperative.
+- **Its completeness suggestions are vendor artefacts** — `SOUL.md`, `TOOLS.md`, and a
+  `clawdbot.json` / `openclaw.json` runtime config. This repo admits only vendor-neutral formats, so
+  three of its eight scored dimensions are unreachable here by design.
+- **Its only skill-level check is an `author` frontmatter field**, which the Agent Skills
+  specification does not define. All 12 "Skill Safety" issues were that one tip repeated.
+
+[PITFALL: **its default mode uploads the report** — `npx agentlinter` is documented as "Lint & share
+report (default)", with `--local` to opt out. It was run with `--local` pinned. A quality linter
+that publishes a repo's instruction files unless told otherwise is worth naming as a hazard rather
+than as a footnote, because the obvious invocation is the sharing one.]
 
 [RESOLVED 2026-08-31: the listing budget's units. Both readings are right and they compose: the
 budget is in **characters**, at 1% of the context window measured in **tokens**, converted at four

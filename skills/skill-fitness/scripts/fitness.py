@@ -68,6 +68,8 @@ NAME_ONLY_OVERHEAD = 2
 USAGE_HALF_LIFE_DAYS = 7.0
 USAGE_DECAY_FLOOR = 0.1
 HARNESS_STATE = Path.home() / ".claude.json"
+# YAML block-scalar indicators, which open a folded or literal value rather than being part of it.
+BLOCK_SCALARS = frozenset({">", "|", ">-", "|-", ">+", "|+"})
 
 # Words that carry no trigger signal. Deliberately short: an aggressive stop list is how a scanner
 # starts silently discarding the domain terms that distinguish one skill from another.
@@ -108,7 +110,12 @@ def parse_frontmatter(text: str) -> dict[str, str]:
 
     def flush() -> None:
         if key is not None:
-            value = " ".join(p for p in parts if p).strip()
+            # `description: >-` is a block scalar: the indicator is syntax, not the first word of
+            # the value. Keeping it put ">- " on the front of every folded description, which
+            # inflated the measured length by three and made a "Use when" lead-in look like it
+            # matched at offset 3 rather than 0. Caught 2026-08-31, by two measurements disagreeing.
+            body = parts[1:] if parts and parts[0] in BLOCK_SCALARS else parts
+            value = " ".join(p for p in body if p).strip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
                 value = value[1:-1]
             fields[key] = value

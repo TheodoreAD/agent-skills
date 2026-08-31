@@ -33,6 +33,9 @@ MAX_DESCRIPTION_CHARS = 1024
 MAX_NAME_CHARS = 64
 NAME_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
+# YAML block-scalar indicators, which open a folded or literal value rather than being part of it.
+BLOCK_SCALARS = frozenset({">", "|", ">-", "|-", ">+", "|+"})
+
 # Everything a skill directory is allowed to contain. `references/` is read on demand, `scripts/`
 # holds anything the skill runs, and `evals/` holds trigger cases for the skill — added 2026-08-31
 # with the first suite, and recorded in AGENTS.md. A fifth entry means either a typo or a layout
@@ -72,7 +75,11 @@ def parse_frontmatter(text: str) -> dict[str, str]:
 
     def flush() -> None:
         if key is not None:
-            value = " ".join(p for p in parts if p).strip()
+            # `description: >-` opens a folded block scalar; the indicator is syntax, not the first
+            # word of the value. Keeping it prefixed ">- " to every folded description and made this
+            # gate measure three characters too many. Found 2026-08-31.
+            body = parts[1:] if parts and parts[0] in BLOCK_SCALARS else parts
+            value = " ".join(p for p in body if p).strip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
                 value = value[1:-1]
             fields[key] = value
@@ -118,6 +125,19 @@ def test_parser_joins_a_wrapped_value():
     assert fields["description"] == "one two three four five"
     assert fields["name"] == "demo"
     assert fields["other"] == "x", "a key after a wrapped value must still be seen"
+
+
+def test_parser_drops_the_block_scalar_indicator():
+    """`>-` opens a folded value; it is not the first word of one.
+
+    Same shape as the bug above and found the same way — two measurements of one description
+    disagreeing — so it is pinned the same way, against the parser rather than against the corpus.
+    Left in, it prefixed ">- " to every folded description: three characters of overcount against
+    the cap, and a `Use when` lead-in that appeared to start at offset 3 rather than 0.
+    """
+    for indicator in (">-", ">", "|", "|-"):
+        folded = f"---\nname: demo\ndescription: {indicator}\n  one two\n  three\n---\nbody\n"
+        assert parse_frontmatter(folded)["description"] == "one two three", indicator
 
 
 @each_skill

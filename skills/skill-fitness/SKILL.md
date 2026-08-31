@@ -189,9 +189,18 @@ findings carrying no information, which is how a check gets ignored.
 **`absorb` finds work a skill should have owned.** It clusters ad-hoc `python -c` payloads from the
 transcript store by import set, then by AST shape within a cluster. A cluster spanning many sessions
 and several projects is the agent re-solving one problem inline instead of running a script.
-Confirmed 2026-08-30: eight sessions across three projects had each hand-rolled a regex to read a
-skill's description length, all of them with the same single-line-parse bug that a real parser does
-not have.
+
+**Read `shapes` before `calls`, and distrust the printed example until you have.** The clustering
+key is the import set, which is deliberately coarse; the example shown is the shortest payload in
+the cluster, not a description of it. A cluster whose shape count approaches its call count is one
+import set, not one repeated script — the label says which. Confirmed 2026-09-01, and it nearly
+produced a false finding in a review: the top two clusters read `148 calls / 26 sessions` and
+`146 / 25`, and carried **106 and 119 distinct shapes** — 106 different one-liners that happen to
+import `json` and `sys`. Chasing the example's actual shape through the store found **3 calls in 3
+sessions**. The dense clusters are the findings; the big ones are the vocabulary. Confirmed
+2026-08-30: eight sessions across three projects had each hand-rolled a regex to read a skill's
+description length, all of them with the same single-line-parse bug that a real parser does not
+have.
 
 Propose the absorption as a diff. Do not apply it silently — where the code lands is an authoring
 decision, and `skill-authoring` owns that.

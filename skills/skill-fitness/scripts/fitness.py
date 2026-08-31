@@ -981,10 +981,14 @@ def _render_observed(obs: dict[str, Any]) -> None:
 
 def _render_absorbable(out: dict[str, Any]) -> None:
     print("\n## absorbable one-liners — recurring ad-hoc python, candidates for skill code")
+    print("  read `shapes` first: it is the count of distinct payloads, and a cluster whose shape")
+    print("  count approaches its call count is one import set, not one repeated script.")
     for r in out["absorbable"]:
+        shapes, calls = int(r["distinct_shapes"]), int(r["calls"])
+        verdict = "one script" if shapes * 4 <= calls else ("mixed" if shapes * 2 <= calls else "NOT a repetition")
         print(
-            f"\n  {r['calls']:4d} calls / {r['sessions']} sessions / "
-            f"{r['projects']} projects   imports: {', '.join(r['imports'])}"
+            f"\n  {calls:4d} calls / {r['sessions']} sessions / {r['projects']} projects / "
+            f"{shapes} shapes  [{verdict}]   imports: {', '.join(r['imports'])}"
         )
         print(f"    {r['example'][:160]}")
 

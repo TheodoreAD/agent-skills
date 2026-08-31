@@ -27,10 +27,7 @@ import json
 import os
 import re
 import shlex
-import shutil
-import subprocess
 import sys
-import tempfile
 import time
 import warnings
 from collections import Counter, defaultdict
@@ -71,7 +68,6 @@ NAME_ONLY_OVERHEAD = 2
 USAGE_HALF_LIFE_DAYS = 7.0
 USAGE_DECAY_FLOOR = 0.1
 HARNESS_STATE = Path.home() / ".claude.json"
-PROBE_WARNING = re.compile(r"Skill listing over budget: (\d+) skills, (\d+) chars")
 
 # Words that carry no trigger signal. Deliberately short: an aggressive stop list is how a scanner
 # starts silently discarding the domain terms that distinguish one skill from another.
@@ -330,6 +326,7 @@ class Listing:
     date: str
     chars: int
     count: int
+    names: list[str]
     demoted: list[str]
     transient: bool  # from a temporary working directory, so possibly a probe rather than work
 
@@ -411,6 +408,7 @@ def scan_listings() -> list[Listing]:
                         date=str(obj.get("timestamp") or "")[:10],
                         chars=len(content),
                         count=int(att.get("skillCount") or len(names)),
+                        names=names,
                         demoted=sorted(n for n, k in kept.items() if not k),
                         transient=transient,
                     )
@@ -676,46 +674,38 @@ def simulate_listing(
     }
 
 
-def probe_listing(timeout: float = 90.0) -> dict[str, Any] | None:
-    """Ask the harness what the whole listing costs, bundled skills included.
+def exempt_from_observed(listings: list[Listing], skills: list[Skill]) -> tuple[int, int, str]:
+    """Price the entries this tool cannot see, from the largest listing the harness actually sent.
 
-    The bundled skills are compiled into the CLI binary rather than sitting on disk, so no
-    file-based inventory can price them — and without them a budget report is wrong in the
-    optimistic direction. The harness will say, though: it logs `Skill listing over budget: N
-    skills, C chars > B budget` whenever the listing overflows, so forcing the budget to 1 makes it
-    report the real total unconditionally. Run in an empty directory so the answer covers the
-    user-scope and bundled skills without a project's own.
+    The harness's own entries are compiled into the CLI binary rather than sitting on disk, so no
+    file-based inventory can price them — and without them the budget total is wrong in the
+    optimistic direction. Subtracting the installed skills' cost from a real listing leaves exactly
+    that remainder, at no cost and with no probe.
 
-    Costs a fraction of a cent: the run is killed the moment the line appears, before the turn's
-    own request. Returns None when the CLI is absent or the line never arrives.
+    A **live probe used to do this job and was removed on 2026-08-31.** It ran `claude -p` with the
+    budget forced to 1 so the CLI would log its real listing size. It worked, and it was worse than
+    this in three ways at once: it was the only part of `fitness.py` that spent tokens; it ran
+    headless, where fewer entries are listed, so it under-reported the interactive listing by about
+    2,600 characters and would have talked someone into a budget setting that does not fit; and its
+    own runs entered the transcript store as truncated listings, so the tool contaminated the corpus
+    it reads every time it was used. Reading a listing a real session already produced has none of
+    those properties. Do not reintroduce it.
+
+    Reference is the largest **untruncated** listing from a real session: untruncated so every entry
+    carries its full description, largest so conditional entries a smaller session lacked are
+    included. Returns `(chars, count, source)`.
     """
-    exe = shutil.which("claude")
-    if not exe:
-        return None
-    env = {**os.environ, BUDGET_ENV: "1"}
-    with tempfile.TemporaryDirectory() as td:
-        log = Path(td) / "probe.log"
-        proc = subprocess.Popen(
-            [exe, "-p", "ok", "--debug-file", str(log)],
-            cwd=td,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        deadline = time.monotonic() + timeout
-        try:
-            while time.monotonic() < deadline:
-                if log.exists():
-                    m = PROBE_WARNING.search(log.read_text(encoding="utf-8", errors="replace"))
-                    if m:
-                        return {"listed_skills": int(m.group(1)), "listing_chars": int(m.group(2))}
-                if proc.poll() is not None:
-                    break
-                time.sleep(0.2)
-        finally:
-            proc.kill()
-            proc.wait(timeout=10)
-    return None
+    candidates = [x for x in listings if not x.transient and not x.demoted]
+    if not candidates:
+        return 0, 0, "no untruncated listing recorded"
+    ref = max(candidates, key=lambda x: x.chars)
+    listed = [s for s in skills if s.name in set(ref.names)]
+    chars = ref.chars - sum(s.entry_chars for s in listed) - max(0, ref.count - 1)
+    count = ref.count - len(listed)
+    if chars < 0 or count < 0:
+        # Descriptions have been edited since that listing was sent, so the subtraction is stale.
+        return 0, 0, f"the listing of {ref.date} no longer matches the installed descriptions"
+    return chars, count, f"{ref.chars} chars over {ref.count} entries, sent {ref.date}"
 
 
 def budget_rows(skills: list[Skill], usage: Usage, priority: dict[str, float]) -> list[dict[str, Any]]:
@@ -788,21 +778,14 @@ def collect_budget(skills: list[Skill], usage: Usage, args: argparse.Namespace) 
         "listing_own_chars": own_chars,
     }
 
-    exempt_chars, exempt_count = 0, 0
-    if getattr(args, "probe", False):
-        probed = probe_listing()
-        out["probe"] = probed
-        if probed:
-            exempt_count = max(0, probed["listed_skills"] - len(skills))
-            exempt_chars = probed["listing_chars"] - own_chars - max(0, probed["listed_skills"] - 1)
-            if exempt_chars < 0:  # some of ours are hidden or off; the split is not derivable
-                out["probe_note"] = "listed skills do not account for every skill found on disk"
-                exempt_chars, exempt_count = 0, 0
+    listings = scan_listings()
+    exempt_chars, exempt_count, source = exempt_from_observed(listings, skills)
     out["listing_exempt_chars"] = exempt_chars
+    out["listing_exempt_source"] = source
     out["simulation"] = simulate_listing(
         skills, priority, listing_budget(args.context_window), exempt_chars, exempt_count
     )
-    out["observed"] = observed_summary(scan_listings())
+    out["observed"] = observed_summary(listings)
     return out
 
 
@@ -895,12 +878,12 @@ def _render_budget(out: dict[str, Any], args: argparse.Namespace) -> None:
     sim = out["simulation"]
     own, exempt = out["listing_own_chars"], out["listing_exempt_chars"]
     print(f"\n## listing budget — {own} chars for these skills")
-    if probed := out.get("probe"):
-        print(f"  probed: {probed['listing_chars']} chars over {probed['listed_skills']} listed entries")
-        print(f"  {exempt} of that is bundled and exempt — charged first, never demoted")
-    elif not exempt:
-        print("  bundled skills are not on disk and are not counted here; this total is a floor.")
-        print("  --probe asks the harness itself for the real one.")
+    if exempt:
+        print(f"  plus {exempt} chars the harness lists and this tool cannot see, charged first")
+        print(f"  from a listing it really sent: {out['listing_exempt_source']}")
+    else:
+        print(f"  the harness's own entries are not counted here ({out['listing_exempt_source']}),")
+        print("  so this total is a floor rather than the listing.")
     print(f"  budget at a {args.context_window}-token window: {sim['budget']} chars — {sim['mode']}")
     if sim["demoted"]:
         print(f"  demoted to name-only: {', '.join(sim['demoted'])}")
@@ -982,11 +965,6 @@ def main() -> int:
         type=int,
         default=DEFAULT_CONTEXT_TOKENS,
         help="tokens in the model's context window; the listing budget is 1%% of it, times 4 chars",
-    )
-    p.add_argument(
-        "--probe",
-        action="store_true",
-        help="run the CLI once to measure the real listing, bundled skills included (tiny cost)",
     )
     args = p.parse_args()
 

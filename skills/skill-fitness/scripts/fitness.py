@@ -24,9 +24,14 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import re
 import shlex
+import shutil
+import subprocess
 import sys
+import tempfile
+import time
 import warnings
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -48,7 +53,25 @@ TRANSCRIPTS = Path.home() / ".claude" / "projects"
 # The spec's validity cap. Claude Code truncates the listing entry at 1536 and budgets the whole
 # listing at ~1% of the context window; both numbers matter and they are not the same question.
 SPEC_DESC_CAP = 1024
-LISTING_ENTRY_CAP = 1536
+
+# Claude Code's listing arithmetic, read out of the 2.1.251 binary on 2026-08-31 rather than out of
+# the documentation, because the documented behaviour ("descriptions are shortened to fit") is not
+# what the code does — a description is kept whole or dropped whole. Every constant here is a
+# default the user can override, named so it can be re-checked after a CLI upgrade.
+LISTING_ENTRY_CAP = 1536  # skillListingMaxDescChars
+BUDGET_FRACTION = 0.01  # skillListingBudgetFraction
+BUDGET_CHARS_PER_TOKEN = 4  # the budget is in characters; this converts the window's tokens
+DEFAULT_CONTEXT_TOKENS = 200_000  # the fallback when the model's window is unknown
+BUDGET_ENV = "SLASH_COMMAND_TOOL_CHAR_BUDGET"  # an absolute char budget; overrides the fraction
+# A listed entry is "- <name>: <description>"; a demoted one is "- <name>"; entries are newline
+# separated, so n entries cost n-1 more.
+ENTRY_OVERHEAD = 4
+NAME_ONLY_OVERHEAD = 2
+# The harness's own priority: usageCount decayed with a 7-day half-life, floored at a tenth.
+USAGE_HALF_LIFE_DAYS = 7.0
+USAGE_DECAY_FLOOR = 0.1
+HARNESS_STATE = Path.home() / ".claude.json"
+PROBE_WARNING = re.compile(r"Skill listing over budget: (\d+) skills, (\d+) chars")
 
 # Words that carry no trigger signal. Deliberately short: an aggressive stop list is how a scanner
 # starts silently discarding the domain terms that distinguish one skill from another.
@@ -125,8 +148,18 @@ class Skill:
 
     @property
     def listing_text(self) -> str:
-        """What the harness puts in the listing: description plus when_to_use, if present."""
-        return " ".join(x for x in (self.description, self.when_to_use) if x)
+        """What the harness puts after the colon: `description`, or `description - when_to_use`."""
+        return f"{self.description} - {self.when_to_use}" if self.when_to_use else self.description
+
+    @property
+    def entry_chars(self) -> int:
+        """`- <name>: <description>`, with the description capped at the per-entry limit."""
+        return len(self.name) + ENTRY_OVERHEAD + min(len(self.listing_text), LISTING_ENTRY_CAP)
+
+    @property
+    def name_only_chars(self) -> int:
+        """`- <name>` — what the entry costs once its description has been dropped."""
+        return len(self.name) + NAME_ONLY_OVERHEAD
 
     @property
     def trigger_text(self) -> str:
@@ -452,12 +485,143 @@ def scan_absorbable(min_sessions: int = 2) -> list[dict[str, Any]]:
 # Reporting
 
 
-def budget_rows(skills: list[Skill], usage: Usage) -> list[dict[str, Any]]:
+def listing_budget(context_tokens: int) -> int:
+    """Characters, not tokens: `context_window * 4 * fraction`, or an absolute env override.
+
+    Both halves matter. The fraction is 1% *of the window in tokens*, converted at 4 characters
+    per token — so the budget is model-dependent, and the same corpus can be over budget on one
+    model and comfortable on another. Measured 2026-08-31 on CLI 2.1.251: a 15,486-character
+    listing drew the overflow warning on a 200k-window model (budget 8,000) and no warning at all
+    on the session's own larger-window model.
+    """
+    override = os.environ.get(BUDGET_ENV, "").strip()
+    if override.isdigit() and int(override) > 0:
+        return int(override)
+    return max(1, int(context_tokens * BUDGET_CHARS_PER_TOKEN * BUDGET_FRACTION))
+
+
+def harness_priority(state: Path = HARNESS_STATE, now: float | None = None) -> dict[str, float]:
+    """The harness's own ranking, which is not the invocation count.
+
+    Claude Code keeps a `skillUsage` map in `~/.claude.json` and scores each skill
+    `usageCount * max(0.5 ** (days_since_last_use / 7), 0.1)`. So recency dominates: a skill used
+    thirty times two months ago scores 3, below one used four times yesterday. This is the order
+    descriptions are kept in when the listing overflows, so it is the order this table sorts by —
+    the transcript counts answer a different question (which mechanism invoked it).
+
+    Returns an empty map when the file is absent, which is the case on any other harness.
+    """
+    try:
+        blob = json.loads(state.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    entries = blob.get("skillUsage")
+    if not isinstance(entries, dict):
+        return {}
+    stamp = (now if now is not None else time.time()) * 1000
+    scores: dict[str, float] = {}
+    for name, rec in entries.items():
+        if not isinstance(rec, dict):
+            continue
+        count = rec.get("usageCount") or 0
+        last = rec.get("lastUsedAt") or 0
+        days = max(0.0, (stamp - last) / 86_400_000)
+        decay = max(USAGE_DECAY_FLOOR, 0.5 ** (days / USAGE_HALF_LIFE_DAYS))
+        scores[name] = round(count * decay, 3)
+    return scores
+
+
+def simulate_listing(
+    skills: list[Skill],
+    priority: dict[str, float],
+    budget: int,
+    exempt_chars: int = 0,
+    exempt_count: int = 0,
+) -> dict[str, Any]:
+    """Which of *these* skills lose their descriptions, replicating the harness's own greedy pass.
+
+    Two properties of that pass are easy to get wrong and both change the answer:
+
+    - **Bundled skills are exempt.** They are charged against the budget first and always keep
+      their full descriptions; only user and project skills are candidates for demotion. So the
+      cost of the harness's own skills is not shared pain — it is subtracted from what is left for
+      yours.
+    - **It is a greedy fit, not a cut-off.** Entries are walked in descending priority and each
+      keeps its description if the remaining room allows, so a long description can be dropped
+      while a shorter, *lower*-priority one is kept. The demoted set is not a suffix of the order.
+    """
+    n = exempt_count + len(skills)
+    gaps = max(0, n - 1)
+    total = exempt_chars + sum(s.entry_chars for s in skills) + gaps
+    if total <= budget:
+        return {"mode": "fits", "total_chars": total, "budget": budget, "demoted": []}
+
+    floor = exempt_chars + sum(s.name_only_chars for s in skills) + gaps
+    room = budget - floor
+    demoted: list[str] = []
+    for s in sorted(skills, key=lambda s: (-priority.get(s.name, 0.0), s.name)):
+        extra = s.entry_chars - s.name_only_chars
+        if extra <= room:
+            room -= extra
+        else:
+            demoted.append(s.name)
+    return {
+        "mode": "priority",
+        "total_chars": total,
+        "budget": budget,
+        "name_only_floor": floor,
+        "demoted": sorted(demoted),
+    }
+
+
+def probe_listing(timeout: float = 90.0) -> dict[str, Any] | None:
+    """Ask the harness what the whole listing costs, bundled skills included.
+
+    The bundled skills are compiled into the CLI binary rather than sitting on disk, so no
+    file-based inventory can price them — and without them a budget report is wrong in the
+    optimistic direction. The harness will say, though: it logs `Skill listing over budget: N
+    skills, C chars > B budget` whenever the listing overflows, so forcing the budget to 1 makes it
+    report the real total unconditionally. Run in an empty directory so the answer covers the
+    user-scope and bundled skills without a project's own.
+
+    Costs a fraction of a cent: the run is killed the moment the line appears, before the turn's
+    own request. Returns None when the CLI is absent or the line never arrives.
+    """
+    exe = shutil.which("claude")
+    if not exe:
+        return None
+    env = {**os.environ, BUDGET_ENV: "1"}
+    with tempfile.TemporaryDirectory() as td:
+        log = Path(td) / "probe.log"
+        proc = subprocess.Popen(
+            [exe, "-p", "ok", "--debug-file", str(log)],
+            cwd=td,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        deadline = time.monotonic() + timeout
+        try:
+            while time.monotonic() < deadline:
+                if log.exists():
+                    m = PROBE_WARNING.search(log.read_text(encoding="utf-8", errors="replace"))
+                    if m:
+                        return {"listed_skills": int(m.group(1)), "listing_chars": int(m.group(2))}
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.2)
+        finally:
+            proc.kill()
+            proc.wait(timeout=10)
+    return None
+
+
+def budget_rows(skills: list[Skill], usage: Usage, priority: dict[str, float]) -> list[dict[str, Any]]:
     """Listing cost per skill, ordered by who loses their description first.
 
-    Claude Code shortens descriptions starting with the least-invoked skill when the listing
-    overflows its budget. That makes a never-triggered skill self-reinforcing: no invocations, so
-    its description is dropped first, so it cannot be matched, so it stays at zero.
+    When the listing overflows, Claude Code demotes user skills to name-only in ascending order of
+    the decayed-usage priority above. That is self-reinforcing: no invocations, so the description
+    goes, so the skill cannot be matched, so it stays at zero.
     """
     rows: list[dict[str, Any]] = []
     for s in skills:
@@ -465,7 +629,8 @@ def budget_rows(skills: list[Skill], usage: Usage) -> list[dict[str, Any]]:
         rows.append(
             {
                 "skill": s.name,
-                "listing_chars": len(s.listing_text) + len(s.name),
+                "listing_chars": s.entry_chars,
+                "priority": priority.get(s.name, 0.0),
                 "over_spec_cap": max(0, len(s.description) - SPEC_DESC_CAP),
                 "over_listing_cap": max(0, len(s.listing_text) - LISTING_ENTRY_CAP),
                 "invocations": total,
@@ -474,7 +639,7 @@ def budget_rows(skills: list[Skill], usage: Usage) -> list[dict[str, Any]]:
                 "last_seen": usage.last_seen.get(s.name, "never"),
             }
         )
-    rows.sort(key=lambda r: (int(r["invocations"]), -int(r["listing_chars"])))
+    rows.sort(key=lambda r: (float(r["priority"]), -int(r["listing_chars"])))
     return rows
 
 
@@ -522,9 +687,27 @@ def collect(want: str, skills: list[Skill], args: argparse.Namespace) -> tuple[d
         }
 
     if want in ("budget", "report"):
-        rows = budget_rows(skills, usage)
+        priority = harness_priority()
+        rows = budget_rows(skills, usage, priority)
         out["budget"] = rows
-        out["listing_total_chars"] = sum(int(r["listing_chars"]) for r in rows)
+        out["priority_source"] = "~/.claude.json skillUsage" if priority else "unavailable"
+        own_chars = sum(int(r["listing_chars"]) for r in rows)
+        out["listing_own_chars"] = own_chars
+
+        exempt_chars, exempt_count = 0, 0
+        if getattr(args, "probe", False):
+            probed = probe_listing()
+            out["probe"] = probed
+            if probed:
+                exempt_count = max(0, probed["listed_skills"] - len(skills))
+                exempt_chars = probed["listing_chars"] - own_chars - max(0, probed["listed_skills"] - 1)
+                if exempt_chars < 0:  # some of ours are hidden or off; the split is not derivable
+                    out["probe_note"] = "listed skills do not account for every skill found on disk"
+                    exempt_chars, exempt_count = 0, 0
+        out["listing_exempt_chars"] = exempt_chars
+        out["simulation"] = simulate_listing(
+            skills, priority, listing_budget(args.context_window), exempt_chars, exempt_count
+        )
 
     if want in ("overlap", "report"):
         pairs, stats = overlap_pairs(skills)
@@ -576,6 +759,25 @@ def _render_usage(skills: list[Skill], usage: Usage) -> None:
     print("  apart. Write a few trigger cases in the words a request would use and run trigger.py.")
 
 
+def _render_budget(out: dict[str, Any], args: argparse.Namespace) -> None:
+    sim = out["simulation"]
+    own, exempt = out["listing_own_chars"], out["listing_exempt_chars"]
+    print(f"\n## listing budget — {own} chars for these skills")
+    if probed := out.get("probe"):
+        print(f"  probed: {probed['listing_chars']} chars over {probed['listed_skills']} listed entries")
+        print(f"  {exempt} of that is bundled and exempt — charged first, never demoted")
+    elif not exempt:
+        print("  bundled skills are not on disk and are not counted here; this total is a floor.")
+        print("  --probe asks the harness itself for the real one.")
+    print(f"  budget at a {args.context_window}-token window: {sim['budget']} chars — {sim['mode']}")
+    if sim["demoted"]:
+        print(f"  demoted to name-only: {', '.join(sim['demoted'])}")
+    print(f"  priority: {out['priority_source']} (usageCount, 7-day half-life, floor 0.1)")
+    print("  ordered by who loses their description first when the listing overflows")
+    columns = ["skill", "listing_chars", "priority", "over_spec_cap", "auto", "explicit", "last_seen"]
+    _print_table(out["budget"], columns)
+
+
 def _render_absorbable(out: dict[str, Any]) -> None:
     print("\n## absorbable one-liners — recurring ad-hoc python, candidates for skill code")
     for r in out["absorbable"]:
@@ -600,10 +802,7 @@ def render(out: dict[str, Any], skills: list[Skill], usage: Usage, args: argpars
                 print(f"    {c['name']}: loaded from {c['read_from']}, differs in {c['differs_in']}")
 
     if "budget" in out:
-        print(f"\n## listing budget — {out['listing_total_chars']} chars total")
-        print("  ordered by who loses their description first when the listing overflows")
-        columns = ["skill", "listing_chars", "over_spec_cap", "invocations", "auto", "explicit", "last_seen"]
-        _print_table(out["budget"], columns)
+        _render_budget(out, args)
 
     if "overlap" in out:
         _render_overlap(out, args.top)
@@ -626,6 +825,17 @@ def main() -> int:
         action="append",
         default=[],
         help="skill name to ignore in usage counts, e.g. a synthetic probe this tool created",
+    )
+    p.add_argument(
+        "--context-window",
+        type=int,
+        default=DEFAULT_CONTEXT_TOKENS,
+        help="tokens in the model's context window; the listing budget is 1%% of it, times 4 chars",
+    )
+    p.add_argument(
+        "--probe",
+        action="store_true",
+        help="run the CLI once to measure the real listing, bundled skills included (tiny cost)",
     )
     args = p.parse_args()
 

@@ -50,10 +50,13 @@ considered and rejected).
    right answer. The same diff meant opposite things a day apart.
 
    A dirty checkout does **not** block the run. Both sessions above harvested correctly, because
-   every command they ran was against the committed version. What it blocks is the self-update in
-   step 6 — an edit into a checkout another session is holding — so treat it as a finding about the
-   fold-back, and confirm in passing that the commands this run needs are not themselves inside the
-   uncommitted diff.
+   every command they ran was against the committed version. Confirm in passing that the commands
+   this run needs are not themselves inside the uncommitted diff, and — **only if this session is
+   working in the skills repo** — treat it as a finding about step 6's fold-back, since that is the
+   one case where the fold-back is an edit into a checkout another session may be holding. From
+   anywhere else it blocks nothing: step 6 files a plan rather than editing, and a filing needs
+   nothing from that checkout. Confirmed 2026-08-30 by a run that treated a four-file dirty checkout
+   as a fold-back finding and then filed a plan, which the dirt could not have obstructed.
 
    **A clean diff is not the whole answer, and this is the outcome it cannot see.** The comparison
    comes back identical whenever the installer has already run — while the copy frozen in _this
@@ -76,6 +79,16 @@ considered and rejected).
    and the instruction reads as satisfied. Confirmed 2026-08-30: a harvest ran fourteen minutes
    after a commit to this very skill, re-read the installed copy as written, and got its own stale
    wording back; the checkout was clean, pushed, and two paragraphs ahead.
+
+   **The cheapest trigger for all of this is free and arrives unprompted: the available-skills
+   listing changing mid-session.** A skill present that was not there before, or a description
+   reworded, is direct evidence that the installer has run since the session began — which is
+   exactly when the timestamp check is worth paying for on the skills this run leans on. It costs
+   nothing, it needs no command, and it covers a case the diff cannot reach: a re-install that
+   touched skills this run was not using still tells you the install state moved. Confirmed
+   2026-08-31, and it is what triggered a re-check that the prescribed checks would not have: both
+   changed skills' installed copies matched the checkout, so the diff said "same" for everything and
+   would have prompted nothing.
 
    **Scope that path to `SKILL.md`, not to the skill's directory.** The three subdirectories fail
    differently: only `SKILL.md` is held in this session's context, so only it can go stale there.
@@ -338,6 +351,36 @@ considered and rejected).
      child was respawned seconds ago — that is the difference between hung and still-working).
      Confirmed 2026-08-28: four CI-poll loops, 36 hours old, still polling, whose exit condition
      could never be true; the harvest was the only thing that would ever have found them.
+
+     **Then ask what the survivors _expose_, not only whether they are alive: `ss -ltnp`, read
+     alongside `ps`.** For anything holding a listening socket, the bind address and the directory
+     it serves are the finding — neither is visible to `ps`, and a long-running dev server is
+     _supposed_ to be running, so liveness never flags it. **Drop "this session started" here**: the
+     harder case is a process this session reused because the port answered, whose own session ended
+     without ever harvesting it. Confirmed 2026-08-31:
+     `python3 -m http.server 8765 --directory
+     <repo root>`, 24 hours up, bound to `0.0.0.0`,
+     serving that repository's `.env` and `.git` to the whole LAN —
+     `curl http://127.0.0.1:8765/.env` returned 200. It was caught only because the sweep happened
+     to run `ss -ltnp`, which nothing then asked for. The general fact: **a development server's
+     default bind is usually every interface**, and that default is invisible locally, since bound
+     or unbound every local run behaves identically and only the reachable audience differs.
+   - **This session's own rule adherence**, which nothing else in the sweep reaches:
+
+     ```shell
+     python3 ~/.agents/skills/session-bash-audit/scripts/audit.py --session <session-id> \
+       --compare ~/.agents/skills/session-bash-audit/references/baselines/<baseline>.json
+     ```
+
+     The transcript says what the session intended; this says what it actually typed. It is not in
+     the narrative, not in git, not in CI, and — the reason it belongs here rather than nowhere —
+     **not in the session's own impression of how the run went**. Report the two numbers and the
+     comparison, in the skill-and-instruction-misuse group rather than in the verdict; a
+     self-flagellating report buries the findings the user needs. Confirmed 2026-08-30: a session
+     that had spent the day authoring the rule against piping a gate through `head`/`tail` then
+     produced that shape in a third of its own calls, and reported "went well, gate green
+     throughout" — true, and beside the point. **Authoring a rule is not evidence of following it**,
+     which is exactly why the number has to come from the transcript.
    - **Git state, every repo the session touched** — not just the primary one. Dirty tree, unpushed
      commits (`git log origin/<branch>..HEAD`), and whether the remote moved under you. An unpushed
      commit is the most common real loose end, and a session that ends with one usually believes it
@@ -349,32 +392,38 @@ considered and rejected).
      branch is only loud unpiped: `git log` exits 128 with `fatal: ambiguous argument`, while
      `git log origin/main..HEAD --oneline | wc -l` discards that exit code and prints a calm `0`.
      Confirmed 2026-08-30: that exact pipeline reported `0` for a store 32 commits ahead, and the
-     run caught it only because a later command happened to name the branch. This goes before the
-     fetch check rather than after it — a fetch that succeeds against the right remote still leaves
-     the count wrong if the branch is wrong. **Check that the `git fetch` actually succeeded before
-     trusting either answer**: on this machine a fetch needs the Zenity SSH-passphrase dialog, which
-     fails with `Permission denied (publickey)` when nobody is at the keyboard — and a failed fetch
-     leaves `origin/<branch>` exactly where it was, so the ahead-count still prints a plausible
-     number computed against a stale ref. Same silent-by-construction shape as the CI loop above:
-     the wrong answer and the right one are indistinguishable. Read the fetch's exit code, and when
-     it failed say how old the ref is (`git log -1 --format=%cr origin/<branch>`) rather than
-     reporting the count flat. **The command is `git fetch origin`, alone in its own call, with
-     nothing after it** — then read the ahead-count in a second call. Any `| tail`, `; echo $?` or
-     `2>/dev/null` on that line reports the filter's exit rather than git's, so the very check meant
-     to catch a stale ref reads clean while the fetch is failing. Confirmed 2026-08-28; again
-     2026-08-29 by this bullet failing to prevent it; and a third time 2026-08-30, by a run that had
-     this sentence in front of it and piped anyway — which is why the rule now opens on the command
-     to type instead of the mistake to avoid. When it is the empty-agent case, the machine's own
-     diagnostic names the fix (`inv ssh.check` on this machine) — do not reach for `ssh-add`, and
-     apply that fix as a per-call environment prefix rather than an `export`, which does not survive
-     to the next Bash call. **Then check who wrote the unpushed commits before recommending a
-     push.** Where sessions run in parallel the ahead-count is not necessarily this session's work,
-     and "you have two unpushed commits, push them" publishes another session's unfinished history
-     under a recommendation that reads as routine. Name which are this session's and which are not,
-     and let the user decide. Confirmed 2026-08-29: two commits from a parallel session appeared in
-     the ahead-count between one push and the next, and asking rather than pushing was the only
-     thing that surfaced them. **Then ask, of this session's own unpushed commits, whether any
-     corrects something this session already pushed.** That one is not deferred work — it is a live
+     run caught it only because a later command happened to name the branch. Again 2026-08-30, with
+     this sentence in front of it: a run typed `origin/main` against a `master` store and saw the
+     `fatal:` only because the filter that day was `| head`, which passes stderr through, rather
+     than `| wc -l`, which swallows it. **Whether the mistake is loud is decided by which filter you
+     happened to reach for, not by anything you did right** — and that is the second occurrence
+     after the rule existed and was in context, so treat rereading as not the lever here. This goes
+     before the fetch check rather than after it — a fetch that succeeds against the right remote
+     still leaves the count wrong if the branch is wrong. **Check that the `git fetch` actually
+     succeeded before trusting either answer**: on this machine a fetch needs the Zenity
+     SSH-passphrase dialog, which fails with `Permission denied (publickey)` when nobody is at the
+     keyboard — and a failed fetch leaves `origin/<branch>` exactly where it was, so the ahead-count
+     still prints a plausible number computed against a stale ref. Same silent-by-construction shape
+     as the CI loop above: the wrong answer and the right one are indistinguishable. Read the
+     fetch's exit code, and when it failed say how old the ref is
+     (`git log -1 --format=%cr origin/<branch>`) rather than reporting the count flat. **The command
+     is `git fetch origin`, alone in its own call, with nothing after it** — then read the
+     ahead-count in a second call. Any `| tail`, `; echo $?` or `2>/dev/null` on that line reports
+     the filter's exit rather than git's, so the very check meant to catch a stale ref reads clean
+     while the fetch is failing. Confirmed 2026-08-28; again 2026-08-29 by this bullet failing to
+     prevent it; and a third time 2026-08-30, by a run that had this sentence in front of it and
+     piped anyway — which is why the rule now opens on the command to type instead of the mistake to
+     avoid. When it is the empty-agent case, the machine's own diagnostic names the fix
+     (`inv ssh.check` on this machine) — do not reach for `ssh-add`, and apply that fix as a
+     per-call environment prefix rather than an `export`, which does not survive to the next Bash
+     call. **Then check who wrote the unpushed commits before recommending a push.** Where sessions
+     run in parallel the ahead-count is not necessarily this session's work, and "you have two
+     unpushed commits, push them" publishes another session's unfinished history under a
+     recommendation that reads as routine. Name which are this session's and which are not, and let
+     the user decide. Confirmed 2026-08-29: two commits from a parallel session appeared in the
+     ahead-count between one push and the next, and asking rather than pushing was the only thing
+     that surfaced them. **Then ask, of this session's own unpushed commits, whether any corrects
+     something this session already pushed.** That one is not deferred work — it is a live
      inaccuracy with a reader — and reported flat it is indistinguishable from three plan updates in
      an ahead-count. Name it in the report's "needs action now", with what the remote currently
      claims, so the user is deciding about a published error rather than about a backlog. The signal

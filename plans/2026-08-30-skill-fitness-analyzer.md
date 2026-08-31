@@ -492,11 +492,19 @@ is the third form the probe-contamination problem has taken, after the synthetic
 counts and the `zorbnak-ledger` entry in the harness's own `skillUsage` map.]
 
 **And the bundled-enumeration question is answered without enumerating them.** The bundled skills
-are compiled into the CLI binary, so no file-based inventory can price them — but the harness will
-say: forcing `SLASH_COMMAND_TOOL_CHAR_BUDGET=1` makes it log
-`Skill listing over budget: N skills, C chars > B budget` unconditionally, and `--debug-file` puts
-that where a script can read it. `fitness.py budget --probe` runs the CLI once and kills it the
-moment the line lands. Sub-cent, reproducible, and it does not become a number the user pastes in.
+are compiled into the CLI binary, so no file-based inventory can price them — but subtracting the
+installed set from a listing the harness really sent leaves exactly that remainder. Free,
+reproducible, and it does not become a number the user pastes in.
+
+[DECISION: **the live probe that first answered this was built and then removed the same day.** It
+forced `SLASH_COMMAND_TOOL_CHAR_BUDGET=1` so the CLI would log
+`Skill listing over budget: N skills, C chars > B budget`, read that from `--debug-file`, and killed
+the run. It worked. It was still worse than reading a recorded listing on three counts at once: it
+was the only part of `fitness.py` that spent tokens; it ran headless, where fewer entries are
+listed, so it under-reported by ~2,600 characters and would have justified a `0.02` budget setting
+that does not actually fit; and each run entered the transcript store as a truncated listing, so the
+tool contaminated the corpus it reads. The removal is recorded in `exempt_from_observed`'s docstring
+rather than only here, because the probe is an obvious thing to reinvent.]
 
 **Acted on the same day, and it is not this repo's change to make.** `claude-opus-5`,
 `claude-sonnet-5` and `claude-fable-5` all fit the listing; `claude-haiku-4-5` is the only model
@@ -539,10 +547,11 @@ the user only ever types is paying full listing price for a description no model
 
 [PITFALL: **the debug log is the only place this is visible non-interactively, and only on
 overflow.** A plain `claude -p ... --debug` printed nothing — the warning goes to the log file, not
-to stderr — and it is not emitted at all when the listing fits, which is why the probe forces a
-budget of 1 rather than reading the real one. The line also reports the count of _listed_ entries,
+to stderr — and it is not emitted at all when the listing fits, which is why the probe had to force
+a budget of 1 rather than read the real one. The line also reports the count of _listed_ entries,
 which is smaller than the count of _loaded_ skills: 13 user plus 42 bundled were loaded here and 25
-were listed.]
+were listed. That gap is why a headless measurement under-reports an interactive listing, and is
+half the reason the probe was removed.]
 
 ## Settled by the user, 2026-08-30
 
@@ -572,11 +581,11 @@ should count. Candidates: the span after "Use when", the comma-separated topic l
 All three are conventions this repo happens to follow and a consumer's skills may not.]
 
 [RESOLVED 2026-08-31: **how are the bundled skills enumerated?** They are not, and they do not need
-to be. `budget --probe` asks the harness for the listing's real size instead of pricing its parts;
-see "The listing budget, measured rather than paraphrased". Enumerating them _is_ possible — each
-bundled skill's description sits in the binary as a `var name` / `var description` pair — but that
-is a scrape of a compiled artifact with no stable shape across versions, and the probe needs
-neither.]
+to be. `budget` subtracts the installed set from a listing the harness really sent and reports the
+remainder; see "The listing budget, measured rather than paraphrased". Enumerating them _is_
+possible — each bundled skill's description sits in the binary as a `var name` / `var description`
+pair — but that is a scrape of a compiled artifact with no stable shape across versions, and the
+subtraction needs neither it nor a probe.]
 
 [NEEDS CLARIFICATION: **how much of this may depend on one harness?** The invocation stats and the
 budget accounting are the two most valuable signals and both are Claude-Code-specific.

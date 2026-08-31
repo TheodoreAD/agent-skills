@@ -49,7 +49,7 @@ Read-only, stdlib, deterministic, no tokens. Sub-commands when you want one sect
 
 By default it reads `~/.agents/skills`, `~/.claude/skills`, and `./skills` when run from a skills
 repo. `--root <dir>` (repeatable) replaces that set — use it to score a corpus you do not have
-installed. `budget` also takes `--context-window <tokens>` and `--probe`; both are explained below.
+installed. `budget` also takes `--context-window <tokens>`, explained below.
 
 ## Reading the output
 
@@ -83,23 +83,21 @@ warning; re-check after an upgrade, since none of it is documented behaviour.
   months ago scores 3, below four uses yesterday — and the floor is what keeps a long-unused
   favourite ahead of a never-used skill.
 
-`--probe` answers the part no file on disk can. The bundled skills are compiled into the CLI binary,
-so without them the total is a floor; the probe runs the CLI once with the budget forced to 1, which
-makes it log the real listing size, and kills it the moment the line appears. It costs a fraction of
-a cent and is the only thing in `fitness.py` that costs anything at all.
-
-**The probe's own number is still a floor**, because it runs headless: measured 2026-08-31, 42
-bundled skills were loaded and only 25 entries listed, several bundled skills being conditional on a
-capability or flag a `-p` run does not have. An interactive session lists more — 18,109 characters
-over 30 entries, observed. Do not pick a budget setting that clears the probed total by a small
-margin.
-
 **`listings actually sent` outranks everything above it, and is free.** The transcript store keeps
 each `skill_listing` attachment verbatim — the rendered text, the entry count, the names — so the
 report reads back what the harness really sent rather than modelling it. A demoted entry is visible
-as a bare `- name`, so the death spiral is observable rather than inferred. Where this section and
+as a bare `- name`, so the death spiral is observable rather than inferred. Where that section and
 the simulation disagree, the simulation is what is wrong: it is how the exemption error above was
-caught.
+caught. The harness's own entries are priced the same way — subtract the installed skills from the
+largest untruncated real listing and the remainder is what this tool cannot see, at no cost.
+
+[A live probe did that job and was **removed on 2026-08-31**. It ran `claude -p` with the budget
+forced to 1 so the CLI would log its listing size. It worked, and it was worse in three ways at
+once: it was the only part of `fitness.py` that spent tokens; it ran headless, where fewer entries
+are listed, so it under-reported the real listing by about 2,600 characters and would have talked
+someone into a budget setting that does not fit; and its own runs entered the transcript store as
+truncated listings, so the tool contaminated the corpus it reads every time it was used. Do not
+reintroduce it.]
 
 Read that section with two cautions:
 
@@ -200,9 +198,9 @@ Say so rather than reporting a smaller number as if it were the whole one.
 
 - **`usage` and the invocation half of `budget` are Claude Code specific.** They read
   `~/.claude/projects/*.jsonl`. On another harness those sections are unavailable, not zero.
-- **Bundled skills are not on disk** and are not in `inventory`, so the listing total is a floor
-  until `budget --probe` measures the real one. `/doctor` and `/context`'s Skills row report it
-  interactively, which is why the probe exists.
+- **The harness's own skills are not on disk** and are not in `inventory`. `budget` prices them by
+  subtracting the installed set from a real listing, so that number is only as fresh as the last
+  session recorded; on a machine with no listings recorded, the total is a floor and says so.
 - **A trigger probe contaminates its own corpus.** Any synthetic skill created to test triggering
   appears in later `usage` runs; exclude it with `--exclude <name>`.
 

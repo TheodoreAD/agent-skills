@@ -46,6 +46,11 @@ description more carefully.
   by `skills/skill-fitness/scripts/trigger.py`. Write them for a **pair** the fitness analyzer
   flagged rather than a fixed number per skill, and include should-not-trigger cases: a suite of
   positives alone passes for a description that fires on everything.
+- An install command in a fenced block must carry `--global` when its source is an `owner/repo`.
+  Without the flag the CLI picks scope from the reader's cwd and silently writes `.agents/skills/`,
+  a `.claude/skills` symlink and a `skills-lock.json` into whatever tree they are standing in. A
+  local path (`skills add ../my-skills`) is the drafting form and is exempt; the gate enforces the
+  distinction.
 
 **Don't reword a description on a hunch — measure it.** `skills/skill-fitness/` reports which skills
 compete, which never fire, and what the skill listing costs; its `trigger.py candidate` mode scores

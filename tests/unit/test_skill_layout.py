@@ -140,6 +140,53 @@ def test_parser_drops_the_block_scalar_indicator():
         assert parse_frontmatter(folded)["description"] == "one two three", indicator
 
 
+SKILLS_ADD = re.compile(r"\bskills\s+add\s+(\S+)")
+FENCE = re.compile(r"^```")
+
+
+def _fenced_lines(text: str) -> list[str]:
+    """Only lines inside fenced code blocks — the ones a reader is meant to run.
+
+    Scoping the check here is what makes it usable. A prose mention like "installed by strangers via
+    `npx skills add`" is a reference to the tool, not an instruction, and gating on those would fire
+    on documentation that is doing nothing wrong.
+    """
+    out, inside = [], False
+    for line in text.splitlines():
+        if FENCE.match(line.strip()):
+            inside = not inside
+            continue
+        if inside:
+            out.append(line)
+    return out
+
+
+@each_skill
+def test_remote_install_commands_are_global(skill: Path):
+    """`--global` is not a default, and its absence is silent in both directions.
+
+    Without it the CLI resolves scope from the current directory: run inside a repo it writes
+    `.agents/skills/`, a `.claude/skills` symlink and a `skills-lock.json` into that working tree —
+    none of them gitignored, and a harness-specific directory this repo refuses on principle — while
+    the user-scope copy the reader meant to update stays stale. Both halves print a green summary.
+
+    A *local path* source is the exception rather than the flaw: `skills add ../my-skills` installs
+    a working tree as-is and is the documented way to iterate while drafting. So the rule is about
+    remote sources, which is what dissolved the objection that deferred this check.
+    """
+    for line in _fenced_lines((skill / "SKILL.md").read_text()):
+        m = SKILLS_ADD.search(line)
+        if not m:
+            continue
+        source = m.group(1)
+        if "/" not in source or source.startswith((".", "/", "~")):
+            continue  # a local path: the drafting form, deliberately scope-by-cwd
+        assert "--global" in line or " -g" in line, (
+            f"{skill.name}/SKILL.md installs a remote source without --global: {line.strip()!r}. "
+            "Without it the scope depends on the reader's cwd, silently."
+        )
+
+
 @each_skill
 def test_skill_md_exists(skill: Path):
     assert (skill / "SKILL.md").is_file(), f"{skill.name} has no SKILL.md, so no agent can load it"

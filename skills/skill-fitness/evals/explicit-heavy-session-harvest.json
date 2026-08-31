@@ -1,0 +1,89 @@
+{
+  "about": [
+    "session-harvest is the only skill in this corpus with an inverted invocation profile: 13 auto",
+    "against 87 explicit, where plan-docs runs 70 against 15. That split is behavioural, not lexical",
+    "- a person typing /name is a person the description did not serve - which makes it the one",
+    "pointer at a description problem that survived a day of failed lexical heuristics.",
+    "",
+    "It is not proof of one. The description opens 'Use when invoked explicitly as /session-harvest',",
+    "so some of that 87 is the skill working as designed. The description ALSO lists auto-trigger",
+    "phrasings, and whether those fire has never been tested.",
+    "",
+    "So the suite is built as a controlled comparison rather than a pass/fail:",
+    "",
+    "  cases 1-2  the description's own listed phrasings, quoted almost verbatim. These are the",
+    "             control. If they fail, the problem is severe and lexical.",
+    "  cases 3-6  the same need in a person's words, two of them lifted from real transcripts in",
+    "             this store where the user typed a command afterwards.",
+    "  cases 7-8  the nearest neighbour, plan-docs, whose territory session-harvest's description",
+    "             names directly (plans/*.md, AGENTS.md).",
+    "  cases 9-10 ordinary requests that touch session-harvest's vocabulary - commits, pushes, CI -",
+    "             and should fire nothing at all.",
+    "",
+    "A control that passes while the paraphrases fail isolates the variable exactly: the description",
+    "works on its own wording and not on the request's.",
+    "",
+    "RESULT 2026-08-31: 10/10, precision 1.0 for both skills. The controls passed 3/3 AND so did",
+    "every paraphrase, including both phrasings lifted from real transcripts. Nothing fired on the",
+    "two should-not-trigger cases, despite session-harvest's description naming commits, pushes and",
+    "CI. plan-docs kept its own two cases.",
+    "",
+    "So 13-auto-against-87-explicit is NOT a description defect. The description opens 'Use when",
+    "invoked explicitly as /session-harvest' and the auto-trigger phrasings it lists all work; the",
+    "split is the skill behaving as designed plus a person's habit of typing it. The rule that sent",
+    "us here - high explicit and low auto means a description problem - is a hypothesis worth a",
+    "suite, and on its first test it was wrong."
+  ],
+  "cases": [
+    {
+      "prompt": "Is it safe to compact?",
+      "expect": "session-harvest",
+      "why": "control: near-verbatim from the description's own trigger list"
+    },
+    {
+      "prompt": "Anything dangling before I stop?",
+      "expect": "session-harvest",
+      "why": "control: also near-verbatim from the description"
+    },
+    {
+      "prompt": "See if there's anything in this session we need to persist, commit, push.",
+      "expect": "session-harvest",
+      "why": "real, lifted from a transcript here; the user typed a command right after it"
+    },
+    {
+      "prompt": "The context is already bloated. Should we move to a new session, or will we lose something valuable?",
+      "expect": "session-harvest",
+      "why": "real, from a transcript; 'is it safe to compact' asked in a person's words"
+    },
+    {
+      "prompt": "I'm about to shut this down for the night. Did we leave anything half-finished?",
+      "expect": "session-harvest",
+      "why": "the unfinished-work sweep, with none of the description's vocabulary"
+    },
+    {
+      "prompt": "We've been at this for hours. What should I write down before it all evaporates?",
+      "expect": "session-harvest",
+      "why": "the durable-knowledge half, phrased the way someone actually says it"
+    },
+    {
+      "prompt": "Start a design doc for the caching rework in this repo.",
+      "expect": "plan-docs",
+      "why": "should-not-steal: session-harvest's description names plans/*.md directly"
+    },
+    {
+      "prompt": "What's open across my repos, and what should I pick up next?",
+      "expect": "plan-docs",
+      "why": "should-not-steal: 'what's open' is close to the unfinished-work sweep"
+    },
+    {
+      "prompt": "Commit what's in the working tree and push it.",
+      "expect": null,
+      "why": "should-not-trigger: commits and pushes are session-harvest vocabulary, not its job"
+    },
+    {
+      "prompt": "Did CI pass on the last push?",
+      "expect": null,
+      "why": "should-not-trigger: the description mentions checking CI on what it pushed"
+    }
+  ]
+}

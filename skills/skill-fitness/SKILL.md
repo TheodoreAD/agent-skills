@@ -49,16 +49,41 @@ Read-only, stdlib, deterministic, no tokens. Sub-commands when you want one sect
 
 By default it reads `~/.agents/skills`, `~/.claude/skills`, and `./skills` when run from a skills
 repo. `--root <dir>` (repeatable) replaces that set — use it to score a corpus you do not have
-installed.
+installed. `budget` also takes `--context-window <tokens>` and `--probe`; both are explained below.
 
 ## Reading the output
 
 **`budget` is ordered by who loses their description first, and that order is the finding.** Claude
-Code loads a listing of every skill's name and description, budgeted at about 1% of the context
-window and **shared with the harness's own bundled skills**. When it overflows, descriptions are
-dropped starting with the least-invoked skill. That is self-reinforcing: no invocations, so the
-description goes, so the skill cannot be matched, so it stays at zero. A skill at the top of that
-table with a large `listing_chars` is the one to act on.
+Code loads a listing of every skill's name and description; when it does not fit, a user skill is
+demoted to name-only, so it cannot be matched, so it stays at zero invocations and stays first in
+line to be demoted again. A skill at the top of that table with a large `listing_chars` is the one
+to act on.
+
+Four properties of that mechanism decide the answer, and three of them are easy to guess wrong. Read
+from the Claude Code 2.1.251 binary on 2026-08-31 and confirmed against the CLI's own overflow
+warning; re-check after an upgrade, since none of it is documented behaviour.
+
+- **The budget is model-dependent.** It is a _character_ budget, computed as 1% of the context
+  window in tokens times four. A 200k-window model gets 8,000 characters. So the same corpus can be
+  comfortable in the main session and truncated in a subagent on a smaller model — pass
+  `--context-window` for the model you care about, and treat the default 200,000 as the pessimistic
+  case rather than the wrong one.
+- **Bundled skills are exempt.** They are charged against the budget first and never demoted; only
+  user and project skills are candidates. Their cost is not shared pain, it comes straight out of
+  what is left for yours. Measured on this machine: 5,912 characters of bundled entries against a
+  200k-model budget of 8,000, before any of the user's thirteen skills were priced.
+- **Demotion is a greedy fit, not a cut-off.** Entries are walked in descending priority and each
+  keeps its description if the room left allows, so a long description is dropped while a shorter,
+  _lower_-priority one survives. The demoted set is not the bottom of the table.
+- **Priority is decayed usage, not the invocation count**: `usageCount × max(0.5^(days/7), 0.1)`,
+  from the harness's own `skillUsage` map in `~/.claude.json`. Recency dominates — thirty uses two
+  months ago scores 3, below four uses yesterday — and the floor is what keeps a long-unused
+  favourite ahead of a never-used skill.
+
+`--probe` answers the part no file on disk can. The bundled skills are compiled into the CLI binary,
+so without them the total is a floor; the probe runs the CLI once with the budget forced to 1, which
+makes it log the real listing size, and kills it the moment the line appears. It costs a fraction of
+a cent and is the only thing in `fitness.py` that costs anything at all.
 
 **`usage` counts two mechanisms and neither alone is the rate.** `auto` is the model choosing the
 skill through the `Skill` tool. `explicit` is a person typing `/name`, which often injects the body
@@ -149,9 +174,9 @@ Say so rather than reporting a smaller number as if it were the whole one.
 
 - **`usage` and the invocation half of `budget` are Claude Code specific.** They read
   `~/.claude/projects/*.jsonl`. On another harness those sections are unavailable, not zero.
-- **Bundled skills are not on disk** and are not in `inventory`, yet they consume the same listing
-  budget. The listing total is therefore a floor. `/doctor` estimates the real figure and names the
-  biggest contributors; `/context`'s Skills row reports the size after the budget is applied.
+- **Bundled skills are not on disk** and are not in `inventory`, so the listing total is a floor
+  until `budget --probe` measures the real one. `/doctor` and `/context`'s Skills row report it
+  interactively, which is why the probe exists.
 - **A trigger probe contaminates its own corpus.** Any synthetic skill created to test triggering
   appears in later `usage` runs; exclude it with `--exclude <name>`.
 

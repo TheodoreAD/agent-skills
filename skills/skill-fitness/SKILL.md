@@ -277,11 +277,17 @@ the same competition it will actually face. Adopt it only if it wins cases the i
 without losing cases the incumbent won.
 
 **A candidate score is a lower bound, not a prediction.** A proposal is registered as a command file
-and a real skill is not, and the difference shows up in the result: measured 2026-08-31, a request
-that scored 0/3 against the old wording and 1/3 as a candidate scored **3/3** once the same wording
-shipped as an installed skill. So a candidate that clearly improves is worth adopting even when it
-does not reach a clean pass, and the verification that settles it is a `run` against the installed
-set after the change lands. Never report a candidate figure as what the shipped skill will do.
+and a real skill is not, and the difference shows up in the result. Measured twice on 2026-08-31: a
+request scoring 0/3 against the old wording and 1/3 as a candidate scored **3/3** once shipped; a
+second one scoring 0/3 and 2/3 as a candidate shipped at **2/3**, exactly its candidate figure. So
+the bound holds and the uplift is not owed to you. Adopt a candidate that clearly improves even
+below a clean pass, and settle it with a `run` against the installed set after the change lands —
+never by reporting the candidate figure as what the shipped skill will do.
+
+**Three runs is the floor, and a 2/3 is a pass that is not a clean one.** Across these suites a case
+that scored 3/3 twice has come back 2/3 with no relevant change in between, the third run firing
+nothing. Read a single dropped run as variance rather than as a finding, and do not compare a 3/3
+against a 2/3 as though the difference were signal.
 
 **The candidate competes against its own installed twin**, and reading that as failure is the trap.
 Both names satisfy the same case, so the run scores them together and reports the split separately.

@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-28
+status: blocked on power-user-linux-setup writing the ~/AGENTS.md routing rule
+updated: 2026-09-01
 depends_on: [power-user-linux-setup]
 ---
 
@@ -181,13 +181,50 @@ do your work there" each time. So the real dividing line is whether the user has
 foreign-repo work in this session, not how large the edit is. Reconcile this before the lane bound
 is written into `session-harvest`, or that rule will be routinely and correctly ignored.]
 
-## Suggested sequencing
+## Step 1 landed, 2026-09-01 — and the lane question was already settled elsewhere
 
-1. `plan-docs` provenance fields + `session-harvest` lane bound — docs only, no code, usable by hand
-   immediately. Both are edits in this repo.
+**The provenance half is built.** `new --for` writes `source_repo` (filled in from where the session
+is), `source_session`, `source_moment`, and an `## Evidence` section naming what to put in it. A
+plain same-repo `new` is unchanged. `plan-docs`' `SKILL.md` gains "Plans that arrive from another
+repo", including §2's rule that a plan carrying `source_repo` is not done until its
+`## Verification` names the original repro, checked in the repo where it happened and after the fix
+installs there.
+
+[DECISION: **the fields are emitted as blanks in the file, not described in the skill.** §2 left
+this open; the pilots closed it. The failure is not that an agent does not know to cite evidence —
+it is that it does not do so while writing prose about something else. A template that asks is the
+only intervention with evidence behind it, and it costs nothing.]
+
+**Pilot 2, unprompted and negative, 2026-09-01.** This plan's §2 predicted the failure and the
+session reading it committed the failure anyway: filing
+`2026-08-31-skill-listing-budget-truncates-subagents.md` for `power-user-linux-setup`, it
+paraphrased the incident with no transcript pointer, no timestamp and no repro. Two for two now, the
+second by an agent with the description of the failure open in front of it. That is the argument for
+the template, made twice, and it has since been backfilled with real evidence — transcript path, two
+search anchors, and a runnable repro with its present and wanted behaviour.
+
+[DECISION: **the lane bound does not need writing into `session-harvest`, because `~/AGENTS.md` has
+since settled it more strictly than §1 proposed.** The global rule is now that writing to another
+repo is out entirely — "no edit and no commit, however small, however obviously correct, however
+much a skill's own instructions tell you to" — with `plans.py new --for` named as the route, and
+`session-harvest`'s step 6 already reflects it. So lane 1 does not survive at all from a foreign
+session, and the `[PITFALL:]` below about authority is answered: **authority does not unlock a
+foreign edit**, and the sanctioned form of "the user said I could work there" is a session opened in
+that repo, not a larger edit from this one. The pitfall stays on the file as the record of why the
+size-based bound was the wrong axis.]
+
+1. ~~`plan-docs` provenance fields + `session-harvest` lane bound~~ — **done 2026-09-01**; the lane
+   bound turned out to be already settled by `~/AGENTS.md`. See the section above.
 2. `power-user-linux-setup` writes the `~/AGENTS.md` routing rule, which is what makes the by-hand
-   loop reachable from a repo that has nothing to do with either of these.
-3. Pilot the whole thing by hand on the next real cross-repo friction, before any tool exists.
-4. Then the tool, per `power-user-linux-setup`'s `plans/2026-08-28-pulse-capture.md`.
+   loop reachable from a repo that has nothing to do with either of these. **This is now the only
+   thing standing between the mechanism and daily use** — a session in an unrelated repo still has
+   to know that filing is what it does, and nothing it always loads says so.
+3. ~~Pilot by hand~~ — piloted twice, both times unprompted, both times failing the same way before
+   the template existed. Step 2 is what a third pilot would test.
+4. Then the tool, per `power-user-linux-setup`'s `plans/2026-08-28-pulse-capture.md`. **Its scope
+   shrank**: the fields the tool was going to prompt for are now in the template, so what is left
+   for it is resolving the session id and transcript path, which is the part an agent cannot
+   reliably do for itself.
 
-Steps 1 and 2 are independent and can happen in either order; step 3 needs both.
+Both remaining steps are in `power-user-linux-setup`, so this plan is blocked on that repo rather
+than on a decision here.

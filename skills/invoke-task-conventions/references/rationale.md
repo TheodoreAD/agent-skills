@@ -81,8 +81,8 @@ traps. And it needs to reach repos that do not exist yet — `inv ai.install-ski
 `~/.agents/skills/`, so a freshly generated project gets it without anything being copied in.
 
 The counter-argument, recorded honestly: a skill only fires if its description matches, whereas
-`~/AGENTS.md` is always loaded. `plans/2026-08-30-skill-fitness-analyzer.md` covers that risk for
-this family's skills generally — the description here deliberately uses request-side vocabulary
+`~/AGENTS.md` is always loaded. `skills/skill-fitness/references/measurements.md` covers that risk
+for this family's skills generally — the description here deliberately uses request-side vocabulary
 ("what to call", "rename", "tasks.py") rather than the internal jargon of the convention.
 
 That was not sufficient, and the gap was found by measurement rather than by reading. Confirmed

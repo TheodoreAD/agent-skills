@@ -45,9 +45,15 @@ Any one of these, and none of them is true today:
   differently from a skill that must first match a description. If `plan-docs` keeps failing to fire
   on requests it should own _after_ the description work, that is evidence. The cheaper fix was
   applied first: the description now names "what plans do we have" and "what should I work on next",
-  which it did not before. Whether that was enough is exactly what
-  `plans/2026-08-30-skill-fitness-analyzer.md` is for — so **that plan's outcome is the input to
-  this one**, and this should not be reopened before it produces a result.
+  which it did not before. Whether that was enough is exactly what the skill-fitness work was for —
+  so **that outcome is the input to this one**, and this should not be reopened before it produces a
+  result.
+
+  **It produced one, 2026-09-01, and it does not support reopening this.** `plan-docs` has the
+  healthiest auto-trigger profile in the corpus — **70 model-chosen invocations against 15 typed**,
+  the inverse of the one skill that is mostly typed — and it lost no case in any of the six trigger
+  suites, 119 runs. The description work was enough. Evidence and method:
+  `skills/skill-fitness/references/measurements.md`.
 - **A second consumer.** One machine's agent sessions do not justify a server. Something else
   needing programmatic access to plan state might.
 

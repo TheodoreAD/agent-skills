@@ -221,8 +221,15 @@ Two further published findings worth applying when the score is low:
 
 Say so rather than reporting a smaller number as if it were the whole one.
 
-- **`usage` and the invocation half of `budget` are Claude Code specific.** They read
-  `~/.claude/projects/*.jsonl`. On another harness those sections are unavailable, not zero.
+- **`usage`, `listings actually sent`, and the invocation half of `budget` are Claude Code
+  specific.** They read `~/.claude/projects/*.jsonl` and `~/.claude.json`. On another harness each
+  says **unavailable** and drops its columns rather than printing zeros. That distinction is load-
+  bearing and was not free: measured 2026-08-31 under a fake `HOME`, the report rendered thirteen
+  skills as never invoked and forecast which of them would lose a description, on no data at all —
+  in a tool whose own rule is that a zero is not a verdict. If you port this, keep the flag.
+- **What survives anywhere**: `inventory`, the listing arithmetic, `overlap`, and the rubric. The
+  budget still reports its total as a floor, because pricing the harness's own entries needs a
+  listing it sent.
 - **The harness's own skills are not on disk** and are not in `inventory`. `budget` prices them by
   subtracting the installed set from a real listing, so that number is only as fresh as the last
   session recorded; on a machine with no listings recorded, the total is a floor and says so.

@@ -676,11 +676,22 @@ possible — each bundled skill's description sits in the binary as a `var name`
 pair — but that is a scrape of a compiled artifact with no stable shape across versions, and the
 subtraction needs neither it nor a probe.]
 
-[NEEDS CLARIFICATION: **how much of this may depend on one harness?** The invocation stats and the
-budget accounting are the two most valuable signals and both are Claude-Code-specific.
-`session-bash-audit` already reads `~/.claude/projects/*.jsonl` and declares that assumption openly,
-so precedent exists — but a skill whose best signals only work on one harness reports less on every
-other, against this repo's stated premise.]
+[RESOLVED 2026-09-01: **how much of this may depend on one harness?** Answered by running the tool
+under a fake `HOME` rather than by reasoning about it, which is how the real problem surfaced.
+
+Three sections are Claude-Code-specific — `usage`, `listings actually sent`, and the invocation and
+priority halves of `budget`, reading `~/.claude/projects/*.jsonl` and `~/.claude.json`. Four survive
+anywhere: `inventory`, the listing arithmetic, `overlap`, and the rubric. `absorb` needs the store
+too. That is the honest split, and it is the same assumption `session-bash-audit` already declares.
+
+[PITFALL: **the tool did not degrade the way this plan claimed it would.** The stated design was
+that harness-specific sections "report themselves unavailable rather than being silently absent".
+They did not. Under a fake `HOME` the report printed a full table of thirteen skills at zero
+invocations and `never` last-seen, and then forecast which two would lose their descriptions — all
+of it from no data whatsoever, in a tool whose own headline rule is that a zero is not a verdict. A
+stated design property that nothing tested was not a property. `Usage.available` now carries it, the
+columns drop out, the demotion set is labelled an artefact of tie-breaking, and a test pins the
+flag.]]
 
 [RESOLVED 2026-08-31: **where do the trigger cases live?** In `skill-fitness/evals/`, named for the
 pair rather than for a skill — `contention-python-family.json`, `contention-skill-meta-pair.json`.

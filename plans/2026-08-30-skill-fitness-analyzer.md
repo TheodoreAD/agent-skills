@@ -482,6 +482,16 @@ say: forcing `SLASH_COMMAND_TOOL_CHAR_BUDGET=1` makes it log
 that where a script can read it. `fitness.py budget --probe` runs the CLI once and kills it the
 moment the line lands. Sub-cent, reproducible, and it does not become a number the user pastes in.
 
+**Acted on the same day, and it is not this repo's change to make.** Which sessions actually pay was
+measured before anything was proposed: `claude-opus-5`, `claude-sonnet-5` and `claude-fable-5` all
+fit the listing, and `claude-haiku-4-5` is the only model that overflows — which is the whole
+subagent tier, 181 of 443 transcripts, all `agent-*`. The remedy is a `skillListingBudgetFraction`
+of 0.03 declared in `power-user-linux-setup`'s `setup.toml` and synced the way `claude_default_mode`
+already is, so it reaches the next machine rather than one file on this one. Filed there as
+`2026-08-31-skill-listing-budget-truncates-subagents.md`, with the counter-evidence attached: across
+84 `agent-*` transcripts there are **zero** `Skill` calls, and the data cannot say whether that is
+the truncation, the subagent types defined without the `Skill` tool at all, or no demand.
+
 The levers, now that the mechanism is known rather than guessed: `skillListingBudgetFraction` and
 `skillListingMaxDescChars` raise the two caps; `disableBundledSkills` (or
 `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS`) removes the exempt entries that are taking the top off the

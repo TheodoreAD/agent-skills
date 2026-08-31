@@ -82,7 +82,6 @@ STOP = frozenset({
     "most", "other", "others", "same", "own", "just", "only", "very", "both", "few", "some",
 })  # fmt: skip
 
-TRIGGER_LEAD = re.compile(r"\buse (?:this skill )?when\b", re.IGNORECASE)
 CODE_SPAN = re.compile(r"`([^`]+)`")
 WORD = re.compile(r"[a-z][a-z0-9-]{2,}")
 COMMAND_MARKER = re.compile(r"<command-name>/?([a-zA-Z0-9_-]+)</command-name>")
@@ -157,19 +156,23 @@ class Skill:
         """`- <name>` — what the entry costs once its description has been dropped."""
         return len(self.name) + NAME_ONLY_OVERHEAD
 
-    @property
-    def trigger_text(self) -> str:
-        """The 'when to use it' half, which is the only half that decides selection.
-
-        Falls back to the whole description when no lead-in is present, because that is what a
-        consumer's skill will often look like, and reporting nothing would be worse than reporting
-        a noisier set.
-        """
-        m = TRIGGER_LEAD.search(self.description)
-        return self.description[m.start() :] if m else self.description
-
     def terms(self) -> set[str]:
-        text = self.trigger_text
+        """Vocabulary for the overlap measure, taken from the **whole** description.
+
+        An earlier version tried to isolate the trigger clause — the "when to use it" half, on the
+        reasoning that only that half decides selection — by taking the span from a `Use when`
+        lead-in onward. Measured 2026-08-31 against the installed corpus: **it stripped nothing from
+        12 of 13 descriptions and three characters from the thirteenth**, because the convention it
+        was written for puts the trigger clause *first*, so the lead-in matches at position zero.
+        The prose it meant to exclude trails the trigger clause rather than preceding it, and
+        finding *that* boundary means guessing at sentence openers ("Covers", "Also", "For X see
+        Y") — repo-specific, and the objection that killed the idea of a `when_to_use` field.
+
+        So the split is not attempted. What actually suppresses non-discriminating prose is the
+        corpus-derived IDF below, and its limits are documented there rather than hidden behind an
+        extraction step that does nothing.
+        """
+        text = self.description
         # A backticked term is high-signal: it names a command, flag or file the request will use.
         coded = {t.lower() for span in CODE_SPAN.findall(text) for t in WORD.findall(span.lower())}
         plain = set(WORD.findall(text.lower()))
@@ -237,8 +240,13 @@ def idf(skills: list[Skill]) -> dict[str, float]:
     a hand-written stop list is how a scanner starts silently discarding the domain vocabulary that
     distinguishes one skill from another, and it has to be re-tuned for every consumer's corpus.
 
-    On a ten-document corpus the IDF is still noisy, which is one reason the output is a ranked
-    list and never a pass/fail threshold.
+    **Measured limit, 2026-08-31: on a 13-skill corpus this drops exactly one term.** The cut needs
+    a term in half the corpus, and prose vocabulary is spread thinner than that — so the shared-term
+    lists this feeds are dominated by ordinary English ("working", "writing", "rather", "before")
+    rather than by anything a request would be phrased in. It is a real weighting, not a real
+    filter, and it gets stronger as the corpus grows. Together with the noisy IDF on a corpus this
+    small, it is why the output is a ranked list to spend a live run on and never a pass/fail
+    threshold.
     """
     n = max(len(skills), 1)
     df: Counter[str] = Counter()

@@ -146,6 +146,30 @@ bad luck — a real measured case is a testing-conventions skill whose descripti
 `test structure (DAMP vs DRY, fixture scope)`, the skill's own words about itself, and so failed to
 trigger on "write tests", "pytest", "fixtures", "parametrize".
 
+**Request-side means the words for the _problem_, not for the tool that solves it** — the sharper
+version of the same rule, and the one a careful author still gets wrong. Measured 2026-08-31: a
+skill whose description named `tasks.py`, `inv` and "namespace" fired on every request using those
+words and selected **nothing at all**, three runs of three, for "our automation scripts have grown
+messy and inconsistent, where do I start cleaning them up?" — the way the problem is actually felt.
+It did not lose to a competitor; it lost to silence, which no contention check can see.
+
+**Don't settle any of this by reading. Measure it with `skill-fitness`**, which owns the mechanics
+this section only states:
+
+```shell
+python3 <skill-fitness>/scripts/fitness.py overlap        # ranked pairs, and directional shadowing
+python3 <skill-fitness>/scripts/trigger.py run <cases>    # which skill a real request actually selects
+python3 <skill-fitness>/scripts/trigger.py candidate ...  # score a proposed description before adopting it
+python3 <skill-fitness>/scripts/trigger.py split ...      # how requests distribute across a proposed split
+```
+
+Two results from that tool change how this section should be applied. Its static overlap flag is a
+hypothesis generator and **not a verdict** — its one testable prediction was refuted by the live
+run, so a redrawn boundary should be justified by `trigger.py`, not by an overlap score. And a
+candidate description's score is a **lower bound**: a proposal is registered as a command file and a
+real skill is not, so a wording that improves without reaching a clean pass is still worth adopting,
+then confirmed with a `run` after it ships.
+
 Corollary when a finding needs a home: prefer extending the skill that already owns the topic over
 adding a new one. Skill count is itself a context tax, and each added description is one more thing
 for selection to confuse.

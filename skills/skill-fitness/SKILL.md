@@ -68,10 +68,13 @@ warning; re-check after an upgrade, since none of it is documented behaviour.
   comfortable in the main session and truncated in a subagent on a smaller model — pass
   `--context-window` for the model you care about, and treat the default 200,000 as the pessimistic
   case rather than the wrong one.
-- **Bundled skills are exempt.** They are charged against the budget first and never demoted; only
-  user and project skills are candidates. Their cost is not shared pain, it comes straight out of
-  what is left for yours. Measured on this machine: 5,912 characters of bundled entries against a
-  200k-model budget of 8,000, before any of the user's thirteen skills were priced.
+- **Most of the harness's own entries are exempt.** They are charged against the budget first and
+  never demoted, so their cost is not shared pain — it comes off the top of what is left for yours.
+  Measured on this machine: 5,912 characters of them against a 200k-model budget of 8,000, before
+  any of the user's thirteen skills were priced. **The exempt set is narrower than "the harness
+  shipped it", and is not derivable from a skill's origin**: in a real listing on 2026-08-31,
+  `security-review` was demoted while `code-review`, `run` and `init` kept their descriptions. Read
+  an observed listing rather than reasoning about which entries qualify.
 - **Demotion is a greedy fit, not a cut-off.** Entries are walked in descending priority and each
   keeps its description if the room left allows, so a long description is dropped while a shorter,
   _lower_-priority one survives. The demoted set is not the bottom of the table.
@@ -87,8 +90,26 @@ a cent and is the only thing in `fitness.py` that costs anything at all.
 
 **The probe's own number is still a floor**, because it runs headless: measured 2026-08-31, 42
 bundled skills were loaded and only 25 entries listed, several bundled skills being conditional on a
-capability or flag a `-p` run does not have. An interactive session lists more. Do not pick a budget
-setting that clears the probed total by a small margin.
+capability or flag a `-p` run does not have. An interactive session lists more — 18,109 characters
+over 30 entries, observed. Do not pick a budget setting that clears the probed total by a small
+margin.
+
+**`listings actually sent` outranks everything above it, and is free.** The transcript store keeps
+each `skill_listing` attachment verbatim — the rendered text, the entry count, the names — so the
+report reads back what the harness really sent rather than modelling it. A demoted entry is visible
+as a bare `- name`, so the death spiral is observable rather than inferred. Where this section and
+the simulation disagree, the simulation is what is wrong: it is how the exemption error above was
+caught.
+
+Read that section with two cautions:
+
+- **Truncation being rare is not the mechanism being harmless**, and neither is the reverse. It
+  fires only when a listing exceeds that session's model budget, so a corpus can sit one skill away
+  from truncation for months and record nothing.
+- **This tool's own probes dominate the raw count.** Measured here: 1,086 listings recorded, of
+  which 541 came from `trigger.py`'s scratch directories. Listings captured under a temporary
+  working directory are counted separately for that reason — a probe is not a session, and a report
+  that mixes them measures the measuring.
 
 **`usage` counts two mechanisms and neither alone is the rate.** `auto` is the model choosing the
 skill through the `Skill` tool. `explicit` is a person typing `/name`, which often injects the body

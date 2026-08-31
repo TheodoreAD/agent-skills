@@ -389,6 +389,21 @@ same case, so scoring them as separate skills reports a failure every time the i
 first candidate run reported two such failures while the case the candidate was written to fix
 passed 3/3 — the proposal was working and the scoreboard said otherwise.]
 
+**The split landed, and the whole corpus verifies.** `python-conventions` became three skills on
+2026-08-31 — 411 lines of design and style, 109 of testing, 102 of MCP server internals, each with
+its own rationale and snippets, all three under the 1024-char cap. `KNOWN_OVER_CAP` is empty for the
+first time. Full regression against the installed set afterwards: **33 cases, 99 runs, all
+passing**, across four suites. The new `mcp-python-conventions` takes nothing from
+`mcp-server-shipping` (9/9) or `polite-mcp-conventions` (6/6), which were its two closest neighbours
+and the real risk of adding it.
+
+[PITFALL: **a candidate score is a lower bound, not a prediction of the shipped skill.** A proposal
+is registered as a command file; a real skill is not, and selection differs. The
+module-restructuring case scored 0/3 against the old wording, 1/3 as a candidate, and **3/3** once
+the same wording shipped. So a candidate that clearly improves is worth adopting even below a clean
+pass — and the number that settles it is a `run` against the installed set after the change lands,
+never the candidate figure.]
+
 **Both never-invoked skills are fine, and that corrects this plan's own framing.**
 `mcp-server-shipping` and `polite-mcp-conventions` have zero invocations across 593 transcripts and
 sit first in the listing-drop order, which this plan wrote up as a death spiral with them as the

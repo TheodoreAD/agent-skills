@@ -199,6 +199,13 @@ The proposal joins the listing under a temporary name alongside every real skill
 the same competition it will actually face. Adopt it only if it wins cases the incumbent lost
 without losing cases the incumbent won.
 
+**A candidate score is a lower bound, not a prediction.** A proposal is registered as a command file
+and a real skill is not, and the difference shows up in the result: measured 2026-08-31, a request
+that scored 0/3 against the old wording and 1/3 as a candidate scored **3/3** once the same wording
+shipped as an installed skill. So a candidate that clearly improves is worth adopting even when it
+does not reach a clean pass, and the verification that settles it is a `run` against the installed
+set after the change lands. Never report a candidate figure as what the shipped skill will do.
+
 **The candidate competes against its own installed twin**, and reading that as failure is the trap.
 Both names satisfy the same case, so the run scores them together and reports the split separately.
 Confirmed 2026-08-31: the first candidate run reported two cases failed because the _incumbent_ won

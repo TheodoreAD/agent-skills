@@ -1521,11 +1521,45 @@ def test_a_remote_is_a_problem_on_the_sensitive_tier_and_expected_on_the_shareab
     out = capsys.readouterr().out
     assert "[shareable, remote: origin]" in out
     assert "[sensitive, no remote]" in out
-    assert "outcome this tier exists to avoid" not in out  # the shareable tier is meant to have one
+    assert "exists to avoid" not in out  # the shareable tier is meant to have one
 
     subprocess.run(["git", "remote", "add", "origin", "git@example.com:me/x.git"], cwd=ws.sensitive, check=True)
     assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
-    assert "outcome this tier exists to avoid" in capsys.readouterr().out
+    assert "exists to avoid" in capsys.readouterr().out
+
+
+def test_a_work_device_has_one_store_and_still_refuses_a_personal_remote(ws, capsys, monkeypatch):
+    """The simplification must not drop the protection it was simplifying around.
+
+    On a single-employer machine there is no boundary for a tier to draw, so the split collapses to
+    one store. What must survive is the reason the sensitive tier had no remote: pushing an
+    employer's internal work to a personal remote does not become acceptable because the machine
+    holds only one organisation's work.
+    """
+    monkeypatch.setenv("PLAN_DOCS_DEVICE", "work")
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "shareable" not in out, "a work device has no tier to name"
+    assert "exists to avoid" not in out, "no remote yet, so nothing to complain about"
+
+    subprocess.run(["git", "remote", "add", "origin", "git@example.com:me/x.git"], cwd=ws.store, check=True)
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "exists to avoid" in capsys.readouterr().out
+
+
+def test_a_work_device_routes_every_root_to_the_one_store(ws, monkeypatch):
+    """Both a client root and a personal root land in the same place, and `where` says so."""
+    monkeypatch.setenv("PLAN_DOCS_DEVICE", "work")
+    write_config(ws, TIERED)
+    assert route(ws.client).dirs["store"] == ws.store / "client.com-bitbucket" / "team" / "api"
+    assert route(ws.personal).dirs["store"] == ws.store / "github.com-personal" / "agent-skills"
+    cfg = plans.load_config()
+    assert cfg.split_by_sensitivity is False
+    assert cfg.stores() == [("sensitive", cfg.store)], "one store, and it is the guarded one"
 
 
 def test_doctor_reports_a_root_filed_in_the_wrong_tier(ws, capsys):

@@ -89,7 +89,31 @@ The store mirrors each repo's path at whatever depth it sits, so a `<root>/<proj
 gets `<store>/<root>/<project>/<repo>` — no slug, no collision between two clients' `api`. The path
 is computed from the repo root, not from the working directory.
 
-### The store is two repositories, split by sensitivity
+### First: which kind of machine is this?
+
+`device` in the config, and it decides whether the store splits at all:
+
+| `device`                   | the machine holds                                    | the store                                  |
+| -------------------------- | ---------------------------------------------------- | ------------------------------------------ |
+| **`contractor`** (default) | several parties' work plus your own public repos     | **two** repositories, split by sensitivity |
+| **`work`**                 | one organisation — an employer-issued or corp device | **one**, treated as sensitive throughout   |
+
+**A work device has no boundary for a tier to draw**, so the split would be an empty directory every
+command still reasons about. `sensitive_store` and `shareable_roots` stop applying, `where` and
+`new --for` stop naming a tier, and `install` asks one fewer question.
+
+**What does not relax is the remote check.** The single store is the guarded one: pushing an
+employer's internal work to a personal remote does not become acceptable because the machine holds
+only one organisation's work. A sanctioned destination — an internal host, an external drive — is
+fine; a personal one is not.
+
+[PITFALL: **the default is `contractor` because the two mistakes cost differently.** Guessing
+`contractor` on a single-employer machine costs an unused directory and a line of output. Guessing
+`work` on a machine that does hold several parties' work puts client plans in a store the user
+believes is safe to push. The default follows the failure that cannot leak, so a machine nobody
+configured is never the dangerous one.]
+
+### On a contractor device, the store is two repositories
 
 | tier          | holds                                           | remote                    |
 | ------------- | ----------------------------------------------- | ------------------------- |

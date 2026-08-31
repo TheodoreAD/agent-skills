@@ -6,7 +6,8 @@ and fails for employer and client repos, which is what the store is for: each re
 under `$PLANS_HOME`, outside every working tree. Which of the two a given repo uses is configuration,
 never a guess — `~/.config/plan-docs/config.toml`, written by `plans.py config init`.
 
-The store is two git repositories, split by how sensitive their contents are. The shareable tier
+On a contractor device the store is two git repositories, split by how sensitive their contents are;
+on a work device it is one, treated as sensitive (`device` in the config). The shareable tier
 (`$PLANS_HOME`) holds the unscoped area and the mirrors of roots you own, and may have a remote; the
 sensitive tier (`$PLANS_SENSITIVE_HOME`) holds every other root and stays local-only. Both keep full
 history, so retirement and `archive` work identically in either.
@@ -59,6 +60,18 @@ UNSCOPED_DIR = "_unscoped"
 # The two halves of the store, most disclosable first. A root's tier decides which git repository
 # its mirrored plans live in — the shareable one may have a remote, the sensitive one may not.
 SHAREABLE, SENSITIVE = "shareable", "sensitive"
+
+# What kind of machine this is, which decides whether the store splits at all.
+#
+#   contractor — several parties' work plus the user's own public repos on one machine. The split
+#                earns its keep: a shareable tier that may have a remote, a sensitive tier that
+#                may not, so one personal remote never accumulates several clients' internals.
+#   work       — an employer-issued or corporate device. Everything on it belongs to one
+#                organisation, so there is no boundary for a tier to draw. One store, treated as
+#                sensitive throughout, and the second store stops existing rather than sitting
+#                empty while every command still reasons about it.
+CONTRACTOR, WORK = "contractor", "work"
+DEVICES = (CONTRACTOR, WORK)
 TIERS = (SHAREABLE, SENSITIVE)
 
 # Terms shorter than this are dropped from the confidentiality scan: a three-letter directory name
@@ -147,10 +160,27 @@ CONFIG_SKELETON = """\
 
 projects_root = "~/projects"
 
-# The store is two git repositories, split by how sensitive their contents are. `store` is the
-# shareable tier: the unscoped area plus the mirrors of the roots named in `shareable_roots`. It
-# may have a remote. `sensitive_store` is every other root, local-only, and defaults to
-# `<store>-sensitive`. Both keep full history, so `archive` works the same in either.
+# What kind of machine this is. It decides whether the store splits at all, so set it first.
+#
+#   contractor  (default) several parties' work plus your own public repos live here, so the store
+#               is two git repositories split by sensitivity — see `store` below.
+#   work        an employer-issued or corporate device. Everything on it belongs to one
+#               organisation, so there is no boundary for a tier to draw: one store, treated as
+#               sensitive throughout, and `sensitive_store` / `shareable_roots` stop applying.
+#
+# The default is `contractor` because the two mistakes are not equally cheap. Guessing `contractor`
+# on a single-employer machine costs an unused directory; guessing `work` on a machine that holds
+# several parties' work puts client plans in a store you believe is safe to push.
+# device = "work"
+
+# On a contractor device the store is two git repositories, split by how sensitive their contents
+# are. `store` is the shareable tier: the unscoped area plus the mirrors of the roots named in
+# `shareable_roots`. It may have a remote. `sensitive_store` is every other root, local-only, and
+# defaults to `<store>-sensitive`. Both keep full history, so `archive` works the same in either.
+#
+# On a work device `store` is the only one, it is treated as sensitive, and `sensitive_store` is
+# ignored — the remote check still applies to it, because pushing an employer's internal work to a
+# personal remote does not become acceptable when the machine holds only one organisation's work.
 store = "~/plans"
 # sensitive_store = "~/plans-sensitive"
 
@@ -271,6 +301,7 @@ class Rule:
 class Config:
     path: Path
     exists: bool
+    device: str
     projects_root: Path
     store: Path
     store_source: str
@@ -314,13 +345,34 @@ class Config:
         """
         return self.shareable_roots or self.public_root_names()
 
+    @property
+    def split_by_sensitivity(self) -> bool:
+        """Whether this machine keeps two stores. False on a single-employer device.
+
+        The split exists because one machine holds several parties' work plus the user's own public
+        repos, and a single store with a remote would accumulate all of it in one place. A corporate
+        or employer-issued device does not have that problem: everything on it belongs to the same
+        organisation, so there is no boundary for a tier to draw and the second store would be an
+        empty directory that every command still has to reason about.
+        """
+        return self.device == CONTRACTOR
+
     def tier_of(self, rel: str | None) -> str:
-        """Which half of the store a repo path — or the unscoped area — belongs to."""
+        """Which half of the store a repo path — or the unscoped area — belongs to.
+
+        On a work device there is one store and it is the sensitive one: the whole machine is the
+        tier that does not get a personal remote. That is the simplification — not a branch that
+        skips the check, but a machine where the check has one answer.
+        """
+        if not self.split_by_sensitivity:
+            return SENSITIVE
         if rel is None or rel == UNSCOPED_DIR:
             return SHAREABLE
         return SHAREABLE if rel.split("/")[0] in set(self.shareable_root_names()) else SENSITIVE
 
     def store_of(self, tier: str) -> Path:
+        if not self.split_by_sensitivity:
+            return self.store
         return self.store if tier == SHAREABLE else self.sensitive_store
 
     def store_for(self, rel: str | None) -> Path:
@@ -334,6 +386,8 @@ class Config:
         sensitive roots — or one deliberately keeping the old single-store shape — degrades, and
         every command that walks this list would otherwise report and search it twice.
         """
+        if not self.split_by_sensitivity:
+            return [(SENSITIVE, self.store)]
         found = [(SHAREABLE, self.store)]
         if self.sensitive_store.expanduser() != self.store.expanduser():
             found.append((SENSITIVE, self.sensitive_store))
@@ -411,6 +465,21 @@ def _store_field(raw: dict[str, object], path: Path, key: str, env: str, fallbac
     return fallback, "default"
 
 
+def _device_field(raw: dict[str, object]) -> str:
+    """Which kind of machine this is. Defaults to `contractor`, which is the cautious answer.
+
+    Defaulting to the split rather than to the simple shape is deliberate: guessing `work` on a
+    machine that does hold several parties' work would put a client's plans in a store the user
+    believes is safe to push. Guessing `contractor` on a single-employer machine costs an empty
+    directory and a line of output. The failure modes are not symmetric, so the default follows the
+    one that cannot leak.
+    """
+    value = os.environ.get("PLAN_DOCS_DEVICE") or raw.get("device") or CONTRACTOR
+    if value not in DEVICES:
+        raise PlanError(f"device must be one of {', '.join(DEVICES)}, got {value!r}")
+    return str(value)
+
+
 def load_config() -> Config:
     path = config_path()
     raw: dict[str, object] = {}
@@ -430,6 +499,7 @@ def load_config() -> Config:
     return Config(
         path=path,
         exists=path.is_file(),
+        device=_device_field(raw),
         projects_root=_path_field(raw, "projects_root", Path.home() / "projects"),
         store=store,
         store_source=store_source,
@@ -1265,11 +1335,16 @@ def cmd_where(args: argparse.Namespace) -> int:
         for where, path in routing.read_dirs():
             print(f"read:    {where:<6} {path}")
     print(f"config:  {cfg.path}{'' if cfg.exists else ' (does not exist)'}")
-    tier = cfg.tier_of(routing.rel)
-    print(f"tier:    {tier} — this repo's store-held plans live in the {tier} half")
-    for name, path in cfg.stores():
-        source = cfg.store_source if name == SHAREABLE else cfg.sensitive_store_source
-        print(f"store:   {name:<10} {path} (from {source})")
+    if cfg.split_by_sensitivity:
+        tier = cfg.tier_of(routing.rel)
+        print("device:  contractor — the store splits by sensitivity")
+        print(f"tier:    {tier} — this repo's store-held plans live in the {tier} half")
+        for name, path in cfg.stores():
+            source = cfg.store_source if name == SHAREABLE else cfg.sensitive_store_source
+            print(f"store:   {name:<10} {path} (from {source})")
+    else:
+        print("device:  work — one organisation, so one store and no tier to choose")
+        print(f"store:   {cfg.store} (from {cfg.store_source})")
     return 0 if routing.verdict == "ok" else NEEDS_DECISION
 
 
@@ -1476,12 +1551,21 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
         source_repo=source.rel or (str(source.repo_root) if source.repo_root else None),
     )
     print(f"filed for: {routing.rel or routing.repo_root}")
-    print(f"tier:      {tier}")
+    if cfg.split_by_sensitivity:
+        print(f"tier:      {tier}")
     if routing.rule and routing.rule.write == "repo":
         print("note:      that repo keeps its own plans, so this is in transit — a session working")
         print("           there absorbs it with: plans.py move <file> --to repo")
+    # The trailing pathspec is not decoration. The store is one working tree with one index, shared
+    # by every session on this machine, and the commit-immediately rule puts several of them inside
+    # that window at once. Without it, whatever a parallel session has staged rides along under this
+    # commit's message. Measured twice in one session, 2026-08-29.
     print("commit:    write the plan, then commit it in the store straight away —")
-    print(f"           git -C {store} add <path> && git -C {store} commit")
+    print(f"           git -C {store} add -- <path>")
+    print(f"           git -C {store} commit -m '<repo>: <what it is>' -- <path>")
+    print("           the trailing -- <path> keeps a parallel session's staged work out of your")
+    print("           commit; if commit says 'nothing added' right after a successful add, theirs")
+    print("           already took your file — git log -- <path> says which commit has it.")
     return code
 
 
@@ -2458,6 +2542,22 @@ def install_decisions(cfg: Config) -> list[Decision]:
     """
     unset = "(unset — the default is in use)"
     decisions = [
+        # First, because it decides whether the two below are one question or two.
+        Decision(
+            key="device",
+            what=(
+                "what kind of machine this is. `contractor` — several parties' work plus your own "
+                "public repos, so the store splits by sensitivity. `work` — an employer-issued or "
+                "corporate device where everything belongs to one organisation, so one store, "
+                "treated as sensitive, and no tier to choose"
+            ),
+            current=cfg.device,
+            suggest="work if this machine is issued by one employer; contractor otherwise",
+            cost=(
+                "saying `work` on a machine that holds several parties' work puts client plans in a "
+                "store you believe is safe to push — which is why the default is the cautious one"
+            ),
+        ),
         Decision(
             key="projects_root",
             what="the directory every repo path is measured from, and the shape the store mirrors",
@@ -2467,19 +2567,26 @@ def install_decisions(cfg: Config) -> list[Decision]:
         ),
         Decision(
             key="store",
-            what="the shareable half of the store: the unscoped area and the roots you own. May have a remote",
+            what=(
+                "the shareable half of the store: the unscoped area and the roots you own. May have a remote"
+                if cfg.split_by_sensitivity
+                else "the store, holding every root on this machine. Local-only unless the destination is sanctioned"
+            ),
             current=f"{cfg.store} (from {cfg.store_source})",
             suggest=str(cfg.store),
             cost="moving it later leaves the old copy behind; it is the only copy of those plans",
         ),
-        Decision(
-            key="sensitive_store",
-            what="the other half: every root not marked shareable. Local-only, no remote, full history",
-            current=f"{cfg.sensitive_store} (from {cfg.sensitive_store_source})",
-            suggest=str(_sensitive_sibling(cfg.store)),
-            cost="pointing it at the shareable store collapses the split and puts client plans on a remote",
-        ),
     ]
+    if cfg.split_by_sensitivity:
+        decisions.append(
+            Decision(
+                key="sensitive_store",
+                what="the other half: every root not marked shareable. Local-only, no remote, full history",
+                current=f"{cfg.sensitive_store} (from {cfg.sensitive_store_source})",
+                suggest=str(_sensitive_sibling(cfg.store)),
+                cost="pointing it at the shareable store collapses the split and puts client plans on a remote",
+            )
+        )
 
     decisions.append(
         Decision(
@@ -2610,16 +2717,31 @@ def run_install(args: argparse.Namespace) -> int:
 
 
 def remote_problems(cfg: Config) -> list[str]:
-    """Remotes that must not exist. Only the sensitive tier's — the shareable tier is meant to have
-    one, and that asymmetry is the whole point of the split."""
-    if not is_git_repo(cfg.sensitive_store) or cfg.sensitive_store.expanduser() == cfg.store.expanduser():
+    """Remotes that must not exist.
+
+    On a contractor device that is the sensitive tier's only — the shareable tier is meant to have
+    one, and that asymmetry is the whole point of the split. On a work device the single store is
+    the sensitive one, so the same rule applies to it: a personal remote holding an employer's
+    internal architecture is the outcome the check exists to prevent, and it does not become
+    acceptable because there is only one organisation on the machine.
+
+    Neither case gates a *sanctioned* destination — an internal host, an external drive, a NAS — so
+    the message names what is wrong rather than refusing outright, and a deliberate remote is
+    recorded where doctor can read it rather than argued with here.
+    """
+    store = cfg.store if not cfg.split_by_sensitivity else cfg.sensitive_store
+    if not is_git_repo(store):
         return []
-    remotes = git(["remote"], cfg.sensitive_store)
+    if cfg.split_by_sensitivity and store.expanduser() == cfg.store.expanduser():
+        return []
+    remotes = git(["remote"], store)
     if not remotes:
         return []
+    holding = "several clients' internal architecture" if cfg.split_by_sensitivity else "an employer's internal work"
     return [
-        f"the sensitive store {cfg.sensitive_store} has remote(s) {remotes.split()} — one personal "
-        "remote holding several clients' internal architecture is the outcome this tier exists to avoid"
+        f"the {'sensitive ' if cfg.split_by_sensitivity else ''}store {store} has remote(s) "
+        f"{remotes.split()} — one personal remote holding {holding} is the outcome this check "
+        "exists to avoid; a sanctioned destination is fine, a personal one is not"
     ]
 
 

@@ -130,6 +130,24 @@ def test_priority_is_empty_rather_than_wrong_when_the_harness_state_is_absent(tm
     assert fitness.harness_priority(tmp_path / "nothing.json") == {}
 
 
+def test_usage_knows_whether_it_measured_anything(monkeypatch, tmp_path):
+    """Zero-because-unmeasured must not render as zero-because-nobody-invoked-it.
+
+    The whole skill rests on "a zero is not a verdict", and on a machine with no transcript store
+    every counter here is zero — which read as thirteen never-invoked skills until this flag
+    existed. Found 2026-08-31 by running the report under a fake HOME.
+    """
+    monkeypatch.setattr(fitness, "TRANSCRIPTS", tmp_path / "absent")
+    absent = fitness.scan_usage()
+    assert absent.available is False
+    assert absent.sessions == 0
+
+    present = tmp_path / "projects"
+    present.mkdir()
+    monkeypatch.setattr(fitness, "TRANSCRIPTS", present)
+    assert fitness.scan_usage().available is True
+
+
 # --------------------------------------------------------------------------------------------
 # Who actually loses a description
 

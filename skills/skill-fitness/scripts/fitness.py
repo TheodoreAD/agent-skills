@@ -442,6 +442,10 @@ class Usage:
     explicit: Counter[str] = field(default_factory=Counter)
     last_seen: dict[str, str] = field(default_factory=dict)
     sessions: int = 0
+    # Whether the transcript store was there to read at all. Without this the counters are zero on
+    # a machine that has never run Claude Code and zero on a skill nobody invoked, and the report
+    # cannot tell a reader which — while this skill's own rule is that a zero is not a verdict.
+    available: bool = False
 
 
 def _blocks(path: Path):
@@ -474,6 +478,7 @@ def scan_usage(exclude: set[str] | None = None) -> Usage:
     exclude = exclude or set()
     if not TRANSCRIPTS.exists():
         return u
+    u.available = True
 
     def record(counter: Counter[str], name: str, stamp: str) -> None:
         if not name or name in exclude:
@@ -823,6 +828,8 @@ def collect_budget(skills: list[Skill], usage: Usage, args: argparse.Namespace) 
         skills, priority, listing_budget(args.context_window), exempt_chars, exempt_count
     )
     out["observed"] = observed_summary(listings)
+    out["observed"]["store_present"] = TRANSCRIPTS.exists()
+    out["usage_available"] = usage.available
     return out
 
 
@@ -893,6 +900,12 @@ def _render_overlap(out: dict[str, Any], top: int) -> None:
 
 
 def _render_usage(skills: list[Skill], usage: Usage) -> None:
+    if not usage.available:
+        print("\n## usage — unavailable, not zero")
+        print(f"  no transcript store at {TRANSCRIPTS}. This section reads Claude Code's own")
+        print("  transcripts; on another harness there is nothing to count, which is not the same")
+        print("  finding as a corpus of skills nobody invoked.")
+        return
     print(f"\n## usage across {usage.sessions} transcripts")
     rows = [
         {
@@ -923,19 +936,36 @@ def _render_budget(out: dict[str, Any], args: argparse.Namespace) -> None:
         print("  so this total is a floor rather than the listing.")
     print(f"  budget at a {args.context_window}-token window: {sim['budget']} chars — {sim['mode']}")
     if sim["demoted"]:
-        print(f"  demoted to name-only: {', '.join(sim['demoted'])}")
-    print(f"  priority: {out['priority_source']} (usageCount, 7-day half-life, floor 0.1)")
-    print("  ordered by who loses their description first when the listing overflows")
-    columns = ["skill", "listing_chars", "priority", "over_spec_cap", "auto", "explicit", "last_seen"]
+        label = "would lose a description" if out["priority_source"] == "unavailable" else "demoted to name-only"
+        print(f"  {label}: {', '.join(sim['demoted'])}")
+    columns = ["skill", "listing_chars", "over_spec_cap"]
+    if out["priority_source"] == "unavailable":
+        # Without the harness's usage map every skill scores 0, so any demotion list is an artefact
+        # of tie-breaking rather than a forecast. Say that instead of printing a confident order.
+        print("  priority: unavailable — no ~/.claude.json, so every skill scores 0. The table")
+        print("  below falls back to largest-first and the set named above to alphabetical")
+        print("  tie-breaking; neither is a forecast of who actually loses a description.")
+    else:
+        print(f"  priority: {out['priority_source']} (usageCount, 7-day half-life, floor 0.1)")
+        print("  ordered by who loses their description first when the listing overflows")
+        columns.insert(2, "priority")
+    if out["usage_available"]:
+        columns += ["auto", "explicit", "last_seen"]
+    else:
+        print(f"  invocation columns omitted: no transcript store at {TRANSCRIPTS}")
     _print_table(out["budget"], columns)
     _render_observed(out["observed"])
 
 
 def _render_observed(obs: dict[str, Any]) -> None:
     """What was actually sent, which outranks the simulation above whenever the two disagree."""
+    if not obs.get("store_present"):
+        print("\n## listings actually sent — unavailable, not zero")
+        print(f"  no transcript store at {TRANSCRIPTS}; this is a Claude Code artefact")
+        return
     print(f"\n## listings actually sent — {obs['listings']} observed, {obs['from_real_sessions']} from real sessions")
     if not obs["listings"]:
-        print("  none recorded; the transcript store keeps these only on recent CLI versions")
+        print("  store present but nothing recorded; the harness keeps these only on recent CLI versions")
         return
     print(f"  largest: {obs['largest_chars']} chars over {obs['largest_count']} entries")
     if not obs["truncated_listings"]:

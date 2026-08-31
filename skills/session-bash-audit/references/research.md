@@ -446,3 +446,53 @@ Both checks are procedures in `SKILL.md`, not chores for a human:
   `"$CLAUDE_JOB_DIR/tmp/x.log"` target (variable, not literal) prompts — the script assumes it does,
   and it is the exact form `~/AGENTS.md` recommends for capturing a gate's exit code — and whether
   `git -C <other> fetch` now matches `Bash(git -C * fetch:*)` without a prompt.
+
+## Authoring a rule does not make an agent follow it (2026-08-30, again 2026-09-01)
+
+The finding that produced `audit.py --session`, and the reason that mode exists at all rather than a
+harvest asking the session how it went.
+
+**2026-08-30.** A `power-user-linux-setup` session spent the day authoring and committing the
+`[DECISION:]` about `head`/`tail` piping discarding exit codes, naming
+`inv quality.precommit | tail
+-N` as the canonical instance. It then produced that shape more than
+any other pattern in its own run. It also used `rg -r` — whose danger `~/AGENTS.md` states verbatim
+— and `git stash` on a machine where a plan it had absorbed that same session says stash is unsafe.
+
+| metric                             | that session | the one it had just measured | baseline 2026-08-21→24 |
+| ---------------------------------- | ------------ | ---------------------------- | ---------------------- |
+| Bash calls                         | 254          | 232                          | 3,956                  |
+| piped through `head`/`tail`        | **86 (33%)** | 67 (28%)                     | 29–32%                 |
+| …of which carried a real exit code | 51           | 21                           | not measured           |
+| chained (`&&` / `;`)               | 103 (40%)    | not measured                 | 64–71%                 |
+| `cd` into the session's own repo   | 0            | not measured                 | 114                    |
+
+**2026-09-01, and this one is the cleaner experiment**: the session that _implemented_ `--session`
+measured itself with it, on Opus 5, against the pre-rewrite baseline.
+
+```
+n=249  chain=67%(+1pp,MISS)  head/tail=47%(+17pp,MISS)  heredoc=23%(+7pp,MISS)
+git-mutating-in-chain=12%(+4pp,MISS)  redirect-then-filter=0%(OK)  cd-own-repo=2%(OK)
+git-C-own-repo=0%(OK)  sed-n=5%(OK)  cat-view=1%(OK)   — 7/11 expectations met
+```
+
+It had quoted the `head`/`tail` rule in its own commit messages that hour and scored **17pp worse
+than the window the rewrite was meant to improve on**.
+
+What the two runs together say:
+
+- **Self-report is not a substitute.** Both sessions believed the run had gone cleanly, and both
+  were right about everything except this. The number has to come from the transcript.
+- **Proximity to the rule is not adherence, and may be unrelated to it.** Two for two in the
+  direction of "the author scored worse", which is a small sample but the wrong direction for any
+  theory in which rereading is the lever. Whatever fix a wording change buys, it should not be
+  estimated from how well the person writing it complies.
+- **`cd-own-repo` and `git-C-own-repo` stayed at or near zero in both.** Those are the rules that
+  moved and stayed moved, and they are the ones with an unambiguous mechanical shape — which is the
+  discriminator worth testing next: rules about _never typing a token_ hold, rules about _how to
+  compose a call_ do not.
+
+[PITFALL: `heredoc` over-counts for a commit-heavy session — `git commit -F -` with a heredoc body
+is the recommended way to write a multi-line message in this family, and it tags every commit. The
+2026-09-01 run made 20+ commits, so read its 23% against that rather than as reaching for heredocs
+over `Write`.]

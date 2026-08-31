@@ -255,6 +255,31 @@ def _parse_transcript(path: Path, project: str) -> list[Call]:
     return list(pending.values())
 
 
+def load_session(session: str) -> list[Call]:
+    """Every Bash call from one transcript, named by session id or by path.
+
+    The one measurement that arrives while the session can still act on it. Everything else in this
+    script looks across sessions after the fact, which is right for a trend and wrong for "you are
+    doing this right now" — and a session's own rule-adherence is invisible to it otherwise: not in
+    the conversation's narrative, not in git, not in CI, and not in its own impression of how the
+    run went.
+
+    Confirmed 2026-08-30, which is why this exists: a session that had spent the day authoring the
+    rule against piping a gate through `head`/`tail` then produced that shape in 33% of its own Bash
+    calls — a worse rate than the session it had been measuring. It reported "went well, gate green
+    throughout", which was true and beside the point. **Authoring a rule does not make an agent more
+    likely to follow it**, so the number has to come from the transcript rather than from the
+    session's self-assessment.
+    """
+    path = Path(session)
+    if not path.is_file():
+        matches = [p for p in PROJECTS_DIR.rglob("*.jsonl") if p.stem == session or p.stem.startswith(session)]
+        if not matches:
+            return []
+        path = max(matches, key=lambda p: p.stat().st_mtime)
+    return _parse_transcript(path, path.relative_to(PROJECTS_DIR).parts[0] if PROJECTS_DIR in path.parents else "")
+
+
 def load_calls(days: float, project_filter: str | None) -> list[Call]:
     cutoff = time.time() - days * 86400
     calls: list[Call] = []
@@ -504,10 +529,27 @@ def main() -> None:
     ap.add_argument("--save-baseline", type=Path, help="write this run's per-model rates as a new baseline JSON")
     ap.add_argument("--note", default="", help="free-text label stored in the baseline (mode in force, why)")
     ap.add_argument("--probe", action="store_true", help="print the live permission probes and exit")
+    ap.add_argument(
+        "--session",
+        help="measure ONE session by id or transcript path, for a run checking itself against the baseline",
+    )
     args = ap.parse_args()
 
     if args.probe:
         print_probes()
+        return
+
+    if args.session:
+        calls = load_session(args.session)
+        if not calls:
+            print(f"no Bash calls found for session {args.session!r}")
+            return
+        print(f"# this session: {len(calls)} Bash calls")
+        print(_rate_row("this session", calls, RATE_COLUMNS))
+        print("\nCompare against the baseline with --compare; a rate worse than it is the finding,")
+        print("and authoring a rule is not evidence of following it.")
+        if args.compare:
+            compare(calls, args.compare)
         return
 
     calls = load_calls(args.days, args.project)

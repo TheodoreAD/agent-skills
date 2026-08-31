@@ -21,12 +21,13 @@ not as your own baseline; save your own on the first run.
 
 Which one applies:
 
-| Ask                                                        | Procedure                      |
-| ---------------------------------------------------------- | ------------------------------ |
-| "how are sessions using Bash", a new pattern to measure    | **Measure** (below)            |
-| "did the change work", "re-check", a week after a change   | **Compare** against baseline   |
-| "does the permission setup behave", after a mode/rule edit | **Probe** the live permissions |
-| "why so many prompts", "what's still prompting"            | **Prompts** — replay the rules |
+| Ask                                                        | Procedure                          |
+| ---------------------------------------------------------- | ---------------------------------- |
+| "how are sessions using Bash", a new pattern to measure    | **Measure** (below)                |
+| "did the change work", "re-check", a week after a change   | **Compare** against baseline       |
+| "does the permission setup behave", after a mode/rule edit | **Probe** the live permissions     |
+| "why so many prompts", "what's still prompting"            | **Prompts** — replay the rules     |
+| "how is _this_ session doing", from a harvest              | **`--session`** against a baseline |
 
 The first three use `scripts/audit.py`, the fourth `scripts/prompts.py`;
 `S=~/.agents/skills/session-bash-audit` below.
@@ -42,6 +43,30 @@ Read-only, stdlib only, ~10 s for a week of transcripts. `--samples 0` for just 
 `--json` dump is the input for any ad-hoc follow-up question (`python3 -c` over it is fine here —
 the data is a one-off snapshot, not repo code). Put the dump in the job/session scratch dir, not
 `/tmp` directly.
+
+**One session, against the baseline** — the only mode whose answer arrives while the session can
+still act on it. `session-harvest`'s step 5 calls this; run it directly when a session wants to know
+how it is doing rather than how sessions in general are doing:
+
+```shell
+python3 $S/scripts/audit.py --session <session-id> --compare $S/references/baselines/<file>.json
+```
+
+The id is the transcript's filename stem, and a unique prefix is enough. Everything else in this
+script measures a trend after the fact; this measures the run you are in.
+
+[PITFALL: **an agent that just authored a rule is not more likely to follow it**, so this number can
+never be replaced by asking the session how it went. Confirmed twice. 2026-08-30: a session that had
+spent the day writing the rule against piping a gate through `head`/`tail` produced that shape in
+33% of its own calls — worse than the session it had been measuring — and self-reported "went well".
+2026-09-01: the session that _implemented this mode_ measured itself at **47% `head/tail`, +17pp
+against the pre-rewrite baseline**, plus three other misses, having quoted the rule in its own
+commit messages. Two for two, and in both cases the session's own impression was that the run had
+gone cleanly.]
+
+[PITFALL: **`heredoc` over-counts for a commit-heavy session.** `git commit -F -` with a heredoc
+body is the recommended way to write a multi-line message here, and it tags on every commit. Read
+that column against how many commits the session made before treating it as a finding.]
 
 **Compare** — the "did it work" check, no manual table-reading:
 

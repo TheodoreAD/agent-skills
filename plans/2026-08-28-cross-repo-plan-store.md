@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-29
+status: landed
+updated: 2026-09-01
 ---
 
 ## Context
@@ -409,16 +409,11 @@ three considered that does not describe one family's directory names to every co
 one citation of a named sibling repo stays: it is dated evidence for a rule, and a stranger learns
 the rule without needing that file to exist.]
 
-[UNVERIFIED: Markdown Projects, git-issues, TrackDown, TODO.md, gh-issue-sync, imdone and Dendron's
-multi-vault behaviour were assessed at web-search/README depth only. tasks.md, beads and Backlog.md
-have since been read against their actual source (clones under `$RESEARCH_HOME/repos/`). If any of
-the remainder moves from "surveyed" to "candidate", it needs the same treatment first — per the
-research-library skill, a README can advertise a feature that was never implemented.]
-
-[UNVERIFIED: the Planning Repo Pattern is still known only from a search summary — medium.com
-returns 403 to WebFetch on both the `medium.com/@jbpoley` and `jbpoley.medium.com` forms, and
-freedium.cfd does not resolve. It is named as the fallback design below, so if the relocation branch
-goes live, the article needs reading by some other route first.]
+Both survey-depth caveats — which projects were read at README depth only, and the Planning Repo
+Pattern article that could not be fetched at all — moved with the survey itself, into
+`skills/plan-docs/references/prior-art-task-trackers.md` and
+`plans/2026-09-01-is-a-tracker-in-the-loop.md`. They are qualifications on that content, so they
+belong where the content now lives rather than in a file about to be deleted.
 
 ## What is built
 
@@ -489,3 +484,41 @@ agent fleets, and an `AGENTS.md` that tells agents to stop using markdown for tr
 replacing three conventions that work in order to fix one that is merely inconvenient. Backlog.md
 has no cross-repo support in its source at all. tasks.md has the right model and seven stars. What
 is left worth taking from all three is the model, not the dependency.
+
+## Migrated to
+
+Everything this plan recommended is built. The store exists, routing is configuration, retirement
+deletes and `archive` reads back, and the discovery layer it argued for is `list --scope family`
+(the `backlog` command it named was later merged into `list` as a scope axis).
+
+- **`skills/plan-docs/references/prior-art-task-trackers.md`** (new) — the whole 2026-08-28 survey:
+  the markdown-tracker table with maturity and cross-repo columns, git-bug and beads, why beads was
+  ruled out in its own words, the cross-repo aggregation patterns, the tracker-mirroring options,
+  and the counter-evidence worth keeping. Its own file rather than a section of the design
+  rationale, because "why not adopt an existing tool" is a different question from "why is the
+  convention shaped this way", and `SKILL.md` now points at both. The two survey-depth `UNVERIFIED`
+  caveats travelled with it.
+- **`skills/plan-docs/references/design-rationale.md`**, "Why the listing reports status drift, and
+  nothing enforces it" — the origin measurement (56 plans across six repos, `done` where `landed` is
+  defined, a prose paragraph where an enum belongs, neither catchable by any repo's own gate) and
+  the report-don't-enforce decision.
+- **`skills/skill-authoring/SKILL.md`**, "A script in `scripts/` declares its own dependencies, or
+  has none", with the research behind it in that skill's `references/rationale.md` — the stdlib →
+  PEP 723 → never-a-venv ordering, and the properties a script run by an agent needs. It went to
+  `skill-authoring` rather than staying here because that skill owns how a skill ships a script;
+  this plan only researched it in passing.
+- **`plans/2026-09-01-is-a-tracker-in-the-loop.md`** — the one question the user explicitly held
+  open, with what has narrowed it since (option (c) is dead, and the strongest argument for a
+  tracker is spent now that `--scope family` answers it).
+
+Deliberately not migrated:
+
+- **The decisions already recorded elsewhere.** Retirement-by-deletion, `archive` as the retrieval
+  path, the route being configuration, the aggregator shipping inside the skill, retirement
+  destinations named as roles — every one of these is already in the design rationale in its settled
+  form, and migrating this file's version would ship a second, older copy that reads as
+  authoritative.
+- **The status tally as a table.** Its two findings are preserved above; the counts themselves are a
+  snapshot of a corpus that has since grown from 56 plans to 121 and would only mislead.
+- **The Planning Repo Pattern as a fallback design.** It was the fallback if relocation had won.
+  Relocation lost, so the design is not needed — the pattern survives as one row in the survey.

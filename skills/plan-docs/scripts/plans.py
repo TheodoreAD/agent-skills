@@ -1997,7 +1997,7 @@ def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
     all_entries = entries
     entries = _select(entries, args)
     if args.json:
-        print(json.dumps([_plan_payload(rel, plan) for rel, plan in entries], indent=2))
+        print(json.dumps([_plan_payload(entry) for entry in entries], indent=2))
         return 0
 
     print(f"scope:   {scope}{' (auto)' if args.scope == 'auto' else ''}")
@@ -2099,7 +2099,8 @@ def age_in_days(updated: str) -> int | None:
     return (datetime.now(UTC).astimezone().date() - stamped).days
 
 
-def _plan_payload(rel: str, plan: PlanFile) -> dict[str, object]:
+def _plan_payload(entry: ScopedPlan) -> dict[str, object]:
+    rel, plan = entry
     return {
         "repo": rel,
         "path": str(plan.path),

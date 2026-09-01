@@ -64,9 +64,15 @@ against the pre-rewrite baseline**, plus three other misses, having quoted the r
 commit messages. Two for two, and in both cases the session's own impression was that the run had
 gone cleanly.]
 
-[PITFALL: **`heredoc` over-counts for a commit-heavy session.** `git commit -F -` with a heredoc
-body is the recommended way to write a multi-line message here, and it tags on every commit. Read
-that column against how many commits the session made before treating it as a finding.]
+[PITFALL: **`heredoc` used to over-count for a commit-heavy session, and stopped on 2026-09-01.**
+`git commit -F -` with a heredoc body was the recommended way to write a multi-line message here, so
+it tagged on every commit and the column had to be read against the session's commit count.
+`~/AGENTS.md` inverted that rule: the message now goes inline in `-m`, written without backticks or
+`$`, because `-m` puts it in the approval prompt while `-F <file>` hides it behind a path. So a
+`heredoc` hit on a commit-heavy session is a finding again rather than an artefact — and a sample
+taken across the change measures adherence to whichever version that session held. **Stamp a sample
+with the `~/AGENTS.md` commit it was taken against**, or a rate that looks like drift may be a
+session correctly following an earlier rule.]
 
 **Compare** — the "did it work" check, no manual table-reading:
 

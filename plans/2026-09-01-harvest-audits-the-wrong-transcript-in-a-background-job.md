@@ -80,7 +80,10 @@ re-read **another session's brief** and harvest against it, which is precisely t
 exists to prevent, reached by a third route after the summary-reading one and the
 `AskUserQuestion`-answers one.
 
-Related, already filed: `2026-09-01-harvest-sweep-inflates-the-adherence-number-it-reports.md`
-(awaiting absorption in the store) is about the same number being wrong for a different reason — the
-sweep's own calls inflating it. Both are about step 5's figure not describing what the reader
-thinks; they stay separate because the causes and the fixes do not overlap.
+Related, and since **landed and retired**:
+`2026-09-01-harvest-sweep-inflates-the-adherence-number-it-reports.md` was about the same number
+being wrong for a different reason — the sweep's own calls counted in it. That shipped on 2026-09-02
+as `audit.py --until` plus a boundary recorded by step 0, so step 5 now excludes the sweep. Both
+were about step 5's figure not describing what the reader thinks; they stayed separate because the
+causes and the fixes did not overlap, and **this one is still open**: excluding the sweep from the
+wrong transcript still measures the wrong session.

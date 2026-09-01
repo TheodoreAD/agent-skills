@@ -270,6 +270,34 @@ or a separate skill? Arguments both ways, and the corpus has a way to settle it.
 than argued: draft the description, score it against the installed set, and check whether it takes
 anything from `python-conventions`. Do not ship either wording unmeasured.]
 
+[DECISION: **a separate skill, `python-refactor-audit`. Measured 2026-09-01, both options, twelve
+prompts at three runs each.** The suites are
+`skills/skill-fitness/evals/refactor-audit-candidate.json` and
+`refactor-audit-extend-alternative.json`; the four contested prompts are the modularity ones
+`python-conventions`' description already claims, and a third of each suite is negatives.
+
+| option                                   | score     | what happened                                     |
+| ---------------------------------------- | --------- | ------------------------------------------------- |
+| **separate skill**                       | **12/12** | took nothing from `python-conventions` — fp=0     |
+| extend `python-conventions`' description | 10/12     | the two most characteristic prompts fired nothing |
+
+**The extend option fails as a miss, not as a steal**, which is the corpus's own known failure mode.
+"This module is 3,000 lines and nobody has reviewed it as a whole — how do I restructure it without
+breaking anything?" selected **no skill at all**, three runs out of three, and the type-change
+prompt selected none in two of three. Precision stayed 1.0 throughout: the extended wording never
+stole anything, it simply did not fire on the requests the procedure exists for.
+
+The steal this plan was worried about did not happen either. With the separate skill in the listing,
+`python-conventions` kept every one of its own four cases — including "this module has accumulated
+global state and is hard to follow, how far should I break it up?", which is the sentence its
+description already owns. The two triggers are genuinely different, and the model can see it.
+
+**Extending also costs a trim, which is a second argument against it.** `python-conventions`'
+description is 927 of the 1024-character cap, so the procedure's clauses do not fit: the measured
+wording had to cut the DST-folds phrase, the `src/`-layout prose and the exception-hierarchy
+wording, and still only reached 1021. And the trimmed wording lost even its own cases to the
+incumbent — the candidate won 6 of 18 fires against the current description's 12.]
+
 [DECISION: **whatever it becomes, it is written after this pass, not before.** `AGENTS.md`' own rule
 is that conventions get applied to one real repo before being written into a shareable artifact — a
 pilot surfaces what research cannot. This pass _is_ that pilot, and its findings are the content.
@@ -420,9 +448,11 @@ is then easier to verify against.
 7. ~~Re-measure **both** tables with the same scripts.~~ **Done 2026-09-01.** The anonymous-shape
    counts are at zero for every record; the config-taking count moved 47 to 38 and the Progress
    section says why the rest staying is the right answer rather than unfinished work.
-8. **The only step left**: decide the skill question with a measured candidate description. The pass
-   is the pilot, and its findings — the oracle rules, the stopping rule, the two counts that did not
-   reproduce — are the content that would go into it.
+8. ~~Decide the skill question with a measured candidate description.~~ **Decided 2026-09-01: a
+   separate skill**, on the measurement in the DECISION above — 12/12 against the extend option's
+   10/12, and the extend option fails by firing nothing rather than by stealing. Writing
+   `python-refactor-audit` is its own plan; this pass is the pilot its content comes from, which is
+   why this file stays open until that skill exists.
 
 ## Explicitly not in this pass
 

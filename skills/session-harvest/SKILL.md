@@ -680,15 +680,67 @@ considered and rejected).
    the lost measurement into the plan that owns it — and report it as done. Reserve the report's
    last zone for what genuinely needs the user. Anything outward-facing (a push) still gets asked.
 
-9. **A next-session prompt covers this repo only.** If the user asks for one, build it from the
-   "only in this conversation" group plus this repo's own open work — and **leave out everything
-   filed for another repo.** That work is already routed: it sits in the store, and the session that
-   next works in that repo is handed it by `plans.py absorb`, which `SKILL.md` makes the first call
-   of every session. Repeating it in this repo's prompt creates a second copy that has to be retired
-   twice and goes stale independently, and it aims a reminder at the one session that cannot act on
-   it. Confirmed 2026-08-30: a prompt carried two cross-repo items that were already filed and
-   absorbable, which is duplication rather than a handoff. Same rule for a working-list plan in this
-   repo — record that cross-repo work was filed, not what it says.
+9. **The next-session prompt, if one is asked for. It is the next session's first move, not a
+   summary of this one.** Print it as a paste-ready block at the very end — never a file. The user
+   pastes it into the next session within minutes, which is the only reason it may assert anything
+   at all; a prompt written to a file rots on a shelf and reads identically when it does.
+
+   **Build it by subtraction, and the subtraction is the whole design.** The next session's own
+   opening moves already print most of what a prompt is tempted to carry:
+
+   | it already runs                               | so it already knows                                     |
+   | --------------------------------------------- | ------------------------------------------------------- |
+   | `plans.py absorb`                             | every plan filed for this repo, incoming from elsewhere |
+   | `plans.py list`                               | what is open here, grouped by status, retirements owed  |
+   | `git status`, `git log origin/<branch>..HEAD` | dirty tree, unpushed commits                            |
+
+   **Run those three, and include only the delta.** Anything they print is not prompt content — it
+   is noise that costs the reader attention and buys nothing. This is the mechanical test for "is
+   this a marginal detail", and it is why the prompt is short: on a session that harvested properly,
+   most candidates fail it.
+
+   What survives is three kinds, and only three:
+
+   - **Ordering.** `list` says what is open; nothing on the machine says what to do first, or why
+     this rather than that. Usually one sentence, and usually the most valuable line in the prompt.
+   - **Perishable state with a short fuse** — a background process still running, a CI run in
+     flight, a skill edited but not re-installed so the next session would run the old copy. Things
+     that will be false in an hour and that no opening command reveals.
+   - **A decision made in this session that is not yet in any file.** This one is a self-check: if
+     it is not empty, step 2's routing failed and the fix is to write the thing down, not to carry
+     it in a prompt.
+
+   **Every item is verify-then-act, never an assertion**: the command that re-derives the state,
+   then what to do if it still holds. "Push `103b0b6`" is a claim that may be false by morning;
+   "`git log origin/main..HEAD` — if it still shows one commit, push it" cannot be. Stamp the block
+   with the time it was written and say in it that anything older than a few hours should be
+   re-derived rather than trusted.
+
+   **Cap it at five items and one opening line.** The opening line names the single next action and
+   the file that carries its detail — a good prompt hands the next session one file to open, not a
+   briefing. Past five it has become a plan without a status field, which is the shape this
+   convention exists to prevent.
+
+   **Never in the prompt**, however tempting: anything the three commands print; anything already
+   written into a plan (name the plan, never restate it); the reasoning behind a decision (that is
+   plan content by step 2's routing); a narrative of what this session did (the report above already
+   did that, and the next session does not need it).
+
+   **It covers this repo only.** Work filed for another repo is already routed — it sits in the
+   store and `plans.py absorb` hands it to the session that can act on it, which is the first call
+   that session makes. Repeating it here creates a second copy that goes stale independently and
+   aims a reminder at the one session that cannot act on it. Confirmed 2026-08-30: a prompt carried
+   two cross-repo items that were already filed and absorbable, which is duplication rather than a
+   handoff. Same rule for a working-list plan in this repo — record that cross-repo work was filed,
+   not what it says.
+
+   [PITFALL: **the one carve-out, and it is narrow enough to state as a test.** Another repo earns a
+   line only when both hold: it is **high-risk or irreversible** (a history rewrite, a force-push, a
+   destructive cleanup, a published credential), **and** it would change what the next session in
+   _this_ repo does. A pending history rewrite in a repo whose plans this repo's store mirrors is
+   the shape that passes. An unpushed commit, an open plan, a failing test in another repo all fail
+   the second half — that repo's own next session is handed those, and this one cannot act on them.
+   When something does pass, one line: the risk, and the check that says whether it still stands.]
 
 Everything this harvest writes into a repo — a `plans/*.md` entry, an `AGENTS.md` addition, a
 `docs/`/`contributing/` page, a skill's own source — goes through that repo's quality gate

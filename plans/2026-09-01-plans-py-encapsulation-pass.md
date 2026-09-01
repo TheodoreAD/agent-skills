@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-01
 ---
 
@@ -452,7 +452,20 @@ is then easier to verify against.
    separate skill**, on the measurement in the DECISION above — 12/12 against the extend option's
    10/12, and the extend option fails by firing nothing rather than by stealing. Writing
    `python-refactor-audit` is its own plan; this pass is the pilot its content comes from, which is
-   why this file stays open until that skill exists.
+   why this file stayed open until that skill existed. **It exists as of 2026-09-01** — written,
+   pushed and installed — so this plan closes. Its live re-run came back 11/12 rather than 12/12,
+   which is that plan's open item, not this one's.
+
+## Migrated to
+
+- `skills/python-refactor-audit/references/pilot.md` — everything above that is evidence rather than
+  sequencing: the before/after counts, the two counts that did not reproduce, the oracle results,
+  the type-change DECISION and its live-state PITFALL, the items dropped mid-pass with their
+  reasons, and the unpredicted findings.
+- `skills/python-refactor-audit/references/prior-art.md` — the prior-art survey and the
+  separate-skill measurement.
+- `skills/python-refactor-audit/SKILL.md` — the procedure itself.
+- `plans/2026-09-01-python-refactor-audit-skill.md` — the one question still open.
 
 ## Explicitly not in this pass
 

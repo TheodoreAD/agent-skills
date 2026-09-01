@@ -142,9 +142,38 @@ Two measurements taken while writing, both free:
   new skill sits at 0.0 and is among the first demoted to name-only. Recorded in `prior-art.md`,
   because it means an early miss may be a truncated listing rather than a bad description.
 
-**Left to do**: push, re-install, then `trigger.py run` on both suites against the real listing —
-and only then set this plan and the encapsulation-pass plan to `landed`. The pass plan stays open
-until then, on its own terms.
+**Shipped 2026-09-01**: commits `3f8260d` and `b3ca069`, pushed, installed with
+`npx skills add TheodoreAD/agent-skills --global --skill python-refactor-audit`, installed copy
+verified byte-identical to source and visible in this session's own listing.
+
+### The live re-run is 11/12, not the 12/12 this plan promised
+
+`trigger.py run refactor-audit-candidate.json`, immediately after installing, three runs each.
+Precision 1.0 for every skill, nothing stolen, `python-conventions` kept all four of its cases,
+`python-testing-conventions` its one, all three negatives held. **The single failure is case 1 — the
+flagship prompt, "this module is 3,000 lines and nobody has ever reviewed it as a whole" — which
+fired the skill once in three runs and nothing twice.** Recall 0.83, fn=2. That is the same prompt,
+and the same miss, that sank the extend option.
+
+Two conclusions, both checked rather than assumed:
+
+- **Not truncation.** `fitness.py budget` after the run reports no new truncated listing and no new
+  bare-name observation, so all 36 probes saw the full description. The priority-0.0 hypothesis this
+  plan recorded an hour earlier is refuted for this case and must not be used to explain it.
+- **Candidate mode overestimated**, on identical cases with nothing else changed — a measured
+  counterexample to `skill-fitness`' documented "a candidate score is a lower bound". Folded back
+  into `skill-fitness`' SKILL.md and `references/measurements.md`, and into `skill-authoring`, all
+  three of which asserted the bound; the claim is now "an estimate that errs in both directions".
+
+**Left open, deliberately not fixed by rewording on a hunch**: whether the flagship prompt is worth
+a redraft. A new wording is a new unmeasured description, so the move is `candidate` on a redraft
+and then `run` after adopting it, judged on case 1 — roughly two more suites' worth of spend, and
+worth asking before spending. The skill is deployed and working in the meantime; 11 of 12 cases
+pass, and the failure is a miss rather than a steal.
+
+The encapsulation-pass plan's condition — "stays open until that skill exists" — is met, and it is
+set `landed` with its content living on in `skills/python-refactor-audit/references/pilot.md`. This
+plan stays `in-progress` on the case-1 question alone.
 
 ## Sources this is written from
 

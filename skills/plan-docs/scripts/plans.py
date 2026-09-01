@@ -571,18 +571,44 @@ class Routing:
     rel: str | None
     rule: Rule | None
     source: str
-    dirs: dict[str, Path]
+    store_dir: Path | None
+
+    @property
+    def repo_dir(self) -> Path | None:
+        """This repo's own `plans/`, or None when the path resolved to no repository at all.
+
+        Derived rather than stored: it was always `repo_root / "plans"` and never anything else, so
+        a field could only ever disagree with `repo_root`.
+        """
+        return None if self.repo_root is None else self.repo_root / "plans"
+
+    def dir_for(self, where: str) -> Path | None:
+        """The directory a location *name* refers to, or None if this repo has no such directory.
+
+        The one string-keyed door left, and it exists because the names come from outside the
+        process — `read`/`write` in the config file, `--to` on the command line. Everything already
+        holding a `Routing` reaches for `repo_dir`/`store_dir` instead, where a typo is an error a
+        checker catches rather than a runtime `KeyError`.
+        """
+        if where == "repo":
+            return self.repo_dir
+        if where == "store":
+            return self.store_dir
+        return None
 
     @property
     def write_dir(self) -> Path:
         if self.rule is None or self.verdict != "ok":
             raise PlanError(self.reason)
-        return self.dirs[self.rule.write]
+        target = self.dir_for(self.rule.write)
+        if target is None:
+            raise PlanError(f"this repo has no {self.rule.write!r} directory to write to")
+        return target
 
     def read_dirs(self) -> list[tuple[str, Path]]:
         if self.rule is None:
             return []
-        return [(where, self.dirs[where]) for where in self.rule.read if where in self.dirs]
+        return [(where, found) for where in self.rule.read if (found := self.dir_for(where)) is not None]
 
 
 def git(args: list[str], cwd: Path, env: dict[str, str] | None = None) -> str | None:
@@ -710,7 +736,7 @@ def _match_rule(cfg: Config, rel: str | None) -> tuple[Rule | None, str]:
 def resolve(start: Path, cfg: Config) -> Routing:
     root = repo_root_of(start)
     if root is None:
-        return Routing("needs-decision", f"{start} is not inside a git repository", None, None, None, "no rule", {})
+        return Routing("needs-decision", f"{start} is not inside a git repository", None, None, None, "no rule", None)
 
     try:
         rel = root.resolve().relative_to(cfg.projects_root.resolve()).as_posix()
@@ -718,12 +744,10 @@ def resolve(start: Path, cfg: Config) -> Routing:
         rel = None
 
     rule, source = _match_rule(cfg, rel)
-    dirs: dict[str, Path] = {"repo": root / "plans"}
-    if rel is not None:
-        # The tier lookup lives here and nowhere else: every command that writes, reads, moves or
-        # archives a store-held plan goes through `routing.dirs["store"]`, so one substitution
-        # routes all of them and none of them has to know a tier exists.
-        dirs["store"] = cfg.store_for(rel) / rel
+    # The tier lookup lives here and nowhere else: every command that writes, reads, moves or
+    # archives a store-held plan goes through `routing.store_dir`, so one substitution routes all of
+    # them and none of them has to know a tier exists.
+    store_dir = None if rel is None else cfg.store_for(rel) / rel
 
     if rule is None:
         reason = (
@@ -731,14 +755,14 @@ def resolve(start: Path, cfg: Config) -> Routing:
             if cfg.exists
             else f"no config file at {cfg.path} (write one with: plans.py config init)"
         )
-        return Routing("needs-decision", reason, root, rel, None, source, dirs)
+        return Routing("needs-decision", reason, root, rel, None, source, store_dir)
     if "store" in rule.read and rel is None:
         reason = (
             f"{root} is not under projects_root ({cfg.projects_root}), so its store path cannot be "
             f'mirrored; move the clone under it or give this repo a mode = "repo" entry'
         )
-        return Routing("needs-decision", reason, root, rel, rule, source, dirs)
-    return Routing("ok", "", root, rel, rule, source, dirs)
+        return Routing("needs-decision", reason, root, rel, rule, source, store_dir)
+    return Routing("ok", "", root, rel, rule, source, store_dir)
 
 
 def require_ok(routing: Routing) -> Routing:
@@ -869,7 +893,7 @@ def visible_dirs(cfg: Config, routing: Routing) -> list[tuple[str, Path]]:
     store mirror from another repo, so `set-status` and friends could not act on one at all. Same
     argument, and the same fix, as the per-repo listing.
     """
-    dirs = [(where, routing.dirs[where]) for where in ("repo", "store") if where in routing.dirs]
+    dirs = [(where, found) for where in ("repo", "store") if (found := routing.dir_for(where)) is not None]
     return [*dirs, ("unscoped", cfg.unscoped)]
 
 
@@ -1419,7 +1443,7 @@ def cmd_where(args: argparse.Namespace) -> int:
             "rel": routing.rel,
             "rule": None if rule is None else {"read": list(rule.read), "write": rule.write},
             "source": routing.source,
-            "write_dir": str(routing.dirs[rule.write]) if rule and routing.verdict == "ok" else None,
+            "write_dir": str(routing.write_dir) if rule and routing.verdict == "ok" else None,
             "read_dirs": {where: str(path) for where, path in routing.read_dirs()},
             "tier": cfg.tier_of(routing.rel),
             "store": str(cfg.store_for(routing.rel)),
@@ -1442,7 +1466,7 @@ def cmd_where(args: argparse.Namespace) -> int:
         print(f'note:    [roots] "{routing.rel}" names this repo, not a directory of repos, so it')
         print(f"         matched nothing. Use: config set repos.{routing.rel} <repo|store>")
     if routing.verdict == "ok" and routing.rule:
-        print(f"write:   {routing.dirs[routing.rule.write]}")
+        print(f"write:   {routing.write_dir}")
         for where, path in routing.read_dirs():
             print(f"read:    {where:<6} {path}")
     print(f"config:  {cfg.path}{'' if cfg.exists else ' (does not exist)'}")
@@ -1609,9 +1633,10 @@ def cmd_new(args: argparse.Namespace) -> int:
         target = routing.write_dir
         where = routing.rule.write if routing.rule else ""
     else:
-        if args.to not in routing.dirs:
+        chosen = routing.dir_for(args.to)
+        if chosen is None:
             raise PlanError(f"cannot write to {args.to!r} for this repo: {routing.reason or 'no such directory'}")
-        target, where = routing.dirs[args.to], args.to
+        target, where = chosen, args.to
 
     origin = None
     if where == "store" and routing.repo_root:
@@ -1641,7 +1666,8 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
     here = resolve(args.path, cfg).repo_root
     if here is not None and here.resolve() == routing.repo_root.resolve():
         raise PlanError(f"--for names the repo this session is already in; use plain `new {args.topic}`")
-    if "store" not in routing.dirs:
+    store_dir = routing.store_dir
+    if store_dir is None:
         raise PlanError(
             f"{routing.repo_root} is not under projects_root ({cfg.projects_root}), so it has no store "
             "mirror to file into; move the clone under it or plan in that repo directly"
@@ -1652,7 +1678,7 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
     store = cfg.store_of(tier)
     source = resolve(args.path, cfg)
     code = write_plan(
-        routing.dirs["store"],
+        store_dir,
         args.topic,
         args.status,
         "store",
@@ -1772,8 +1798,9 @@ def repo_scope_plans(cfg: Config, routing: Routing) -> list[tuple[str, PlanFile]
     label = routing.rel or (routing.repo_root.name if routing.repo_root else "(repo)")
     found: list[tuple[str, PlanFile]] = []
     for where in ("repo", "store"):
-        if where in routing.dirs:
-            found.extend((label, plan) for plan in plans_in(routing.dirs[where], where))
+        directory = routing.dir_for(where)
+        if directory is not None:
+            found.extend((label, plan) for plan in plans_in(directory, where))
     found.extend((UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
     return found
 
@@ -2131,7 +2158,8 @@ def consolidation_pairs(routing: Routing, pending: list[PlanFile]) -> dict[str, 
     filed plan, or one already committed in the repo.
     """
     known = {plan.path.name for plan in pending}
-    known |= {path.name for path in routing.dirs["repo"].glob("*.md")} if routing.dirs["repo"].is_dir() else set()
+    repo_dir = routing.repo_dir
+    known |= {path.name for path in repo_dir.glob("*.md")} if repo_dir and repo_dir.is_dir() else set()
     pairs: dict[str, list[str]] = {}
     for plan in pending:
         cited = plan_references(plan.path.read_text(encoding="utf-8"), plan.path.name)
@@ -2148,9 +2176,9 @@ def absorbable(routing: Routing) -> list[PlanFile]:
     permanent home and nothing is in transit. That is the whole distinction, read from route plus
     location rather than from a frontmatter field nobody would maintain.
     """
-    if routing.rule is None or routing.rule.write != "repo" or "store" not in routing.dirs:
+    if routing.rule is None or routing.rule.write != "repo" or routing.store_dir is None:
         return []
-    return plans_in(routing.dirs["store"], "store")
+    return plans_in(routing.store_dir, "store")
 
 
 def cmd_absorb(args: argparse.Namespace) -> int:
@@ -2190,7 +2218,10 @@ def cmd_absorb(args: argparse.Namespace) -> int:
         return _report_absorbable(routing, pending, pairs)
 
     _require_own_repo(routing, cfg)
-    target = routing.dirs["repo"]
+    # `write_dir`, not `repo_dir`: reaching here means `absorbable` returned plans, which it only
+    # does for a repo whose route writes to `repo` — so the two are the same directory, and this
+    # spelling says why the plans are going there.
+    target = routing.write_dir
     wanted = set(args.only) if args.only else None
     chosen = [plan for plan in pending if wanted is None or plan.path.name in wanted]
     moved, blocked = _take_plans(chosen, target)
@@ -2295,9 +2326,9 @@ def cmd_move(args: argparse.Namespace) -> int:
     cfg = load_config()
     routing = require_ok(resolve(args.path, cfg))
     plan = locate(cfg, routing, args.file)
-    if args.to not in routing.dirs:
+    target = routing.dir_for(args.to)
+    if target is None:
         raise PlanError(f"this repo has no {args.to!r} directory: {routing.reason or 'not resolvable'}")
-    target = routing.dirs[args.to]
     destination = target / plan.path.name
     if destination.exists():
         raise PlanError(f"{destination} already exists")
@@ -2367,7 +2398,7 @@ def cmd_refs(args: argparse.Namespace) -> int:
             path, _, rest = line.partition(":")
             number, _, text = rest.partition(":")
             found.append({"where": "repo", "path": path, "line": int(number) if number.isdigit() else 0, "text": text})
-    store_dir = routing.dirs.get("store")
+    store_dir = routing.store_dir
     if store_dir and store_dir.is_dir():
         for path in sorted(store_dir.rglob("*.md")):
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):

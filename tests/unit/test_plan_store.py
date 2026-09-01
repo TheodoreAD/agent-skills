@@ -1461,8 +1461,8 @@ TIERED = tiered()
 
 def test_each_root_routes_to_the_store_its_tier_names(ws):
     write_config(ws, TIERED)
-    assert route(ws.client).dirs["store"] == ws.sensitive / "client.com-bitbucket" / "team" / "api"
-    assert route(ws.personal).dirs["store"] == ws.store / "github.com-personal" / "agent-skills"
+    assert route(ws.client).store_dir == ws.sensitive / "client.com-bitbucket" / "team" / "api"
+    assert route(ws.personal).store_dir == ws.store / "github.com-personal" / "agent-skills"
 
 
 def test_the_unscoped_area_stays_in_the_shareable_tier(ws, capsys):
@@ -1482,8 +1482,8 @@ def test_shareable_roots_falls_back_to_public_roots_and_overrides_it_when_set(ws
     write_config(ws, tiered('shareable_roots = ["client.com-bitbucket"]\n'))
     cfg = plans.load_config()
     assert cfg.public_root_names() == ("github.com-personal",)  # unchanged: still not disclosable
-    assert route(ws.client).dirs["store"] == ws.store / "client.com-bitbucket" / "team" / "api"
-    assert route(ws.personal).dirs["store"] == ws.sensitive / "github.com-personal" / "agent-skills"
+    assert route(ws.client).store_dir == ws.store / "client.com-bitbucket" / "team" / "api"
+    assert route(ws.personal).store_dir == ws.sensitive / "github.com-personal" / "agent-skills"
 
 
 def test_the_sensitive_store_follows_the_shareable_one_and_the_environment_beats_both(ws, monkeypatch):
@@ -1505,7 +1505,7 @@ def test_pointing_both_tiers_at_one_directory_degrades_to_a_single_store(ws, cap
     write_config(ws, tiered(f'sensitive_store = "{ws.store}"\n'))
     cfg = plans.load_config()
     assert cfg.stores() == [("shareable", ws.store)]
-    assert route(ws.client).dirs["store"] == ws.store / "client.com-bitbucket" / "team" / "api"
+    assert route(ws.client).store_dir == ws.store / "client.com-bitbucket" / "team" / "api"
 
     assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
     assert capsys.readouterr().out.count("store:  ") == 1
@@ -1555,8 +1555,8 @@ def test_a_work_device_routes_every_root_to_the_one_store(ws, monkeypatch):
     """Both a client root and a personal root land in the same place, and `where` says so."""
     monkeypatch.setenv("PLAN_DOCS_DEVICE", "work")
     write_config(ws, TIERED)
-    assert route(ws.client).dirs["store"] == ws.store / "client.com-bitbucket" / "team" / "api"
-    assert route(ws.personal).dirs["store"] == ws.store / "github.com-personal" / "agent-skills"
+    assert route(ws.client).store_dir == ws.store / "client.com-bitbucket" / "team" / "api"
+    assert route(ws.personal).store_dir == ws.store / "github.com-personal" / "agent-skills"
     cfg = plans.load_config()
     assert cfg.split_by_sensitivity is False
     assert cfg.stores() == [("sensitive", cfg.store)], "one store, and it is the guarded one"

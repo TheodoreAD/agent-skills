@@ -165,11 +165,24 @@ Two conclusions, both checked rather than assumed:
   into `skill-fitness`' SKILL.md and `references/measurements.md`, and into `skill-authoring`, all
   three of which asserted the bound; the claim is now "an estimate that errs in both directions".
 
-**Left open, deliberately not fixed by rewording on a hunch**: whether the flagship prompt is worth
-a redraft. A new wording is a new unmeasured description, so the move is `candidate` on a redraft
-and then `run` after adopting it, judged on case 1 — roughly two more suites' worth of spend, and
-worth asking before spending. The skill is deployed and working in the meantime; 11 of 12 cases
-pass, and the failure is a miss rather than a steal.
+**Re-run to separate a real miss from variance: 11/12 again, case 1 at 0/3 — 1 fire in 6.** Every
+other case held at 3/3 across both runs. So case 1 is a reproducible miss to silence, not variance,
+and the plan's promised 12/12 does not survive shipping.
+
+**And it is not the usual cause.** A miss to silence in this corpus has twice been a description
+speaking the tool's vocabulary instead of the request's; here the description already carries the
+prompt's own words nearly verbatim — "auditing a file nobody has reviewed as a whole", "how to
+restructure it safely" against "nobody has ever reviewed it as a whole", "restructuring it without
+breaking anything". Three narrower prompts for the same skill fire 3/3 with the same wording. The
+same sentence also selected nothing for the rejected extend option, so it is the request shape, not
+this description, that is hard — a broad "how do I go about X" seems to be answered directly rather
+than routed. Recorded as a pitfall in `skill-fitness`' `measurements.md`, because it refutes the
+diagnosis that file was carrying.
+
+**Left open**: whether to spend on a redraft. It is a new unmeasured wording, so the move is
+`candidate` on a redraft and then `run` after adopting it, judged on case 1 — and, given the above,
+a redraft reaching for closer vocabulary is a guess rather than a fix. The skill is deployed and
+working meanwhile: 11 of 12 cases pass, precision 1.0, nothing stolen.
 
 The encapsulation-pass plan's condition — "stays open until that skill exists" — is met, and it is
 set `landed` with its content living on in `skills/python-refactor-audit/references/pilot.md`. This

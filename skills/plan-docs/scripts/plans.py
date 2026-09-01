@@ -920,7 +920,7 @@ class ScopedPlan(NamedTuple):
     plan: PlanFile
 
 
-def family_plans(cfg: Config) -> list[ScopedPlan]:
+def family_plans(cfg: Config, repos: list[str]) -> list[ScopedPlan]:
     """Every plan on the machine, paired with the repo it belongs to, plus the unscoped area.
 
     Both possible directories are read for every repo, rather than only the ones its rule names:
@@ -929,7 +929,7 @@ def family_plans(cfg: Config) -> list[ScopedPlan]:
     at each `.git` — no repo's own contents are walked.
     """
     found: list[ScopedPlan] = []
-    for rel in repo_paths(cfg):
+    for rel in repos:
         for where, directory in (("repo", cfg.projects_root / rel / "plans"), ("store", cfg.store_for(rel).path / rel)):
             found.extend(ScopedPlan(rel, plan) for plan in plans_in(directory, where))
     found.extend(ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
@@ -1334,15 +1334,16 @@ def is_git_repo(path: Path) -> bool:
     return path.is_dir() and git(["rev-parse", "--git-dir"], path) is not None
 
 
-def archive_sources(cfg: Config, routing: Routing | None) -> list[Source]:
+def archive_sources(ws: Workspace, routing: Routing | None) -> list[Source]:
     """Which histories to search: this repo's route, or every repo on the machine plus both stores.
 
     Both stores, never just one: the split is where a plan lives, not what a session may look for,
     and an `archive --all` that searched one tier would report a plan as unrecoverable while its
     deletion commit sat in the other repository.
     """
+    cfg = ws.config
     if routing is None:
-        found = [Source("repo", cfg.projects_root / rel, "plans/") for rel in repo_paths(cfg)]
+        found = [Source("repo", cfg.projects_root / rel, "plans/") for rel in ws.repos]
         return [*found, *(Source("store", store.path, "", store.tier) for store in cfg.stores())]
     found = []
     for read in routing.read_dirs():
@@ -1498,16 +1499,16 @@ def retired_plans(cfg: Config, sources: list[Source], search: str | None) -> lis
     return found
 
 
-def live_plans(cfg: Config, routing: Routing | None) -> dict[str, Path]:
+def live_plans(ws: Workspace, routing: Routing | None) -> dict[str, Path]:
     """Plan files that exist right now, by filename — the same scope the archive is searched at."""
     if routing is None:
-        return {entry.plan.path.name: entry.plan.path for entry in family_plans(cfg)}
+        return {entry.plan.path.name: entry.plan.path for entry in ws.family_plans}
     return {plan.path.name: plan.path for plan in plan_files(routing)}
 
 
-def mark_live(cfg: Config, routing: Routing | None, entries: list[Retired]) -> None:
+def mark_live(ws: Workspace, routing: Routing | None, entries: list[Retired]) -> None:
     """Flag entries whose filename exists now — a plan moved between repo and store, not retired."""
-    live = live_plans(cfg, routing)
+    live = live_plans(ws, routing)
     for entry in entries:
         current = live.get(entry.name)
         if current is not None:
@@ -1546,6 +1547,30 @@ class Workspace:
     def routing(self) -> Routing:
         """Where this repo's plans are read from and written to. Resolved once, verdict included."""
         return resolve(self.path, self.config)
+
+    @cached_property
+    def projects(self) -> ProjectsWalk:
+        """One walk of the projects tree per invocation, however many answers derive from it.
+
+        Measured 2026-09-01, before this existed: `doctor` walked it **five** times in one run — the
+        family listing, the enrolled-roots loop, the layout problems, the undecided-roots list and
+        the ignored-directories count — and `archive --all` twice. Nothing was wrong with any single
+        call; they simply could not know about each other.
+
+        A failed walk is not cached, which is what `doctor` depends on: the one fatal layout error
+        is raised on each access, so the caller that catches it still catches it.
+        """
+        return walk_projects(self.config)
+
+    @cached_property
+    def repos(self) -> list[str]:
+        """Every repo under the projects root, by path relative to it."""
+        return self.projects.repos
+
+    @cached_property
+    def family_plans(self) -> list[ScopedPlan]:
+        """Every plan on the machine, paired with the repo it belongs to."""
+        return family_plans(self.config, self.repos)
 
     def require_routable(self) -> Routing:
         """The routing, or the needs-decision exit — the three-line prologue eight commands opened
@@ -1950,7 +1975,7 @@ def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
     elif scope == "unscoped":
         entries = [ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped")]
     else:
-        entries = family_plans(cfg)
+        entries = ws.family_plans
 
     all_entries = entries
     entries = _select(entries, args)
@@ -1976,7 +2001,7 @@ def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
     elided = _print_rows(entries, show_repo=scope != "repo", limit=_idea_limit(args, cfg), stale=args.stale)
     if scope == "repo":
         _print_absorbable(routing)
-        _print_inbound_dependencies(cfg, routing)
+        _print_inbound_dependencies(ws, routing)
     elif scope == "family":
         _print_family_dependencies(entries)
         _print_status_drift(entries)
@@ -2163,14 +2188,14 @@ def _print_absorbable(routing: Routing) -> None:
         print(f"\n{len(pending)} plan(s) filed for this repo await absorption — plans.py absorb")
 
 
-def _print_inbound_dependencies(cfg: Config, routing: Routing) -> None:
+def _print_inbound_dependencies(ws: Workspace, routing: Routing) -> None:
     """What other repos are waiting on *this* one — the actionable half, and bounded by definition.
 
     Needs the family pass: a repo's own `plans/` cannot contain the plan that names it. Cheap, since
     `repo_paths` stops at each `.git` without walking any repo's contents.
     """
     name = (routing.rel or "").split("/")[-1] or (routing.repo_root.name if routing.repo_root else "")
-    dependents = sorted(_blocked_by(family_plans(cfg)).get(name, []))
+    dependents = sorted(_blocked_by(ws.family_plans).get(name, []))
     if not dependents:
         return
     print(f"\nwaiting on this repo ({len(dependents)})")
@@ -2611,16 +2636,16 @@ def cmd_archive(args: argparse.Namespace, ws: Workspace) -> int:
     """
     cfg = ws.config
     routing = None if args.all else ws.require_routable()
-    sources = archive_sources(cfg, routing)
+    sources = archive_sources(ws, routing)
 
     if args.show:
-        return show_retired(cfg, routing, sources, args.show)
+        return show_retired(ws, routing, sources, args.show)
     if args.file:
         return show_lifecycle(cfg, sources, args.file)
 
     entries = retired_plans(cfg, sources, args.search)
     shown = [fill_details(entry) for entry in entries[: args.limit]]
-    mark_live(cfg, routing, shown)
+    mark_live(ws, routing, shown)
     if args.json:
         print(json.dumps([_retired_payload(entry) for entry in shown], indent=2))
         return 0
@@ -2701,16 +2726,16 @@ def _match_retired(cfg: Config, sources: list[Source], name: str) -> list[Retire
     return [entry for entry in retired_plans(cfg, sources, None) if entry.name == wanted]
 
 
-def show_retired(cfg: Config, routing: Routing | None, sources: list[Source], name: str) -> int:
+def show_retired(ws: Workspace, routing: Routing | None, sources: list[Source], name: str) -> int:
     """Print a retired plan's final content — the state of the file the moment before it went."""
     wanted = Path(name).name
-    matches = _match_retired(cfg, sources, wanted)
+    matches = _match_retired(ws.config, sources, wanted)
     # A plan moved from a repo to the store left a deletion commit behind exactly like a retired one.
     # Printing that old copy would hand back a stale version of a file that is live somewhere else.
-    mark_live(cfg, routing, matches)
+    mark_live(ws, routing, matches)
     matches = [entry for entry in matches if not entry.live]
     if not matches:
-        current = live_plans(cfg, routing).get(wanted)
+        current = live_plans(ws, routing).get(wanted)
         if current is not None:
             raise PlanError(f"{wanted} is not retired — it is still on the working set at {current}")
         searched = ", ".join(f"{source.root}/{source.prefix}" for source in sources)
@@ -3165,10 +3190,13 @@ def store_problems(cfg: Config) -> list[str]:
     return found
 
 
-def layout_problems(cfg: Config, *, strict: bool = False) -> list[str]:
+def layout_problems(ws: Workspace, *, strict: bool = False) -> list[str]:
     """The tree's own shape, and which collections nobody has categorised yet."""
+    cfg = ws.config
     try:
-        found = walk_projects(cfg).problems
+        # `ws.projects`, not a fresh walk, and still inside the try: a failed walk is not cached, so
+        # the one fatal layout error is raised on each access and this catch still catches it.
+        found = ws.projects.problems
     except PlanError as exc:
         # doctor is the command whose job is saying what is wrong, so the one fatal layout error is
         # reported here rather than raised out of it.
@@ -3179,7 +3207,7 @@ def layout_problems(cfg: Config, *, strict: bool = False) -> list[str]:
     # A root reaching only `default` has never been decided about. Once every existing root carries
     # an explicit rule, this list is exactly the collections that appeared since — no seen-markers,
     # no registry, just the config read as a record of what has been answered.
-    known = repo_paths(cfg)
+    known = ws.repos
     roots = sorted({rel.split("/")[0] for rel in known})
     undecided = [name for name in roots if _match_rule(cfg, f"{name}/x").source == "default"]
     out += [f"{name}: no explicit rule, using `default` — config set roots.{name} <repo|store>" for name in undecided]
@@ -3207,10 +3235,10 @@ def inert_root_rules(cfg: Config, known: list[str]) -> list[str]:
     ]
 
 
-def _all_problems(cfg: Config, unrouted: list[str], *, strict: bool = False) -> list[str]:
+def _all_problems(ws: Workspace, unrouted: list[str], *, strict: bool = False) -> list[str]:
     """Everything wrong, in one list: the store, the tree's shape, and unrouted repos holding plans."""
     routing = [f"{rel} holds plans but no rule routes it" for rel in unrouted]
-    return store_problems(cfg) + layout_problems(cfg, strict=strict) + routing
+    return store_problems(ws.config) + layout_problems(ws, strict=strict) + routing
 
 
 def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
@@ -3221,7 +3249,7 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
     """
     cfg = ws.config
     try:
-        entries = family_plans(cfg)
+        entries = ws.family_plans
     except PlanError as exc:
         # A layout fatal enough to stop every other command still has to be diagnosable, and this
         # is the command you run to find out what is wrong. Report it and the locations, which need
@@ -3241,7 +3269,7 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
     # naming every employer and client repo on it, which is a listing this skill exists to keep from
     # being produced casually. A repo is named below only when it actually holds plans.
     roots: dict[str, list[str]] = {}
-    for rel in repo_paths(cfg):
+    for rel in ws.repos:
         roots.setdefault(rel.split("/")[0], []).append(rel)
     holding = sorted(((rel, counts[rel]) for rel in counts if rel != UNSCOPED_DIR and counts[rel]), key=lambda p: -p[1])
     unrouted = [rel for rel, _ in holding if _match_rule(cfg, rel).source == "no rule"]
@@ -3277,17 +3305,17 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
             ],
             "holding_plans": [{"repo": rel, "plans": n} for rel, n in holding],
             "statuses": dict(Counter(entry.plan.group for entry in entries)),
-            "problems": _all_problems(cfg, unrouted, strict=args.strict),
+            "problems": _all_problems(ws, unrouted, strict=args.strict),
         }
         print(json.dumps(payload, indent=2))
         return 0
 
-    _print_doctor(cfg, entries, roots, counts, holding, unrouted, strict=args.strict)
+    _print_doctor(ws, entries, roots, counts, holding, unrouted, strict=args.strict)
     return 0
 
 
 def _print_doctor(
-    cfg: Config,
+    ws: Workspace,
     entries: list[ScopedPlan],
     roots: dict[str, list[str]],
     counts: dict[str, int],
@@ -3296,6 +3324,7 @@ def _print_doctor(
     *,
     strict: bool = False,
 ) -> None:
+    cfg = ws.config
     anchor, source = session_anchor(cfg)
     print(f"session repo:  {anchor or '(not in a git repository)'}  [{source}]")
     print(f"config:        {cfg.path}{'' if cfg.path.is_file() else ' (does not exist)'}")
@@ -3316,7 +3345,7 @@ def _print_doctor(
             f"{len(members):>3} repo(s), {with_plans} with plans"
         )
 
-    ignored = sum(1 for problem in walk_projects(cfg).problems if problem.kind == "no repos")
+    ignored = sum(1 for problem in ws.projects.problems if problem.kind == "no repos")
     if ignored and not strict:
         # Counted here rather than listed under problems: on a healthy machine these are all
         # deliberate — playgrounds, docs, scratch folders — and a permanent entry in a problems
@@ -3337,7 +3366,7 @@ def _print_doctor(
     if tags:
         print("  " + "  ".join(f"{tags[name]} {name}" for name in TAG_NAMES if tags[name]))
 
-    problems = _all_problems(cfg, unrouted, strict=strict)
+    problems = _all_problems(ws, unrouted, strict=strict)
     print(f"\nproblems ({len(problems)})")
     for problem in problems:
         print(f"  - {problem}")

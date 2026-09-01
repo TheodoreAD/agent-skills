@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 ---
 
 # `invoke-task-conventions` says nothing about a task that waits for typed input
@@ -50,18 +50,27 @@ interpreter moves under it.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: whether this is a section in `invoke-task-conventions` or a short rule in
-`~/AGENTS.md`. The miss is silent and expensive — a hang with no output, which is the shape that
-argues for the always-loaded file — but the trigger is sharp and topic-bound ("a task that runs
-something interactive"), a skill that owns the topic already exists, and that file stands at 38
-rules / 598 lines against its own ≤15 / ≤200 reference points. Filed to the skill on that reasoning;
-worth a second opinion, since the last comparable call (a non-terminating CI-poll loop) went the
-other way on exactly the silent-and-expensive test.]
+[DECISION: **the skill, and the second opinion agrees — for a reason the original argument only
+half-stated.** The silent-and-expensive test does pull toward `~/AGENTS.md`, and that is what makes
+this a close call rather than an obvious one. What settles it is that the rule is **not
+self-contained prose**: it needs the two causes, the interpreter matrix and the `pty=True` trap to
+be actionable, and an always-loaded file cannot carry that at a size worth paying on every session —
+`~/AGENTS.md` measured **636 lines on 2026-09-02**, up from the 598 this plan recorded a day earlier
+and still growing. A one-line version there ("never run anything interactive from a task") would be
+the part that is easy to remember and useless when it matters, because the failure looks like a hang
+rather than like a rule being broken. The skill owns the topic and the reader arrives there with the
+task open.]
 
-[NEEDS CLARIFICATION: whether the other family repos have the same call shape today. `rg 'pty=True'`
-across `repo-tasks`, `scaffoldapy` and the `*-polite-mcp` repos would answer it in one command, and
-was not run from here — reading another repo is fine, but the finding belongs to whoever works there
-next.]
+[DECISION: **yes, the family is affected today — two live call sites in `repo-tasks`.** Measured
+2026-09-02 with `rg 'pty=True'` across `repo-tasks`, `scaffoldapy`, the `*-polite-mcp` repos and
+`product-research-pipeline`: `src/repo_tasks/docker.py:156` (`docker login`) and
+`src/repo_tasks/helm.py:139` (`helm registry login`), both credential prompts, plus three unit tests
+asserting that exact call shape. No other repo in the family has one. Filed for that repo as
+`2026-09-02-interactive-logins-hang-on-python-314.md` rather than fixed from here.
+
+The test detail is the part worth keeping: the three tests assert what is passed to a **mock**, so
+they pass whatever the runtime does. That is why nothing caught this — the call shape is verified
+and the behaviour is not.]
 
 ## Recommended direction
 
@@ -87,3 +96,16 @@ thread so the cache cannot lapse mid-run), `util.apt_command()`, and the reasoni
   plus a password-protected-sudo-user image); the interpreter matrix above came from running the
   same probe under 3.10–3.14.
 - Whether a consumer repo is affected is one `rg 'pty=True'` in that repo.
+
+## Migrated to
+
+- `skills/invoke-task-conventions/SKILL.md`, "A task may not run anything that waits for typed
+  input" — both causes, the interpreter matrix, the `pty=True` trap, the two shapes that satisfy the
+  rule, and `rg 'pty=True'` as the audit.
+- The store, as `github.com-personal/repo-tasks/2026-09-02-interactive-logins-hang-on-python-314.md`
+  — the two affected call sites, filed for the repo that owns them.
+
+Deliberately not migrated: the `power-user-linux-setup` implementation details
+(`util.run_interactive()`, `util.ensure_sudo()`, `util.apt_command()` and its
+`contributing/interactive-input.md`). The skill points at the shape rather than shipping a second
+copy of another repo's code, which would diverge from the one that is maintained.

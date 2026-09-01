@@ -105,6 +105,44 @@ happens to run. A command that works may be an accident of someone's import stat
 selected upstream modules silently loses any task in a module it doesn't import. Run `inv --list`
 after a dependency bump, not just the test suite.
 
+## A task may not run anything that waits for typed input
+
+**Not through `c.run`, with or without `pty=True`.** Two independent causes, and the second is fatal
+on the interpreter this family defaults to:
+
+1. **invoke echoes stdin and races the child for it.** `Runner.should_echo_stdin()` is
+   `(not using_pty) and isatty(stdin)`, so a non-pty `c.run` from a terminal prints every byte it
+   reads — it has put the terminal in cbreak, so otherwise the user would see nothing. Meanwhile
+   `sudo` reads `/dev/tty`, the same terminal, and whichever wins a read gets the bytes: the
+   password is printed _and_ the child never sees it, so it re-prompts and the run looks stuck.
+   Demonstrated with a task whose whole body is `c.run("head -n 1 > /dev/null")` — typing
+   `SUPERSECRET` prints it back.
+2. **On Python 3.14, invoke cannot forward stdin at all.** `terminals.bytes_to_read()` calls
+   `fcntl.ioctl(stdin, FIONREAD, b"  ")` — a 2-byte buffer for a 4-byte result. Every Python before
+   3.14 overflowed it silently; 3.14 hardened `fcntl.ioctl` and raises
+   `SystemError: buffer
+   overflow`, killing invoke's stdin thread on the first keystroke. Nothing
+   reaches the child, pty or not. Upstream pyinvoke/invoke#1070, fixes open, unreleased as of invoke
+   3.0.3.
+
+| Python  | `c.run` needing forwarded stdin                    |
+| ------- | -------------------------------------------------- |
+| 3.10–13 | works, and echoes the typed text (cause 1)         |
+| 3.14    | **hangs — nothing is ever forwarded to the child** |
+
+**`pty=True` is the trap worth naming.** It appears to fix cause 1, because the child controls echo
+on its own pty, and does nothing for cause 2 — so it reads as the correct pattern right up until the
+interpreter moves under it, and then hangs with no output.
+
+Two shapes satisfy the rule. Run an interactive child as a plain `subprocess` inheriting the real
+terminal, and make everything else non-interactive: authenticate `sudo` once up front and use
+`sudo -n` after, give apt `DEBIAN_FRONTEND=noninteractive` plus `--force-confold`.
+
+**Audit a repo for it with `rg 'pty=True'`, and read every hit** — the shape is most common around
+credential prompts, which is exactly where a hang is least welcome. Found the expensive way on a
+first `inv wsl.install`, which hung after the sudo prompt with the password echoed in plain text;
+both causes were then reproduced in a container across 3.10–3.14.
+
 ## Auditing an existing repo
 
 `inv --list | grep -oP '^  [a-z0-9.-]+'` gives the full surface. Read it against the module sources,

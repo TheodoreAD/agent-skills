@@ -454,6 +454,43 @@ overrides repo discovery entirely. Its own guidance — issues belong in the pro
 when the project is yours — is the argument for keeping this a parallel path rather than a
 replacement.
 
+### Why committing one plan is a command rather than a git incantation
+
+The store is **one working tree with one index**, shared by every session on the machine, and the
+convention's own commit-immediately rule puts several of them inside that window at once. Staging by
+explicit path — which the skill said for months — closes one direction only: it stops _your_ commit
+carrying someone else's staged work, and does nothing about someone else's commit carrying yours.
+
+Both directions were measured in one sitting, 2026-08-29, in `~/plans`: a `git add -- README.md` was
+swept into another session's `efba4db`, and a `git add` of a plan filed for another repo into their
+`0c069fb`. Each time the follow-up `git commit` reported
+`nothing added to commit but untracked
+files present`, which reads exactly like the `add` failed —
+when in fact it had succeeded and someone else's commit had already taken it. Nothing is lost and no
+content is wrong; the message describes a different change than the diff it carries, and
+`git log -- <path>` is the only way to find where the file actually went.
+
+[PITFALL: **`git commit -- <path>` is not the fix on its own — it refuses an untracked file**, which
+is what every newly written plan is. Tried 2026-08-29: `git commit -m … -- plans/<new file>.md` →
+`error: pathspec … did not match any file(s) known to git`. It commits named paths from the working
+tree, but only paths git already tracks, so the trailing pathspec closes the race for an _edit_ and
+not for the create the commit-immediately rule is mostly about. That is why `commit` stages the one
+path first and cannot be a pure pathspec commit.]
+
+So the cheap fix — one more clause in a printed command — was rejected for the mechanism that closes
+both directions: `commit` builds a tree from `HEAD` plus that one file through a private index
+(`GIT_INDEX_FILE`), so a parallel session's staged work can neither ride along nor be disturbed. It
+still adds the path to the shared index first, deliberately: without it, HEAD would carry a file the
+index does not, and `git status` would show a staged deletion to every other session in that tree.
+
+What made it worth a command rather than a longer sentence is how often it was being done by hand —
+**142 calls across 23 sessions**, measured 2026-09-01 across the transcript store, the densest
+single-shape repetition on this machine.
+
+[DECISION: **no lock and no retry.** The failure is benign — a correct diff under a wrong message —
+and a locking scheme around a directory several independent agent sessions write to is far more
+machinery than the problem justifies.]
+
 ### Why the confidentiality gate derives its terms instead of listing them
 
 The rule is easy to state — a published repo must not name a client — and useless without a check,

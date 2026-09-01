@@ -107,11 +107,38 @@ Adapted from the external refactoring skill surveyed below, whose loop is the pa
 
 **BASELINE → CHECKPOINT → REFACTOR → VERIFY → CHECKPOINT**, one property per commit.
 
-- **The 246-test suite is the oracle**, and the hard rule is the one that skill states: _no test may
-  be edited to make a refactor pass_. A test that must change means the behaviour changed, which
-  means it is not this pass. The suite already covers routing, tiers, absorb, archive, scan and the
-  new commit path, so the coverage exists to refactor against — that is what makes this tractable
-  now and would not have been a week ago.
+- **The test suite is the oracle**, and the rule has three parts rather than one. An earlier draft
+  of this plan said flatly "no test may be edited to make a refactor pass", which is wrong and would
+  have blocked the pass outright: a test naming a function that gets renamed has to change, and
+  changing it costs nothing. What must not change is _what_ is tested. Measured 2026-09-01 across
+  the 105 tests in `test_plan_store.py`:
+
+  | tests  | what they do                               | may they change?          |
+  | ------ | ------------------------------------------ | ------------------------- |
+  | **65** | drive the CLI only — `plans.main([...])`   | **no, not one character** |
+  | 24     | drive the CLI _and_ touch an internal name | the call form only        |
+  | 16     | touch an internal name only                | the call form only        |
+
+  1. **The 65 CLI-driven tests are frozen.** They exercise behaviour through argv and assert on
+     output and filesystem state, so nothing this pass does can legitimately touch them. One of them
+     changing is the definition of the refactor having leaked into behaviour.
+  2. **In the other 40, only the call form may change** — `plans.load_config()` becoming
+     `Workspace(path).config`. Mechanical substitution, no assertion edited, no case dropped.
+  3. **The check that separates "renamed" from "weakened": revert the production change, and the
+     edited test must still fail.** An assertion-diff review misses the case where a test still
+     asserts the same thing but no longer reaches the code that could break it; this catches it.
+
+  The names the suite actually reaches for are the ones this pass targets — `load_config` at 20
+  sites, `private_terms` at 4, `walk_projects` at 3, `repo_paths` at 1 — while `parse_frontmatter`
+  (9) and `today` (9) are pure functions it never touches. So the churn is bounded and predictable
+  before the first line moves.
+
+[DECISION: **`load_config` appearing in 20 tests is an argument _for_ the refactor, not a cost of
+it.** The tests reach for a module-level loader because there is no object to construct; after the
+pass they construct a `Workspace` against a fake home, which is better test ergonomics than
+monkeypatching a global. Where a refactor improves the test surface, that is evidence the shape was
+wrong, not churn to be tolerated.]
+
 - **The measured counts above are the second oracle.** Each commit should move at least one of them
   and the final state should be re-measured with the same script, not asserted.
 - **One property per commit**, not one class per commit: introduce `Workspace` with `config` only,

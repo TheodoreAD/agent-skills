@@ -1819,3 +1819,66 @@ def test_commit_extends_history_rather_than_replacing_it(ws, capsys):
         ["git", "log", "--format=%s"], cwd=ws.sensitive, capture_output=True, text=True, check=True
     ).stdout.split()
     assert len(subjects) >= 2, "the second commit orphaned the first"
+
+
+@pytest.mark.parametrize("stage_first", [False, True], ids=["deleted-not-staged", "git-rm"])
+def test_commit_takes_a_retirement_deletion_in_either_half_staged_state(ws, capsys, stage_first):
+    """Retirement deletes the file and then has to commit that, which is the one step the command
+    could not do at all: `locate` searches what exists, so it refused with `no plan named …`.
+
+    Both states are ordinary halfway points of the documented procedure — the file removed with the
+    deletion left unstaged, and `git rm` having staged it — and they need opposite handling in the
+    shared index. Measured 2026-09-01: `git add -- <path>` records the removal in the first and is a
+    fatal pathspec error in the second, while the private index built from HEAD takes both.
+    """
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "retiring", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    plan = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-retiring.md"))
+    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+    rel = plan.relative_to(ws.sensitive).as_posix()
+
+    if stage_first:
+        # `git rm` also prunes the directory it just emptied, so the plan's parent is gone too —
+        # which is the ordinary case for a store mirror holding one last plan.
+        subprocess.run(["git", "rm", "-q", "--", rel], cwd=ws.sensitive, check=True)
+        assert not plan.parent.exists(), "git rm was expected to prune the emptied mirror directory"
+    else:
+        plan.unlink()
+
+    assert plans.main(["commit", str(plan), "-m", "retire it", "--path", str(ws.personal)]) == 0
+    assert "(removed)" in capsys.readouterr().out
+
+    shown = subprocess.run(
+        ["git", "show", "--name-status", "--format=", "HEAD"],
+        cwd=ws.sensitive,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert shown == ["D", rel], "the deletion is what the commit should carry"
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--", rel], cwd=ws.sensitive, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert status == "", f"the shared index should agree with HEAD after the deletion, got {status!r}"
+
+    # `--all`, because this session is in the personal repo and the plan was filed for a client one:
+    # the routed archive searches what this repo reads, which is the whole point of the flag.
+    assert plans.main(["archive", "--all", "--file", plan.name, "--path", str(ws.personal)]) == 0
+    assert "retire it" in capsys.readouterr().out, "a retired plan has to read back out of its deletion"
+
+
+def test_commit_still_refuses_a_name_that_never_existed(ws, capsys):
+    """The deleted-plan lookup must not turn a typo into a confusing git error. It resolves a *path*
+    git still knows at HEAD and nothing else, so anything else falls through to `locate`."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    capsys.readouterr()
+
+    assert plans.main(["commit", "plans/2026-01-01-never-existed.md", "--path", str(ws.personal)]) == 1
+    assert "no plan named" in capsys.readouterr().err

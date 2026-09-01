@@ -714,7 +714,14 @@ def commit_one_path(repo: Path, path: Path, message: str) -> str:
     happened to hold.
     """
     rel = path.relative_to(repo).as_posix()
-    if git(["add", "--", rel], repo) is None:
+    # Retirement commits a path that no longer exists, so "stage it" means "stage its removal", and
+    # the shared index may already have it. `git add -- <path>` does record a removal — but only
+    # while the index still holds the entry to match; once `git rm` has staged the deletion there is
+    # nothing left for the pathspec to match and the same command is a fatal error. Measured
+    # 2026-09-01: both are ordinary halfway points of the retirement procedure, so both must work.
+    # The private index below needs no such care: it is read from HEAD, which still has the file.
+    already_removed = not path.exists() and bool(git(["diff", "--cached", "--name-only", "--", rel], repo))
+    if not already_removed and git(["add", "--", rel], repo) is None:
         raise PlanError(f"could not stage {rel} in {repo}")
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -2453,6 +2460,46 @@ def cmd_move(args: argparse.Namespace) -> int:
     return 0
 
 
+def repo_root_for(path: Path) -> Path | None:
+    """The repository holding a path, which may itself no longer exist.
+
+    Walks up to the nearest directory that does exist before asking git, because a retirement can
+    remove the directory too: `git rm` prunes a parent it has just emptied, and a store mirror
+    directory holding one last plan is exactly that case. Asking git from a path that is gone fails
+    with an OSError on the cwd, which reads as "not a git repository" and is not one.
+    """
+    anchor = next((parent for parent in path.parents if parent.is_dir()), None)
+    return None if anchor is None else repo_root_of(anchor)
+
+
+def deleted_plan(candidate: Path) -> Path | None:
+    """A plan the working tree no longer has, but `HEAD` still does — a retirement mid-flight.
+
+    `locate` searches what exists, so the one commit the convention calls irreversible is the one it
+    cannot resolve: retirement deletes the file and then has to commit that deletion. Only a *path*
+    can be resolved this way. A bare filename has nothing left to search, since the file is gone from
+    every directory a listing would walk, and guessing across both stores' whole histories would be a
+    different and much larger command.
+
+    Returns None for anything that is not a tracked, now-missing file, so the caller falls through to
+    `locate` and its error message rather than this one's.
+    """
+    if candidate.name == "" or candidate.is_dir():
+        return None
+    repo = repo_root_for(candidate)
+    if repo is None:
+        return None
+    resolved = candidate.resolve()
+    try:
+        rel = resolved.relative_to(repo.resolve()).as_posix()
+    except ValueError:
+        return None
+    # `cat-file -e` prints nothing and exits 0 when the object exists, so the answer is `""` on a hit
+    # and None on a miss — the falsy-vs-None distinction the `git` helper's docstring warns about,
+    # and the reason this is not written as a truthiness test.
+    return resolved if git(["cat-file", "-e", f"HEAD:{rel}"], repo) is not None else None
+
+
 def cmd_commit(args: argparse.Namespace) -> int:
     """Commit one plan on its own, which is the step sessions were doing by hand 142 times.
 
@@ -2469,17 +2516,22 @@ def cmd_commit(args: argparse.Namespace) -> int:
     # deliberately cannot see, since it searches what this session reads. `new --for` prints the
     # path, so taking it is both the natural flow and the one that works across the store.
     candidate = Path(args.file).expanduser()
-    target = candidate.resolve() if candidate.is_file() else locate(cfg, routing, args.file).path
+    if candidate.is_file():
+        target = candidate.resolve()
+    else:
+        target = deleted_plan(candidate) or locate(cfg, routing, args.file).path
 
-    repo = repo_root_of(target.parent)
+    repo = repo_root_for(target)
     if repo is None:
         raise PlanError(f"{target} is not inside a git repository, so there is nothing to commit to")
 
+    removed = not target.exists()
     message = args.message or f"{routing.rel or repo.name}: {target.stem}"
     commit = commit_one_path(repo, target, message)
     print(f"committed: {commit[:12]} in {repo}")
     print(f"message:   {message}")
-    print(f"file:      {target.relative_to(repo).as_posix()} — and nothing else, whatever else was staged")
+    rel = target.relative_to(repo).as_posix()
+    print(f"file:      {rel}{' (removed)' if removed else ''} — and nothing else, whatever else was staged")
     return 0
 
 

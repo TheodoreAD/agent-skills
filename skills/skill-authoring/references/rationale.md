@@ -43,6 +43,33 @@ What stayed together deliberately: the MCP repo dev loop (`repo-tasks`, `inv dev
 `uv run inv` in automation) stayed with `mcp-server-shipping`, because those repos _are_ the MCP
 servers — it is that skill's subject matter, not general authoring advice.
 
+## Why a bundled script gets stdlib-or-PEP-723 and never a venv (2026-08-28)
+
+Researched when a plan put a real script inside a skill for the first time and "does it need a
+venv?" was raised as an open worry. It does not, and a venv per skill is not the convention — it is
+the thing the convention exists to avoid.
+
+[agentskills.io's "Using scripts in skills"](https://agentskills.io/skill-creation/using-scripts) is
+the spec-level guidance and describes exactly two tiers, neither of which is a virtual environment:
+a **one-off command** referenced straight from `SKILL.md` through a runner that resolves at
+invocation (`uvx`, `pipx run`, `npx`, `bunx`, `deno run`, `go run`), pinned to a version and with no
+`scripts/` directory at all; or a **self-contained script** in `scripts/` declaring its dependencies
+**inline** — PEP 723 for Python, run with `uv run`, verbatim "no separate manifest file or install
+step required". Every other language on the page gets the same treatment (Deno `npm:` specifiers,
+Bun auto-install, Ruby's `bundler/inline`).
+
+Where venv-per-skill does appear is
+[anthropics/skills discussion #117](https://github.com/anthropics/skills/discussions/117), and the
+problem there is not ours: **cloud skills from different vendors sharing one sandbox**, where skill
+A needs `pandas==2.1` and skill B needs `2.2`. The debated answers are venv-per-skill,
+container-per- skill for untrusted code, and — rejected as fragile — `sys.path` namespacing. The one
+point of consensus worth carrying is that dependencies should be _declared_ even before isolation is
+enforced, so a conflict is detectable rather than silent; PEP 723 is that declaration. A single
+user's own skills on their own machine have no multi-tenant conflict to isolate.
+
+Extracted 2026-09-01 from the now-retired `plans/2026-08-28-cross-repo-plan-store.md`, which
+researched it while deciding where `plan-docs`' own script would live.
+
 ## Why "editing the installed copy" gets its own emphasis
 
 It is the failure that produces no error. A copy under `~/.agents/skills/<name>/` is writable, the

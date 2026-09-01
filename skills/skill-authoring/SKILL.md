@@ -204,6 +204,31 @@ alternatives, the story behind a rule — goes in `references/`, loaded only whe
   particular dotfile, a locally-installed task runner, a repo that exists on one box — either states
   that dependency plainly or does not belong in a published skill.
 
+## A script in `scripts/` declares its own dependencies, or has none
+
+**Standard library only is the default, and it is not a limitation to apologise for.** A skill is
+installed by copying files; nothing runs an install step afterwards, so a script that needs anything
+resolved before it runs is a script that does not work for whoever installed the skill.
+
+1. **Stdlib only.** `python3 <skill>/scripts/foo.py` works on any machine with Python, with zero
+   declaration and zero resolution. Two real tools in this repo are built this way —
+   `plan-docs/scripts/plans.py` and `session-bash-audit/scripts/audit.py`, the latter parsing every
+   `~/.claude/projects/*.jsonl` on `argparse`/`json`/`re`/`dataclasses`/`pathlib` alone. Simple YAML
+   frontmatter does not justify PyYAML.
+2. **PEP 723 + `uv run`** if a dependency becomes genuinely necessary — a `# /// script` TOML block
+   inline in the file, which keeps it single-file and portable. This is the documented convention
+   for skill scripts, not a local invention.
+3. **A venv, a `requirements.txt` or a `pyproject.toml` inside a skill — no.** It makes the skill
+   un-runnable until someone performs an install step the `skills` CLI does not perform.
+
+Reference a script by **path relative to the skill directory root**, which is what makes it work
+identically for everyone who installed the skill.
+
+**Whatever it is written in, a script here is run by an agent, not by a person at a terminal**: no
+interactive prompts (an agent's shell is non-interactive and a TTY prompt hangs forever), a real
+`--help` because that is how an agent learns the interface, structured output on stdout with
+diagnostics on stderr, documented exit codes, and bounded output because harnesses truncate.
+
 ## Convention skills should self-update on friction
 
 A skill that encodes a convention (rather than performing a one-shot task) should improve itself

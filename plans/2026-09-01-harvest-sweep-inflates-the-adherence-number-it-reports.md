@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 ---
 
 # The harvest's own sweep inflates the adherence number it reports
@@ -80,3 +80,35 @@ them — but it is the one thing that would have made this filing concrete rathe
 Filed alongside `2026-09-01-adherence-sample-11-a-harvest-that-raised-its-own-rate.md`, which is the
 same run's numbers filed for `power-user-linux-setup`, where the watch lives. This is a new concern
 rather than an addition to that one: that plan is a sample, this is about the instrument.
+
+## Outcome, 2026-09-02
+
+Both halves landed, and both open questions were answered by doing them rather than choosing between
+them.
+
+- **Exclude, or rewrite the sweep? Both, as the plan suspected.** `session-bash-audit` gained
+  `--until <ISO>`, and `session-harvest` step 0 now records the boundary with `date -Is` as its
+  first command — it has to be first, because every later step adds calls of the sweep's own
+  character. Step 5 passes it.
+- **Report both numbers? Yes**, one line, in the plan's own phrasing: the first number is the
+  session, the second is the honesty.
+
+**The title is now wrong and the plan's own second sample is why.** "Inflates" was the claim from
+one run; the second moved the other way. What shipped is the corrected claim — a figure including
+the sweep measures the sweep, in whichever direction it leans — recorded in `_before`'s docstring so
+the next reader of that flag finds the reasoning, not just the behaviour.
+
+The `--samples` note under "Also worth recording" turned out to have a plain cause rather than a
+threading problem: the `--session` branch never called the sampler at all. Fixed in the same commit,
+which is what makes the flag usable for naming offending shapes rather than only counting them.
+
+Confirmed live 2026-09-02 on this session: 59 calls before the boundary at 2% `head`/`tail` against
+14% for the whole session, which is the population difference the plan describes, measured.
+
+## Migrated to
+
+- `skills/session-bash-audit/scripts/audit.py` — `--until`, its `_before` helper carrying the
+  two-directional evidence and the keep-untimestamped-calls reasoning, and the `--samples` fix.
+- `skills/session-harvest/SKILL.md` — the step 0 boundary, the `--until` invocation, the
+  report-both-numbers rule, and the unpiped-inspections instruction that stops the sweep teaching
+  the shape it measures.

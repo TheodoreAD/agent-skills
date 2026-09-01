@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 source_repo: github.com-personal/ingesta
 source_session: f489b075-6f46-4814-a71b-57f5879ef27e.jsonl
 source_moment: 2026-08-31T18:41:11.778Z
@@ -71,3 +71,29 @@ instruction should end on the command that replaces the habit —
 `inv quality.check > log 2>&1; echo
 $?`, then read the log — because the prose warning against pipes
 demonstrably did not work on a session that had it in context.
+
+## Outcome, 2026-09-02
+
+Landed as the conditional version the plan recommended, and as a sentence on the existing bash-audit
+bullet rather than a new check — which answers both open questions at once.
+
+- **Own bullet, or a consequence of the audit bullet?** The latter. The audit already produces the
+  number that predicts the failure, and the gap was never a missing measurement — it was that the
+  run measured `exit-masked` at 28% and drew no conclusion from it.
+- **What to do when the gate is expensive.** Conditional on that rate, so it is self-triggering: a
+  zero costs nothing, and a non-zero is precisely the evidence that this session's own green results
+  need re-checking. An unconditional rule would have been skipped on the repos whose gates take
+  minutes, which is where it matters most.
+
+The instruction ends on the command that replaces the habit, as the plan asked, because the prose
+warning against pipes demonstrably did not work on a session that had it in context.
+
+## Migrated to
+
+- `skills/session-harvest/SKILL.md`, step 5, on the adherence bullet — the rule, the 2026-08-31
+  incident that produced it (three red commits pushed behind a `grep`/`tail` pipe reporting the
+  filter's exit code), and the unpiped re-run command.
+
+The plan's distinction from `2026-08-30-inferred-cause-published-before-audit.md` needed no
+migrating: that plan is about the truth of causal claims, this one about a misread exit code, and
+both stay separate as this plan's Context argued.

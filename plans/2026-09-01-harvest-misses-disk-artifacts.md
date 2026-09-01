@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 ---
 
 # session-harvest step 5 sweeps processes but not the disk they left behind
@@ -72,3 +72,27 @@ leave running or lying about" question one layer down:
   clean, and nothing else mentions them.
 - The evidence above is from `docker images --filter reference='pulse-*'` and `docker system df` on
   2026-09-01, in a session where every container had already been cleaned up by hand.
+
+## Outcome, 2026-09-02
+
+Landed as a step 5 bullet, placed after the processes one as the recommended direction says.
+
+Both open questions were settled by writing it:
+
+- **How wide the bullet should be.** Named commands rather than a general "disk artifacts", because
+  the plan's own reasoning holds — a bullet naming only images reads as docker-specific, one naming
+  the category is too vague to run. It lists `docker images`, `docker system df` and
+  `uv python list --only-installed`, which covers the case with evidence plus the throwaway
+  interpreter this plan also recorded.
+- **Report or clean.** Report, with a proposed removal line to approve. The conservative reading won
+  on the plan's own argument: the build cache is shared with every project on the machine, and an
+  image another session is about to reuse costs a rebuild.
+
+## Migrated to
+
+- `skills/session-harvest/SKILL.md`, step 5 — the bullet, with the 4.11 GB / 445 MB / ~58 GB
+  measurement as its dated evidence and the "only the session can tell throwaway from named"
+  argument, which is the part that makes it worth reporting at the end of the run that made them.
+
+Nothing else migrated: the plan's Verification section describes how to reproduce a gap that no
+longer exists.

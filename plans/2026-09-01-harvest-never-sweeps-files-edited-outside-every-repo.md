@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 source_repo: github.com-personal/ingesta
 source_session: 81ef32cd-7240-48b8-b0a3-4cd53845adad.jsonl
 source_moment: 2026-09-01T09:01:27.595Z
@@ -71,3 +71,26 @@ no tidy-able place."
 Worth writing the "what would recover it" half carefully: for the instance above the honest answer
 was "the repo's example file plus the check that validates it", which is a real recovery path and
 not an obvious one.
+
+## Outcome, 2026-09-02
+
+Landed as a step 5 bullet, phrased as the plan recommended: name the failure, then the method.
+
+The three open questions, settled:
+
+- **How it finds the files.** The cheap version, as the plan argued: take the write paths from the
+  session's own transcript, subtract anything inside a git repo or a known store, report the rest.
+  No filesystem crawl, and exact.
+- **What it asks once it has the list.** "You edited an unversioned file" is a fact, so the bullet
+  makes the recovery path the finding — an example file plus a validator is a real recovery route
+  and not an obvious one, and "no copy anywhere" is stated plainly rather than implied.
+- **One bullet or two.** One. The credential case is already covered by the store sweep's own
+  finding, and splitting on a risk difference that the recovery question does not change would have
+  produced two bullets asking the same thing.
+
+## Migrated to
+
+- `skills/session-harvest/SKILL.md`, step 5 — the bullet, carrying the framing insight that makes
+  this a real gap rather than an omission: every other bullet asks whether a store was left tidy, so
+  a file belonging to no store is not untidy, it is unseen. The instance is cited as an unversioned
+  operational config, without naming the file or its contents.

@@ -163,6 +163,17 @@ hook design is in `references/research.md`.
 - A new pattern worth measuring → add a `PATTERNS` row in `scripts/audit.py` with an honest "why",
   run once, and add a dated paragraph to `references/research.md` with the count and what it means.
   Rows with no stated cost teach nothing; leave them out.
+  - **One row per question, and never one row spanning a compliant and a non-compliant form of the
+    same command.** Such a row reports a rate that answers neither question while looking like
+    coverage, so the gap is invisible precisely because something is being measured. Confirmed
+    2026-09-02: a single `grep/find` row matched `grep`, `rg`, `find` and `fd` alike, so the rule
+    preferring `rg` over `grep -r` and `fd` over `find` had never been measured at all — and when it
+    was, the two halves came back 90% adherent and 47% adherent, which one number could not have
+    said. If a rule distinguishes two spellings of the same command, that is two rows.
+  - **Test the regex against hand-written cases before trusting its count**, including a multi-line
+    command. Both bugs found on 2026-09-02 flattered the number: `.*` in a lookahead stops at a
+    newline, and the separator anchor omitted `\n` even though `split_chain` has always split on it,
+    hiding every command that sat on a call's second line.
 - A new baseline after a rule/mode change → append a dated row to the baseline table in
   `references/research.md`; don't overwrite the old one — the point is the delta.
 - Harness facts (what auto mode does, what a mode auto-approves, rule precedence) → the "Harness

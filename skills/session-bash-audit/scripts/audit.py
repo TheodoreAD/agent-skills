@@ -161,7 +161,29 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
         lambda cmd: bool(re.fullmatch(r"\s*(cat|head -\d+|tail -\d+)\s+[^|;&<>]+", strip_heredoc(cmd))),
         "whole-file view via Bash; Read does it with no Bash gate",
     ),
-    "grep/find": (_rx(r"(?:^|&&|;|\|)\s*(grep|rg|find|fd)\b"), "search via Bash; Grep/Glob have their own gate"),
+    # Three rows cover these commands and they answer three different questions. Keep them straight:
+    # this one is about the *harness tool* (shelling out at all), the next two about *which CLI*.
+    # Measured 2026-08-29 over 15,171 calls: aggregating them is what hid the finding, because a
+    # compliant `rg` and a non-compliant `grep -r` both fired this row identically.
+    "grep/find": (
+        _rx(r"(?:^|&&|;|\||\n)\s*(grep|rg|find|fd)\b"),
+        "searching via Bash at all; Grep/Glob have their own gate and keep the whole result",
+    ),
+    "grep-r-not-rg": (
+        _rx(r"(?:^|&&|;|\||\n)\s*grep\s+(-\w*[rR]\w*|--recursive)\b"),
+        "recursive text search with grep; rg is faster and .gitignore-aware (plain grep stays fine)",
+    ),
+    # `[\s\S]*` rather than `.*`: a find continued across lines with a trailing backslash is common,
+    # and `.` stops at the newline, so `.*` made the negative lookahead succeed and tagged an exempt
+    # command as a miss. Caught 2026-09-02 by testing the pattern before trusting its count.
+    "find-not-fd": (
+        _rx(r"(?:^|&&|;|\||\n)\s*find\b(?![\s\S]*\s-(exec|execdir|delete|print0|newer|mtime|size|perm|user|group)\b)"),
+        "plain file lookup with find; fd is faster, .gitignore-aware, and needs no -not -path excludes",
+    ),
+    "find-exempt": (
+        _rx(r"(?:^|&&|;|\||\n)\s*find\b(?=[\s\S]*\s-(exec|execdir|delete|print0|newer|mtime|size|perm|user|group)\b)"),
+        "find doing what fd does not: acting on matches, or selecting by time/size/perm — not a miss",
+    ),
     "env-prefix": (_rx(r"^\s*[A-Z_][A-Z0-9_]*=\S+\s+\S"), "leading VAR=x defeats allow-rule prefix matching"),
     "bash-c": (_rx(r"\b(bash|sh|zsh)\s+-l?c\b"), "outer bash is itself ask-gated; always prompts"),
     "heredoc": (lambda cmd: bool(HEREDOC_RE.search(cmd)), "file write via shell; Write/Edit have their own gate"),
@@ -356,6 +378,13 @@ EXPECTATIONS: dict[str, str] = {
     "git-C-own-repo": "zero",
     "git-mutating-in-chain": "down",
     "git-C-mutating": "zero",
+    "find-not-fd": "down",
+    # `grep-r-not-rg` is deliberately absent, and `find-exempt` too. The first sat at 8% of its pair
+    # when measured (2026-08-29) — adherence already good, so the useful direction is "not up",
+    # which this table cannot express: "down" would demand improvement on a rule that is being
+    # followed, and a verdict nobody can satisfy is one that gets ignored. The second is not a miss
+    # at all; it is the share `find-not-fd` deliberately excludes, reported so the judgement baked
+    # into that row's regex stays visible rather than hidden inside it.
 }
 
 

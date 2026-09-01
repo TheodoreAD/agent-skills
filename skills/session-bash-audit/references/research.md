@@ -530,3 +530,46 @@ classifier rather than a threshold: exempt `git <verb> … -F -`/`-F <file>`, or
 calls before believing it. Same shape as the `rg -r` and `pgrep -f` entries above: a detector whose
 pattern is narrower than the rule it stands for, failing as a confident number rather than an
 error.]
+
+## `rg`-over-`grep` holds; `fd`-over-`find` does not (2026-09-02)
+
+The `~/AGENTS.md` tool-preference clause — `rg` over `grep -r`, `fd` over `find` — was unmeasurable
+until now, and the reason is worth keeping: the `grep/find` row fires on all four tools, so a
+compliant `rg` and a non-compliant `grep -r` were indistinguishable in its rate. **An audit pattern
+that aggregates a compliant and a non-compliant form under one tag reports a number that answers
+neither question**, and it looked like coverage.
+
+Two rows now split it, plus `find-exempt` so the judgement baked into `find-not-fd`'s regex stays
+visible rather than hidden inside it. Baseline over **23,000 calls, 30 days**:
+
+| shape                                    | calls |  share of its pair |
+| ---------------------------------------- | ----: | -----------------: |
+| `rg`                                     |  3633 |                  — |
+| `grep -r` / `-R` / `--recursive`         |   394 |            **10%** |
+| `fd`                                     |   262 |                  — |
+| `find`, plain lookup                     |   293 |            **53%** |
+| `find` with `-exec`/`-delete`/`-mtime`/… |    16 | exempt, not a miss |
+
+**The impression that "agents ignore the clause" is half right, and the halves point opposite
+ways.** `rg` adherence is good at 90% and is not where effort belongs — `grep-r-not-rg` is
+deliberately left out of `EXPECTATIONS` for that reason, since the useful direction is "not up" and
+the table can only say "down" or "zero". `fd` adherence is poor and got worse than the 2026-08-29
+hand measurement found (43%), so `find-not-fd` carries a `down` expectation.
+
+Consistent with the hand measurement on a corpus half this size (8% and 43%), which is the useful
+part: two independent methods, a week apart, agree on the direction and on which half matters.
+
+**Two regex bugs were found by testing the patterns before trusting their counts**, and both were in
+the direction that flatters the number:
+
+- `.*` in the exempt lookahead stops at a newline, so a `find … \` continued onto the next line with
+  `-delete` was tagged as a miss. `[\s\S]*` fixes it; on this corpus it moved almost nothing, which
+  is worth stating rather than hiding — the bug was real and rare.
+- The separator anchor `(?:^|&&|;|\|)` omitted `\n`, while `split_chain` has always treated a
+  newline as a separator. A command on the second line of a call was invisible to every anchored
+  row. Widening it moved `find-not-fd` 242 -> 292 (+21%), `grep-r-not-rg` 352 -> 394, and the
+  long-standing `grep/find` row 6325 -> 6583 — so that row had been undercounting by ~4% since it
+  was written.
+
+The rule text and the permission allowlist live in `power-user-linux-setup`; this repo supplies the
+measurement and that one decides what to do about it.

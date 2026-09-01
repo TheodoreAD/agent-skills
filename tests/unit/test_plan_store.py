@@ -687,7 +687,7 @@ def test_private_terms_stop_at_the_repo_boundary(ws):
     # gate into noise nobody reads.
     (ws.client / "src").mkdir()
     (ws.client / "internal-service").mkdir()
-    terms = plans.private_terms(plans.load_config())
+    terms = plans.Workspace(ws.personal).private_terms
     assert "client.com-bitbucket" in terms
     assert "team" in terms  # the project level of the clone path identifies the client too
     assert "internal-service" not in terms
@@ -701,7 +701,7 @@ def test_private_terms_split_a_root_into_its_organisation(ws):
     # term list holding only `client.com-bitbucket` scanned a document full of `@client.com`
     # addresses and reported it clean.
     write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
-    terms = plans.private_terms(plans.load_config())
+    terms = plans.Workspace(ws.personal).private_terms
     assert "client" in terms
     assert "bitbucket" not in terms  # a hosting word, identifies nobody
     assert "com" not in terms
@@ -719,7 +719,7 @@ def test_private_terms_honour_extra_and_ignore(ws):
         'default = "store"\npublic_roots = ["github.com-personal"]\n'
         '[private]\nextra = ["someone@client.example"]\nignore = ["client.com-bitbucket"]\n',
     )
-    terms = plans.private_terms(plans.load_config())
+    terms = plans.Workspace(ws.personal).private_terms
     assert "someone@client.example" in terms
     assert "client.com-bitbucket" not in terms
 
@@ -1414,7 +1414,7 @@ def test_a_depth_one_repo_is_not_split_as_though_it_were_an_organisation(loose, 
     """Measured 2026-08-29: `loose-repo` contributed `loose`, `loose-repo` and `repo` — a gate that
     flags the word "repo" in every document is one that gets switched off."""
     write_config(ws, 'public_roots = ["github.com-personal"]\n')
-    terms = plans.private_terms(plans.load_config())
+    terms = plans.Workspace(ws.personal).private_terms
 
     assert "loose-repo" in terms  # a non-public repo's own name is still private
     assert "loose" not in terms

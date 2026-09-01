@@ -1129,7 +1129,7 @@ def repo_paths(cfg: Config) -> list[str]:
     return walk_projects(cfg).repos
 
 
-def private_terms(cfg: Config) -> list[str]:
+def private_terms(cfg: Config, repos: list[str]) -> list[str]:
     """Every name that must not appear in a repo you publish, derived from the machine itself.
 
     A hard-coded list would have to live somewhere, and the only places available are a published
@@ -1159,7 +1159,7 @@ def private_terms(cfg: Config) -> list[str]:
             # are dropped because "github" and "com" identify nobody. Only ROOT names are split —
             # splitting repo names too would gate on ordinary words like "telemetry".
             terms.update(part for part in re.split(r"[.\-_]", path.name) if part.lower() not in HOSTING_WORDS)
-    for rel in repo_paths(cfg):
+    for rel in repos:
         parts = rel.split("/")
         if parts[0] not in public:
             terms.update(parts)
@@ -1245,11 +1245,11 @@ def repo_summary(path: Path) -> str:
     return ""
 
 
-def known_repos(cfg: Config) -> list[RepoInfo]:
+def known_repos(cfg: Config, repos: list[str]) -> list[RepoInfo]:
     """Every git repo under the projects root, with its route and a one-line description."""
     public = set(cfg.public_root_names())
     found: list[RepoInfo] = []
-    for rel in repo_paths(cfg):
+    for rel in repos:
         path = cfg.projects_root / rel
         rule = _match_rule(cfg, rel).rule
         found.append(
@@ -1571,6 +1571,16 @@ class Workspace:
     def family_plans(self) -> list[ScopedPlan]:
         """Every plan on the machine, paired with the repo it belongs to."""
         return family_plans(self.config, self.repos)
+
+    @cached_property
+    def private_terms(self) -> list[str]:
+        """Every name that must not reach a repo you publish, derived from this machine's layout."""
+        return private_terms(self.config, self.repos)
+
+    @cached_property
+    def known_repos(self) -> list[RepoInfo]:
+        """Every repo under the projects root, with its route and a one-line description."""
+        return known_repos(self.config, self.repos)
 
     def require_routable(self) -> Routing:
         """The routing, or the needs-decision exit — the three-line prologue eight commands opened
@@ -2786,7 +2796,7 @@ def list_terms(cfg: Config, terms: list[str]) -> int:
 def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
     """Refuse to let a client's identity reach a repo that gets published."""
     cfg = ws.config
-    terms = private_terms(cfg)
+    terms = ws.private_terms
     if args.list_terms:
         return list_terms(cfg, terms)
     root = repo_root_of(args.path)
@@ -2820,8 +2830,7 @@ def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
 
 def cmd_repos(args: argparse.Namespace, ws: Workspace) -> int:
     """What each repo is for, so a plan's destination is an informed question, not a grep."""
-    cfg = ws.config
-    repos = known_repos(cfg)
+    repos = ws.known_repos
     if args.search:
         needles = [word.lower() for word in args.search.split()]
         scored = [(sum(word in f"{r.rel} {r.about}".lower() for word in needles), r) for r in repos]

@@ -25,7 +25,13 @@
     "one failure is case 1, the flagship prompt, which selected the skill once in three runs and",
     "nothing twice. Listing truncation was ruled out by fitness.py budget, so it is a real selection",
     "miss. It is also a measured counterexample to the documented claim that a candidate score is a",
-    "lower bound — here the proposal scored higher than the shipped skill on identical cases."
+    "lower bound — here the proposal scored higher than the shipped skill on identical cases.",
+    "",
+    "Run again immediately, to tell a real miss from variance: 11/12 again, case 1 at 0/3, so 1 fire",
+    "in 6. Every other case was 3/3 in both runs. Case 1 is a reproducible miss to silence, and not",
+    "a vocabulary mismatch — the prompt's own words ('nobody has ever reviewed it as a whole',",
+    "'restructuring it without breaking anything') are nearly verbatim in the description. Left as",
+    "an open measurement rather than patched: a redraft is a new unmeasured wording."
   ],
   "cases": [
     {

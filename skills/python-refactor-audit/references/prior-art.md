@@ -103,6 +103,21 @@ single failure is the suite's **flagship** prompt, the sentence the skill exists
 It selected the skill once in three runs and **nothing** the other two — the same miss, on the same
 prompt, that sank the extend-`python-conventions` option. Recall 0.83, fn=2.
 
+**Re-run immediately after, to separate a real miss from variance: 0/3, so 1 fire in 6.** Every
+other case was 3/3 in both runs, including the three other positives for this skill. The corpus's
+own rule is that one dropped run is variance and two are not; six runs at one fire is neither. **The
+flagship prompt is a reproducible miss, and it is a miss to silence** — the model selects no skill
+at all rather than a competing one, which is this corpus's known failure mode and the same thing
+that happened to the extend option on this exact sentence.
+
+What makes it worth writing down rather than fixing on the spot: **it is not a vocabulary
+mismatch**, the usual cause of a miss-to-silence. The prompt says "nobody has ever reviewed it as a
+whole" and "restructuring it without breaking anything"; the description says "auditing a file
+nobody has reviewed as a whole" and "how to restructure it safely". The words are nearly verbatim
+and it still does not fire, while three narrower prompts about the same skill fire 3/3. Whatever the
+cause, a redraft reaching for closer vocabulary is not obviously it — which is why this is recorded
+as an open measurement rather than patched.
+
 Two things follow, and both are corrections to what was believed before the run:
 
 - **Truncation is ruled out, so this is a real selection miss.** The hypothesis was that a brand-new

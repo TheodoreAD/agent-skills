@@ -1,9 +1,10 @@
 {
   "about": [
-    "Settles the open question in plans/2026-09-01-plans-py-encapsulation-pass.md: does the",
-    "procedure that pass produced \u2014 audit a module that grew, run the restructure as small verified",
+    "Settled the skill question raised by the plans.py encapsulation pass (that plan is retired;",
+    "the pass is written up in skills/python-refactor-audit/references/pilot.md): does the",
+    "procedure it produced \u2014 audit a module that grew, run the restructure as small verified",
     "commits, know which tests may change \u2014 become its own skill, or a section of",
-    "python-conventions? The plan says to decide it by measurement rather than by argument.",
+    "python-conventions? Decided by measurement rather than by argument.",
     "",
     "The contested cases are the modularity ones. python-conventions' description already claims",
     "'a module has accumulated global state, grown hard to follow, or needs restructuring', so a",

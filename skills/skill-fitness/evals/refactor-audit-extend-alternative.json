@@ -1,6 +1,7 @@
 {
   "about": [
-    "The other half of plans/2026-09-01-plans-py-encapsulation-pass.md's skill question: instead of",
+    "The other half of that skill question (the plan is retired; see refactor-audit-candidate.json",
+    "and skills/python-refactor-audit/references/prior-art.md): instead of",
     "a new skill, extend python-conventions' description to claim the restructuring procedure too.",
     "Same twelve prompts as refactor-audit-candidate.json, but the four audit cases expect",
     "python-conventions, because under this option that is where the procedure lives.",

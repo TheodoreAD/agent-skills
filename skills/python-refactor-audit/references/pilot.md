@@ -219,6 +219,7 @@ builder that could now take one of the new records.
 
 ## Source
 
-`plans/2026-09-01-plans-py-encapsulation-pass.md` in this repo, and the nine commits
-`2efb0c8..9dd62dd`. The commit sequence is itself the worked example of the loop: each one property,
-each message saying what moved and what was verified.
+The now-retired `plans/2026-09-01-plans-py-encapsulation-pass.md` in this repo — this page is where
+its content went, so there is nothing left to go and read — and the nine commits `2efb0c8..9dd62dd`.
+The commit sequence is itself the worked example of the loop: each one property, each message saying
+what moved and what was verified.

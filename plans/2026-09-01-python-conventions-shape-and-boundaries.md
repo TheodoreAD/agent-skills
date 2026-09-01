@@ -6,8 +6,9 @@ updated: 2026-09-01
 # What `python-conventions` is missing: data shape as an API surface, and how to audit for it
 
 Harvested from a 2026-09-01 session that reviewed `plan-docs`' 3,210-line `plans.py`. The review
-itself is `plans/2026-09-01-plans-py-encapsulation-pass.md`; this plan holds only what generalises
-past that one file, because that is what belongs in a skill.
+itself was `plans/2026-09-01-plans-py-encapsulation-pass.md`, since retired into
+`skills/python-refactor-audit/references/pilot.md`; this plan holds only what generalises past that
+one file, because that is what belongs in a skill.
 
 **Why it is worth writing up rather than just doing.** The session is a clean case study of the loop
 this repo keeps asserting and rarely gets to demonstrate end to end: a convention was stated, the

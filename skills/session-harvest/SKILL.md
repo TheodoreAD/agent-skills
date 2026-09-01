@@ -20,6 +20,11 @@ considered and rejected).
 
 ### 0. Check the copy you are running is the current one
 
+**First, before anything else this run does, record the boundary: `date -Is`.** Keep the value; step
+5 passes it to `--until` so the adherence figure describes the session's work rather than this
+harvest's own sweep. It has to be the harvest's first command — every step below adds Bash calls of
+a different character to the transcript, and a boundary taken later has already lost some of them.
+
 The running skill is a file copy dropped at install time, so a harvest can silently execute a
 version older than the source — skipping exactly the checks most recently added, and reporting a
 clean run because it never looked. Diff the installed copy against the checkout before starting
@@ -360,7 +365,14 @@ followed.
 
 The parts of "dangling" that are not in the conversation at all. The transcript says what was
 _intended_; these say what is actually true now. Run them even when the session felt tidy, because
-every one of them has been wrong at least once:
+every one of them has been wrong at least once.
+
+**Write these inspections unpiped, and the last bullet below is why.** Every check here is a
+long-output command you want narrowed, so the form that comes naturally — `… | head`, `… | tail -3`,
+`… | wc -l` — is exactly the shape this same step then measures and reports as a miss. Count first
+(`rg -c`, `wc -l` on its own) or run it plain and let the harness truncate; never pre-truncate to
+save context, and never wrap a command whose **exit code** is the answer, which is how a failing
+gate and a wrong branch both come back as a calm `0`.
 
 - **Processes this session started.** Backgrounded polls and watchers outlive the turn that spawned
   them. Check for live children (`ps -o pid,stat,etimes,args`, and whether a `sleep` child was
@@ -380,16 +392,58 @@ every one of them has been wrong at least once:
   run `ss -ltnp`, which nothing then asked for. The general fact: **a development server's default
   bind is usually every interface**, and that default is invisible locally, since bound or unbound
   every local run behaves identically and only the reachable audience differs.
+- **Disk artifacts outside any repo.** Container images and build caches, throwaway interpreters,
+  volumes — none of which `ps`, `ss`, `git status` or either store can see, and which a session that
+  verified anything in containers will have several gigabytes of. `docker images`,
+  `docker system df` for the cache, `uv python list --only-installed` for interpreters added to test
+  a version floor. Report the sizes with a proposed removal line the user can approve; do not delete
+  unasked, because the build cache is shared with every other project on the machine and an image
+  another session is about to reuse costs a rebuild. **Say which were one-off verification artifacts
+  and which a committed README names — the session is the only party that can still tell those
+  apart.** Confirmed 2026-09-01: a run that had verified a container fix left a 4.11 GB image, 445
+  MB of others and a ~58 GB machine-wide build cache, while the processes bullet reported clean and
+  correctly so, every container having already been removed.
+- **Files this session edited that no repository and no store covers.** Take the write paths from
+  the session's own transcript, subtract everything inside a git repo or a known store, and report
+  what is left **with what would recover it** — because every other bullet here asks whether a store
+  was left tidy, and a file belonging to no store is not untidy, it is unseen. The recovery half is
+  the work: an example file in a repo plus a validator that rejects a bad one is a real recovery
+  path and not an obvious one; "no copy anywhere" is a finding worth stating plainly. Confirmed
+  2026-09-01: a session edited an unversioned config outside every working tree — no diff, no
+  history, no backup, and operational data of the kind the repo that reads it exists to protect. The
+  edit was correct and user-approved, which is what makes it the right instance: nothing went wrong
+  and the sweep still could not see it, so a wrong edit would have been equally invisible.
 - **This session's own rule adherence**, which nothing else in the sweep reaches:
 
   ```shell
   python3 ~/.agents/skills/session-bash-audit/scripts/audit.py --session <session-id> \
+    --until <the step 0 boundary> \
     --compare ~/.agents/skills/session-bash-audit/references/baselines/<baseline>.json
   ```
 
   **Get `<session-id>` from step 4's rule, not from a path you happen to have** — in a background
   job the id in the task-output path names a different transcript, the audit runs clean against it,
   and the verdict describes a session that is not yours.
+
+  **`--until` is not optional, and the reason is not that the sweep looks bad.** A figure that
+  includes this sweep measures the sweep: its calls are inspections, a different population from the
+  session's working commands, and they drag the rate toward their own shape in whichever direction
+  that happens to lean. Measured 2026-09-01 on two runs the same day — one rose 37% -> 40% on
+  `head`/`tail`, the other **fell** 22% -> 17% on `git -C`. "The harvest inflates its own number" is
+  the wrong claim and would have made the second run look like a refutation. **Report both
+  numbers**, one line: "6% during the work, 14% including this sweep." The first is the session; the
+  second is the honesty.
+
+  **If `exit-masked` is above zero, this session's own green results are unverified — re-run the
+  gate before believing any of them.** A masked exit code is not a style finding: it means a command
+  reported success through a filter that discarded the real answer. Confirmed 2026-08-31: a session
+  ran `inv quality.precommit 2>&1 | grep -Ei "…" | tail -3` perhaps twenty times, read the absence
+  of a match as success, and pushed three red commits — `basedpyright` printed
+  `0 errors, 6 warnings` and the gate exited 1, but the pipe reported `grep`'s exit code. The same
+  harvest measured `exit-masked` at 28% across 306 calls and drew no conclusion from it, which is
+  the gap this sentence closes. Re-run it unpiped — `inv quality.check > log 2>&1; echo $?`, then
+  read the log — and make the gate conditional on the number so a slow gate is not re-run for
+  nothing.
 
   The transcript says what the session intended; this says what it actually typed. It is not in the
   narrative, not in git, not in CI, and — the reason it belongs here rather than nowhere — **not in

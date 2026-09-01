@@ -39,6 +39,61 @@ builder. The complaint is not size or nesting, it is that state which is constan
 invocation is passed as an argument 69 times. Any proposal that moves lines around without reducing
 that number is not this plan.]
 
+## What this pass is actually about, restated 2026-09-01 by the user
+
+Not OOP over functions. **Clear boundaries, with the types reflecting them; objects rather than
+dicts and tuples; and each contiguous unit having an API surface that callers cannot reach around.**
+The shape of the data is information, and an agent reading a signature to decide what to do with a
+value is the reader that suffers most when the shape is anonymous. This is not a DAMP-vs-DRY
+question — deduplication is a side effect, not the goal.
+
+The first draft of this plan led with config threading, which is the smaller half. Measured:
+
+| the anonymous shape                                 | count       |
+| --------------------------------------------------- | ----------- |
+| bare `tuple[...]` returns                           | **22**      |
+| sites unpacking them positionally                   | **39**      |
+| dict-shaped returns / fields / parameters           | 8 / 13 / 10 |
+| stringly-keyed `routing.dirs["store"]` accesses     | 7           |
+| `NamedTuple` in the file today / frozen dataclasses | **0** / 6   |
+
+`walk_projects() -> tuple[list[str], list[LayoutProblem]]` and
+`scan_text() -> list[tuple[int, str, str]]` are the shape of the problem: a reader has to find the
+`return` statement to learn what the second element is.
+
+[DECISION: **the baseline decides whether `NamedTuple` is an upgrade, and it is not a general
+default.** A `NamedTuple` is indexable, unpackable and iterable, and compares equal to any plain
+tuple with the same values — `Point(1, 2) == (1, 2)` is `True`. That is a second, positional API
+surface nobody designed, which is the opposite of "callers cannot reach around the API", and
+inserting a field in the middle silently changes what `x[1]` means at every call site with no error.
+`python-conventions` carries the measured case: `Quantity(5, "ml") < Quantity(300, "mg")` returns
+`True` rather than raising, because tuple ordering is inherited whether or not the values are
+comparable.
+
+So the rule is about what is being replaced, not about which class syntax is nicer:
+
+- **bare tuple → `NamedTuple` is a clear upgrade.** Names where there were none, and the positional
+  surface already exists and is already being unpacked at 39 sites, so nothing new leaks. This is
+  exactly the drop-in-positional-compatibility case the conventions name as the legitimate reach.
+- **frozen dataclass → `NamedTuple` is a downgrade**, adding indexing, unpacking and structural
+  equality the type does not want.
+
+The 22 bare-tuple returns are the candidates. The 6 frozen dataclasses stay as they are.]
+
+[DECISION: **validation belongs at parse time, in the constructor, and that is what keeps
+`@dataclass(frozen=True)` for config.** Config is static, read once, and every later reader should
+be able to assume it is well formed — "parse, don't validate" applied with nothing but the standard
+library. `__post_init__` is where that goes, and `NamedTuple` has no equivalent: it needs a
+`__new__` override or a classmethod factory, which is more ceremony than the dataclass it was meant
+to be cheaper than. `Config` is already a frozen dataclass, so this mostly confirms the existing
+shape rather than changing it — what is missing is that several of its fields are still bare dicts.]
+
+[DECISION: **dicts stay at the serialisation boundary and nowhere else.** The 10 `dict[str, object]`
+payload builders exist to be handed to `json.dumps`, and giving them types would be ceremony in both
+directions. The dicts to remove are the ones used as records: `Routing.dirs` with its 7
+stringly-keyed lookups is the clearest, where two named fields turn a typo from a runtime `KeyError`
+into an error a checker catches.]
+
 ## What the shape should become
 
 One object per invocation, constructed in `main()`, holding what is resolved once and exposing the
@@ -223,14 +278,24 @@ Writing the skill first would be authoring the guidance unaided, which is the on
 
 ## Sequencing
 
-1. `Store` as a frozen record, if the second open question resolves that way — its own commit,
-   first, because it shrinks `Config` before anything depends on the new shape.
-2. `Workspace` with `config` only; convert the 21 `load_config()` sites; gate; commit.
-3. `routing` and `require_routable`; convert the 12 + 7 prologue sites.
-4. One derived property per commit: `private_terms`, `known_repos`, `stores`.
-5. Re-measure the table at the top with the same script. If the 69 has not moved most of the way to
-   zero, the pass did not do its job whatever the diff looks like.
-6. Then, and only then, decide the skill question with a measured candidate description.
+Naming the shapes comes first, because it is what a reader gains most from and what every later step
+is then easier to verify against.
+
+1. **`Routing.dirs` → named fields.** 7 stringly-keyed lookups, smallest diff, clearest win: a typo
+   becomes an error a checker catches rather than a runtime `KeyError`.
+2. **The 22 bare-tuple returns → `NamedTuple`**, in small batches by area (config parsing, scanning,
+   the projects walk). Existing positional unpacking keeps working at all 39 sites, so each batch is
+   verifiable by the suite without touching a call site — which makes this the cheapest step, not
+   the riskiest.
+3. **`Store` as a frozen record** — `(tier, path, source)` replacing four parallel `Config` fields
+   and deleting `store_source_of`, which exists only to choose between them.
+4. `Workspace` with `config` only; convert the 21 `load_config()` sites; gate; commit.
+5. `routing` and `require_routable`; convert the 12 + 7 prologue sites.
+6. One derived property per commit: `private_terms`, `known_repos`, `stores`.
+7. Re-measure **both** tables with the same scripts. The anonymous-shape counts should be near zero
+   and the 69 should have moved most of the way down; a large diff that moves neither means the pass
+   did not do its job, whatever it looks like.
+8. Then, and only then, decide the skill question with a measured candidate description.
 
 ## Explicitly not in this pass
 

@@ -278,16 +278,17 @@ Writing the skill first would be authoring the guidance unaided, which is the on
 
 ## Progress
 
-Steps 1 and 2 landed 2026-09-01, in four commits. Re-measured with the same ast walk against the
+Steps 1, 2 and 3 landed 2026-09-01, in five commits. Re-measured with the same ast walk against the
 same file (which had grown to 3,476 lines since the table above was taken):
 
 | signal                                       | before | after | note                       |
 | -------------------------------------------- | -----: | ----: | -------------------------- |
 | stringly-keyed `routing.dirs[...]` accesses  |     14 | **0** | step 1                     |
-| bare + nested anonymous `tuple[...]` returns |     22 | **7** | step 2                     |
-| — of those, record-shaped                    |     16 | **0** | the 7 left are not records |
-| positional unpacking of an anonymous return  |      9 |     2 |                            |
+| bare + nested anonymous `tuple[...]` returns |     22 | **5** | steps 2 and 3              |
+| — of those, record-shaped                    |     16 | **0** | the 5 left are collections |
+| positional unpacking of an anonymous return  |      9 | **0** |                            |
 | `NamedTuple` classes                         |      0 |    13 |                            |
+| frozen dataclasses                           |      6 |     7 | `Store`                    |
 | `dict[...]` class fields                     |      4 |     3 | `Routing.dirs` gone        |
 | functions taking `cfg`/`routing`             |     47 |    47 | untouched: steps 4-6       |
 
@@ -297,24 +298,27 @@ anywhere in the signature; there is no reading of the AST that gives 69, so step
 judged against 47/55. **7 `dirs` lookups** was 14 by the time step 1 ran. The 22 tuple returns
 reproduced exactly (12 bare + 10 nested inside a `list[...]`).
 
-What the 7 remaining anonymous tuple returns are, and why each stays:
+**All 5 anonymous tuple returns left are `tuple[str, ...]`** — `_strings`, `parse_depends_on`,
+`migrated_targets`, `public_root_names`, `shareable_root_names`. A homogeneous variadic tuple is a
+collection, not a record: there are no positions to name, so a `NamedTuple` has nothing to add. The
+DECISION above is about anonymous _records_, and these were counted with them; the honest reading of
+the original 22 is that 16 were records and all 16 are now named.
 
-- **Five are `tuple[str, ...]`** — `_strings`, `parse_depends_on`, `migrated_targets`,
-  `public_root_names`, `shareable_root_names`. A homogeneous variadic tuple is a collection, not a
-  record: there are no positions to name, so a `NamedTuple` has nothing to add. The DECISION above
-  is about anonymous _records_, and these were counted with them.
-- **Two are the store pair** — `_store_field -> (path, source)` and
-  `Config.stores() -> list[(tier, path)]`. Both are a store's location under a different projection,
-  which is exactly what **step 3**'s `Store(tier, path, source)` frozen record replaces. Putting a
-  `NamedTuple` there first would be the frozen-dataclass-to-`NamedTuple` downgrade the DECISION
-  rules out, then immediately undone.
+The oracle held: **not one of the 65 CLI-driven tests changed**, and 15 of the other 40 changed call
+form only — 7 `.dirs["store"]` -> `.store_dir`, 6 for `Store`, one `[1]` -> `.source`, one
+positional unpack -> `hit.text`. The `.store_dir` rewrites were checked against rule 3 by breaking
+`store_dir` in `resolve` and confirming they fail. The test comparing a `SessionAnchor` to a plain
+tuple literal was left as it was, and still passes — the positional compatibility this choice of
+record rests on, asserted by a test nobody had to write for it.
 
-The oracle held: **not one of the 65 CLI-driven tests changed**, and 9 of the other 40 changed call
-form only — 7 `.dirs["store"]` -> `.store_dir`, one `[1]` -> `.source`, one positional unpack ->
-`hit.text`. The `.store_dir` rewrites were checked against rule 3 by breaking `store_dir` in
-`resolve` and confirming they fail. The test comparing a `SessionAnchor` to a plain tuple literal
-was left as it was, and still passes — the positional compatibility this choice of record rests on,
-asserted by a test nobody had to write for it.
+[DECISION: **a type change under a name every caller uses needs a second oracle, because its failure
+mode is silent.** Step 3 renamed nothing: `cfg.store` stayed `cfg.store` and became a record, so a
+missed call site does not raise — it interpolates `Store(tier=..., path=..., source=...)` into
+output, and the suite only covers the lines it asserts on. The check that actually settles it is
+running every read-only command before and after and diffing: all 15, `--json` payloads included,
+byte-identical. Cheap (one shell script in the scratchpad), and it is the only evidence that reaches
+the output lines no test reads. Any later step that changes a widely-used field's _type_ rather than
+its name should do the same.]
 
 Noticed and deliberately not done, each its own small commit whenever:
 `holding: list[tuple[str,
@@ -337,9 +341,11 @@ is then easier to verify against.
    `SessionAnchor`, `TakenPlans`/`MovedPlan`, `ConfigKey`, `LineSpan`). 16 of the 22 were records
    and all 16 are named; see Progress for why the other 6 are not, and why one of them waits for
    step 3.
-3. **`Store` as a frozen record** — `(tier, path, source)` replacing four parallel `Config` fields
-   and deleting `store_source_of`, which exists only to choose between them. Now also owns the two
-   anonymous tuples step 2 left it: `_store_field`'s return and `Config.stores()`.
+3. ~~**`Store` as a frozen record**~~ **Landed 2026-09-01.** `(tier, path, source)` replaced the
+   four parallel `Config` fields and deleted `store_source_of`. `store_of`, `store_for` and
+   `stores()` return the record now, so a caller picks the aspect it wants rather than calling a
+   second accessor for the other half of the same thing — and the tier is stamped at load, where the
+   device is known, which also removed the single-store branch from `stores()`.
 4. `Workspace` with `config` only; convert the 21 `load_config()` sites; gate; commit.
 5. `routing` and `require_routable`; convert the 12 + 7 prologue sites.
 6. One derived property per commit: `private_terms`, `known_repos`, `stores`.

@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 ---
 
 # In a background job, the session id is not the transcript id — and the harvest audits a stranger
@@ -87,3 +87,35 @@ as `audit.py --until` plus a boundary recorded by step 0, so step 5 now excludes
 were about step 5's figure not describing what the reader thinks; they stayed separate because the
 causes and the fixes did not overlap, and **this one is still open**: excluding the sweep from the
 wrong transcript still measures the wrong session.
+
+## Outcome, 2026-09-02
+
+Both open questions went the way the plan leaned, and the mechanism was re-confirmed on a second
+background job before anything was written.
+
+- **Script or skill? Both**, as the first tag suspected. `audit.py` resolves a job id to that job's
+  `linkScanPath` and says it is doing so; `session-harvest` step 4 already carried the rule for its
+  own transcript read, and now says the script closes step 5's half by construction while this step
+  still has no script in the loop.
+- **Refuse, or print the resolved path? Print — the cheap half, and it is unconditional.** Every
+  `--session` run now prints the transcript it settled on, whichever id it was given. Refusing was
+  rejected on the plan's own reasoning: it needs a notion of "the calling session" the script does
+  not have, and the redirect makes the refusal case moot for the one id that was actually dangerous.
+
+Verified 2026-09-02 on a different job (`c9a20dab`), which reproduced the mechanism exactly:
+`sessionId` named a real transcript in the same project directory, `linkScanPath` named the true
+one, and the two ids now converge — the job id prints the redirect line and both report the same
+215/216 calls, the one-call difference being the measurement's own commands landing between runs.
+
+## Migrated to
+
+- `skills/session-bash-audit/scripts/audit.py` — `_job_transcript`, whose docstring carries the
+  386-against-101 evidence and the reason this belongs in the script: a wrong id that names nothing
+  errors out, while one that names the wrong file cannot be told from a right one by reading the
+  output.
+- `skills/session-harvest/SKILL.md`, step 4 — the note that the script now resolves it, and that
+  this step's own transcript read is still unassisted.
+
+Not migrated: the "also worth recording" note about step 4, because step 4 had already been fixed by
+the time this plan was absorbed — the passage naming this plan is the one now rewritten to describe
+the script instead.

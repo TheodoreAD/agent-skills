@@ -342,9 +342,14 @@ job's own directory name and its task-output paths are built from, points at a d
 in the same directory. Read `linkScanPath`; never reconstruct a path from an id you inferred.
 Confirmed 2026-09-01: a harvest took the UUID from its task-output path, and both this step and step
 5's audit ran against a stranger's session — 386 calls, none of them the job's, reported without a
-single sign anything was wrong. Filed as
-`plans/2026-09-01-harvest-audits-the-wrong-transcript-in-a-background-job.md`. The check that costs
-nothing: grep the file for a command this session definitely ran.
+single sign anything was wrong. The check that costs nothing: grep the file for a command this
+session definitely ran.
+
+**`audit.py` now resolves this for you, and the belt-and-braces is deliberate.** Passed a job id, it
+reads that job's `linkScanPath` and says so; and it prints the transcript path it settled on
+whichever id you gave it, so the resolution is visible in the output rather than assumed. That
+closes step 5's half by construction — but this step reads the transcript itself, with no script in
+the loop, so the rule above is still yours to follow here.
 
 **Extract the `AskUserQuestion` answers too, not only the user turns — on a session driven by this
 tool they carry the entire brief.** A user turn is `type == "user"` with text; an answer to a

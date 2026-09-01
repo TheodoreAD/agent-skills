@@ -256,6 +256,35 @@ def _parse_transcript(path: Path, project: str) -> list[Call]:
     return list(pending.values())
 
 
+def _job_transcript(session: str) -> Path | None:
+    """The transcript a background job writes into, when `session` is that job's own id.
+
+    A background job has two ids and they are not interchangeable: `sessionId` identifies the job,
+    `resumeSessionId` / `linkScanPath` identify the transcript it appends to. Both are real, and
+    `sessionId` **also names a transcript file in the same project directory** — so passing it here
+    resolves successfully to a stranger's session and reports a well-formed, entirely wrong answer.
+
+    Confirmed 2026-09-01: a harvest audited `c9a20dab-…` (the job id) instead of `9502c71c-…` (its
+    transcript) and got 386 calls against the real 101, with `chain` 45% against 10% and
+    `git-C-own-repo` 0% against 22% — the same headline verdict, and not one of the job's own
+    commands in the file. A wrong id that names nothing errors out; one that names the wrong file
+    cannot be told from a right one by reading the output, which is why this resolves it here rather
+    than leaving it to the caller to remember.
+    """
+    state = Path.home() / ".claude" / "jobs" / session[:8] / "state.json"
+    if not state.is_file():
+        return None
+    try:
+        record = json.loads(state.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if record.get("sessionId") != session:
+        return None
+    scan = record.get("linkScanPath")
+    path = Path(scan).expanduser() if scan else None
+    return path if path is not None and path.is_file() else None
+
+
 def load_session(session: str) -> list[Call]:
     """Every Bash call from one transcript, named by session id or by path.
 
@@ -274,10 +303,16 @@ def load_session(session: str) -> list[Call]:
     """
     path = Path(session)
     if not path.is_file():
-        matches = [p for p in PROJECTS_DIR.rglob("*.jsonl") if p.stem == session or p.stem.startswith(session)]
-        if not matches:
-            return []
-        path = max(matches, key=lambda p: p.stat().st_mtime)
+        redirected = _job_transcript(session)
+        if redirected is not None:
+            print(f"# {session[:8]} is a background job's id, not a transcript id — reading {redirected.name}")
+            path = redirected
+        else:
+            matches = [p for p in PROJECTS_DIR.rglob("*.jsonl") if p.stem == session or p.stem.startswith(session)]
+            if not matches:
+                return []
+            path = max(matches, key=lambda p: p.stat().st_mtime)
+    print(f"# transcript: {path}")
     return _parse_transcript(path, path.relative_to(PROJECTS_DIR).parts[0] if PROJECTS_DIR in path.parents else "")
 
 

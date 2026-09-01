@@ -1776,3 +1776,44 @@ def test_commit_leaves_the_shared_index_agreeing_with_head(ws, capsys):
         check=True,
     ).stdout.strip()
     assert status == "", f"the plan should be clean after its own commit, got {status!r}"
+
+
+def test_head_commit_tells_an_unborn_branch_from_a_broken_repository(tmp_path):
+    """`rev-parse HEAD` exits 128 for both, and reading that as "no parent" orphans history.
+
+    The distinction matters because `commit_one_path` uses the answer as the new commit's parent:
+    None means "this is the first commit". Getting it wrong on a populated repository would move
+    HEAD to a parentless commit and detach everything before it. This is the concrete cost of the
+    `git()` helper signalling failure with a falsy value.
+    """
+    fresh = make_repo(tmp_path / "fresh")
+    assert plans.head_commit(fresh) is None, "a repository with no commits yet is unborn, not broken"
+
+    (fresh / "a.md").write_text("x")
+    subprocess.run(["git", "add", "-A"], cwd=fresh, check=True)
+    subprocess.run(["git", "commit", "-qm", "first"], cwd=fresh, check=True)
+    assert plans.head_commit(fresh), "a populated repository resolves HEAD"
+
+    with pytest.raises(plans.PlanError, match="not a repository"):
+        plans.head_commit(tmp_path / "not-a-repo-at-all")
+
+
+def test_commit_extends_history_rather_than_replacing_it(ws, capsys):
+    """The consequence of the check above, asserted on the store rather than on the helper."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "first", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    plans.main(["new", "second", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    filed = sorted((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*.md"))
+
+    for plan in filed:
+        assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+
+    subjects = subprocess.run(
+        ["git", "log", "--format=%s"], cwd=ws.sensitive, capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert len(subjects) >= 2, "the second commit orphaned the first"

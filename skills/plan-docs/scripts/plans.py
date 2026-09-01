@@ -15,6 +15,12 @@ history, so retirement and `archive` work identically in either.
 Every command is read-only unless it says otherwise, stdlib only, and prints `key: value` lines (most
 also take `--json`) so an agent can act on the answer without opening a file.
 
+**Stdlib-only is a real constraint, not a preference, and it is why this is `argparse` rather than
+Typer.** The file ships inside a skill and is run by `python3 <path>` from any repo on any machine —
+there is no install step, no virtualenv it can count on, and it must work in a repo whose own
+environment is broken, since diagnosing that is sometimes the job. The conventions ask for the
+constraint to be named rather than assumed; this is it.
+
     plans.py where                      # which directories this repo's plans live in
     plans.py new store-routing          # create today's plan file in the right one
     plans.py list                       # what is open here — scope, cap and filters below
@@ -376,6 +382,17 @@ class Config:
             return self.store
         return self.store if tier == SHAREABLE else self.sensitive_store
 
+    def store_source_of(self, tier: str) -> str:
+        """Where a tier's path came from — the environment, the config, or the default.
+
+        Extracted on the third repetition, not the second: the same ternary was inlined at three
+        call sites that all print it, and a fourth was about to be added for the device work. Below
+        three this would have been the premature abstraction the conventions warn about.
+        """
+        if not self.split_by_sensitivity or tier == SHAREABLE:
+            return self.store_source
+        return self.sensitive_store_source
+
     def store_for(self, rel: str | None) -> Path:
         """The store directory a repo's mirrored plans live under."""
         return self.store_of(self.tier_of(rel))
@@ -569,7 +586,20 @@ class Routing:
 
 
 def git(args: list[str], cwd: Path, env: dict[str, str] | None = None) -> str | None:
-    """Run a git command, returning its stdout, or None if git failed or is unavailable."""
+    """Run a git command, returning its stdout, or None if git failed or is unavailable.
+
+    [PITFALL: **this signals failure with a falsy value, and `""` is also falsy.** A successful
+    command with no output and a failed one are one `if not result:` apart, which is the shape the
+    Python conventions rule out for exactly this reason. It is kept because nearly every call here
+    genuinely wants "the answer, or nothing" — an absent remote, an unmatched grep — and raising at
+    each of those would be noise.
+
+    Where the difference decides something, the caller must ask a second question rather than read
+    the falsy value. `head_commit` below is the worked example: `rev-parse HEAD` fails identically
+    on a repository with no commits and on one that is broken, and treating the first reading as
+    the second builds a parentless commit that orphans the history it meant to extend. Any new
+    caller whose behaviour branches on emptiness belongs in that shape, not in an `or`.]
+    """
     try:
         done = subprocess.run(
             ["git", *args],
@@ -583,6 +613,33 @@ def git(args: list[str], cwd: Path, env: dict[str, str] | None = None) -> str | 
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout.strip() if done.returncode == 0 else None
+
+
+def head_commit(repo: Path) -> str | None:
+    """The commit `HEAD` points at, or None **only** when the branch is genuinely unborn.
+
+    `git rev-parse HEAD` exits 128 for a repository with no commits yet *and* for every other
+    failure — a corrupt object store, a missing permission, a path that is not a repository at all.
+    So the obvious `git(...) or None` cannot tell a fresh store from a broken one, and a caller that
+    reads None as "no parent" builds a parentless commit and orphans every commit before it.
+
+    `git()` returns `""` for a command that succeeded with no output and `None` for one that failed,
+    and that difference is the whole check: `rev-list --all` is empty on a repository with no
+    commits and non-empty otherwise, so an empty answer confirms unborn while a failure stays a
+    failure. This is the concrete cost of a helper that signals failure with a falsy value, which is
+    why the distinction is made here rather than at each call site.
+    """
+    head = git(["rev-parse", "--verify", "--quiet", "HEAD"], repo)
+    if head:
+        return head
+    existing = git(["rev-list", "-n", "1", "--all"], repo)
+    if existing is None:
+        raise PlanError(f"{repo}: git could not be read — not a repository, or unreadable")
+    if existing:
+        raise PlanError(
+            f"{repo}: has commits but HEAD does not resolve — refusing to commit onto a detached or broken HEAD"
+        )
+    return None
 
 
 def commit_one_path(repo: Path, path: Path, message: str) -> str:
@@ -612,7 +669,7 @@ def commit_one_path(repo: Path, path: Path, message: str) -> str:
 
     with tempfile.TemporaryDirectory() as tmp:
         env = {"GIT_INDEX_FILE": str(Path(tmp) / "index")}
-        head = git(["rev-parse", "HEAD"], repo)
+        head = head_commit(repo)
         if head and git(["read-tree", head], repo, env) is None:
             raise PlanError(f"could not read HEAD into a private index in {repo}")
         if git(["add", "--", rel], repo, env) is None:
@@ -1394,7 +1451,7 @@ def cmd_where(args: argparse.Namespace) -> int:
         print("device:  contractor — the store splits by sensitivity")
         print(f"tier:    {tier} — this repo's store-held plans live in the {tier} half")
         for name, path in cfg.stores():
-            source = cfg.store_source if name == SHAREABLE else cfg.sensitive_store_source
+            source = cfg.store_source_of(name)
             print(f"store:   {name:<10} {path} (from {source})")
     else:
         print("device:  work — one organisation, so one store and no tier to choose")
@@ -2980,7 +3037,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 {
                     "tier": tier,
                     "path": str(path),
-                    "source": cfg.store_source if tier == SHAREABLE else cfg.sensitive_store_source,
+                    "source": cfg.store_source_of(tier),
                     "git": is_git_repo(path),
                     "remotes": (git(["remote"], path) or "").split(),
                 }
@@ -3080,7 +3137,7 @@ def _print_stores(cfg: Config) -> None:
     question the split creates and the one thing a session cannot infer from the paths.
     """
     for tier, path in cfg.stores():
-        source = cfg.store_source if tier == SHAREABLE else cfg.sensitive_store_source
+        source = cfg.store_source_of(tier)
         if not path.is_dir():
             state = "missing"
         elif not is_git_repo(path):
@@ -3249,7 +3306,7 @@ def show_config(cfg: Config) -> int:
     print(f"config:        {cfg.path}{'' if cfg.exists else ' (does not exist)'}")
     print(f"projects_root: {cfg.projects_root}")
     for tier, path in cfg.stores():
-        source = cfg.store_source if tier == SHAREABLE else cfg.sensitive_store_source
+        source = cfg.store_source_of(tier)
         print(f"store:         {path} (from {source})  [{tier}]")
     print(f"public_roots:  {', '.join(cfg.public_root_names()) or '(none)'}")
     fallback = "" if cfg.shareable_roots else "  (unset — falls back to public_roots)"

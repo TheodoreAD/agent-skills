@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-01
 ---
 
@@ -27,22 +27,24 @@ instruction to store plans. Deciding this is a wording change plus, possibly, a 
 `~/AGENTS.md`, whose "stage by path, never `git add -A`" rule is the same concern one level up and
 already applies to every repo.]
 
-[NEEDS CLARIFICATION: **the retirement deletion cannot go through `commit` at all, and nothing says
-what to use instead.** Confirmed 2026-09-01: `cmd_commit` resolves its argument with
-`candidate.is_file()` or `locate(...)`, and both require the file to exist —
-`plans.py commit plans/<a deleted plan>.md` fails with `no plan named …` before any git call.
-Retirement is exactly the case where the file is gone, so the one step the convention describes as
-irreversible is also the one still done with a bare `git rm`/`git commit` in a shared index.
+**The retirement deletion is answered — landed 2026-09-01.** `commit` now takes a path the working
+tree no longer has, resolving it against `HEAD` instead of `locate`, and stages the removal in both
+halves of the retirement's ordinary states: the file merely removed, and `git rm` having already
+staged it. Two findings came out of building it, both now in the code and its tests:
 
-Three shapes, unpriced: teach `commit` to accept a path that no longer exists (the private-index
-machinery already stages a deletion correctly — `git add -- <path>` stages a removal, so only the
-argument resolution is in the way); give retirement its own command; or leave it as a documented
-exception and say so, which is at least better than the current silence.]
+- `git add -- <path>` records a removal only while the index still holds the entry. Once `git rm`
+  has staged the deletion there is nothing left for the pathspec to match and the same command is a
+  fatal error — so the shared-index staging has to skip when the removal is already staged, while
+  the private index, read from `HEAD`, takes both without special-casing.
+- **`git rm` prunes the directory it just emptied**, which is the ordinary case for a store mirror
+  holding one last plan. Resolving the repository from the file's parent then fails on a cwd that no
+  longer exists and reads as "not a git repository", which it is not.
+
+`SKILL.md`'s retirement step now names the command.
 
 ## Recommended direction
 
-Answer the retirement one first — it is a concrete gap in a mechanism that already exists, and the
-fix is plausibly a few lines in argument resolution plus a test that retires a plan through the
-command. The general-vs-store question is a wording decision that wants a measurement first: whether
-any repo other than the store has actually had a commit swept, which the transcript store can answer
-the same way the 142-call figure was measured.
+One question left, and it wants a measurement rather than a decision: whether any repo other than
+the store has actually had a commit swept by a parallel session. The transcript store can answer it
+the same way the 142-call figure was measured. Until it does, the honest state is that the hazard is
+general in principle and observed only in the store, which is what `SKILL.md` says.

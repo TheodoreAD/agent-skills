@@ -1,0 +1,66 @@
+{
+  "about": [
+    "The other half of plans/2026-09-01-plans-py-encapsulation-pass.md's skill question: instead of",
+    "a new skill, extend python-conventions' description to claim the restructuring procedure too.",
+    "Same twelve prompts as refactor-audit-candidate.json, but the four audit cases expect",
+    "python-conventions, because under this option that is where the procedure lives.",
+    "",
+    "The wording measured was trimmed to fit the 1024-character cap, which is what extending",
+    "actually costs: DST folds, the src/ prose and the exception-hierarchy phrasing were cut to make",
+    "room, and the description still only reached 1021.",
+    "",
+    "Result 2026-09-01: 10/12. The two most characteristic audit prompts selected *nothing* \u2014 the",
+    "corpus's failure mode is misses, not steals, and this is one. The separate-skill wording scored",
+    "12/12 on the same prompts and took nothing from python-conventions."
+  ],
+  "cases": [
+    {
+      "prompt": "This module is 3,000 lines built over two weeks and nobody has ever reviewed it as a whole. How do I go about restructuring it without breaking anything?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "I need to change a widely-used field's type across a whole file. How do I make that diff reviewable as behaviour-preserving?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "During this refactor I had to edit a test that named a renamed function. How do I know I didn't just weaken it?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "Before I start reorganising this package, how do I decide whether it's worth doing at all?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "This module has accumulated global state and is hard to follow. How far should I break it up?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "Should this config object be a dataclass, a NamedTuple or a Pydantic model?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "Is a module-level singleton with lazy properties the right shape for this settings object?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "How should I store and compare timestamps across timezones in this Python module?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "What should a pytest fixture cover, and at what scope?",
+      "expect": "python-testing-conventions"
+    },
+    {
+      "prompt": "Rename the variable `tmp2` in this function to something readable.",
+      "expect": null
+    },
+    {
+      "prompt": "What is the capital of France?",
+      "expect": null
+    },
+    {
+      "prompt": "Add a docstring to this function explaining what it returns.",
+      "expect": null
+    }
+  ]
+}

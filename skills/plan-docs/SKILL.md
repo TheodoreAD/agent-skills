@@ -844,6 +844,15 @@ Code contracts and verification logs are usually the bulk of the deletable volum
 5. **Fix the references from step 3, then delete the file** — only once step 4 is genuinely covered.
    If there is any doubt whether something worth keeping was captured, ask before deleting; it is a
    one-way door once the commit lands.
+   - **`commit` takes the deletion too**, and is still the right way to make it: the store's index
+     is shared whether the change is an addition or a removal.
+     ```shell
+     python3 <path> commit <the plan that is now gone> -m "retire <topic>"
+     ```
+     Pass the path, not a bare filename — nothing can search for a file that no longer exists. It
+     works whether the deletion is staged (`git rm`) or the file was simply removed, and `git rm`
+     also prunes the directory it just emptied, which is ordinary for a store mirror holding one
+     last plan.
    - Don't blindly swap the old path for the new one at every hit. A reference to a specific quoted
      section title needs that title updated to match where the content actually landed — a valid
      path aimed at a renamed heading still dangles. Some cited content is already duplicated at a

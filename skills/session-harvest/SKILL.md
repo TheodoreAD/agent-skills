@@ -328,6 +328,17 @@ considered and rejected).
    brief's own "this needs a full tier run afterwards, only one common cause was established"
    survived into no summary, and neither did an explicitly-declined consumer sweep.
 
+   **In a background job the session id is not the transcript id, and every guess at it lands on a
+   real file belonging to someone else.** `$CLAUDE_JOB_DIR/../state.json` names the right one:
+   `linkScanPath` is the full path, and `resumeSessionId` the id — while `sessionId`, which is what
+   the job's own directory name and its task-output paths are built from, points at a different
+   transcript in the same directory. Read `linkScanPath`; never reconstruct a path from an id you
+   inferred. Confirmed 2026-09-01: a harvest took the UUID from its task-output path, and both this
+   step and step 5's audit ran against a stranger's session — 386 calls, none of them the job's,
+   reported without a single sign anything was wrong. Filed as
+   `plans/2026-09-01-harvest-audits-the-wrong-transcript-in-a-background-job.md`. The check that
+   costs nothing: grep the file for a command this session definitely ran.
+
    **Extract the `AskUserQuestion` answers too, not only the user turns — on a session driven by
    this tool they carry the entire brief.** A user turn is `type == "user"` with text; an answer to
    a question is not, so a transcript scan written for the first finds none of the second. Confirmed
@@ -371,6 +382,10 @@ considered and rejected).
      python3 ~/.agents/skills/session-bash-audit/scripts/audit.py --session <session-id> \
        --compare ~/.agents/skills/session-bash-audit/references/baselines/<baseline>.json
      ```
+
+     **Get `<session-id>` from step 4's rule, not from a path you happen to have** — in a background
+     job the id in the task-output path names a different transcript, the audit runs clean against
+     it, and the verdict describes a session that is not yours.
 
      The transcript says what the session intended; this says what it actually typed. It is not in
      the narrative, not in git, not in CI, and — the reason it belongs here rather than nowhere —

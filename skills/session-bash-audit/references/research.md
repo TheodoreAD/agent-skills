@@ -479,7 +479,27 @@ git-C-own-repo=0%(OK)  sed-n=5%(OK)  cat-view=1%(OK)   — 7/11 expectations met
 It had quoted the `head`/`tail` rule in its own commit messages that hour and scored **17pp worse
 than the window the rewrite was meant to improve on**.
 
-What the two runs together say:
+**2026-09-01, second session, and it is the first sample pointing the other way.** An `agent-skills`
+session was handed the previous run's numbers in its opening brief — "49% head/tail and 69% chaining
+against a baseline of 30% and 67%… one command per call" — and measured itself at the end.
+
+```
+n=348  chain=44%(-22pp,OK)  head/tail=24%(-7pp,OK)  redirect-then-filter=0%(OK)  cd-own-repo=0%(OK)
+git-C-own-repo=0%(OK)  cat-view=1%(OK)  sed-n=10%(+2pp,MISS)  heredoc=30%(+14pp,MISS)
+git-mutating-in-chain=10%(+2pp,MISS)   — 8/11 expectations met
+```
+
+Both headline rates fell below the pre-rewrite baseline, and `head`/`tail` roughly halved against
+the session it was told about. The difference from the two runs above is not the wording, which had
+not changed: it is that the numbers arrived **as an instruction at the top of the session**, naming
+the two rates and the shape to use instead. That is a sample of one and confounded by model and task
+mix, but it is the first datum for "telling a session its predecessor's rate" as a lever, and it is
+cheap to repeat — the brief is one sentence.
+
+The three MISSes are real and unglamorous: 67 file edits driven through `python3 - <<PY` instead of
+`Edit`, `sed -n` for viewing where `Read` was meant, and `git add … && git commit` chained.
+
+What the runs together say:
 
 - **Self-report is not a substitute.** Both sessions believed the run had gone cleanly, and both
   were right about everything except this. The number has to come from the transcript.
@@ -495,4 +515,18 @@ What the two runs together say:
 [PITFALL: `heredoc` over-counts for a commit-heavy session — `git commit -F -` with a heredoc body
 is the recommended way to write a multi-line message in this family, and it tags every commit. The
 2026-09-01 run made 20+ commits, so read its 23% against that rather than as reaching for heredocs
-over `Write`.]
+over `Write`.
+
+**Quantified on the second 2026-09-01 session, by classifying all 103 of its heredoc calls:** 32 fed
+`git commit -F -`, 67 were `python3 - <<PY` editing files, 4 other. So a third of the metric's hits
+were the form `~/AGENTS.md` _requires_ (a message containing a backtick must not go through an
+inline `-m`), and the reported 30% overstates the real figure by about that much. The 67 are the
+genuine finding the rate should have shown — bulk multi-site edits driven through a script rather
+than `Edit`.
+
+`HEREDOC_RE` matches any `<<'WORD'` and cannot see what the heredoc feeds, so the fix is a
+classifier rather than a threshold: exempt `git <verb> … -F -`/`-F <file>`, or split the metric into
+`heredoc-write` and `heredoc-stdin`. Until then a `heredoc` MISS is an upper bound — classify the
+calls before believing it. Same shape as the `rg -r` and `pgrep -f` entries above: a detector whose
+pattern is narrower than the rule it stands for, failing as a confident number rather than an
+error.]

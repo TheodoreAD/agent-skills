@@ -465,7 +465,19 @@ is then easier to verify against.
 - `skills/python-refactor-audit/references/prior-art.md` — the prior-art survey and the
   separate-skill measurement.
 - `skills/python-refactor-audit/SKILL.md` — the procedure itself.
-- `plans/2026-09-01-python-refactor-audit-skill.md` — the one question still open.
+- `plans/2026-09-01-python-refactor-audit-skill.md` — the one question still open. That plan has
+  since landed and retired too; what stayed open from it is
+  `plans/2026-09-01-broad-how-do-i-requests-select-no-skill.md`.
+- `plans/2026-09-01-plans-py-residual-record-cleanup.md` — the three items this pass scoped out and
+  never did: the `fill_details` mutation and the unfrozen `Retired`/`PlanFile`/`RepoInfo`/`_Walk`
+  records, the `holding: list[tuple[str, int]]` parameter threaded through `doctor`, and
+  `_plan_payload` taking a `ScopedPlan`. They are live work, so they leave with a plan rather than
+  with this file.
+
+Deliberately not migrated: the sequencing list and the eight steps' tick-offs, which are a record of
+this pass rather than anything a future reader needs; and the three `NEEDS CLARIFICATION` tags,
+every one of which is answered in the body above — `cmd_*` stay free functions, `Store` became a
+frozen record in step 3, and the skill question was settled by measurement.
 
 ## Explicitly not in this pass
 

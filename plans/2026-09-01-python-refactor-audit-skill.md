@@ -203,9 +203,17 @@ This plan closes here. What it leaves behind is a skill, and a measurement that 
 - `skills/skill-authoring/SKILL.md` — the same lower-bound correction, where it was also asserted.
 - `skills/skill-fitness/evals/refactor-audit-candidate.json` — both runs recorded in its `about`.
 
+- `plans/2026-09-01-broad-how-do-i-requests-select-no-skill.md` — the case-1 miss, which is the only
+  thing here that is still open. It carries what is ruled out (truncation, vocabulary) so neither is
+  re-derived, and the generalisation test that decides whether the finding is about this skill or
+  about request shape corpus-wide.
+
 The encapsulation-pass plan's condition — "stays open until that skill exists" — is met, and it is
-set `landed` with its content living on in `skills/python-refactor-audit/references/pilot.md`. This
-plan stays `in-progress` on the case-1 question alone.
+retired too, its content living on in `skills/python-refactor-audit/references/pilot.md`.
+
+Deliberately not migrated: the description's character count and the gate checklist, both of which
+`tests/unit/test_skill_layout.py` now enforces mechanically, and the shipping commits, which are in
+git history.
 
 ## Sources this is written from
 

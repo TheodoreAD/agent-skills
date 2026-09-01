@@ -814,7 +814,7 @@ def require_ok(routing: Routing) -> Routing:
 # plan files
 
 
-@dataclass
+@dataclass(frozen=True)
 class PlanFile:
     path: Path
     where: str
@@ -1052,7 +1052,7 @@ def walk_projects(cfg: Config) -> ProjectsWalk:
     return ProjectsWalk(walk.found, walk.problems)
 
 
-@dataclass
+@dataclass(frozen=True)
 class _Walk:
     """The projects-tree walk, as an object so each step is its own small function."""
 
@@ -1219,7 +1219,7 @@ def scan_targets(root: Path, mode: str) -> list[ScanTarget]:
 # repo knowledge
 
 
-@dataclass
+@dataclass(frozen=True)
 class RepoInfo:
     rel: str
     path: Path

@@ -602,6 +602,24 @@ output is a design constraint rather than a presentation choice. The corpus that
 question, measured on one machine 2026-08-29: 68 open plans across 8 repos plus the unscoped area,
 49 of them `idea`, and the cross-repo listing printing 117 lines to answer "what is open".
 
+### Why the listing reports status drift, and nothing enforces it
+
+The origin measurement, 2026-08-28, before any aggregator existed: six repos under one root carried
+a `plans/` directory, **56 plan files, all with `status:` frontmatter, none visible from any repo
+but their own** — 44 `idea`, 7 `in-progress`, 3 `blocked on`, one `landed`, one `abandoned`, and one
+`done`.
+
+`done` is not in the vocabulary. A second status line was a free-form paragraph where an enum
+belongs. **Neither was caught by any repo's quality gate, because each gate only ever sees its own
+repo** — which is the whole argument for a family-wide view in one sentence, and it is evidence
+rather than reasoning: the first run of the aggregator surfaced both.
+
+It reports and does not enforce, deliberately. A gate that refused an unknown status would have to
+live in every repo's own gate to catch anything, which is the arrangement that missed these in the
+first place; and a free-form status is sometimes the honest answer while a plan is genuinely between
+states. Naming the drift where the whole family is visible is enough — nobody has to remember to
+look, because the listing is already the command being run.
+
 ### Why one command with a scope axis, and not two commands
 
 `list` and `backlog` differed only in breadth — one repo against every repo — which is one axis, not

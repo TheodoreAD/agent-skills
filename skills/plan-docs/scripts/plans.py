@@ -1305,6 +1305,13 @@ class Source:
         return self.tier or self.where
 
 
+class RepoPlanCount(NamedTuple):
+    """One repo and how many plans it holds, for `doctor`'s listing and its JSON payload."""
+
+    repo: str
+    plans: int
+
+
 @dataclass
 class Retired:
     """A plan file as of the commit that deleted it."""
@@ -3280,8 +3287,11 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
     roots: dict[str, list[str]] = {}
     for rel in ws.repos:
         roots.setdefault(rel.split("/")[0], []).append(rel)
-    holding = sorted(((rel, counts[rel]) for rel in counts if rel != UNSCOPED_DIR and counts[rel]), key=lambda p: -p[1])
-    unrouted = [rel for rel, _ in holding if _match_rule(cfg, rel).source == "no rule"]
+    holding = sorted(
+        (RepoPlanCount(rel, counts[rel]) for rel in counts if rel != UNSCOPED_DIR and counts[rel]),
+        key=lambda held: -held.plans,
+    )
+    unrouted = [held.repo for held in holding if _match_rule(cfg, held.repo).source == "no rule"]
 
     if args.json:
         payload = {
@@ -3312,7 +3322,7 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
                 }
                 for name, members in sorted(roots.items())
             ],
-            "holding_plans": [{"repo": rel, "plans": n} for rel, n in holding],
+            "holding_plans": [held._asdict() for held in holding],
             "statuses": dict(Counter(entry.plan.group for entry in entries)),
             "problems": _all_problems(ws, unrouted, strict=args.strict),
         }
@@ -3328,7 +3338,7 @@ def _print_doctor(
     entries: list[ScopedPlan],
     roots: dict[str, list[str]],
     counts: dict[str, int],
-    holding: list[tuple[str, int]],
+    holding: list[RepoPlanCount],
     unrouted: list[str],
     *,
     strict: bool = False,
@@ -3363,9 +3373,9 @@ def _print_doctor(
 
     if holding:
         print(f"\nholding plans ({len(holding)})")
-        width = max(len(rel) for rel, _ in holding)
-        for rel, count in holding:
-            print(f"  {rel.ljust(width)}  {count} plan(s)")
+        width = max(len(held.repo) for held in holding)
+        for held in holding:
+            print(f"  {held.repo.ljust(width)}  {held.plans} plan(s)")
 
     statuses = Counter(entry.plan.group for entry in entries)
     tally = "  ".join(f"{statuses[name]} {name}" for name in (*STATUS_ORDER, "unknown") if statuses[name])

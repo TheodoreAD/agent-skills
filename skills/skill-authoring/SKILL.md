@@ -166,9 +166,11 @@ python3 <skill-fitness>/scripts/trigger.py split ...      # how requests distrib
 Two results from that tool change how this section should be applied. Its static overlap flag is a
 hypothesis generator and **not a verdict** — its one testable prediction was refuted by the live
 run, so a redrawn boundary should be justified by `trigger.py`, not by an overlap score. And a
-candidate description's score is a **lower bound**: a proposal is registered as a command file and a
-real skill is not, so a wording that improves without reaching a clean pass is still worth adopting,
-then confirmed with a `run` after it ships.
+candidate description's score is an **estimate that errs in both directions**: a proposal is
+registered as a command file and a real skill is not, so a wording that improves without reaching a
+clean pass is still worth adopting — but **the `run` after it ships is the figure, not a
+formality.** Called a lower bound here until 2026-09-01, when a skill measured 12/12 as a candidate
+and 11/12 once installed, on the same cases.
 
 Corollary when a finding needs a home: prefer extending the skill that already owns the topic over
 adding a new one. Skill count is itself a context tax, and each added description is one more thing

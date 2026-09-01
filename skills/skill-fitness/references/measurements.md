@@ -58,10 +58,14 @@ scoring them as separate skills reports a failure every time the incumbent wins.
 run reported two such failures while the case the candidate was written to fix passed 3/3 — the
 proposal was working and the scoreboard said otherwise.]
 
-[PITFALL: **a candidate score is a lower bound and the uplift is not owed.** Measured twice: one
-request went 0/3 → 1/3 as a candidate → **3/3** shipped; another went 0/3 → 2/3 as a candidate →
-**2/3** shipped. The bound held both times; the improvement followed only once. An earlier version
-of this file generalised an uplift from the first observation alone.]
+[PITFALL: **a candidate score errs in both directions.** Measured twice on 2026-08-31: one request
+went 0/3 → 1/3 as a candidate → **3/3** shipped; another went 0/3 → 2/3 as a candidate → **2/3**
+shipped. An earlier version of this file generalised an uplift from the first observation alone; the
+version after it called the candidate figure a **lower bound**, which held for those two and was
+refuted on 2026-09-01 by `python-refactor-audit` — 12/12 as a candidate, **11/12** installed on the
+same twelve cases, its flagship case dropping **3/3 → 1/3** with truncation ruled out by `budget`.
+Two generalisations from small samples, in opposite directions, from the same measurement. Quote the
+`run` figure.]
 
 [PITFALL: **three runs is a floor.** A case that scored 3/3 twice came back 2/3 with nothing
 relevant changed. Read one dropped run as variance, and do not compare a 3/3 against a 2/3 as though

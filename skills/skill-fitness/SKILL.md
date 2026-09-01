@@ -308,13 +308,16 @@ The proposal joins the listing under a temporary name alongside every real skill
 the same competition it will actually face. Adopt it only if it wins cases the incumbent lost
 without losing cases the incumbent won.
 
-**A candidate score is a lower bound, not a prediction.** A proposal is registered as a command file
-and a real skill is not, and the difference shows up in the result. Measured twice on 2026-08-31: a
+**A candidate score is an estimate with error in both directions — never report it as what the
+shipped skill will do.** A proposal is registered as a command file and a real skill is not, and the
+difference shows up in the result. Measured twice on 2026-08-31 in the optimistic direction: a
 request scoring 0/3 against the old wording and 1/3 as a candidate scored **3/3** once shipped; a
-second one scoring 0/3 and 2/3 as a candidate shipped at **2/3**, exactly its candidate figure. So
-the bound holds and the uplift is not owed to you. Adopt a candidate that clearly improves even
-below a clean pass, and settle it with a `run` against the installed set after the change lands —
-never by reporting the candidate figure as what the shipped skill will do.
+second one scoring 0/3 and 2/3 as a candidate shipped at **2/3**, exactly its candidate figure. This
+file called that a **lower bound** until 2026-09-01, when `python-refactor-audit` refuted it on
+identical cases: the whole suite went 12/12 as a candidate and **11/12** installed, and its flagship
+case went **3/3 → 1/3** — a two-run drop, outside the variance band below. Listing truncation was
+ruled out with `budget`. So: adopt a candidate that clearly improves even below a clean pass, and
+settle it with a `run` against the installed set after the change lands.
 
 **Three runs is the floor, and a 2/3 is a pass that is not a clean one.** Across these suites a case
 that scored 3/3 twice has come back 2/3 with no relevant change in between, the third run firing

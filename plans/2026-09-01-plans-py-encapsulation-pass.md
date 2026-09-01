@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 updated: 2026-09-01
 ---
 
@@ -276,19 +276,70 @@ pilot surfaces what research cannot. This pass _is_ that pilot, and its findings
 Writing the skill first would be authoring the guidance unaided, which is the one thing
 `skill-fitness` says measures below having no skill at all.]
 
+## Progress
+
+Steps 1 and 2 landed 2026-09-01, in four commits. Re-measured with the same ast walk against the
+same file (which had grown to 3,476 lines since the table above was taken):
+
+| signal                                       | before | after | note                       |
+| -------------------------------------------- | -----: | ----: | -------------------------- |
+| stringly-keyed `routing.dirs[...]` accesses  |     14 | **0** | step 1                     |
+| bare + nested anonymous `tuple[...]` returns |     22 | **7** | step 2                     |
+| — of those, record-shaped                    |     16 | **0** | the 7 left are not records |
+| positional unpacking of an anonymous return  |      9 |     2 |                            |
+| `NamedTuple` classes                         |      0 |    13 |                            |
+| `dict[...]` class fields                     |      4 |     3 | `Routing.dirs` gone        |
+| functions taking `cfg`/`routing`             |     47 |    47 | untouched: steps 4-6       |
+
+Two counts in the original table did not reproduce and the discrepancy is the plan's, not the
+file's. **69 cfg-taking functions** measures as 47 with `cfg`/`config` leading and 55 with either
+anywhere in the signature; there is no reading of the AST that gives 69, so steps 4-6 should be
+judged against 47/55. **7 `dirs` lookups** was 14 by the time step 1 ran. The 22 tuple returns
+reproduced exactly (12 bare + 10 nested inside a `list[...]`).
+
+What the 7 remaining anonymous tuple returns are, and why each stays:
+
+- **Five are `tuple[str, ...]`** — `_strings`, `parse_depends_on`, `migrated_targets`,
+  `public_root_names`, `shareable_root_names`. A homogeneous variadic tuple is a collection, not a
+  record: there are no positions to name, so a `NamedTuple` has nothing to add. The DECISION above
+  is about anonymous _records_, and these were counted with them.
+- **Two are the store pair** — `_store_field -> (path, source)` and
+  `Config.stores() -> list[(tier, path)]`. Both are a store's location under a different projection,
+  which is exactly what **step 3**'s `Store(tier, path, source)` frozen record replaces. Putting a
+  `NamedTuple` there first would be the frozen-dataclass-to-`NamedTuple` downgrade the DECISION
+  rules out, then immediately undone.
+
+The oracle held: **not one of the 65 CLI-driven tests changed**, and 9 of the other 40 changed call
+form only — 7 `.dirs["store"]` -> `.store_dir`, one `[1]` -> `.source`, one positional unpack ->
+`hit.text`. The `.store_dir` rewrites were checked against rule 3 by breaking `store_dir` in
+`resolve` and confirming they fail. The test comparing a `SessionAnchor` to a plain tuple literal
+was left as it was, and still passes — the positional compatibility this choice of record rests on,
+asserted by a test nobody had to write for it.
+
+Noticed and deliberately not done, each its own small commit whenever:
+`holding: list[tuple[str,
+int]]` threaded through `doctor` and `_print_doctor` is the same anonymous
+shape one layer out from what step 2 counted (parameters, not returns, so the measurement never saw
+it); and `_plan_payload(rel, plan)` could take a `ScopedPlan` now that one exists.
+
 ## Sequencing
 
 Naming the shapes comes first, because it is what a reader gains most from and what every later step
 is then easier to verify against.
 
-1. **`Routing.dirs` → named fields.** 7 stringly-keyed lookups, smallest diff, clearest win: a typo
-   becomes an error a checker catches rather than a runtime `KeyError`.
-2. **The 22 bare-tuple returns → `NamedTuple`**, in small batches by area (config parsing, scanning,
-   the projects walk). Existing positional unpacking keeps working at all 39 sites, so each batch is
-   verifiable by the suite without touching a call site — which makes this the cheapest step, not
-   the riskiest.
+1. ~~**`Routing.dirs` → named fields.**~~ **Landed 2026-09-01.** 14 stringly-keyed lookups, not the
+   7 measured here. `repo_dir` became a property derived from `repo_root` rather than a second
+   field, and `dir_for(where)` is the single string-keyed door left, for the names that arrive from
+   the config file and from `--to`.
+2. ~~**The 22 bare-tuple returns → `NamedTuple`**~~ **Landed 2026-09-01**, in three batches: the
+   listing pairs (`PlanDir`, `ScopedPlan`), the scanning ones (`TagHit`, `ScanHit`, `ScanTarget`,
+   `HistoryEntry`), and the ones callers were indexing into (`RuleMatch`, `ProjectsWalk`,
+   `SessionAnchor`, `TakenPlans`/`MovedPlan`, `ConfigKey`, `LineSpan`). 16 of the 22 were records
+   and all 16 are named; see Progress for why the other 6 are not, and why one of them waits for
+   step 3.
 3. **`Store` as a frozen record** — `(tier, path, source)` replacing four parallel `Config` fields
-   and deleting `store_source_of`, which exists only to choose between them.
+   and deleting `store_source_of`, which exists only to choose between them. Now also owns the two
+   anonymous tuples step 2 left it: `_store_field`'s return and `Config.stores()`.
 4. `Workspace` with `config` only; convert the 21 `load_config()` sites; gate; commit.
 5. `routing` and `require_routable`; convert the 12 + 7 prologue sites.
 6. One derived property per commit: `private_terms`, `known_repos`, `stores`.

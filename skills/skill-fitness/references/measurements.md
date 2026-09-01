@@ -47,6 +47,16 @@ Both were fixed by a candidate description carrying the request's own vocabulary
 were scored before adoption. **A description built from the tool's vocabulary rather than the
 request's does not lose to a competitor; it loses to silence.**
 
+[PITFALL: **vocabulary is not the only cause of a miss to silence, and 2026-09-01 is the case that
+proves it.** `python-refactor-audit`'s flagship prompt — "this module is 3,000 lines … nobody has
+ever reviewed it as a whole … how do I restructure it without breaking anything?" — fired **1 time
+in 6** across two full runs, while its three other positives went 3/3 in both. The description
+already carries that sentence's own words nearly verbatim ("auditing a file nobody has reviewed as a
+whole", "how to restructure it safely"), and the same prompt also selected nothing for the rejected
+extend-`python-conventions` wording. So the fix for the two 2026-08-31 misses does not generalise
+into a diagnosis: a broad "how do I go about X" request can select nothing even when the vocabulary
+matches, and reaching for closer wording is a guess until something measures the cause.]
+
 [PITFALL: **an easy suite cannot tell "no contention" from "cases too easy".** The first suite
 passed 24/24 and every prompt in it named something only one skill claims. It was the second,
 phrased in the region a broad skill's description actually claims, that produced a finding. This is

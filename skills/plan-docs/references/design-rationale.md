@@ -491,6 +491,24 @@ single-shape repetition on this machine.
 and a locking scheme around a directory several independent agent sessions write to is far more
 machinery than the problem justifies.]
 
+[DECISION: **the instruction stays scoped to the store, on a measurement rather than on principle.**
+In principle the hazard is general — parallel sessions on this machine share every working tree, not
+only the store's — so the obvious move is to make `commit` the advice everywhere. Measured
+2026-09-02 across the whole transcript store, 23,045 Bash calls: of **1,783 commit calls, 1,514
+targeted an ordinary repo tree and 269 the store**, and the symptom appears **once, in the store**.
+Zero in fifteen hundred repo commits. The asymmetry is the store's alone because it is the one
+repository every session writes to, while two sessions rarely commit to the same repo within
+seconds. `~/AGENTS.md`'s "stage by path, never `git add -A`" already carries the general form of the
+concern for every repo, which is the right level for a hazard that is real in principle and
+unobserved in practice.
+
+**What that measurement cannot see, stated so nobody reads it as stronger than it is:** it counts
+the _loud_ failure, where the sweep took everything staged and the follow-up `git commit` had
+nothing left to commit. A sweep that took only part of it produces a successful commit carrying an
+extra file and says nothing at all. So the finding is "the loud case is store-only", not "the silent
+case does not happen" — and the silent case is exactly the one `git log -- <path>` was needed to
+find the first time.]
+
 ### Why the confidentiality gate derives its terms instead of listing them
 
 The rule is easy to state — a published repo must not name a client — and useless without a check,

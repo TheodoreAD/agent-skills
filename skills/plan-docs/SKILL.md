@@ -10,7 +10,10 @@ Convention for `plans/YYYY-MM-DD-topic.md` — one file per idea or design, a YA
 working set, not a permanent archive.
 
 Rationale, prior art, and worked examples:
-[`references/design-rationale.md`](references/design-rationale.md).
+[`references/design-rationale.md`](references/design-rationale.md). Whether an existing tool should
+have been adopted instead — the markdown task trackers, git-bug, beads, and why cross-repo is the
+case none of them solves cheaply — is
+[`references/prior-art-task-trackers.md`](references/prior-art-task-trackers.md).
 
 ## Run the script, don't re-derive it
 

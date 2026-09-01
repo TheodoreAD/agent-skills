@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-29
+status: landed
+updated: 2026-09-01
 ---
 
 # The store's git index is shared, so another session's commit ships your staged file
@@ -87,3 +87,30 @@ already took the file, and `git log -- <path>` says which.
 Do not add a lock or a retry. The failure is benign — a correct diff under a wrong message — and a
 locking scheme around a directory several independent agent sessions write to is far more machinery
 than the problem justifies.
+
+## Migrated to
+
+Landed better than this plan proposed: the recommendation here was the cheap trailing-pathspec fix
+to the printed advice, and what shipped is `plans.py commit`, which builds the commit from `HEAD`
+plus one path through a private index — the `GIT_INDEX_FILE` alternative this file priced and did
+not choose.
+
+- **`skills/plan-docs/SKILL.md`**, "Commit a store plan the moment it is written" — the instruction,
+  the symptom to recognise (`nothing added to commit` right after a successful `add`), and the two
+  measured sweeps. This is what an agent reads.
+- **`skills/plan-docs/references/design-rationale.md`**, "Why committing one plan is a command
+  rather than a git incantation" — both directions of the race with their commit SHAs, the
+  `git commit --
+  <path>` untracked-file pitfall, why the cheap fix was rejected, and the no-lock
+  decision.
+- **`skills/plan-docs/scripts/plans.py`**, `cmd_commit` / `commit_one_path` — the mechanism itself,
+  including why it still adds to the shared index first. Covered by the test suite.
+- **`plans/2026-09-01-shared-index-hazard-beyond-the-store.md`** — the two open questions this file
+  never answered: whether a repo's own `plans/` has the same hazard, and what retirement's deletion
+  is supposed to use, now confirmed to be unable to go through `commit` at all.
+
+Deliberately not migrated: the two remaining `NEEDS CLARIFICATION`s are answered by what shipped and
+are recorded nowhere else on purpose. "What closes the race for a create" was answered by building
+the private-index commit rather than the pathspec one. "Should `plans.py` do it rather than telling
+an agent to" was answered yes, by the same command, against this file's own guess that it would be a
+separate and bigger question.

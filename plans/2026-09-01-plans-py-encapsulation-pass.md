@@ -278,8 +278,9 @@ Writing the skill first would be authoring the guidance unaided, which is the on
 
 ## Progress
 
-Steps 1, 2 and 3 landed 2026-09-01, in five commits. Re-measured with the same ast walk against the
-same file (which had grown to 3,476 lines since the table above was taken):
+**Steps 1-7 landed 2026-09-01, in nine commits. Only step 8 — the skill question — is left.**
+Re-measured with the same ast walk against the same file (which had grown to 3,476 lines since the
+table above was taken):
 
 | signal                                       | before | after | note                       |
 | -------------------------------------------- | -----: | ----: | -------------------------- |
@@ -290,7 +291,11 @@ same file (which had grown to 3,476 lines since the table above was taken):
 | `NamedTuple` classes                         |      0 |    13 |                            |
 | frozen dataclasses                           |      6 |     7 | `Store`                    |
 | `dict[...]` class fields                     |      4 |     3 | `Routing.dirs` gone        |
-| functions taking `cfg`/`routing`             |     47 |    47 | untouched: steps 4-6       |
+| functions taking `cfg` first                 |     47 |    38 | steps 4-6                  |
+| `load_config()` calls                        |     20 | **2** | step 4                     |
+| `resolve(args.path, cfg)`                    |     12 | **0** | step 5                     |
+| `require_ok(resolve(...))`                   |      8 | **1** | step 5                     |
+| projects-tree walks in one `doctor` run      |      5 | **1** | step 6                     |
 
 Two counts in the original table did not reproduce and the discrepancy is the plan's, not the
 file's. **69 cfg-taking functions** measures as 47 with `cfg`/`config` leading and 55 with either
@@ -320,6 +325,64 @@ byte-identical. Cheap (one shell script in the scratchpad), and it is the only e
 the output lines no test reads. Any later step that changes a widely-used field's _type_ rather than
 its name should do the same.]
 
+### What steps 4-6 actually changed
+
+`Workspace` is built once in `main()` from `--path`, which every subcommand has, and handed to each
+command as a second argument. `cmd_*` stayed free functions — the open question above, settled the
+way it leaned: the win is in the shared state, not in where the command bodies live, and making them
+methods would have put argument parsing and domain logic in one 2,000-line class.
+
+Everything on it is a `cached_property`, so constructing one costs nothing and a command that never
+asks for the config never reads it — which is what keeps `install` working on a machine that has
+none. The properties: `config`, `routing`, `projects` (the tree walk), `repos`, `family_plans`,
+`private_terms`, `known_repos`, plus `require_routable()` as a method, because it can refuse and a
+property that raises is a surprise at the point of reading an attribute.
+
+**Three reads deliberately stayed direct**, and each is a place the cache would be wrong rather than
+merely unnecessary: `config set` re-reads the file it just wrote, to reject a bad value next to the
+change; `graduate` and `new --for` resolve a path that is not the session's, which is a different
+question the workspace cannot answer.
+
+Two findings the plan did not predict, both of which are the argument for the pass rather than
+consequences of it:
+
+- **`refs` and `repos` never needed the config at all.** Each held one only to feed `resolve` or a
+  derivation, and ruff flagged the variable as unused the moment the prologue went. The
+  config-taking opening was hiding what those commands actually depend on.
+- **`new --for` resolved the session's own path twice in one function**, once for `here` and once
+  for `source`. That is duplication the object removes rather than tidies.
+
+[DECISION: **`stores` did not become a workspace property, and the session anchor did not either.**
+`Config.stores()` is a pure function of the config with nothing to cache; a workspace property would
+be a second door to the same answer, which is the opposite of "callers cannot reach around the API".
+`session_anchor` is called twice in `doctor` and about three times in `new`, and measures **1.9 ms**
+— against `walk_projects`' 3.9 ms, which is the one that was being repeated five times. Caching it
+would be the speculative-need case the plan's own stopping rule rejects.]
+
+[PITFALL: **the output oracle compares live machine state, so a long session's two captures are not
+comparable.** The step 6 diff came back with changes to `ingesta` and `power-user-linux-setup` plan
+files — tag counts and `updated` stamps — which no part of this pass touches: a parallel session had
+edited them between the baseline capture and the check, and the family listing reads every repo on
+the machine. Capture both sides back to back instead, running the committed copy of the script
+(`git show HEAD:… > /tmp/…`) against the working tree seconds apart. The corrected form is what the
+step 4-6 commits were verified with.]
+
+### What the numbers do and do not say
+
+The invocation-scoped threading is gone: nothing re-reads the config, nothing re-resolves the
+routing, and no answer derived from the projects tree is computed twice. What did **not** move much
+is the count of functions taking `cfg` first, 47 to 38 — and on reading them, that is the right
+answer rather than unfinished work. What is left is pure functions _of_ the config: `_match_rule`,
+`walk_projects`, `private_terms`, `install_decisions`, the session-anchor family. A function that
+takes the config because it derives something from it has a signature that says exactly that;
+handing it a whole workspace instead would be the same anonymity one level up. The 69 in the
+original table counted those together with the threading, which is why it read as a bigger problem
+than it was.
+
+The performance win is honest but small: five walks to one saves about 16 ms on `doctor`. The value
+is structural — one answer computed in one place — not speed, and the plan should not be read as
+having claimed otherwise.
+
 Noticed and deliberately not done, each its own small commit whenever:
 `holding: list[tuple[str,
 int]]` threaded through `doctor` and `_print_doctor` is the same anonymous
@@ -346,13 +409,20 @@ is then easier to verify against.
    `stores()` return the record now, so a caller picks the aspect it wants rather than calling a
    second accessor for the other half of the same thing — and the tier is stamped at load, where the
    device is known, which also removed the single-store branch from `stores()`.
-4. `Workspace` with `config` only; convert the 21 `load_config()` sites; gate; commit.
-5. `routing` and `require_routable`; convert the 12 + 7 prologue sites.
-6. One derived property per commit: `private_terms`, `known_repos`, `stores`.
-7. Re-measure **both** tables with the same scripts. The anonymous-shape counts should be near zero
-   and the 69 should have moved most of the way down; a large diff that moves neither means the pass
-   did not do its job, whatever it looks like.
-8. Then, and only then, decide the skill question with a measured candidate description.
+4. ~~`Workspace` with `config` only; convert the 21 `load_config()` sites.~~ **Landed 2026-09-01** —
+   20 sites to 2, both of the survivors deliberate.
+5. ~~`routing` and `require_routable`; convert the 12 + 7 prologue sites.~~ **Landed 2026-09-01** —
+   12 resolves and 8 `require_ok(resolve(...))` to 0, the one left being `graduate --to`, a path
+   that is not the session's.
+6. ~~One derived property per commit: `private_terms`, `known_repos`, `stores`.~~ **Landed
+   2026-09-01** in two commits — the projects walk first (`doctor` went from five walks to one),
+   then `private_terms` and `known_repos`. `stores` was dropped with a reason; see Progress.
+7. ~~Re-measure **both** tables with the same scripts.~~ **Done 2026-09-01.** The anonymous-shape
+   counts are at zero for every record; the config-taking count moved 47 to 38 and the Progress
+   section says why the rest staying is the right answer rather than unfinished work.
+8. **The only step left**: decide the skill question with a measured candidate description. The pass
+   is the pilot, and its findings — the oracle rules, the stopping rule, the two counts that did not
+   reproduce — are the content that would go into it.
 
 ## Explicitly not in this pass
 

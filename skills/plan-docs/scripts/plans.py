@@ -54,7 +54,7 @@ import tempfile
 import tomllib
 from collections import Counter
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
@@ -1312,7 +1312,7 @@ class RepoPlanCount(NamedTuple):
     plans: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class Retired:
     """A plan file as of the commit that deleted it."""
 
@@ -1464,9 +1464,7 @@ def fill_details(entry: Retired) -> Retired:
     text = git(["show", f"{entry.sha}^:{entry.path}"], entry.root)
     if text is None:
         return entry
-    entry.status = parse_frontmatter(text).get("status", "")
-    entry.migrated = migrated_targets(text)
-    return entry
+    return replace(entry, status=parse_frontmatter(text).get("status", ""), migrated=migrated_targets(text))
 
 
 def plan_pathspec(source: Source, name: str) -> str:
@@ -1513,13 +1511,12 @@ def live_plans(ws: Workspace, routing: Routing | None) -> dict[str, Path]:
     return {plan.path.name: plan.path for plan in plan_files(routing)}
 
 
-def mark_live(ws: Workspace, routing: Routing | None, entries: list[Retired]) -> None:
+def mark_live(ws: Workspace, routing: Routing | None, entries: list[Retired]) -> list[Retired]:
     """Flag entries whose filename exists now — a plan moved between repo and store, not retired."""
     live = live_plans(ws, routing)
-    for entry in entries:
-        current = live.get(entry.name)
-        if current is not None:
-            entry.live = str(current)
+    return [
+        entry if (current := live.get(entry.name)) is None else replace(entry, live=str(current)) for entry in entries
+    ]
 
 
 # --------------------------------------------------------------------------------------------
@@ -2662,8 +2659,7 @@ def cmd_archive(args: argparse.Namespace, ws: Workspace) -> int:
         return show_lifecycle(cfg, sources, args.file)
 
     entries = retired_plans(cfg, sources, args.search)
-    shown = [fill_details(entry) for entry in entries[: args.limit]]
-    mark_live(ws, routing, shown)
+    shown = mark_live(ws, routing, [fill_details(entry) for entry in entries[: args.limit]])
     if args.json:
         print(json.dumps([_retired_payload(entry) for entry in shown], indent=2))
         return 0
@@ -2750,8 +2746,7 @@ def show_retired(ws: Workspace, routing: Routing | None, sources: list[Source], 
     matches = _match_retired(ws.config, sources, wanted)
     # A plan moved from a repo to the store left a deletion commit behind exactly like a retired one.
     # Printing that old copy would hand back a stale version of a file that is live somewhere else.
-    mark_live(ws, routing, matches)
-    matches = [entry for entry in matches if not entry.live]
+    matches = [entry for entry in mark_live(ws, routing, matches) if not entry.live]
     if not matches:
         current = live_plans(ws, routing).get(wanted)
         if current is not None:

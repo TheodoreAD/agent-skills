@@ -1703,3 +1703,76 @@ def test_archive_reports_a_store_that_cannot_archive_anything(ws, capsys):
 
     assert plans.main(["archive", "--path", str(ws.client)]) == 0
     assert "not a git repository" in capsys.readouterr().out
+
+
+def test_commit_takes_only_its_own_plan_when_another_session_has_staged_work(ws, capsys):
+    """The race this command exists for, reproduced and then refused.
+
+    The store is one working tree with one index, shared by every session on the machine, and the
+    convention tells all of them to commit the moment a plan is written. Measured 2026-08-29: a
+    `git add` was swept into another session's commit twice in one sitting — the diff was right and
+    the message was about a different change entirely.
+
+    So: stage a foreign file the way a parallel session would, then commit a plan, and assert the
+    foreign file is neither committed nor disturbed.
+    """
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "mine", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    store_repo = ws.sensitive
+    mine = next((store_repo / "client.com-bitbucket" / "team" / "api").glob("*-mine.md"))
+
+    theirs = store_repo / "_unscoped" / "2026-01-01-theirs.md"
+    theirs.parent.mkdir(parents=True, exist_ok=True)
+    theirs.write_text("---\nstatus: idea\n---\n\n## Context\n")
+    subprocess.run(["git", "add", "--", str(theirs.relative_to(store_repo))], cwd=store_repo, check=True)
+
+    assert plans.main(["commit", str(mine), "--path", str(ws.personal)]) == 0
+    assert "and nothing else" in capsys.readouterr().out
+
+    touched = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        cwd=store_repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert touched == [mine.relative_to(store_repo).as_posix()], "the commit carried someone else's file"
+
+    still_staged = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        cwd=store_repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert theirs.relative_to(store_repo).as_posix() in still_staged, "their staged work was disturbed"
+
+
+def test_commit_leaves_the_shared_index_agreeing_with_head(ws, capsys):
+    """A private index is only safe if the real one is left consistent with the new HEAD.
+
+    Committing through `GIT_INDEX_FILE` alone would put a file in HEAD that the shared index does
+    not have, and every other session in that tree would see a staged deletion it did not make.
+    """
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "solo", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    plan = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-solo.md"))
+
+    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--", str(plan.relative_to(ws.sensitive))],
+        cwd=ws.sensitive,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert status == "", f"the plan should be clean after its own commit, got {status!r}"

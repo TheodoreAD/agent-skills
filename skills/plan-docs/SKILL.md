@@ -46,6 +46,7 @@ reaches it:
 python3 <path> where                        # which directories this repo reads and writes
 python3 <path> repos --search <words>       # what each repo is for, to route a plan by
 python3 <path> new <topic> --for <repo>     # something belonging to a repo you are not in
+python3 <path> commit <file> -m "<msg>"     # commit one plan alone, whatever else is staged
 python3 <path> new <topic> --unscoped       # an idea with no repo yet
 python3 <path> graduate <file> --to <repo>  # …once it has one
 
@@ -452,11 +453,21 @@ plan. `new` produces an empty skeleton, so the moment to commit is after the con
 at creation.
 
 ```shell
-git -C <store> add <the one path> && git -C <store> commit -m "<repo>: <what it is>"
+python3 <path> commit <the plan> -m "<repo>: <what it is>"
 ```
 
-Stage by explicit path, never `git add -A` — a parallel session's half-written plan can land between
-your write and your commit, and a blanket stage would ship it under your message.
+**Use the command rather than `git add && git commit`, because the store is one working tree with
+one index and every session on the machine writes to it.** `commit` builds the commit from `HEAD`
+plus that one file, through a private index, so a parallel session's staged work can neither ride
+along under your message nor be disturbed by your commit. Measured 2026-08-29, before it existed: a
+`git add` was swept into another session's commit twice in one sitting, each time reporting
+`nothing added to commit` — which reads exactly like the add failed, when in fact it had succeeded
+and someone else's commit had already taken it. The content was never wrong; the message described a
+different change than the diff it carried, and `git log -- <path>` was the only way to find out
+where the file actually landed.
+
+Doing it by hand was the single most repeated shape on this machine — **142 calls across 23
+sessions**, measured 2026-09-01 — which is what earned it a command rather than a longer sentence.
 
 **Pushing is a separate, gated step, and only the shareable tier has anywhere to push to.** Scan
 before pushing and push only on a clean result — `--mode staged` on the commit you are about to

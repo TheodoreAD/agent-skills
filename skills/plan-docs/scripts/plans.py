@@ -44,6 +44,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 from collections import Counter
 from collections.abc import Iterator
@@ -567,13 +568,66 @@ class Routing:
         return [(where, self.dirs[where]) for where in self.rule.read if where in self.dirs]
 
 
-def git(args: list[str], cwd: Path) -> str | None:
+def git(args: list[str], cwd: Path, env: dict[str, str] | None = None) -> str | None:
     """Run a git command, returning its stdout, or None if git failed or is unavailable."""
     try:
-        done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=False, timeout=15)
+        done = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+            env=None if env is None else {**os.environ, **env},
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout.strip() if done.returncode == 0 else None
+
+
+def commit_one_path(repo: Path, path: Path, message: str) -> str:
+    """Commit exactly one file, through a private index, so no parallel session's work rides along.
+
+    Every session on this machine writes to one store with **one** git index, and the convention's
+    own rule — commit the moment the plan is written — puts several of them inside that window at
+    once. Measured 2026-08-29: twice in one session a `git add` was swept into another session's
+    commit, which reported "nothing added to commit" and read like the add had failed. The content
+    was never wrong; the message described a different change than the diff it carried.
+
+    A trailing pathspec on `git commit` bounds one direction. This closes it properly by building
+    the commit with plumbing against `GIT_INDEX_FILE`, so the shared index is read but never used
+    to decide what the commit contains:
+
+        read-tree HEAD → add just this path → write-tree → commit-tree → update-ref
+
+    The shared index is still updated for this one path first, deliberately. Without it HEAD would
+    carry a file the index does not, and `git status` would show a staged deletion to every other
+    session in that tree. Adding one known path is what the old advice did anyway; what changes is
+    that the *commit* is built from HEAD plus that path, rather than from whatever the shared index
+    happened to hold.
+    """
+    rel = path.relative_to(repo).as_posix()
+    if git(["add", "--", rel], repo) is None:
+        raise PlanError(f"could not stage {rel} in {repo}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {"GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        head = git(["rev-parse", "HEAD"], repo)
+        if head and git(["read-tree", head], repo, env) is None:
+            raise PlanError(f"could not read HEAD into a private index in {repo}")
+        if git(["add", "--", rel], repo, env) is None:
+            raise PlanError(f"could not stage {rel} into a private index in {repo}")
+        tree = git(["write-tree"], repo, env)
+    if not tree:
+        raise PlanError(f"could not write a tree for {rel} in {repo}")
+
+    parents = ["-p", head] if head else []
+    commit = git(["commit-tree", tree, *parents, "-m", message], repo)
+    if not commit:
+        raise PlanError(f"could not create a commit for {rel} in {repo}")
+    if git(["update-ref", "HEAD", commit], repo) is None:
+        raise PlanError(f"could not move HEAD to {commit} in {repo}")
+    return commit
 
 
 def repo_root_of(start: Path) -> Path | None:
@@ -1560,12 +1614,10 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
     # by every session on this machine, and the commit-immediately rule puts several of them inside
     # that window at once. Without it, whatever a parallel session has staged rides along under this
     # commit's message. Measured twice in one session, 2026-08-29.
-    print("commit:    write the plan, then commit it in the store straight away —")
-    print(f"           git -C {store} add -- <path>")
-    print(f"           git -C {store} commit -m '<repo>: <what it is>' -- <path>")
-    print("           the trailing -- <path> keeps a parallel session's staged work out of your")
-    print("           commit; if commit says 'nothing added' right after a successful add, theirs")
-    print("           already took your file — git log -- <path> says which commit has it.")
+    print("commit:    write the plan, then commit it straight away —")
+    print("           plans.py commit <the path above> -m '<repo>: <what it is>'")
+    print("           which commits that file alone, through a private index, so a parallel")
+    print("           session's staged work can neither ride along nor be disturbed.")
     return code
 
 
@@ -2212,6 +2264,36 @@ def cmd_move(args: argparse.Namespace) -> int:
     print(f"to:      {destination}")
     if plan.where == "repo":
         print("note:    stage the deletion in the repo (git rm / git add -u on that path) and commit it")
+    return 0
+
+
+def cmd_commit(args: argparse.Namespace) -> int:
+    """Commit one plan on its own, which is the step sessions were doing by hand 142 times.
+
+    Measured across the transcript store 2026-09-01: 142 calls in 23 sessions ran some form of
+    `git -C <store> add … && git -C <store> commit …`, copied from what `new --for` printed. It is
+    the densest single-shape repetition on this machine, and it is the one step where getting it
+    wrong is silent — a correct diff under a message about someone else's change.
+    """
+    cfg = load_config()
+    routing = require_ok(resolve(args.path, cfg))
+
+    # A path first, and a bare filename only as a fallback. The plan most in need of this command is
+    # one just filed *for another repo*, which lives in that repo's store mirror — somewhere `locate`
+    # deliberately cannot see, since it searches what this session reads. `new --for` prints the
+    # path, so taking it is both the natural flow and the one that works across the store.
+    candidate = Path(args.file).expanduser()
+    target = candidate.resolve() if candidate.is_file() else locate(cfg, routing, args.file).path
+
+    repo = repo_root_of(target.parent)
+    if repo is None:
+        raise PlanError(f"{target} is not inside a git repository, so there is nothing to commit to")
+
+    message = args.message or f"{routing.rel or repo.name}: {target.stem}"
+    commit = commit_one_path(repo, target, message)
+    print(f"committed: {commit[:12]} in {repo}")
+    print(f"message:   {message}")
+    print(f"file:      {target.relative_to(repo).as_posix()} — and nothing else, whatever else was staged")
     return 0
 
 
@@ -3247,6 +3329,11 @@ def build_parser() -> argparse.ArgumentParser:
     move.add_argument("file", help="plan path or bare filename")
     move.add_argument("--to", choices=("repo", "store"), required=True)
     move.set_defaults(func=cmd_move)
+
+    commit = add("commit", "commit one plan, alone, without taking a parallel session's staged work")
+    commit.add_argument("file", help="plan path or bare filename")
+    commit.add_argument("-m", "--message", help="commit message (default: '<repo>: <topic>')")
+    commit.set_defaults(func=cmd_commit)
 
     refs = add("refs", "inbound references to a plan, across the repo and the store")
     refs.add_argument("file", help="plan path or bare filename")

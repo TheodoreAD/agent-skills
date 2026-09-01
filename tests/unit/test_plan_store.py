@@ -548,7 +548,7 @@ def test_tag_matching_is_anchored(ws):
         + "prose mentioning [DEFERRED: ...] inside a sentence must not count\n",
         encoding="utf-8",
     )
-    assert [line for _, line in plans.open_tags(path, "DEFERRED")] == ["- [DEFERRED: the aggregator]"]
+    assert [hit.text for hit in plans.open_tags(path, "DEFERRED")] == ["- [DEFERRED: the aggregator]"]
     assert len(plans.open_tags(path, "NEEDS CLARIFICATION")) == 1
 
 

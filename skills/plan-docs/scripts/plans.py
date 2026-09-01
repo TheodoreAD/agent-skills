@@ -946,12 +946,19 @@ def locate(cfg: Config, routing: Routing, name: str) -> PlanFile:
     return matches[0]
 
 
-def open_tags(path: Path, tag: str) -> list[tuple[int, str]]:
-    hits: list[tuple[int, str]] = []
+class TagHit(NamedTuple):
+    """One open `[TAG: ...]` line in a plan, with the line number to cite it by."""
+
+    line: int
+    text: str
+
+
+def open_tags(path: Path, tag: str) -> list[TagHit]:
+    hits: list[TagHit] = []
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         match = TAG_RE.match(line)
         if match and match.group(1) == tag:
-            hits.append((number, line.strip()))
+            hits.append(TagHit(number, line.strip()))
     return hits
 
 
@@ -1128,33 +1135,48 @@ def private_terms(cfg: Config) -> list[str]:
     return sorted(term for term in terms if len(term) >= MIN_PRIVATE_TERM)
 
 
-def scan_text(text: str, terms: list[str]) -> list[tuple[int, str, str]]:
-    """(line number, term, line) for every private term appearing in the text, case-insensitively."""
+class ScanHit(NamedTuple):
+    """One line naming something that must not be published, and which term gave it away."""
+
+    line: int
+    term: str
+    text: str
+
+
+def scan_text(text: str, terms: list[str]) -> list[ScanHit]:
+    """Every private term appearing in the text, case-insensitively."""
     if not terms:
         return []
     pattern = re.compile("|".join(re.escape(term) for term in sorted(terms, key=len, reverse=True)), re.IGNORECASE)
-    hits: list[tuple[int, str, str]] = []
+    hits: list[ScanHit] = []
     for number, line in enumerate(text.splitlines(), start=1):
         match = pattern.search(line)
         if match:
-            hits.append((number, match.group(0), line.strip()))
+            hits.append(ScanHit(number, match.group(0), line.strip()))
     return hits
 
 
-def scan_targets(root: Path, mode: str) -> list[tuple[str, str]]:
-    """(label, text) pairs to scan: the tracked working tree, the staged diff, or all of history."""
+class ScanTarget(NamedTuple):
+    """One body of text to scan, under the label a hit in it is reported against."""
+
+    label: str
+    text: str
+
+
+def scan_targets(root: Path, mode: str) -> list[ScanTarget]:
+    """What to scan: the tracked working tree, the staged diff, or all of history."""
     if mode == "staged":
-        return [("(staged diff)", git(["diff", "--cached"], root) or "")]
+        return [ScanTarget("(staged diff)", git(["diff", "--cached"], root) or "")]
     if mode == "history":
-        return [("(history)", git(["log", "--all", "-p"], root) or "")]
+        return [ScanTarget("(history)", git(["log", "--all", "-p"], root) or "")]
     # Tracked *and* untracked-not-ignored: a plan file written a moment ago is exactly the thing
     # being scanned for, and it is not tracked yet.
     listed = git(["ls-files", "--cached", "--others", "--exclude-standard"], root) or ""
-    pairs: list[tuple[str, str]] = []
+    pairs: list[ScanTarget] = []
     for name in listed.splitlines():
         path = root / name
         try:
-            pairs.append((name, path.read_text(encoding="utf-8")))
+            pairs.append(ScanTarget(name, path.read_text(encoding="utf-8")))
         except (OSError, UnicodeDecodeError):
             continue  # binary or unreadable: nothing greppable in it anyway
     return pairs
@@ -1412,14 +1434,22 @@ def plan_pathspec(source: Source, name: str) -> str:
     return f"{source.prefix}{name}" if source.prefix else f"*/{name}"
 
 
-def plan_history(source: Source, name: str) -> list[tuple[str, str, str]]:
-    """Every commit that touched one plan path, newest first: (sha, date, subject)."""
+class HistoryEntry(NamedTuple):
+    """One commit that touched a plan file."""
+
+    sha: str
+    date: str
+    subject: str
+
+
+def plan_history(source: Source, name: str) -> list[HistoryEntry]:
+    """Every commit that touched one plan path, newest first."""
     out = git(["log", f"--format=%H{UNIT}%as{UNIT}%s", "--", plan_pathspec(source, name)], source.root)
-    found: list[tuple[str, str, str]] = []
+    found: list[HistoryEntry] = []
     for line in (out or "").splitlines():
         sha, _, rest = line.partition(UNIT)
         date, _, subject = rest.partition(UNIT)
-        found.append((sha, date, subject))
+        found.append(HistoryEntry(sha, date, subject))
     return found
 
 
@@ -2093,10 +2123,10 @@ def cmd_tags(args: argparse.Namespace) -> int:
     wanted = [args.tag] if args.tag else list(TAG_NAMES)
 
     found = [
-        {"path": str(plan.path), "tag": tag, "line": number, "text": line}
+        {"path": str(plan.path), "tag": tag, "line": hit.line, "text": hit.text}
         for plan in targets
         for tag in wanted
-        for number, line in open_tags(plan.path, tag)
+        for hit in open_tags(plan.path, tag)
     ]
     if args.json:
         print(json.dumps(found, indent=2))
@@ -2140,8 +2170,8 @@ def cmd_set_status(args: argparse.Namespace) -> int:
     if gate and not args.force:
         blocking = open_tags(plan.path, gate)
         if blocking:
-            for number, line in blocking:
-                print(f"{plan.path}:{number}: {line}")
+            for tag_hit in blocking:
+                print(f"{plan.path}:{tag_hit.line}: {tag_hit.text}")
             raise PlanError(
                 f"{len(blocking)} open [{gate}: …] tag(s) block status {args.status!r}; "
                 f"resolve them (or --force, which the convention does not) and re-run"
@@ -2578,8 +2608,8 @@ def show_lifecycle(cfg: Config, sources: list[Source], name: str) -> int:
         if not commits:
             continue
         print(f"\n{source.root}/{plan_pathspec(source, wanted)}")
-        for sha, date, subject in commits:
-            print(f"  {sha[:12]}  {date}  {subject}")
+        for commit in commits:
+            print(f"  {commit.sha[:12]}  {commit.date}  {commit.subject}")
         total += len(commits)
         for entry in retired:
             if entry.root == source.root:
@@ -2611,11 +2641,11 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
     tally: Counter[str] = Counter()
     hits = 0
-    for label, text in scan_targets(root, args.mode):
-        for number, term, line in scan_text(text, terms):
+    for target in scan_targets(root, args.mode):
+        for hit in scan_text(target.text, terms):
             if hits < args.samples:
-                print(f"{label}:{number}: [{term}] {line[:160]}")
-            tally[term.lower()] += 1
+                print(f"{target.label}:{hit.line}: [{hit.term}] {hit.text[:160]}")
+            tally[hit.term.lower()] += 1
             hits += 1
     if hits > args.samples:
         print(f"... {hits - args.samples} more (raise --samples to see them)")

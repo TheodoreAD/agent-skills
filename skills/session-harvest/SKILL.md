@@ -781,6 +781,15 @@ the current session:
   harmless there, and it would not have been if the change had altered behaviour rather than a
   string. Either call the checkout's copy for the rest of the run, or note which results predate the
   re-install; do not re-derive the results from the new source and assume they match.
+- **Re-installing is not the last step when the edit is meant to take effect _in this session_.**
+  The install fixes the file on disk; the copy this session loaded at start is still the old one, so
+  a harvest that edits itself and then runs cannot use what it just wrote. Push, re-install, then
+  have the harness reload the skill — in Claude Code, `/reload-skills`, after which the skill has to
+  be invoked again to pick the new body up. Confirmed 2026-09-01: a session rewrote this step 9,
+  pushed, re-installed, verified the installed copy matched the checkout, and still held the
+  superseded wording; the user supplied the missing move (`/reload-skills`, then "use it"), which is
+  behaviour this section described nowhere. Say which of the three is outstanding rather than
+  reporting "re-installed" as though the loop were closed.
 - **Say plainly that a committed edit still reaches nothing.** The installer clones from the remote,
   so the change takes effect only once it is pushed _and_ re-installed
   (`npx skills add TheodoreAD/agent-skills --global --skill session-harvest`) — including for other

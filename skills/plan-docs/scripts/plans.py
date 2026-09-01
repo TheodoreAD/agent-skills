@@ -56,6 +56,7 @@ from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import cached_property
 from pathlib import Path
 from typing import NamedTuple
 
@@ -1517,8 +1518,33 @@ def mark_live(cfg: Config, routing: Routing | None, entries: list[Retired]) -> N
 # commands
 
 
-def cmd_where(args: argparse.Namespace) -> int:
-    cfg = load_config()
+class Workspace:
+    """Everything one invocation needs, resolved once and handed to every command.
+
+    Before this existed, each command opened with the same prologue — read the config from disk,
+    resolve this repo's routing, assert it is routable — and then passed both down through three or
+    four call layers as parameters. Nothing was wrong with any single site; what it cost was that a
+    signature could not say whether a function wanted the config for a path, a rule, a tier or a
+    root, and that a command needing two derived answers walked the projects tree twice to get them.
+
+    Per invocation, deliberately, and never a module-level instance: this is not process-wide state,
+    and the test suite constructs one per fake home. A module singleton would be exactly the shared
+    global the suite avoids today by passing `--path`.
+
+    Everything is a `cached_property`, so constructing one costs nothing — a command that never asks
+    for the config never reads it, which is what keeps `install` working on a machine that has none.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    @cached_property
+    def config(self) -> Config:
+        return load_config()
+
+
+def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
+    cfg = ws.config
     routing = resolve(args.path, cfg)
     if args.json:
         rule = routing.rule
@@ -1693,10 +1719,10 @@ def resolve_repo_argument(value: str, cfg: Config) -> Path:
     raise PlanError(f"no repo at {value!r}: tried {direct} and {candidate}")
 
 
-def cmd_new(args: argparse.Namespace) -> int:
+def cmd_new(args: argparse.Namespace, ws: Workspace) -> int:
     if not TOPIC_RE.match(args.topic):
         raise PlanError(f"topic {args.topic!r} must be kebab-case: lowercase letters, digits and single hyphens")
-    cfg = load_config()
+    cfg = ws.config
     if args.unscoped:
         if args.to or args.for_repo:
             raise PlanError("--unscoped belongs to no repo, so it cannot be combined with --to or --for")
@@ -1896,13 +1922,13 @@ def repo_scope_plans(cfg: Config, routing: Routing) -> list[ScopedPlan]:
     return found
 
 
-def cmd_list(args: argparse.Namespace) -> int:
+def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
     """What is open, at whichever breadth the question was asked at.
 
     One command rather than two: a per-repo index and a machine-wide one differ only in breadth, and
     `--scope` is that axis. Ownership stays per-repo either way — this is a view, nothing is written.
     """
-    cfg = load_config()
+    cfg = ws.config
     routing = resolve(args.path, cfg)
     scope = args.scope if args.scope != "auto" else auto_scope(cfg, routing)
 
@@ -2153,8 +2179,8 @@ def _print_status_drift(entries: list[ScopedPlan]) -> None:
         print(f"  {status!r}: {', '.join(sorted(files))}")
 
 
-def cmd_tags(args: argparse.Namespace) -> int:
-    cfg = load_config()
+def cmd_tags(args: argparse.Namespace, ws: Workspace) -> int:
+    cfg = ws.config
     routing = require_ok(resolve(args.path, cfg))
     targets = [locate(cfg, routing, args.file)] if args.file else plan_files(routing)
     wanted = [args.tag] if args.tag else list(TAG_NAMES)
@@ -2197,8 +2223,8 @@ def _require_absorbed_before_retiring(plan: PlanFile, routing: Routing, status: 
         )
 
 
-def cmd_set_status(args: argparse.Namespace) -> int:
-    cfg = load_config()
+def cmd_set_status(args: argparse.Namespace, ws: Workspace) -> int:
+    cfg = ws.config
     routing = require_ok(resolve(args.path, cfg))
     plan = locate(cfg, routing, args.file)
     _require_absorbed_before_retiring(plan, routing, args.status)
@@ -2272,13 +2298,13 @@ def absorbable(routing: Routing) -> list[PlanFile]:
     return plans_in(routing.store_dir, "store")
 
 
-def cmd_absorb(args: argparse.Namespace) -> int:
+def cmd_absorb(args: argparse.Namespace, ws: Workspace) -> int:
     """Take plans filed for this repo from the store into the repo's own `plans/`.
 
     Run from inside the repo that owns them, which is what keeps this from being a foreign commit:
     the session writes only to its own tree, and to the store only to remove what it just took.
     """
-    cfg = load_config()
+    cfg = ws.config
     routing = require_ok(resolve(args.path, cfg))
     pending = absorbable(routing)
 
@@ -2427,8 +2453,8 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> TakenPlans:
     return TakenPlans(moved, blocked)
 
 
-def cmd_move(args: argparse.Namespace) -> int:
-    cfg = load_config()
+def cmd_move(args: argparse.Namespace, ws: Workspace) -> int:
+    cfg = ws.config
     routing = require_ok(resolve(args.path, cfg))
     plan = locate(cfg, routing, args.file)
     target = routing.dir_for(args.to)
@@ -2500,7 +2526,7 @@ def deleted_plan(candidate: Path) -> Path | None:
     return resolved if git(["cat-file", "-e", f"HEAD:{rel}"], repo) is not None else None
 
 
-def cmd_commit(args: argparse.Namespace) -> int:
+def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     """Commit one plan on its own, which is the step sessions were doing by hand 142 times.
 
     Measured across the transcript store 2026-09-01: 142 calls in 23 sessions ran some form of
@@ -2508,7 +2534,7 @@ def cmd_commit(args: argparse.Namespace) -> int:
     the densest single-shape repetition on this machine, and it is the one step where getting it
     wrong is silent — a correct diff under a message about someone else's change.
     """
-    cfg = load_config()
+    cfg = ws.config
     routing = require_ok(resolve(args.path, cfg))
 
     # A path first, and a bare filename only as a fallback. The plan most in need of this command is
@@ -2535,8 +2561,8 @@ def cmd_commit(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_refs(args: argparse.Namespace) -> int:
-    cfg = load_config()
+def cmd_refs(args: argparse.Namespace, ws: Workspace) -> int:
+    cfg = ws.config
     routing = require_ok(resolve(args.path, cfg))
     name = Path(args.file).name
     found: list[dict[str, object]] = []
@@ -2564,7 +2590,7 @@ def cmd_refs(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_archive(args: argparse.Namespace) -> int:
+def cmd_archive(args: argparse.Namespace, ws: Workspace) -> int:
     """Retired plans, read back out of git history.
 
     Retirement deletes the file everywhere, which is only a cheap rule because the file is still in
@@ -2572,7 +2598,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
     Nothing is written, and a plan is never restored to the working tree: what comes back is its
     content on stdout, which is what a session actually needs.
     """
-    cfg = load_config()
+    cfg = ws.config
     routing = None if args.all else require_ok(resolve(args.path, cfg))
     sources = archive_sources(cfg, routing)
 
@@ -2721,9 +2747,9 @@ def list_terms(cfg: Config, terms: list[str]) -> int:
     return 0
 
 
-def cmd_scan(args: argparse.Namespace) -> int:
+def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
     """Refuse to let a client's identity reach a repo that gets published."""
-    cfg = load_config()
+    cfg = ws.config
     terms = private_terms(cfg)
     if args.list_terms:
         return list_terms(cfg, terms)
@@ -2756,9 +2782,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 1 if hits else 0
 
 
-def cmd_repos(args: argparse.Namespace) -> int:
+def cmd_repos(args: argparse.Namespace, ws: Workspace) -> int:
     """What each repo is for, so a plan's destination is an informed question, not a grep."""
-    cfg = load_config()
+    cfg = ws.config
     repos = known_repos(cfg)
     if args.search:
         needles = [word.lower() for word in args.search.split()]
@@ -2790,9 +2816,9 @@ def cmd_repos(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_describe(args: argparse.Namespace) -> int:
+def cmd_describe(args: argparse.Namespace, ws: Workspace) -> int:
     """Record what a repo is for, when its README does not say it well enough to route by."""
-    cfg = load_config()
+    cfg = ws.config
     if not cfg.exists:
         raise PlanError(f"no config at {cfg.path} — run: plans.py install")
     text = cfg.path.read_text(encoding="utf-8")
@@ -2811,9 +2837,9 @@ def cmd_describe(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_graduate(args: argparse.Namespace) -> int:
+def cmd_graduate(args: argparse.Namespace, ws: Workspace) -> int:
     """Move an unscoped plan into the repo that now exists for it."""
-    cfg = load_config()
+    cfg = ws.config
     plan = next((p for p in plans_in(cfg.unscoped, "unscoped") if p.path.name == Path(args.file).name), None)
     if plan is None:
         candidate = Path(args.file)
@@ -2967,10 +2993,10 @@ def install_decisions(cfg: Config) -> list[Decision]:
     return decisions
 
 
-def cmd_install(args: argparse.Namespace) -> int:
+def cmd_install(args: argparse.Namespace, ws: Workspace) -> int:
     if args.explain:
-        return explain_install(load_config())
-    return run_install(args)
+        return explain_install(ws.config)
+    return run_install(args, ws)
 
 
 def explain_install(cfg: Config) -> int:
@@ -2999,9 +3025,9 @@ def explain_install(cfg: Config) -> int:
     return 0
 
 
-def run_install(args: argparse.Namespace) -> int:
+def run_install(args: argparse.Namespace, ws: Workspace) -> int:
     """Everything this skill needs on a machine, idempotently: config, store, unscoped area."""
-    cfg = load_config()
+    cfg = ws.config
     if not cfg.path.exists():
         cfg.path.parent.mkdir(parents=True, exist_ok=True)
         cfg.path.write_text(CONFIG_SKELETON, encoding="utf-8")
@@ -3176,13 +3202,13 @@ def _all_problems(cfg: Config, unrouted: list[str], *, strict: bool = False) -> 
     return store_problems(cfg) + layout_problems(cfg, strict=strict) + routing
 
 
-def cmd_doctor(args: argparse.Namespace) -> int:
+def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
     """Where plans live, which repos are enrolled, how many there are, and what is broken.
 
     Deliberately not called `status`: `set-status` already exists and `status:` is a plan's own
     frontmatter field, so `plans.py status` would read as a question about one plan.
     """
-    cfg = load_config()
+    cfg = ws.config
     try:
         entries = family_plans(cfg)
     except PlanError as exc:
@@ -3330,9 +3356,9 @@ def _print_stores(cfg: Config) -> None:
         print(f"store:         {store.path} (from {store.source})  [{store.tier}, {state}]")
 
 
-def cmd_uninstall(args: argparse.Namespace) -> int:
+def cmd_uninstall(args: argparse.Namespace, ws: Workspace) -> int:
     """Undo `install`. The store is never removed silently — it is the only copy of those plans."""
-    cfg = load_config()
+    cfg = ws.config
     if cfg.path.exists():
         if args.keep_config:
             print(f"kept:        {cfg.path}")
@@ -3470,7 +3496,7 @@ def set_config_value(path: Path, key: str, value: str) -> str:
     return action
 
 
-def cmd_config(args: argparse.Namespace) -> int:
+def cmd_config(args: argparse.Namespace, ws: Workspace) -> int:
     path = config_path()
     if args.action == "path":
         print(path)
@@ -3495,6 +3521,10 @@ def cmd_config(args: argparse.Namespace) -> int:
             # rather than on some later command that has nothing to do with it. Restore first: a
             # rejected value left on disk breaks every subsequent command, which is a worse failure
             # than the one being reported.
+            #
+            # `load_config()` and deliberately not `ws.config`: this has to read what was just
+            # written, and the workspace caches for the whole invocation. It is the one place that
+            # wants a second read of the same file, which is what a cache is there to prevent.
             load_config()
         except PlanError:
             path.write_text(original, encoding="utf-8")
@@ -3503,7 +3533,7 @@ def cmd_config(args: argparse.Namespace) -> int:
         print(f"config:  {path}")
         return 0
 
-    return show_config(load_config())
+    return show_config(ws.config)
 
 
 def show_config(cfg: Config) -> int:
@@ -3663,8 +3693,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # One workspace per invocation, built here and handed to the command: `--path` is on every
+    # subcommand, and it is the only input the resolution needs. Nothing is read until a command
+    # asks for it.
+    ws = Workspace(args.path)
     try:
-        return int(args.func(args))
+        return int(args.func(args, ws))
     except NeedsDecision as exc:
         print("verdict: needs-decision", file=sys.stderr)
         print(f"reason:  {exc}", file=sys.stderr)

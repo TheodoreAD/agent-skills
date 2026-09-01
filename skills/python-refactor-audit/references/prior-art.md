@@ -150,6 +150,9 @@ miss above, but check `fitness.py budget` before concluding anything from a futu
   in this corpus — but the measured description is the Python one, and a wider description is a
   different description that would have to be measured rather than assumed. Widen it only through
   `trigger.py`.
-- **Which skill owns the "which tests may change" rule?** It is about a refactor rather than about a
-  test, so it reads as this skill's — but a reader arriving from the test side is exactly who needs
-  it. Check with `fitness.py overlap` and a `run`, rather than deciding it by argument.
+- **Which skill owns the "which tests may change" rule? Settled 2026-09-01: this one.** Measured
+  both ways rather than argued. `fitness.py overlap` puts the pair with `python-testing-conventions`
+  outside the corpus's top 12 — no shared trigger vocabulary worth flagging — and across both live
+  runs `python-testing-conventions` won its own fixture-scope case 3/3 while this skill won its
+  three narrow cases 3/3. Nothing measured suggests a reader arriving from the test side is
+  misrouted. Re-check if either description changes.

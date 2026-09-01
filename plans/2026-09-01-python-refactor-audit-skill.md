@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 updated: 2026-09-01
 ---
 
@@ -32,8 +32,9 @@ artifact is already satisfied: the pass **is** the pilot, and its findings are t
 ## The description that was measured, verbatim
 
 **Use this wording, or re-measure.** It is what scored 12/12; a redraft is an unmeasured wording,
-which is the one thing `skill-fitness` says measures below having no skill at all. 907 characters,
-against the 1024 cap the layout test enforces.
+which is the one thing `skill-fitness` says measures below having no skill at all. 900 characters
+(this said 907 until it was measured against the adopted frontmatter — see Progress), against the
+1024 cap the layout test enforces.
 
 ```text
 Use when an existing Python module has grown and the question is how to restructure it safely, not what to write — auditing a file nobody has reviewed as a whole, planning the change as a sequence of small commits each verified on its own, deciding which tests may be edited to follow a rename and which must not change at a character, proving an edited test still fails when the production change is reverted, finding a second oracle when the suite cannot see the change (a field's type changing under a name every caller already uses), measuring the shape you are trying to remove before and after so a large diff that moves nothing is caught, and deciding when not to restructure at all. For what a given piece of Python should look like — data modeling, dates, settings, modularity and singleton defaults — see the Python conventions skill; for what a test should cover, the Python testing skill.
@@ -113,6 +114,37 @@ suite rather than eyeballing the frontmatter:
   Scope here is "Opinionated but general": the procedure depends on no machine-specific thing, and
   the one command it names (`pytest`) is not this machine's.
 - Any install command in a fenced block that names an `owner/repo` source carries `--global`.
+
+## Progress
+
+**Written 2026-09-01.** `skills/python-refactor-audit/` holds `SKILL.md` plus `references/pilot.md`
+(the worked example — the counts, the oracle results, the two counts that did not reproduce, the
+dropped items, the unpredicted findings) and `references/prior-art.md` (the survey, the
+separate-skill measurement, and both open questions restated as things to measure rather than
+argue). The README row is in, with `Scope: Opinionated but general`;
+`pytest tests/unit/test_skill_layout.py` and `inv quality.precommit` are green, and `plans.py scan`
+is clean.
+
+**The measured description is in verbatim — and it is 900 characters, not the 907 this plan
+claimed.** Confirmed by diffing the frontmatter value against this file's own fenced block: byte
+identical, 900 both sides. The wording is unaffected; only the number here was wrong.
+
+Two measurements taken while writing, both free:
+
+- **`fitness.py overlap --root skills`**: `python-conventions <-> python-refactor-audit` ranks third
+  by shared vocabulary (sim=0.08, 13 shared terms) but is **not** flagged as shadowing in either
+  direction — the coverage is mutual rather than one-sided, which is the shape the live 12/12 run
+  already showed. The pair with `python-testing-conventions` does not appear in the top 12 at all,
+  which is the first evidence on the second open question: the "which tests may change" rule creates
+  no measurable contention from the test side.
+- **`fitness.py budget --root skills`**: 925 characters, the largest single listing entry in the
+  corpus, in a listing already over budget for a 200k window. Priority is usage-weighted, so a brand
+  new skill sits at 0.0 and is among the first demoted to name-only. Recorded in `prior-art.md`,
+  because it means an early miss may be a truncated listing rather than a bad description.
+
+**Left to do**: push, re-install, then `trigger.py run` on both suites against the real listing —
+and only then set this plan and the encapsulation-pass plan to `landed`. The pass plan stays open
+until then, on its own terms.
 
 ## Sources this is written from
 

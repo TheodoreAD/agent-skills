@@ -666,7 +666,7 @@ re-reads, and nothing costly is lost when a file is deleted.
 
 | tag                        | means                                           | at retirement                          |
 | -------------------------- | ----------------------------------------------- | -------------------------------------- |
-| `[NEEDS CLARIFICATION: …]` | open question                                   | must be zero to leave `idea`           |
+| `[NEEDS CLARIFICATION: …]` | open question                                   | **blocks `planned` and `landed`**      |
 | `[DECISION: …]`            | settled choice + why it beat the alternatives   | → design rationale                     |
 | `[PITFALL: …]`             | non-obvious trap, confirmed by hitting it       | → design rationale                     |
 | `[DEFERRED: …]`            | consciously scoped out, still wanted            | → an open plan; **blocks deletion**    |
@@ -675,6 +675,16 @@ re-reads, and nothing costly is lost when a file is deleted.
 **Five is the whole vocabulary.** Don't add a sixth — inconsistently-applied tags are worse than
 none, because the greps still return results and get trusted while being incomplete. There is
 deliberately no `[VERIFIED:]`; the _absence_ of `[UNVERIFIED:` is the signal.
+
+**`set-status` enforces the two tag columns above, and it gates on the status you are moving _to_,
+not on the one you are leaving.** `in-progress` is deliberately ungated: starting work with
+questions open is the normal case, and `blocked on <reason>` exists for when it is not. `landed`
+gates on both `UNVERIFIED` and `NEEDS CLARIFICATION`, because it is the status that precedes
+deletion and `idea -> landed` skips `planned` entirely. That last clause is a fix, not a
+description: until 2026-09-02 the question gate hung off `planned` alone, so the one transition
+ending in a one-way door was the one nothing checked, and a plan carrying two open questions went
+straight to `landed` printing nothing but its status line. `DEFERRED` blocking deletion is still
+prose in the retirement procedure rather than a gate — see step 2 there.
 
 Not bare `TODO`/`FIXME` — those collide with code comments, making `rg TODO` useless in a repo that
 also contains source.

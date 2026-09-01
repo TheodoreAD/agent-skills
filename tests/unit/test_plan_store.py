@@ -610,6 +610,39 @@ def test_landed_gate_blocks_on_unverified(ws):
     assert plans.main(["set-status", path.name, "landed", "--path", str(ws.client)]) == 1
 
 
+def test_landed_gate_blocks_on_open_questions_too(ws):
+    """`landed` precedes deletion, so an unanswered question must not ride through it.
+
+    The gate is keyed on the destination status, and `NEEDS CLARIFICATION` was attached to
+    `planned` alone — so `idea -> landed`, which skips `planned` entirely, was ungated. Observed
+    2026-09-02: a plan carrying two open questions was accepted straight to `landed` and printed
+    nothing, one step before the deletion that ends a retirement.
+    """
+    write_config(ws, 'default = "store"\n')
+    plans.main(["new", "unanswered", "--path", str(ws.client)])
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-unanswered.md"))
+    path.write_text(path.read_text() + "\n[NEEDS CLARIFICATION: still open]\n", encoding="utf-8")
+
+    assert plans.main(["set-status", path.name, "landed", "--path", str(ws.client)]) == 1
+    assert plans.parse_frontmatter(path.read_text())["status"] == "idea"
+
+
+def test_in_progress_is_not_gated_on_open_questions(ws):
+    """The counterpart the gate must keep allowing: `in-progress` is where questions get answered.
+
+    A rule reading "must be zero to leave `idea`" would block this, and blocking it would be wrong —
+    starting work with questions open is the normal case, and the vocabulary already has
+    `blocked on <reason>` for the case where it is not.
+    """
+    write_config(ws, 'default = "store"\n')
+    plans.main(["new", "starting", "--path", str(ws.client)])
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-starting.md"))
+    path.write_text(path.read_text() + "\n[NEEDS CLARIFICATION: still open]\n", encoding="utf-8")
+
+    assert plans.main(["set-status", path.name, "in-progress", "--path", str(ws.client)]) == 0
+    assert plans.parse_frontmatter(path.read_text())["status"] == "in-progress"
+
+
 # --------------------------------------------------------------------------------------------
 # config and store bootstrap
 

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-02
 ---
 
@@ -52,25 +52,28 @@ merging them would blur that.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: which of the two documents is right. Reading `idea -> landed` as legitimate
-(work that was done without ever being formally planned) argues the gate belongs on the transition
-_out of `idea`_, whatever the destination — the strict reading of the skill. Reading it as a rare
-shortcut argues for gating every terminal status on `NEEDS CLARIFICATION` as well as `UNVERIFIED`,
-which is narrower and catches the case that precedes deletion. The second is cheaper and covers the
-incident; the first is what the skill actually says.]
+[DECISION: **the code was right about the shape and the skill was right about the substance, so the
+skill's wording changed and the code gained a gate.** The strict reading — gate the transition _out
+of `idea`_ whatever the destination — was rejected on evidence rather than taste:
+`idea ->
+in-progress` with questions open is the ordinary way work starts, and a gate refusing it
+would be routinely `--force`d, which is how a gate stops being read. What actually needed protecting
+is the transition that precedes deletion. So `landed` now gates on `NEEDS CLARIFICATION` as well as
+`UNVERIFIED`, `in-progress` stays free, and the skill's "must be zero to leave `idea`" — which
+described neither the old behaviour nor the new — now reads "blocks `planned` and `landed`".]
 
-[NEEDS CLARIFICATION: whether `DEFERRED` should gate a terminal status too. The retirement procedure
-already says a plan carrying live `DEFERRED` work is not deletable, and that rule is enforced by
-nothing — it is prose in a numbered step. The same one-line table could carry it, which would make
-the deletion gate real rather than advisory. Against: `DEFERRED` legitimately survives into a
-retirement when the item has been migrated to another plan, so the check would need to be a warning
-rather than a refusal, and a warning nobody must act on is how a gate stops being read.]
+[DECISION: **`DEFERRED` stays prose, not a gate.** Its own argument settled it: a `DEFERRED` item
+legitimately survives a retirement once it has been migrated to a plan that stays, which is the
+common case rather than the exception, so a refusal would be wrong more often than right and a
+warning nobody must act on is how a gate stops being read. The retirement procedure's step 2 keeps
+it, where the reader is already deciding what to migrate.]
 
-[NEEDS CLARIFICATION: whether a gate keyed on the target status can express this at all. Every entry
-in `STATUS_GATES` is `{destination: tag}`; a rule about leaving a status needs the _current_ status
-too, which the structure does not carry. A `{(from, to): tag}` mapping is one shape; a small
-predicate per destination is another. Worth deciding before writing the fix, since the table is
-cited in the skill as the encoding of the prose.]
+[DECISION: **the destination-keyed table expresses it fine; it just needed a tuple.** The question
+assumed a rule about _leaving_ a status, which the structure genuinely cannot carry — but that rule
+was rejected above, and what replaced it is a rule about arriving at `landed`, which is exactly what
+`{destination: tags}` is for. `STATUS_GATES` values became tuples and the lookup loops over them; no
+`(from, to)` mapping and no per-destination predicate. Worth recording that the structural objection
+dissolved once the design question above it was answered the other way.]
 
 ## Recommended direction
 
@@ -82,3 +85,36 @@ Add a test for the transition that was accepted here. `tests/unit/test_plan_stor
 for the gates it does cover, so the missing case is one parametrized entry rather than new
 machinery, and it is the kind of hole that a test written from the _prose_ rather than from the code
 would have caught on the day the table was written.
+
+## Outcome, 2026-09-02
+
+Fixed in code and prose in one change, as the direction below asks, because the two disagreeing
+quietly was the defect rather than either one alone.
+
+**The test was written first and watched to fail.** `test_landed_gate_blocks_on_open_questions_too`
+asserts the transition this plan was filed about, and it failed on the unfixed code exactly as
+reported — `assert 0 == 1`, the plan going `idea -> landed` with a question open. Its counterpart,
+`test_in_progress_is_not_gated_on_open_questions`, passed before and after: it pins the behaviour
+the strict reading would have broken, so the fix cannot drift into refusing the ordinary case.
+
+**Then the fix refused this plan.** Running `set-status … landed` on this file listed its own three
+open questions and exited 1 — the plan that reported the hole being stopped by the gate that closed
+it, which is the only verification worth having here.
+
+One cosmetic slip caught in the same run: the new listing printed the tag name twice, because a
+hit's text already opens with it. Fixed before committing.
+
+## Migrated to
+
+- `skills/plan-docs/scripts/plans.py` — `STATUS_GATES` values are tuples, `landed` gates on both
+  tags, and the comment above the table records why `in-progress` and `abandoned` are deliberately
+  free.
+- `skills/plan-docs/SKILL.md` — the tags table's `NEEDS CLARIFICATION` row, plus a paragraph under
+  it stating that the gate keys on the status being moved _to_, and that the `landed` clause is a
+  fix rather than a description.
+- `tests/unit/test_plan_store.py` — the two tests above, the second of which exists to keep the fix
+  from over-reaching.
+
+Not migrated: the observation that the code and its own comment agreed with each other, which is why
+reading never caught this. It is true and it generalises, but it is a remark about review rather
+than a rule anyone can act on.

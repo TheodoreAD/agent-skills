@@ -156,8 +156,21 @@ SCOPES = ("auto", "repo", "family", "unscoped")
 # it is one of these — a [repos] key is a path full of dots and must not be split on every one.
 CONFIG_TABLES = ("roots", "repos", "about", "private", "view")
 
-# The two gates SKILL.md states in prose, as data. Everything else is a free transition.
-STATUS_GATES = {"planned": "NEEDS CLARIFICATION", "landed": "UNVERIFIED"}
+# The gates SKILL.md states in prose, as data. Everything else is a free transition.
+#
+# Keyed on the destination, and a destination may name more than one tag. `landed` gates on open
+# questions as well as on `UNVERIFIED` because it is the status that *precedes deletion*: reaching
+# it from `idea` skips `planned` entirely, so attaching the question gate to `planned` alone left
+# the one transition that ends in a one-way door ungated. Observed 2026-09-02, a plan carrying two
+# open questions accepted straight to `landed` with no output but the status line.
+#
+# `in-progress` is deliberately not gated: starting work with questions open is the normal case, and
+# `blocked on <reason>` already exists for when it is not. `abandoned` is not gated either — killing
+# a plan with its questions unanswered is what abandoning means.
+STATUS_GATES: dict[str, tuple[str, ...]] = {
+    "planned": ("NEEDS CLARIFICATION",),
+    "landed": ("UNVERIFIED", "NEEDS CLARIFICATION"),
+}
 
 CONFIG_SKELETON = """\
 # plan-docs storage routing — read by skills/plan-docs/scripts/plans.py.
@@ -2281,14 +2294,16 @@ def cmd_set_status(args: argparse.Namespace, ws: Workspace) -> int:
     plan = locate(cfg, routing, args.file)
     _require_absorbed_before_retiring(plan, routing, args.status)
 
-    gate = next((tag for prefix, tag in STATUS_GATES.items() if args.status.startswith(prefix)), None)
-    if gate and not args.force:
-        blocking = open_tags(plan.path, gate)
+    gates = next((tags for prefix, tags in STATUS_GATES.items() if args.status.startswith(prefix)), ())
+    if gates and not args.force:
+        blocking = [hit for tag in gates for hit in open_tags(plan.path, tag)]
         if blocking:
             for tag_hit in blocking:
+                # `text` already opens with the tag name, so printing it again reads as a doubling.
                 print(f"{plan.path}:{tag_hit.line}: {tag_hit.text}")
+            named = " and ".join(f"[{tag}: …]" for tag in gates)
             raise PlanError(
-                f"{len(blocking)} open [{gate}: …] tag(s) block status {args.status!r}; "
+                f"{len(blocking)} open tag(s) block status {args.status!r} — it gates on {named}; "
                 f"resolve them (or --force, which the convention does not) and re-run"
             )
 

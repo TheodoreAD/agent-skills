@@ -1542,10 +1542,21 @@ class Workspace:
     def config(self) -> Config:
         return load_config()
 
+    @cached_property
+    def routing(self) -> Routing:
+        """Where this repo's plans are read from and written to. Resolved once, verdict included."""
+        return resolve(self.path, self.config)
+
+    def require_routable(self) -> Routing:
+        """The routing, or the needs-decision exit — the three-line prologue eight commands opened
+        with. A method rather than a property because it can refuse, and a property that raises is a
+        surprise at the point of reading an attribute."""
+        return require_ok(self.routing)
+
 
 def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
     cfg = ws.config
-    routing = resolve(args.path, cfg)
+    routing = ws.routing
     if args.json:
         rule = routing.rule
         payload = {
@@ -1728,8 +1739,8 @@ def cmd_new(args: argparse.Namespace, ws: Workspace) -> int:
             raise PlanError("--unscoped belongs to no repo, so it cannot be combined with --to or --for")
         return write_plan(cfg.unscoped, args.topic, args.status, "unscoped", None, cfg)
     if args.for_repo:
-        return file_for_repo(args, cfg)
-    routing = resolve(args.path, cfg)
+        return file_for_repo(args, ws)
+    routing = ws.routing
     if routing.rule and routing.rule.write == "repo" and is_foreign(routing.repo_root, cfg):
         # Refused rather than warned: `--for` is the correct way to record something against
         # another repo, so writing a new file into its tree has no remaining legitimate use.
@@ -1747,7 +1758,7 @@ def cmd_new(args: argparse.Namespace, ws: Workspace) -> int:
             f"{hint}"
         )
     if args.to is None:
-        require_ok(routing)
+        ws.require_routable()
         target = routing.write_dir
         where = routing.rule.write if routing.rule else ""
     else:
@@ -1766,7 +1777,7 @@ def cmd_new(args: argparse.Namespace, ws: Workspace) -> int:
     return write_plan(target, args.topic, args.status, where, origin, cfg, belongs_to=belongs, store=tier_store)
 
 
-def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
+def file_for_repo(args: argparse.Namespace, ws: Workspace) -> int:
     """File a plan against a repo this session is not working in, without touching its tree.
 
     Always the store mirror, never the repo's own `plans/`, whatever that repo's route says. That is
@@ -1776,12 +1787,13 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
     """
     if args.to:
         raise PlanError("--for already decides where the file goes (the target's store mirror); drop --to")
+    cfg = ws.config
     target_root = resolve_repo_argument(args.for_repo, cfg)
     routing = resolve(target_root, cfg)
     if routing.repo_root is None:
         raise PlanError(f"{target_root} is not inside a git repository")
 
-    here = resolve(args.path, cfg).repo_root
+    here = ws.routing.repo_root
     if here is not None and here.resolve() == routing.repo_root.resolve():
         raise PlanError(f"--for names the repo this session is already in; use plain `new {args.topic}`")
     store_dir = routing.store_dir
@@ -1793,7 +1805,7 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
 
     origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
     store = cfg.store_for(routing.rel)
-    source = resolve(args.path, cfg)
+    source = ws.routing
     code = write_plan(
         store_dir,
         args.topic,
@@ -1929,11 +1941,11 @@ def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
     `--scope` is that axis. Ownership stays per-repo either way — this is a view, nothing is written.
     """
     cfg = ws.config
-    routing = resolve(args.path, cfg)
+    routing = ws.routing
     scope = args.scope if args.scope != "auto" else auto_scope(cfg, routing)
 
     if scope == "repo":
-        require_ok(routing)
+        ws.require_routable()
         entries = repo_scope_plans(cfg, routing)
     elif scope == "unscoped":
         entries = [ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped")]
@@ -2181,7 +2193,7 @@ def _print_status_drift(entries: list[ScopedPlan]) -> None:
 
 def cmd_tags(args: argparse.Namespace, ws: Workspace) -> int:
     cfg = ws.config
-    routing = require_ok(resolve(args.path, cfg))
+    routing = ws.require_routable()
     targets = [locate(cfg, routing, args.file)] if args.file else plan_files(routing)
     wanted = [args.tag] if args.tag else list(TAG_NAMES)
 
@@ -2225,7 +2237,7 @@ def _require_absorbed_before_retiring(plan: PlanFile, routing: Routing, status: 
 
 def cmd_set_status(args: argparse.Namespace, ws: Workspace) -> int:
     cfg = ws.config
-    routing = require_ok(resolve(args.path, cfg))
+    routing = ws.require_routable()
     plan = locate(cfg, routing, args.file)
     _require_absorbed_before_retiring(plan, routing, args.status)
 
@@ -2305,7 +2317,7 @@ def cmd_absorb(args: argparse.Namespace, ws: Workspace) -> int:
     the session writes only to its own tree, and to the store only to remove what it just took.
     """
     cfg = ws.config
-    routing = require_ok(resolve(args.path, cfg))
+    routing = ws.require_routable()
     pending = absorbable(routing)
 
     pairs = consolidation_pairs(routing, pending) if pending else {}
@@ -2455,7 +2467,7 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> TakenPlans:
 
 def cmd_move(args: argparse.Namespace, ws: Workspace) -> int:
     cfg = ws.config
-    routing = require_ok(resolve(args.path, cfg))
+    routing = ws.require_routable()
     plan = locate(cfg, routing, args.file)
     target = routing.dir_for(args.to)
     if target is None:
@@ -2535,7 +2547,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     wrong is silent — a correct diff under a message about someone else's change.
     """
     cfg = ws.config
-    routing = require_ok(resolve(args.path, cfg))
+    routing = ws.require_routable()
 
     # A path first, and a bare filename only as a fallback. The plan most in need of this command is
     # one just filed *for another repo*, which lives in that repo's store mirror — somewhere `locate`
@@ -2562,8 +2574,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
 
 
 def cmd_refs(args: argparse.Namespace, ws: Workspace) -> int:
-    cfg = ws.config
-    routing = require_ok(resolve(args.path, cfg))
+    routing = ws.require_routable()
     name = Path(args.file).name
     found: list[dict[str, object]] = []
     if routing.repo_root:
@@ -2599,7 +2610,7 @@ def cmd_archive(args: argparse.Namespace, ws: Workspace) -> int:
     content on stdout, which is what a session actually needs.
     """
     cfg = ws.config
-    routing = None if args.all else require_ok(resolve(args.path, cfg))
+    routing = None if args.all else ws.require_routable()
     sources = archive_sources(cfg, routing)
 
     if args.show:

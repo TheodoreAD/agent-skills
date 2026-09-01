@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-29
+status: landed
+updated: 2026-09-02
 ---
 
 ## Context
@@ -93,3 +93,48 @@ Rough.
 form under one tag reports a rate that answers neither question. Worth a sentence in the skill about
 adding a row, since the same shape will recur the next time a rule distinguishes two spellings of
 the same command.]
+
+## Outcome, 2026-09-02
+
+All four steps of the recommended direction are done, and the hand measurement now reproduces from
+the tool rather than from a one-off regex.
+
+The three open questions:
+
+- **One row per pair, or one with a captured group?** Two rows, as the plan argued — they need
+  separate destinations because they now have opposite verdicts.
+- **How to encode the exempt `find` forms?** The plan's own preferred alternative, adapted: rather
+  than leaving the judgement entirely to the reader, `find-not-fd` carries it in the regex **and**
+  `find-exempt` reports the share that judgement excludes, so it is visible instead of hidden. The
+  exempt share turns out to be tiny (16 of 309), which is itself the answer to whether it needed its
+  own row: it does, precisely because it is small enough to be assumed away.
+- **Is the `grep/find` row worth keeping?** Yes, and all three "why" lines were rewritten together
+  as the plan asked, with a comment above them saying plainly that one is about the harness tool and
+  two are about which CLI.
+
+**The measurement got worse for `fd` on a bigger corpus, and better-founded for `rg`.** Over 23,000
+calls in 30 days: `grep -r` is 10% of recursive text search (hand-measured 8%), `find` is **53%** of
+plain file lookups (hand-measured 43%). Two independent methods a week apart agree on the direction
+and on which half matters, which is the useful part.
+
+**Two regex bugs were found by testing the patterns before trusting their counts**, both flattering
+the number — a lookahead's `.*` stopping at a newline, and the separator anchor omitting `\n` while
+`split_chain` has always split on it. The second was not confined to the new rows: it had the
+long-standing `grep/find` row undercounting by roughly 4% for its whole life.
+
+The deferred general lesson is written into the skill rather than left here, which is what allows
+this plan to retire: a row must never span a compliant and a non-compliant form of the same command,
+because the resulting rate answers neither question while looking like coverage.
+
+Step 4 stands: the rule wording and the allowlist are `power-user-linux-setup`'s, and nothing here
+touched them.
+
+## Migrated to
+
+- `skills/session-bash-audit/scripts/audit.py` — the `grep-r-not-rg`, `find-not-fd` and
+  `find-exempt` rows, the rewritten "why" lines with the comment separating the three questions, the
+  `find-not-fd` expectation, and the comment recording why `grep-r-not-rg` is deliberately unjudged.
+- `skills/session-bash-audit/references/research.md` — the dated baseline, the two bugs, and the
+  agreement with the hand measurement.
+- `skills/session-bash-audit/SKILL.md`, "Record what you learned" — the deferred general lesson, and
+  the instruction to test a new row's regex against a multi-line command first.

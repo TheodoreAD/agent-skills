@@ -29,6 +29,26 @@ which it lost its own cases to the untrimmed incumbent.
 The `AGENTS.md` rule that conventions are piloted on one real repo before becoming a shareable
 artifact is already satisfied: the pass **is** the pilot, and its findings are the content.
 
+## The description that was measured, verbatim
+
+**Use this wording, or re-measure.** It is what scored 12/12; a redraft is an unmeasured wording,
+which is the one thing `skill-fitness` says measures below having no skill at all. 907 characters,
+against the 1024 cap the layout test enforces.
+
+```text
+Use when an existing Python module has grown and the question is how to restructure it safely, not what to write — auditing a file nobody has reviewed as a whole, planning the change as a sequence of small commits each verified on its own, deciding which tests may be edited to follow a rename and which must not change at a character, proving an edited test still fails when the production change is reverted, finding a second oracle when the suite cannot see the change (a field's type changing under a name every caller already uses), measuring the shape you are trying to remove before and after so a large diff that moves nothing is caught, and deciding when not to restructure at all. For what a given piece of Python should look like — data modeling, dates, settings, modularity and singleton defaults — see the Python conventions skill; for what a test should cover, the Python testing skill.
+```
+
+Re-running either suite, once the skill exists — they are its trigger cases, not just the evidence
+for creating it:
+
+```shell
+python3 skills/skill-fitness/scripts/trigger.py run skills/skill-fitness/evals/refactor-audit-candidate.json
+```
+
+`run` rather than `candidate` at that point: the skill is installed by then, so the real listing is
+the thing under test. Each run costs 12 cases x 3 model probes.
+
 ## What goes in it
 
 The body is the procedure. Everything with a story attached goes to `references/`.
@@ -79,3 +99,32 @@ cases the pair with `python-conventions` needs.
 
 Then `skill-authoring`'s deploy sequence, in full: the push is the step that gets skipped, and the
 installer clones from the remote, so a committed but unpushed skill reaches nothing.
+
+## What the gate will demand, so none of it is a surprise
+
+`pytest tests/unit/test_skill_layout.py` is parametrized over every skill directory and enforces
+most of this mechanically — it is the gate a new skill has to pass, so add the skill and run the
+suite rather than eyeballing the frontmatter:
+
+- `name` matches the directory, and is spec-valid.
+- `description` present and within 1024 characters.
+- The directory holds only `SKILL.md`, `references/`, `scripts/`, `evals/` and nothing else.
+- **A row in `README.md`'s table**, with a `Scope` value. `test_listed_in_readme` fails without it.
+  Scope here is "Opinionated but general": the procedure depends on no machine-specific thing, and
+  the one command it names (`pytest`) is not this machine's.
+- Any install command in a fenced block that names an `owner/repo` source carries `--global`.
+
+## Sources this is written from
+
+Everything listed above already exists; none of it needs re-deriving.
+
+- `plans/2026-09-01-plans-py-encapsulation-pass.md` — the pilot. Its **Progress** section holds the
+  oracle rules as they were actually applied, the output-diff DECISION and its live-state PITFALL,
+  the before/after tables, and the two counts that did not reproduce. That plan stays open until
+  this skill exists, because it is this skill's source material.
+- The pass's own commits, `2efb0c8..9dd62dd` — nine of them, each one property, each message saying
+  what moved and what was verified. The commit sequence _is_ the worked example of the loop.
+- `skills/skill-fitness/evals/refactor-audit-candidate.json` and
+  `refactor-audit-extend-alternative.json` — the decision's evidence, results recorded in `about`.
+- `skills/python-conventions/SKILL.md` — the boundary to write against, especially its Modularity
+  and Modules-as-singletons sections, which stay where they are.

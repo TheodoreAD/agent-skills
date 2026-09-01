@@ -52,6 +52,23 @@ Write a script that counts the specific shape — an `ast` walk, not a grep, and
 and keep it, because the same script is what re-measures at the end. A large diff that moves no
 count did not do the job.
 
+**These five are where to start, because each maps to a specific defect rather than to size.** An
+agent can run them over a module without reading it, which is the point — the counts are the review,
+not a preamble to it. A diff-scoped review of the pilot file the same week found one bug and two
+cleanups and nothing structural, because a diff cannot show state threaded through 47 signatures.
+
+| what to count                                              | what it means when high                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------- |
+| functions whose leading parameters are the same object(s)  | state constant for a whole invocation, passed by hand     |
+| bare `tuple[...]` returns, and the sites unpacking them    | the shape is real information and it was thrown away      |
+| `dict[str, X]` as a **field or parameter** type            | a record wearing a mapping's clothes                      |
+| stringly-keyed access into such a dict (`x.dirs["store"]`) | a typo is a runtime `KeyError` instead of a checker error |
+| `dict[str, object]` **returns**                            | usually fine — a serialisation boundary, not a defect     |
+
+Count parameters as well as returns. The pilot measured anonymous _returns_ and swept them to zero,
+and a `list[tuple[str, int]]` threaded through two functions as a **parameter** survived the pass
+unseen — the measurement decided what the pass could find.
+
 Three rules about the counting, each learned by getting it wrong:
 
 - **A count you cannot reproduce is not a baseline.** Two counts in the pilot's original table could

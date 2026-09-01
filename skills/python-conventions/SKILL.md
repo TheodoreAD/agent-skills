@@ -54,6 +54,29 @@ the ones that don't.
   against `Quantity(300, "mg")` with `<` returns `True` instead of raising, silently succeeding
   across incompatible units. Free tuple ordering is a hazard, not a convenience, for any value type
   whose comparisons carry a precondition.
+- **That hazard and NamedTuple's benefit are the same property seen from two sides, so the question
+  is never "is a NamedTuple nicer here" — it is what is being replaced.** A **bare tuple ->
+  `NamedTuple`** is a clear upgrade: names where there were none, and the positional surface already
+  exists and is already being unpacked, so nothing new leaks. A **frozen dataclass -> `NamedTuple`**
+  is a downgrade: it _adds_ indexing, unpacking, iteration, and equality with any plain tuple
+  carrying the same values — a second positional API nobody designed — and inserting a field in the
+  middle silently changes what `x[1]` means at every call site, with no error anywhere. Confirmed
+  2026-09-01 auditing a 3,200-line stdlib-only script: 16 anonymous record-shaped tuple returns
+  became `NamedTuple`s and the 6 frozen dataclasses were deliberately left alone.
+- **Where the dependency is not available — a stdlib-only script, a vendored tool — validating in
+  `__post_init__` is what keeps config a frozen dataclass.** That is "parse, don't validate" with
+  nothing but the standard library, worth naming by the phrase because the phrase is what makes it
+  findable. Config is read once and every later reader should be able to assume it is well formed.
+  It is also the concrete form of the NamedTuple clause's zero-validation condition: `NamedTuple`
+  has no `__post_init__`, so the same guarantee costs a `__new__` override or a classmethod factory
+  — more ceremony than the dataclass it was meant to be cheaper than.
+- **A `dict` is a mapping, or it is a record that lost its type; the test is whether the keys are
+  data or names you chose.** Keys arriving from outside — a config file, a JSON payload — are data,
+  and that stays a dict. Keys the author typed are field names: a `dirs["store"]` read with string
+  literals at 7 sites is a record, and two named fields move a typo from a runtime `KeyError` to an
+  error the checker catches. The legitimate exception is the **serialisation boundary** — a
+  `dict[str, object]` built to be handed to `json.dumps` should stay a dict, where typing it is
+  ceremony in both directions.
 - Alternative, project-wide: **if a project uses Pydantic for anything, it uses Pydantic for
   everything.** A legitimate substitute for the split above, not a divergence from it, and it cuts
   both ways — it also makes "no Pydantic anywhere" a real answer, rather than letting the dependency

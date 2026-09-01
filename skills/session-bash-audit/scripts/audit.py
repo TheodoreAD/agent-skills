@@ -24,6 +24,7 @@ import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
@@ -519,6 +520,57 @@ def _truncation_reruns(calls: list[Call]) -> list[str]:
     return reruns
 
 
+def _before(calls: list[Call], until: str) -> list[Call]:
+    """Calls made strictly before `until`, so a run measuring itself can exclude its own tail.
+
+    A harvest's sweep is a different population from the session it reports on — inspections rather
+    than working commands — and including it measures the sweep. Measured 2026-09-01 on two runs the
+    same day: one rose 37% -> 40% on `head`/`tail`, the other fell 22% -> 17% on `git -C`, so the
+    direction is not predictable and "it inflates the number" is the wrong claim. Excluding is.
+
+    A call whose transcript entry carried no timestamp is kept rather than dropped: it cannot be
+    placed on either side, and silently discarding it would bias the rate it is being used to judge.
+    """
+    cutoff = datetime.fromisoformat(until)
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.astimezone()
+    kept: list[Call] = []
+    for call in calls:
+        if not call.timestamp:
+            kept.append(call)
+            continue
+        stamped = datetime.fromisoformat(call.timestamp)
+        if stamped.tzinfo is None:
+            stamped = stamped.astimezone()
+        if stamped < cutoff:
+            kept.append(call)
+    return kept
+
+
+def report_session(args: argparse.Namespace) -> None:
+    """One session measured against the baseline — the shape a run checking itself uses."""
+    calls = load_session(args.session)
+    if not calls:
+        print(f"no Bash calls found for session {args.session!r}")
+        return
+    whole = len(calls)
+    if args.until:
+        calls = _before(calls, args.until)
+        if not calls:
+            print(f"no Bash calls before {args.until} for session {args.session!r}")
+            return
+    print(f"# this session: {len(calls)} Bash calls")
+    if args.until:
+        print(f"#   excluding {whole - len(calls)} at or after {args.until} — the run's own sweep")
+    print(_rate_row("this session", calls, RATE_COLUMNS))
+    if args.samples:
+        _print_samples(calls, args.samples)
+    print("\nCompare against the baseline with --compare; a rate worse than it is the finding,")
+    print("and authoring a rule is not evidence of following it.")
+    if args.compare:
+        compare(calls, args.compare)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--days", type=float, default=4, help="look back this many days of transcript mtime (default 4)")
@@ -533,6 +585,10 @@ def main() -> None:
         "--session",
         help="measure ONE session by id or transcript path, for a run checking itself against the baseline",
     )
+    ap.add_argument(
+        "--until",
+        help="ignore calls at or after this ISO timestamp, so a run measuring itself can exclude its own sweep",
+    )
     args = ap.parse_args()
 
     if args.probe:
@@ -540,21 +596,14 @@ def main() -> None:
         return
 
     if args.session:
-        calls = load_session(args.session)
-        if not calls:
-            print(f"no Bash calls found for session {args.session!r}")
-            return
-        print(f"# this session: {len(calls)} Bash calls")
-        print(_rate_row("this session", calls, RATE_COLUMNS))
-        print("\nCompare against the baseline with --compare; a rate worse than it is the finding,")
-        print("and authoring a rule is not evidence of following it.")
-        if args.compare:
-            compare(calls, args.compare)
+        report_session(args)
         return
 
     calls = load_calls(args.days, args.project)
+    if args.until:
+        calls = _before(calls, args.until)
     if not calls:
-        print("no Bash calls found — check --days / --project")
+        print("no Bash calls found — check --days / --project / --until")
         return
     report(calls, args.samples)
     if args.compare:

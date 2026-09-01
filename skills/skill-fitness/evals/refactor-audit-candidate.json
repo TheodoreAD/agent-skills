@@ -18,7 +18,14 @@
     "(precision 1.0, and python-conventions kept every one of its own cases including the contested",
     "'accumulated global state' one), and won 11 of its 11 fires. The alternative is measured in",
     "refactor-audit-extend-alternative.json and scored 10/12, missing the two most characteristic",
-    "prompts entirely."
+    "prompts entirely.",
+    "",
+    "Re-run 2026-09-01 in `run` mode, with the skill really installed rather than registered as a",
+    "candidate command file: 11/12. Precision stayed 1.0 everywhere and every other case held; the",
+    "one failure is case 1, the flagship prompt, which selected the skill once in three runs and",
+    "nothing twice. Listing truncation was ruled out by fitness.py budget, so it is a real selection",
+    "miss. It is also a measured counterexample to the documented claim that a candidate score is a",
+    "lower bound — here the proposal scored higher than the shipped skill on identical cases."
   ],
   "cases": [
     {

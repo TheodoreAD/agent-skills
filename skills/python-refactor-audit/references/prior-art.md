@@ -90,13 +90,42 @@ python3 <skill-fitness>/scripts/trigger.py run <path>/refactor-audit-candidate.j
 
 Each run costs 12 cases × 3 model probes.
 
+### The live run does not reproduce the 12/12, and that is the number to quote
+
+**Measured 2026-09-01, immediately after installing: 11/12 at three runs each, against the candidate
+mode's 12/12.** Precision stayed 1.0 for every skill and nothing was stolen — `python-conventions`
+kept all four of its cases, `python-testing-conventions` its one, and all three negatives held. The
+single failure is the suite's **flagship** prompt, the sentence the skill exists for:
+
+> "This module is 3,000 lines built over two weeks and nobody has ever reviewed it as a whole. How
+> do I go about restructuring it without breaking anything?"
+
+It selected the skill once in three runs and **nothing** the other two — the same miss, on the same
+prompt, that sank the extend-`python-conventions` option. Recall 0.83, fn=2.
+
+Two things follow, and both are corrections to what was believed before the run:
+
+- **Truncation is ruled out, so this is a real selection miss.** The hypothesis was that a brand-new
+  skill sits at priority 0.0 and loses its description first. Checked rather than assumed:
+  `fitness.py budget` after the run reports no new truncated listing and no new bare-name
+  observation, so all 36 probes saw the full description. Do not attribute this miss to the listing.
+- **Candidate mode overestimated here.** `skill-fitness` documents a candidate score as a _lower
+  bound_, because a proposal is registered as a command file rather than a real skill. This is a
+  measured counterexample in the other direction: the same twelve cases scored 12/12 as a proposal
+  and 11/12 once installed, with nothing else about the corpus changed. Treat a candidate score as
+  an estimate with error in both directions, and re-run after shipping — which is the reason the
+  plan said to.
+
+**Open, and not to be fixed by rewording on a hunch.** A wording change is a new unmeasured
+description; the only legitimate move is `candidate` on a redraft, then `run` after adopting it, and
+the flagship prompt is the case to judge it on.
+
 **What it costs the listing.** Measured with `fitness.py budget` on the day it was added: 925
 characters, the largest single entry in the corpus, in a listing already over the 8,000-character
 budget a 200k window allows. Priority in that listing is usage-weighted, so a skill nobody has
 invoked yet sits at 0.0 and **is among the first to be demoted to name-only when the listing
-overflows** — an unavoidable property of being new, not a fault in the wording, but it means an
-early failure to fire may be a truncated listing rather than a bad description. Check
-`fitness.py budget` before concluding anything from a miss.
+overflows** — an unavoidable property of being new, not a fault in the wording. It did not cause the
+miss above, but check `fitness.py budget` before concluding anything from a future one.
 
 ## Open, deliberately
 

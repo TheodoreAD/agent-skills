@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 ---
 
 # What `python-conventions` is missing: data shape as an API surface, and how to audit for it
@@ -146,8 +146,27 @@ not bloat a skill already at 411 lines, which SkillsBench scores against. **Sett
 `plans.py` pass has run, since `AGENTS.md` requires piloting a convention on one real repo before it
 is written into a shareable artifact.]
 
-[DEFERRED: whether any of this belongs in `skill-authoring` instead. The case study's meta-shape —
-state a convention, measure the code against it, let the measurement correct the convention — is
-about how this family builds guidance, not about Python. It may be a `skill-fitness` reference
-rather than a `python-conventions` one. Not urgent, and easier to answer once the Python half has
-landed.]
+[DECISION: **the meta-shape went to `skill-authoring`, as one bullet, 2026-09-02.** Answered once
+the Python half had landed, as this tag said to. The family already asserts both halves separately —
+`AGENTS.md` says pilot a convention on a real repo first, `skill-authoring` says settle wording by
+measuring rather than reading — so the only part not already written down is the _direction_: a
+pilot is expected to sharpen a rule into something decidable, not just pass or fail it, and a pilot
+that merely confirms what you believed is one to be suspicious of. The NamedTuple case is the
+instance cited. Not a `skill-fitness` reference: that skill measures an installed set, and this is
+about authoring.]
+
+## Migrated to
+
+- `skills/python-conventions/SKILL.md`, Data modeling — the three clauses this plan called small:
+  the baseline rule (2a), the stdlib validation rule (2b), and the record-versus-mapping test (2c).
+- `skills/python-refactor-audit/SKILL.md`, Measure the shape — the measurement table this plan
+  called its reusable part, plus the instruction to count parameters and not only returns.
+- `skills/skill-authoring/SKILL.md` — the meta-shape, per the DECISION above.
+- `skills/python-refactor-audit/references/pilot.md` — already held the worked example when this
+  plan was written; nothing was migrated there by this retirement.
+
+Deliberately not migrated: sections 1, 3 and 4's procedural content, which the audit skill already
+carried before this plan was applied — the loop, the stopping rule and the three-part test rule were
+written into it when it was created, and re-migrating them would ship a second, diverging copy. The
+open question about extending `python-conventions` versus a separate skill needed no migration
+either: it was settled by measurement and the skill exists.

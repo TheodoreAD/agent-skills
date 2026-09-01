@@ -205,6 +205,16 @@ alternatives, the story behind a rule — goes in `references/`, loaded only whe
 - Keep machine-specific facts out, or declare them. A rule that depends on one machine's setup — a
   particular dotfile, a locally-installed task runner, a repo that exists on one box — either states
   that dependency plainly or does not belong in a published skill.
+- **Pilot a rule before shipping it, and expect the pilot to _sharpen_ it, not merely pass or fail
+  it.** The familiar reason to try a convention on one real repo first is to catch rules that are
+  noise or footguns. The more valuable outcome is a rule that comes back decidable. Confirmed
+  2026-09-01: the stated position going in was that `NamedTuple` is "very cheap and increases
+  readability tremendously"; applying it to one 3,200-line module produced a rule that is neither
+  yes nor no — a bare tuple becoming a `NamedTuple` is an upgrade, a frozen dataclass becoming one
+  is a downgrade, because the benefit and the hazard are the same property seen from two sides. No
+  amount of reading would have produced that, and the version that shipped is a test an author can
+  apply rather than a preference. So a pilot that only confirms what you already believed is a pilot
+  worth being suspicious of.
 
 ## A script in `scripts/` declares its own dependencies, or has none
 

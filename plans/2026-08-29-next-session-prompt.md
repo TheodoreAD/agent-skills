@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-30
+status: in-progress
+updated: 2026-09-01
 ---
 
 # Two proposed additions to `absorb`: a next-session prompt, and a retirement prompt
@@ -99,6 +99,42 @@ that is settled. What is left for the prompt is ordering, immediacy, and things 
 perishable to earn a file — "push this", "absorb that", "the blocker on X lifted". If the prompt
 starts carrying reasoning it has become a plan with no status field, which is the failure mode the
 whole convention exists to prevent.]
+
+[DECISION: **built 2026-09-01, in `session-harvest` step 9, as a printed paste-ready block and not a
+file.** The user asked for it a third time, naming the two constraints that resolve most of the open
+questions above, and said the reason it keeps disappointing: "I keep asking for this manually and I
+don't give all the details."
+
+That is the answer to the DEFERRED below, and it arrived as evidence rather than as a count. The
+item belonging to no plan is not the residue — **the residue is the spec.** Step 9 already existed
+and said only what to leave out, so every prompt was improvised from whatever the session happened
+to remember, which is precisely how it fills with marginal detail. The feature was never a store; it
+was a rule for what earns a slot.
+
+Three things settle the design, and each closes a question above:
+
+- **Printed, never written.** The user pastes it into the next session within minutes, which is the
+  only reason it may assert anything at all. This dissolves append-vs-replace, the storage
+  lifecycle, and most of the staleness objection in one move — the two earlier attempts failed
+  because they built an artefact that outlived its accuracy. Nothing to retire, because nothing is
+  stored.
+- **Built by subtraction.** The next session's own opening moves — `absorb`, `list`, `git status`
+  plus the ahead-count — already print the incoming plans, the open work and the dirty state. Run
+  them and include only the delta. This is the mechanical test for "marginal", and it is why the
+  prompt is short: on a properly harvested session most candidates fail it.
+- **Verify-then-act, capped at five plus an opening line.** Each item pairs the command that
+  re-derives its state with the action if it still holds, which is the shape the NEEDS CLARIFICATION
+  above landed on — and the cap is what keeps it from becoming a plan with no status field.
+
+What survives subtraction is three kinds: **ordering** (nothing on the machine says what to do
+first), **perishable state with a short fuse** (a running process, a CI run, a skill edited but not
+re-installed), and **a decision not yet in any file** — the last being a self-check rather than a
+category, since a non-empty one means step 2's routing failed.
+
+The cross-repo rule was already absolute in step 9 and is now a test rather than a ban: another repo
+earns a line only when the item is high-risk or irreversible **and** would change what the next
+session in this repo does. An unpushed commit or an open plan elsewhere fails the second half — that
+repo's own session is handed those by `absorb`.]
 
 [DEFERRED: the failure this feature addresses has a cheaper partial fix that should be priced first
 — the harvest already knows which items are urgent, and simply _writing them into the plan that owns
@@ -220,12 +256,12 @@ Then, in order of confidence:
    for the set, **name the cost in the question** ("retiring these two will take most of a
    session"), make "not now" a first-class answer, throttle by something and say which, and detect
    the stalled case separately so it reads as "finish this" rather than "start this".
-2. **Price the next-session prompt against doing nothing.** Count, over the next few harvests, how
-   many urgent items belong to no plan at all. If the answer is small, the feature is the harvest
-   writing urgency into the plans that already own each item, and nothing gets built. If something
-   does get built, it is verify-then-act — each item pairing the command that re-derives its state
-   with the action to take if it still holds — timestamped so its age is visible, capped at three to
-   five items, and carrying only what a cold start cannot re-derive.
+2. ~~**Price the next-session prompt against doing nothing.**~~ **Built 2026-09-01** — see the
+   DECISION in Part 1. The pricing question was answered from the wrong end: the count of items
+   belonging to no plan is indeed small, and the thing that was missing was never a store but a
+   specification for what earns a slot. What shipped is close to the shape this line predicted —
+   verify-then-act, timestamped, capped at five — plus the rule that makes it short, which is to
+   subtract everything the next session's own opening commands already print.
 
 **One candidate is ruled out outright for either half: a harness's own memory store.** Stated by the
 user 2026-08-29, after a session filed a real prompt into Claude Code's per-project memory directory

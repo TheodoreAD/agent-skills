@@ -512,6 +512,24 @@ def test_listing_filters_by_tag(ws, capsys):
     assert "2026-01-02-clean.md" not in out
 
 
+def test_refs_sees_a_citation_in_an_uncommitted_file(ws, capsys):
+    """The successor plan written during a retirement is untracked when `refs` runs on the plan it
+    replaces — which is the normal shape of a retirement, not an edge case.
+
+    `refs` searches with `git grep` over tracked files deliberately, so it does not walk `.venv` or
+    build output. Without `--untracked` that also excluded every file created in the same session,
+    so the deletion gate reported zero references while two files cited the plan by name. Observed
+    2026-09-02 retiring a plan whose successor and eval suite were both new that hour.
+    """
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    target = plan(ws.personal / "plans", "2026-01-01-one.md", "status: idea\nupdated: 2026-01-01", "\n")
+    (ws.personal / "successor.md").write_text(f"replaces {target.name}\n", encoding="utf-8")
+
+    assert plans.main(["refs", target.name, "--json", "--path", str(ws.personal)]) == 0
+    refs = json.loads(capsys.readouterr().out)
+    assert any(hit["path"].endswith("successor.md") for hit in refs["references"])
+
+
 # --------------------------------------------------------------------------------------------
 # tags and the status gates
 

@@ -54,8 +54,13 @@ in 6** across two full runs, while its three other positives went 3/3 in both. T
 already carries that sentence's own words nearly verbatim ("auditing a file nobody has reviewed as a
 whole", "how to restructure it safely"), and the same prompt also selected nothing for the rejected
 extend-`python-conventions` wording. So the fix for the two 2026-08-31 misses does not generalise
-into a diagnosis: a broad "how do I go about X" request can select nothing even when the vocabulary
-matches, and reaching for closer wording is a guess until something measures the cause.]
+into a diagnosis, and reaching for closer wording is a guess until something measures the cause.
+
+**Corrected 2026-09-02.** This entry used to end by naming the cause — "a broad _how do I go about
+X_ request can select nothing even when the vocabulary matches" — and that explanation is now
+refuted; see item 6 in the ledger of failed heuristics. The miss is real and still unexplained. What
+changed is that it is no longer attributable to the request's breadth, which makes it a fact about
+one pair of skills rather than about the corpus.]
 
 [PITFALL: **an easy suite cannot tell "no contention" from "cases too easy".** The first suite
 passed 24/24 and every prompt in it named something only one skill claims. It was the second,
@@ -145,6 +150,28 @@ Two structural no-ops found the same way:
 And one measurement that closed a question by showing it did not matter: **IDF-weighted and
 unweighted rankings agree on seven of the top eight pairs**, by similarity and by containment alike.
 The choice of similarity measure is not what limits the signal; corpus size is.
+
+6. **"A broad _how do I go about X_ request is answered directly rather than routed"** (2026-09-02).
+   The best available explanation for `python-refactor-audit`'s flagship case missing five of six
+   live probes, once truncation and vocabulary had both been ruled out for it — and it is wrong.
+   Tested with three matched pairs differing only in breadth, one per high-usage skill, at three
+   runs each (`evals/broad-request-shape.json`): the broad halves for `plan-docs` and
+   `session-bash-audit` fired **3/3 each**, as did their narrow halves. Breadth is not the variable.
+
+   **What the same run did find is the opposite shape**: "Should this return a bare tuple or a
+   `NamedTuple`?" — as narrow and as in-vocabulary as a prompt can be, against a description that
+   contains the word `NamedTuple` — selected **nothing in two of three runs**. Not truncation:
+   `budget` reported no new truncated listing and no new bare-name observation after the run, so all
+   24 probes saw the full description.
+
+   Two lessons, and the second is about writing suites rather than about selection. The measured
+   claim is now "one skill's own selection is unreliable", which is a narrower and less satisfying
+   finding than a corpus-wide rule about request shape — and that is the point: the corpus-wide rule
+   was the attractive one and it did not survive contact. And the suite's first case expected
+   `python-conventions` for "this module has grown for weeks … how do I clean up how its data is
+   shaped", which `python-refactor-audit` took 3/3 — **correctly**, on reflection. An `expect` set
+   by the suite's author is a hypothesis too, and a "failure" against a wrong expectation is not
+   evidence of anything.
 
 ## The listing budget, read from the binary (2026-08-31)
 

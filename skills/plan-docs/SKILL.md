@@ -830,7 +830,11 @@ Code contracts and verification logs are usually the bulk of the deletable volum
 3. **Find inbound references before starting, not after** — `python3 <path> refs <file>.md`. The
    count decides whether this is one commit or several. It searches the **whole repo** (code
    comments and docstrings cite plan paths too) plus the store, on the bare filename rather than the
-   full `plans/` path, since short-form references are the easy miss.
+   full `plans/` path, since short-form references are the easy miss, and **including files you have
+   not committed yet** — the successor plan written during a retirement is untracked at the moment
+   `refs` runs, which is the normal shape of a retirement rather than an edge case. Confirmed
+   2026-09-02: before that, `refs` reported zero while two files written the same hour named the
+   plan.
 
    **Then grep for section-shaped citations, which `refs` cannot see** — `rg -n '§'` over `plans/`
    and whatever docs directories the repo has. A sentence citing "that plan's §9 decision" names no

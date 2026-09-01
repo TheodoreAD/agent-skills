@@ -1,0 +1,53 @@
+{
+  "about": [
+    "Does a broad 'how do I go about X' request select no skill, where the narrow form of the",
+    "same request selects one? Filed from plans/2026-09-01-broad-how-do-i-requests-select-no-skill.md,",
+    "which found python-refactor-audit's flagship case missing 5 of 6 live probes while three",
+    "narrower prompts for the same skill fired 3/3 on the same wording. Truncation and vocabulary",
+    "were both ruled out there, leaving the request's shape as the hypothesis.",
+    "",
+    "One skill cannot answer that. These are three matched pairs, each targeting a different",
+    "high-usage skill, where the only difference within a pair is breadth: an open 'how do I go",
+    "about ...' against a specific question with the same subject. If the broad halves miss and the",
+    "narrow halves fire, the finding is about request shape and belongs in skill-fitness' guidance.",
+    "If only the original case misses, it is about that one description after all.",
+    "",
+    "The two negatives are load-bearing here for an unusual reason: a broad prompt is exactly the",
+    "shape that could make a description fire on everything, so a suite of broad positives alone",
+    "could pass by over-triggering."
+  ],
+  "cases": [
+    {
+      "prompt": "This module has grown for weeks and nobody has reviewed the whole thing. How do I go about cleaning up how its data is shaped?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "Should this return a bare tuple or a NamedTuple?",
+      "expect": "python-conventions"
+    },
+    {
+      "prompt": "I've got design work scattered across a bunch of repos. How do I go about keeping track of what's still open?",
+      "expect": "plan-docs"
+    },
+    {
+      "prompt": "Create a plan file for this idea and set its status to idea.",
+      "expect": "plan-docs"
+    },
+    {
+      "prompt": "I think agents keep ignoring my shell rules. How do I go about finding out whether that's actually true?",
+      "expect": "session-bash-audit"
+    },
+    {
+      "prompt": "Measure how often my sessions pipe command output through head or tail.",
+      "expect": "session-bash-audit"
+    },
+    {
+      "prompt": "What is the capital of France?",
+      "expect": null
+    },
+    {
+      "prompt": "Rename this variable to something clearer.",
+      "expect": null
+    }
+  ]
+}

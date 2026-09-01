@@ -2633,9 +2633,13 @@ def cmd_refs(args: argparse.Namespace, ws: Workspace) -> int:
     name = Path(args.file).name
     found: list[dict[str, object]] = []
     if routing.repo_root:
-        # `git grep` over tracked files: the same set a reviewer sees, without walking .venv or
-        # build output. Matching the bare filename, since short-form references are the easy miss.
-        output = git(["grep", "-n", "-F", "--", name], routing.repo_root)
+        # `git grep` rather than a walk: it skips .venv and build output for free. `--untracked`
+        # adds files git does not track *yet* while still honouring .gitignore — without it the
+        # search misses everything written in the current session, which is exactly where a
+        # retirement's citations live: the successor plan and its evidence are both new that hour.
+        # Measured 2026-09-02 — `refs` reported 0 while two uncommitted files named the plan.
+        # Matching the bare filename, since short-form references are the easy miss.
+        output = git(["grep", "-n", "-F", "--untracked", "--", name], routing.repo_root)
         for line in (output or "").splitlines():
             path, _, rest = line.partition(":")
             number, _, text = rest.partition(":")

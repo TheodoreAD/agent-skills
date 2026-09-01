@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-01
 ---
 
@@ -79,16 +79,18 @@ The body is the procedure. Everything with a story attached goes to `references/
 
 ## Open questions
 
-[NEEDS CLARIFICATION: is the skill Python-specific, or is only its vocabulary? The loop, the oracle
-rules and the stopping rule are language-neutral; the examples (`NamedTuple` vs frozen dataclass,
-`cached_property`) are not. A `refactor-audit` that any language could use would contend with
-nothing in this corpus — but the measured description is the Python one, and a wider one is a
-different description that would have to be measured again rather than assumed.]
+[DECISION: **Python-specific for now, and the skill says why in its own `references/prior-art.md`
+rather than leaving it to memory.** The loop, the oracle rules and the stopping rule are
+language-neutral; only the examples are not. A wider `refactor-audit` would contend with nothing in
+this corpus — but the measured description is the Python one, and a wider description is a different
+description. Widen it only through `trigger.py`, never by editing the wording and assuming the score
+carries.]
 
-[NEEDS CLARIFICATION: does it own the "which tests may change" rule, or does
-`python-testing-conventions`? The rule is about a refactor rather than about a test, so it reads as
-this skill's — but a reader arriving from the test side is exactly who needs it. Check with
-`fitness.py overlap` once the skill exists, rather than deciding it in advance.]
+[DECISION: **this skill owns the "which tests may change" rule.** Measured rather than argued, both
+ways. `fitness.py overlap` puts the pair with `python-testing-conventions` outside the top 12 — no
+shared trigger vocabulary worth flagging — and both live runs had `python-testing-conventions` win
+its own fixture-scope case 3/3 while this skill won its three narrow cases 3/3. The rule is about a
+refactor, and nothing measured suggests a reader arriving from the test side is being misrouted.]
 
 ## Recommended direction
 
@@ -179,10 +181,27 @@ this description, that is hard — a broad "how do I go about X" seems to be ans
 than routed. Recorded as a pitfall in `skill-fitness`' `measurements.md`, because it refutes the
 diagnosis that file was carrying.
 
-**Left open**: whether to spend on a redraft. It is a new unmeasured wording, so the move is
-`candidate` on a redraft and then `run` after adopting it, judged on case 1 — and, given the above,
-a redraft reaching for closer vocabulary is a guess rather than a fix. The skill is deployed and
-working meanwhile: 11 of 12 cases pass, precision 1.0, nothing stolen.
+[DECISION: **ship at 11/12; no redraft. 2026-09-01, by the user, offered the alternatives.** A
+redraft is a new unmeasured wording, and with vocabulary ruled out as the cause it would be a guess
+rather than a fix — the one move `skill-fitness` says not to make. The skill is deployed and
+working: 11 of 12 cases pass, precision 1.0, nothing stolen, and the failure is a miss rather than a
+steal. Case 1 is revisited at the next fitness audit, when the skill also has real usage behind it,
+and the two candidates for that pass are recorded above: isolate what suppresses selection on a
+broad "how do I go about X" request before touching wording.]
+
+This plan closes here. What it leaves behind is a skill, and a measurement that corrected two of
+`skill-fitness`' own claims — which is worth more than the 12/12 it set out to confirm.
+
+## Migrated to
+
+- `skills/python-refactor-audit/` — the skill, its worked example and its prior art.
+- `skills/python-refactor-audit/references/prior-art.md` — the live 11/12, the flagship-case miss,
+  and why truncation and vocabulary are both ruled out.
+- `skills/skill-fitness/SKILL.md` and `references/measurements.md` — the two corrections: a
+  candidate score errs in both directions rather than being a lower bound, and vocabulary is not the
+  only cause of a miss to silence.
+- `skills/skill-authoring/SKILL.md` — the same lower-bound correction, where it was also asserted.
+- `skills/skill-fitness/evals/refactor-audit-candidate.json` — both runs recorded in its `about`.
 
 The encapsulation-pass plan's condition — "stays open until that skill exists" — is met, and it is
 set `landed` with its content living on in `skills/python-refactor-audit/references/pilot.md`. This

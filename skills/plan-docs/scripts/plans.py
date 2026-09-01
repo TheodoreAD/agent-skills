@@ -306,15 +306,28 @@ class Rule:
 
 
 @dataclass(frozen=True)
+class Store:
+    """One store directory: which tier it holds, where it is, and which signal put it there.
+
+    A frozen dataclass rather than a `NamedTuple`: this is a record with an identity, and giving it
+    indexing, unpacking and equality-with-any-3-tuple would be a surface nobody asked for. It
+    replaced four parallel `Config` fields — `store`/`store_source` and their `sensitive_` twins —
+    and the accessor that existed only to pick between the two sources.
+    """
+
+    tier: str  # shareable | sensitive
+    path: Path
+    source: str  # "$PLANS_HOME", the config file's path, or "default"
+
+
+@dataclass(frozen=True)
 class Config:
     path: Path
     exists: bool
     device: str
     projects_root: Path
-    store: Path
-    store_source: str
-    sensitive_store: Path
-    sensitive_store_source: str
+    store: Store
+    sensitive_store: Store
     default: Rule | None
     roots: dict[str, Rule]
     repos: dict[str, Rule]
@@ -333,7 +346,7 @@ class Config:
         disclose, but that is a content question `scan` answers — filing every repo-less thought in
         the tier that has no remote would strand the ideas most likely to become public work.
         """
-        return self.store / UNSCOPED_DIR
+        return self.store.path / UNSCOPED_DIR
 
     def public_root_names(self) -> tuple[str, ...]:
         """Roots whose contents may be named in a published repo. Falls back to the roots configured
@@ -378,27 +391,17 @@ class Config:
             return SHAREABLE
         return SHAREABLE if rel.split("/")[0] in set(self.shareable_root_names()) else SENSITIVE
 
-    def store_of(self, tier: str) -> Path:
+    def store_of(self, tier: str) -> Store:
+        """The store a tier lives in. On a work device there is one, whatever tier is asked for."""
         if not self.split_by_sensitivity:
             return self.store
         return self.store if tier == SHAREABLE else self.sensitive_store
 
-    def store_source_of(self, tier: str) -> str:
-        """Where a tier's path came from — the environment, the config, or the default.
-
-        Extracted on the third repetition, not the second: the same ternary was inlined at three
-        call sites that all print it, and a fourth was about to be added for the device work. Below
-        three this would have been the premature abstraction the conventions warn about.
-        """
-        if not self.split_by_sensitivity or tier == SHAREABLE:
-            return self.store_source
-        return self.sensitive_store_source
-
-    def store_for(self, rel: str | None) -> Path:
-        """The store directory a repo's mirrored plans live under."""
+    def store_for(self, rel: str | None) -> Store:
+        """The store a repo's mirrored plans live in."""
         return self.store_of(self.tier_of(rel))
 
-    def stores(self) -> list[tuple[str, Path]]:
+    def stores(self) -> list[Store]:
         """Every distinct store on the machine, shareable first.
 
         Deduplicated by path: configuring both tiers to one directory is how a machine with no
@@ -406,10 +409,10 @@ class Config:
         every command that walks this list would otherwise report and search it twice.
         """
         if not self.split_by_sensitivity:
-            return [(SENSITIVE, self.store)]
-        found = [(SHAREABLE, self.store)]
-        if self.sensitive_store.expanduser() != self.store.expanduser():
-            found.append((SENSITIVE, self.sensitive_store))
+            return [self.store]
+        found = [self.store]
+        if self.sensitive_store.path.expanduser() != self.store.path.expanduser():
+            found.append(self.sensitive_store)
         return found
 
 
@@ -474,14 +477,18 @@ def _sensitive_sibling(store: Path) -> Path:
     return store.parent / f"{store.name}-{SENSITIVE}" if store.name else Path.home() / f"plans-{SENSITIVE}"
 
 
-def _store_field(raw: dict[str, object], path: Path, key: str, env: str, fallback: Path) -> tuple[Path, str]:
-    """A store location and where it came from: the environment wins, then the config, then a default."""
+def _store_field(raw: dict[str, object], path: Path, key: str, env: str, fallback: Path, tier: str) -> Store:
+    """A store, resolved once: the environment wins, then the config, then a default.
+
+    The tier is passed in rather than derived, because it is the *device* that decides it — a work
+    machine's single store is the sensitive one, and nothing about the key or the path says so.
+    """
     override = os.environ.get(env)
     if override:
-        return Path(override).expanduser(), f"${env}"
+        return Store(tier, Path(override).expanduser(), f"${env}")
     if key in raw:
-        return _path_field(raw, key, fallback), str(path)
-    return fallback, "default"
+        return Store(tier, _path_field(raw, key, fallback), str(path))
+    return Store(tier, fallback, "default")
 
 
 def _device_field(raw: dict[str, object]) -> str:
@@ -509,21 +516,25 @@ def load_config() -> Config:
         except tomllib.TOMLDecodeError as exc:
             raise PlanError(f"{path}: {exc}") from exc
 
-    store, store_source = _store_field(raw, path, "store", "PLANS_HOME", Path.home() / "plans")
-    sensitive, sensitive_source = _store_field(
-        raw, path, "sensitive_store", "PLANS_SENSITIVE_HOME", _sensitive_sibling(store)
+    device = _device_field(raw)
+    # A work device has one store and it is the sensitive one: the whole machine belongs to one
+    # organisation, so there is no boundary for a tier to draw. The tier is stamped here, at the one
+    # place that knows the device, rather than re-derived by every reader.
+    store = _store_field(
+        raw, path, "store", "PLANS_HOME", Path.home() / "plans", SHAREABLE if device == CONTRACTOR else SENSITIVE
+    )
+    sensitive = _store_field(
+        raw, path, "sensitive_store", "PLANS_SENSITIVE_HOME", _sensitive_sibling(store.path), SENSITIVE
     )
 
     default = raw.get("default")
     return Config(
         path=path,
         exists=path.is_file(),
-        device=_device_field(raw),
+        device=device,
         projects_root=_path_field(raw, "projects_root", Path.home() / "projects"),
         store=store,
-        store_source=store_source,
         sensitive_store=sensitive,
-        sensitive_store_source=sensitive_source,
         default=None if default is None else parse_rule(default, "default"),
         roots=_rules(raw, "roots"),
         repos=_rules(raw, "repos"),
@@ -767,7 +778,7 @@ def resolve(start: Path, cfg: Config) -> Routing:
     # The tier lookup lives here and nowhere else: every command that writes, reads, moves or
     # archives a store-held plan goes through `routing.store_dir`, so one substitution routes all of
     # them and none of them has to know a tier exists.
-    store_dir = None if rel is None else cfg.store_for(rel) / rel
+    store_dir = None if rel is None else cfg.store_for(rel).path / rel
 
     if rule is None:
         reason = (
@@ -911,7 +922,7 @@ def family_plans(cfg: Config) -> list[ScopedPlan]:
     """
     found: list[ScopedPlan] = []
     for rel in repo_paths(cfg):
-        for where, directory in (("repo", cfg.projects_root / rel / "plans"), ("store", cfg.store_for(rel) / rel)):
+        for where, directory in (("repo", cfg.projects_root / rel / "plans"), ("store", cfg.store_for(rel).path / rel)):
             found.extend(ScopedPlan(rel, plan) for plan in plans_in(directory, where))
     found.extend(ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
     return found
@@ -1324,14 +1335,14 @@ def archive_sources(cfg: Config, routing: Routing | None) -> list[Source]:
     """
     if routing is None:
         found = [Source("repo", cfg.projects_root / rel, "plans/") for rel in repo_paths(cfg)]
-        return [*found, *(Source("store", path, "", tier) for tier, path in cfg.stores())]
+        return [*found, *(Source("store", store.path, "", store.tier) for store in cfg.stores())]
     found = []
     for read in routing.read_dirs():
         if read.where == "repo" and routing.repo_root is not None:
             found.append(Source("repo", routing.repo_root, "plans/"))
         elif read.where == "store" and routing.rel is not None:
-            tier = cfg.tier_of(routing.rel)
-            found.append(Source("store", cfg.store_of(tier), f"{routing.rel}/", tier))
+            store = cfg.store_for(routing.rel)
+            found.append(Source("store", store.path, f"{routing.rel}/", store.tier))
     return found
 
 
@@ -1514,7 +1525,7 @@ def cmd_where(args: argparse.Namespace) -> int:
             "write_dir": str(routing.write_dir) if rule and routing.verdict == "ok" else None,
             "read_dirs": {where: str(path) for where, path in routing.read_dirs()},
             "tier": cfg.tier_of(routing.rel),
-            "store": str(cfg.store_for(routing.rel)),
+            "store": str(cfg.store_for(routing.rel).path),
             "config": str(cfg.path),
         }
         print(json.dumps(payload, indent=2))
@@ -1542,12 +1553,11 @@ def cmd_where(args: argparse.Namespace) -> int:
         tier = cfg.tier_of(routing.rel)
         print("device:  contractor — the store splits by sensitivity")
         print(f"tier:    {tier} — this repo's store-held plans live in the {tier} half")
-        for name, path in cfg.stores():
-            source = cfg.store_source_of(name)
-            print(f"store:   {name:<10} {path} (from {source})")
+        for store in cfg.stores():
+            print(f"store:   {store.tier:<10} {store.path} (from {store.source})")
     else:
         print("device:  work — one organisation, so one store and no tier to choose")
-        print(f"store:   {cfg.store} (from {cfg.store_source})")
+        print(f"store:   {cfg.store.path} (from {cfg.store.source})")
     return 0 if routing.verdict == "ok" else NEEDS_DECISION
 
 
@@ -1719,7 +1729,7 @@ def cmd_new(args: argparse.Namespace) -> int:
         # survives the clone being moved or renamed, so that is what the file itself records.
         origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
     belongs = routing.rel or (str(routing.repo_root) if routing.repo_root else None)
-    tier_store = cfg.store_for(routing.rel) if where == "store" else None
+    tier_store = cfg.store_for(routing.rel).path if where == "store" else None
     return write_plan(target, args.topic, args.status, where, origin, cfg, belongs_to=belongs, store=tier_store)
 
 
@@ -1749,8 +1759,7 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
         )
 
     origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
-    tier = cfg.tier_of(routing.rel)
-    store = cfg.store_of(tier)
+    store = cfg.store_for(routing.rel)
     source = resolve(args.path, cfg)
     code = write_plan(
         store_dir,
@@ -1759,12 +1768,12 @@ def file_for_repo(args: argparse.Namespace, cfg: Config) -> int:
         "store",
         origin,
         cfg,
-        store=store,
+        store=store.path,
         source_repo=source.rel or (str(source.repo_root) if source.repo_root else None),
     )
     print(f"filed for: {routing.rel or routing.repo_root}")
     if cfg.split_by_sensitivity:
-        print(f"tier:      {tier}")
+        print(f"tier:      {store.tier}")
     if routing.rule and routing.rule.write == "repo":
         print("note:      that repo keeps its own plans, so this is in transit — a session working")
         print("           there absorbs it with: plans.py move <file> --to repo")
@@ -1834,7 +1843,7 @@ def write_plan(
         # and the guard cannot fire at all. Saying which repo the plan just became the property of
         # is the one check that survives drift, because it depends on nothing that drifted.
         print(f"repo:    {belongs_to}")
-    holding = store or cfg.store
+    holding = store or cfg.store.path
     if where in {"store", "unscoped"} and not (holding / ".git").is_dir():
         print(f"note:    {holding} is not a git repository yet — plans.py install")
     if where == "unscoped":
@@ -1856,7 +1865,7 @@ def auto_scope(cfg: Config, routing: Routing) -> str:
     repo root there, but it is not a project and a session that has cd'd into it is asking about
     everything rather than about the store's own directory.
     """
-    if routing.repo_root is not None and any(is_within(routing.repo_root, path) for _, path in cfg.stores()):
+    if routing.repo_root is not None and any(is_within(routing.repo_root, s.path) for s in cfg.stores()):
         return "family"
     return "repo" if routing.verdict == "ok" else "family"
 
@@ -1907,11 +1916,11 @@ def cmd_list(args: argparse.Namespace) -> int:
     print(f"scope:   {scope}{' (auto)' if args.scope == 'auto' else ''}")
     if scope == "repo":
         print(f"repo:    {routing.rel or routing.repo_root}")
-        print(f"store:   {cfg.store_for(routing.rel)}  [{cfg.tier_of(routing.rel)}]")
+        print(f"store:   {cfg.store_for(routing.rel).path}  [{cfg.tier_of(routing.rel)}]")
     else:
         print(f"root:    {cfg.projects_root}")
-        for name, path in cfg.stores():
-            print(f"store:   {path}  [{name}]")
+        for store in cfg.stores():
+            print(f"store:   {store.path}  [{store.tier}]")
     if not entries:
         # Not necessarily an empty repo: a `plans/` holding nothing but landed plans is a
         # retirement backlog, and "(no plan files)" on its own would be a lie of omission.
@@ -2308,7 +2317,7 @@ def cmd_absorb(args: argparse.Namespace) -> int:
         print(f"          cover the same topic, which is a merge, not a rename. Filed copy: {plan.path}")
     if moved:
         store = cfg.store_for(routing.rel)
-        print(f"\n{len(moved)} absorbed. Run this repo's quality gate, then commit here and in {store}.")
+        print(f"\n{len(moved)} absorbed. Run this repo's quality gate, then commit here and in {store.path}.")
     landed = {entry.plan.path.name for entry in moved}
     owed = {name: related for name, related in pairs.items() if name in landed}
     if owed:
@@ -2831,8 +2840,8 @@ def install_decisions(cfg: Config) -> list[Decision]:
                 if cfg.split_by_sensitivity
                 else "the store, holding every root on this machine. Local-only unless the destination is sanctioned"
             ),
-            current=f"{cfg.store} (from {cfg.store_source})",
-            suggest=str(cfg.store),
+            current=f"{cfg.store.path} (from {cfg.store.source})",
+            suggest=str(cfg.store.path),
             cost="moving it later leaves the old copy behind; it is the only copy of those plans",
         ),
     ]
@@ -2841,8 +2850,8 @@ def install_decisions(cfg: Config) -> list[Decision]:
             Decision(
                 key="sensitive_store",
                 what="the other half: every root not marked shareable. Local-only, no remote, full history",
-                current=f"{cfg.sensitive_store} (from {cfg.sensitive_store_source})",
-                suggest=str(_sensitive_sibling(cfg.store)),
+                current=f"{cfg.sensitive_store.path} (from {cfg.sensitive_store.source})",
+                suggest=str(_sensitive_sibling(cfg.store.path)),
                 cost="pointing it at the shareable store collapses the split and puts client plans on a remote",
             )
         )
@@ -2916,9 +2925,9 @@ def explain_install(cfg: Config) -> int:
     """What `install` will do, and what only the user can settle. Writes nothing."""
     print("install would:")
     planned: list[tuple[str, Path, str]] = [("write" if not cfg.path.is_file() else "keep", cfg.path, "")]
-    for name, path in cfg.stores():
-        note = " (git repository; a remote is allowed)" if name == SHAREABLE else " (git repository, no remote)"
-        planned.append(("create" if not path.is_dir() else "keep", path, f"  [{name}]{note}"))
+    for store in cfg.stores():
+        note = " (git repository; a remote is allowed)" if store.tier == SHAREABLE else " (git repository, no remote)"
+        planned.append(("create" if not store.path.is_dir() else "keep", store.path, f"  [{store.tier}]{note}"))
     planned.append(("create" if not cfg.unscoped.is_dir() else "keep", cfg.unscoped, ""))
     for verb, target, note in planned:
         print(f"  {verb:<7}{target}{note}")
@@ -2948,27 +2957,27 @@ def run_install(args: argparse.Namespace) -> int:
     else:
         print(f"exists:      {cfg.path}")
 
-    for name, path in cfg.stores():
-        path.mkdir(parents=True, exist_ok=True)
-        if not (path / ".git").is_dir():
-            if git(["init", "-q"], path) is None:
-                raise PlanError(f"git init failed in {path}")
-            print(f"initialized: {path} (git)  [{name}]")
+    for store in cfg.stores():
+        store.path.mkdir(parents=True, exist_ok=True)
+        if not (store.path / ".git").is_dir():
+            if git(["init", "-q"], store.path) is None:
+                raise PlanError(f"git init failed in {store.path}")
+            print(f"initialized: {store.path} (git)  [{store.tier}]")
         else:
-            print(f"exists:      {path}  [{name}]")
-        readme = path / "README.md"
+            print(f"exists:      {store.path}  [{store.tier}]")
+        readme = store.path / "README.md"
         if not readme.exists():
-            readme.write_text(STORE_README[name], encoding="utf-8")
+            readme.write_text(STORE_README[store.tier], encoding="utf-8")
             print(f"created:     {readme}")
-        if not git(["config", "user.email"], path):
-            print(f"todo:        the {name} store has no git identity and cannot commit —")
-            print(f"             git -C {path} config user.name/user.email")
+        if not git(["config", "user.email"], store.path):
+            print(f"todo:        the {store.tier} store has no git identity and cannot commit —")
+            print(f"             git -C {store.path} config user.name/user.email")
     cfg.unscoped.mkdir(parents=True, exist_ok=True)
 
     for problem in remote_problems(cfg):
         print(f"WARNING:     {problem}")
     if not os.environ.get("PLANS_HOME"):
-        print(f"todo:        PLANS_HOME is unset; the default {cfg.store} is in use. Export it from")
+        print(f"todo:        PLANS_HOME is unset; the default {cfg.store.path} is in use. Export it from")
         print("             your shell profile so everything else on the machine agrees.")
     if not args.quiet:
         print("\nnext:        plans.py where   (in a repo)   /   plans.py new <topic> --unscoped")
@@ -2988,17 +2997,17 @@ def remote_problems(cfg: Config) -> list[str]:
     the message names what is wrong rather than refusing outright, and a deliberate remote is
     recorded where doctor can read it rather than argued with here.
     """
-    store = cfg.store if not cfg.split_by_sensitivity else cfg.sensitive_store
-    if not is_git_repo(store):
+    guarded = cfg.store if not cfg.split_by_sensitivity else cfg.sensitive_store
+    if not is_git_repo(guarded.path):
         return []
-    if cfg.split_by_sensitivity and store.expanduser() == cfg.store.expanduser():
+    if cfg.split_by_sensitivity and guarded.path.expanduser() == cfg.store.path.expanduser():
         return []
-    remotes = git(["remote"], store)
+    remotes = git(["remote"], guarded.path)
     if not remotes:
         return []
     holding = "several clients' internal architecture" if cfg.split_by_sensitivity else "an employer's internal work"
     return [
-        f"the {'sensitive ' if cfg.split_by_sensitivity else ''}store {store} has remote(s) "
+        f"the {'sensitive ' if cfg.split_by_sensitivity else ''}store {guarded.path} has remote(s) "
         f"{remotes.split()} — one personal remote holding {holding} is the outcome this check "
         "exists to avoid; a sanctioned destination is fine, a personal one is not"
     ]
@@ -3014,17 +3023,17 @@ def misfiled_plans(cfg: Config) -> list[str]:
     histories and a decision about what to publish.
     """
     found: list[str] = []
-    for tier, store in cfg.stores():
-        if not store.is_dir():
+    for store in cfg.stores():
+        if not store.path.is_dir():
             continue
-        for path in sorted(store.iterdir()):
+        for path in sorted(store.path.iterdir()):
             if not path.is_dir() or path.name.startswith(".") or path.name == UNSCOPED_DIR:
                 continue
             actual = cfg.tier_of(path.name)
-            if actual != tier:
+            if actual != store.tier:
                 found.append(
-                    f"{path} is in the {tier} store but {path.name} is a {actual} root — "
-                    f"move it to {cfg.store_of(actual)}/{path.name}, in both histories"
+                    f"{path} is in the {store.tier} store but {path.name} is a {actual} root — "
+                    f"move it to {cfg.store_of(actual).path}/{path.name}, in both histories"
                 )
     return found
 
@@ -3038,17 +3047,19 @@ def store_problems(cfg: Config) -> list[str]:
     found: list[str] = []
     if not cfg.path.is_file():
         found.append(f"no config at {cfg.path} — run: plans.py install")
-    for tier, store in cfg.stores():
-        if not store.is_dir():
-            found.append(f"the {tier} store {store} does not exist — run: plans.py install")
+    for store in cfg.stores():
+        if not store.path.is_dir():
+            found.append(f"the {store.tier} store {store.path} does not exist — run: plans.py install")
             continue
-        if not is_git_repo(store):
+        if not is_git_repo(store.path):
             found.append(
-                f"the {tier} store is not a git repository, so `archive` can retrieve nothing there — plans.py install"
+                f"the {store.tier} store is not a git repository, so `archive` can retrieve nothing there "
+                "— plans.py install"
             )
-        elif not git(["config", "user.email"], store):
+        elif not git(["config", "user.email"], store.path):
             found.append(
-                f"the {tier} store has no git identity and cannot commit — git -C {store} config user.name/user.email"
+                f"the {store.tier} store has no git identity and cannot commit — "
+                f"git -C {store.path} config user.name/user.email"
             )
     found += remote_problems(cfg)
     found += misfiled_plans(cfg)
@@ -3056,7 +3067,7 @@ def store_problems(cfg: Config) -> list[str]:
     # pinning `$PLANS_HOME` already pins both, and a second variable to keep in sync would be one
     # more thing that can disagree between shells for no benefit.
     if not os.environ.get("PLANS_HOME"):
-        found.append(f"PLANS_HOME is unset; {cfg.store} is in use by default. Export it so the machine agrees")
+        found.append(f"PLANS_HOME is unset; {cfg.store.path} is in use by default. Export it so the machine agrees")
     if not session_is_anchored(cfg):
         found.append(
             "no session anchor: the cross-repo guard is falling back to cwd, which cannot detect a "
@@ -3151,17 +3162,17 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "config": str(cfg.path),
             "exists": cfg.path.is_file(),
             "projects_root": str(cfg.projects_root),
-            "store": str(cfg.store),
-            "store_source": cfg.store_source,
+            "store": str(cfg.store.path),
+            "store_source": cfg.store.source,
             "stores": [
                 {
-                    "tier": tier,
-                    "path": str(path),
-                    "source": cfg.store_source_of(tier),
-                    "git": is_git_repo(path),
-                    "remotes": (git(["remote"], path) or "").split(),
+                    "tier": store.tier,
+                    "path": str(store.path),
+                    "source": store.source,
+                    "git": is_git_repo(store.path),
+                    "remotes": (git(["remote"], store.path) or "").split(),
                 }
-                for tier, path in cfg.stores()
+                for store in cfg.stores()
             ],
             "unscoped": str(cfg.unscoped),
             "idea_limit": cfg.idea_limit,
@@ -3256,16 +3267,15 @@ def _print_stores(cfg: Config) -> None:
     Printed together rather than as one `store:` line, because "which tier has a remote" is the
     question the split creates and the one thing a session cannot infer from the paths.
     """
-    for tier, path in cfg.stores():
-        source = cfg.store_source_of(tier)
-        if not path.is_dir():
+    for store in cfg.stores():
+        if not store.path.is_dir():
             state = "missing"
-        elif not is_git_repo(path):
+        elif not is_git_repo(store.path):
             state = "not a git repository"
         else:
-            remotes = (git(["remote"], path) or "").split()
+            remotes = (git(["remote"], store.path) or "").split()
             state = f"remote: {', '.join(remotes)}" if remotes else "no remote"
-        print(f"store:         {path} (from {source})  [{tier}, {state}]")
+        print(f"store:         {store.path} (from {store.source})  [{store.tier}, {state}]")
 
 
 def cmd_uninstall(args: argparse.Namespace) -> int:
@@ -3281,12 +3291,17 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
         print(f"absent:      {cfg.path}")
 
     holding = {
-        tier: [path for path in store.rglob("*.md") if path.name != "README.md"] if store.is_dir() else []
-        for tier, store in cfg.stores()
+        store.tier: [path for path in store.path.rglob("*.md") if path.name != "README.md"]
+        if store.path.is_dir()
+        else []
+        for store in cfg.stores()
     }
     if not args.purge_store:
-        for tier, store in cfg.stores():
-            print(f"kept:        {store} ({len(holding[tier])} plan file(s)) [{tier}] — --purge-store to delete it")
+        for store in cfg.stores():
+            print(
+                f"kept:        {store.path} ({len(holding[store.tier])} plan file(s)) [{store.tier}] "
+                "— --purge-store to delete it"
+            )
         return 0
     held = sum(len(files) for files in holding.values())
     if held and not args.force:
@@ -3296,10 +3311,10 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
             f"the store still holds {held} plan file(s) across {len(cfg.stores())} tier(s); this is "
             "their only copy. Move what matters out first, or re-run with --force to delete them."
         )
-    for tier, store in cfg.stores():
-        if store.is_dir():
-            shutil.rmtree(store)
-            print(f"removed:     {store} ({len(holding[tier])} plan file(s) deleted) [{tier}]")
+    for store in cfg.stores():
+        if store.path.is_dir():
+            shutil.rmtree(store.path)
+            print(f"removed:     {store.path} ({len(holding[store.tier])} plan file(s) deleted) [{store.tier}]")
     return 0
 
 
@@ -3442,9 +3457,8 @@ def cmd_config(args: argparse.Namespace) -> int:
 def show_config(cfg: Config) -> int:
     print(f"config:        {cfg.path}{'' if cfg.exists else ' (does not exist)'}")
     print(f"projects_root: {cfg.projects_root}")
-    for tier, path in cfg.stores():
-        source = cfg.store_source_of(tier)
-        print(f"store:         {path} (from {source})  [{tier}]")
+    for store in cfg.stores():
+        print(f"store:         {store.path} (from {store.source})  [{store.tier}]")
     print(f"public_roots:  {', '.join(cfg.public_root_names()) or '(none)'}")
     fallback = "" if cfg.shareable_roots else "  (unset — falls back to public_roots)"
     print(f"shareable:     {', '.join(cfg.shareable_root_names()) or '(none)'}{fallback}")

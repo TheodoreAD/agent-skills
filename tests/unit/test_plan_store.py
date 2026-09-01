@@ -145,8 +145,8 @@ def test_plans_home_env_beats_config_store(ws, monkeypatch):
     write_config(ws, "")
     monkeypatch.setenv("PLANS_HOME", str(ws.home / "elsewhere"))
     cfg = plans.load_config()
-    assert cfg.store == ws.home / "elsewhere"
-    assert cfg.store_source == "$PLANS_HOME"
+    assert cfg.store.path == ws.home / "elsewhere"
+    assert cfg.store.source == "$PLANS_HOME"
 
 
 # --------------------------------------------------------------------------------------------
@@ -1488,15 +1488,15 @@ def test_shareable_roots_falls_back_to_public_roots_and_overrides_it_when_set(ws
 
 def test_the_sensitive_store_follows_the_shareable_one_and_the_environment_beats_both(ws, monkeypatch):
     write_config(ws, TIERED)
-    assert plans.load_config().sensitive_store == ws.home / "plans-sensitive"
+    assert plans.load_config().sensitive_store.path == ws.home / "plans-sensitive"
 
     monkeypatch.setenv("PLANS_HOME", str(ws.home / "elsewhere"))
-    assert plans.load_config().sensitive_store == ws.home / "elsewhere-sensitive"
+    assert plans.load_config().sensitive_store.path == ws.home / "elsewhere-sensitive"
 
     monkeypatch.setenv("PLANS_SENSITIVE_HOME", str(ws.home / "vault"))
     cfg = plans.load_config()
-    assert cfg.sensitive_store == ws.home / "vault"
-    assert cfg.sensitive_store_source == "$PLANS_SENSITIVE_HOME"
+    assert cfg.sensitive_store.path == ws.home / "vault"
+    assert cfg.sensitive_store.source == "$PLANS_SENSITIVE_HOME"
 
 
 def test_pointing_both_tiers_at_one_directory_degrades_to_a_single_store(ws, capsys):
@@ -1504,7 +1504,7 @@ def test_pointing_both_tiers_at_one_directory_degrades_to_a_single_store(ws, cap
     report and search that directory once, not twice."""
     write_config(ws, tiered(f'sensitive_store = "{ws.store}"\n'))
     cfg = plans.load_config()
-    assert cfg.stores() == [("shareable", ws.store)]
+    assert [(store.tier, store.path) for store in cfg.stores()] == [("shareable", ws.store)]
     assert route(ws.client).store_dir == ws.store / "client.com-bitbucket" / "team" / "api"
 
     assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
@@ -1559,7 +1559,9 @@ def test_a_work_device_routes_every_root_to_the_one_store(ws, monkeypatch):
     assert route(ws.personal).store_dir == ws.store / "github.com-personal" / "agent-skills"
     cfg = plans.load_config()
     assert cfg.split_by_sensitivity is False
-    assert cfg.stores() == [("sensitive", cfg.store)], "one store, and it is the guarded one"
+    assert [(store.tier, store.path) for store in cfg.stores()] == [("sensitive", cfg.store.path)], (
+        "one store, and it is the guarded one"
+    )
 
 
 def test_doctor_reports_a_root_filed_in_the_wrong_tier(ws, capsys):

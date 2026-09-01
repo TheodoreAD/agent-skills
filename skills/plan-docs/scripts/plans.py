@@ -731,19 +731,26 @@ def repo_root_of(start: Path) -> Path | None:
     return Path(top) if top else None
 
 
-def _match_rule(cfg: Config, rel: str | None) -> tuple[Rule | None, str]:
+class RuleMatch(NamedTuple):
+    """The rule that decided a repo's route, and the config entry it came from."""
+
+    rule: Rule | None
+    source: str
+
+
+def _match_rule(cfg: Config, rel: str | None) -> RuleMatch:
     """Most specific first: an exact [repos] entry, then the longest [roots] prefix, then default."""
     if rel is not None:
         if rel in cfg.repos:
-            return cfg.repos[rel], f'repos entry "{rel}"'
+            return RuleMatch(cfg.repos[rel], f'repos entry "{rel}"')
         parts = rel.split("/")
         for depth in range(len(parts) - 1, 0, -1):
             prefix = "/".join(parts[:depth])
             if prefix in cfg.roots:
-                return cfg.roots[prefix], f'roots entry "{prefix}"'
+                return RuleMatch(cfg.roots[prefix], f'roots entry "{prefix}"')
     if cfg.default is not None:
-        return cfg.default, "default"
-    return None, "no rule"
+        return RuleMatch(cfg.default, "default")
+    return RuleMatch(None, "no rule")
 
 
 def resolve(start: Path, cfg: Config) -> Routing:
@@ -994,7 +1001,14 @@ def is_repository(path: Path) -> bool:
     return (path / ".git").exists() or looks_bare(path)
 
 
-def walk_projects(cfg: Config) -> tuple[list[str], list[LayoutProblem]]:
+class ProjectsWalk(NamedTuple):
+    """What one walk of the projects tree found: the repos, and what was wrong on the way."""
+
+    repos: list[str]
+    problems: list[LayoutProblem]
+
+
+def walk_projects(cfg: Config) -> ProjectsWalk:
     """Every git repo under the projects root, plus everything wrong with the tree on the way.
 
     Stops descending the moment a `.git` is found, so a repo's own internal directory names never
@@ -1002,7 +1016,7 @@ def walk_projects(cfg: Config) -> tuple[list[str], list[LayoutProblem]]:
     what makes a confidentiality gate noisy enough to be ignored.
     """
     if not cfg.projects_root.is_dir():
-        return [], []
+        return ProjectsWalk([], [])
     if (cfg.projects_root / ".git").exists():
         # Fatal rather than reported: the walk would return `["."]`, collapsing the whole tree into
         # one repo, hiding every real one, and leaving `scan` with almost no terms — a
@@ -1016,7 +1030,7 @@ def walk_projects(cfg: Config) -> tuple[list[str], list[LayoutProblem]]:
 
     walk = _Walk(cfg)
     walk.visit(cfg.projects_root, 0)
-    return walk.found, walk.problems
+    return ProjectsWalk(walk.found, walk.problems)
 
 
 @dataclass
@@ -1093,7 +1107,7 @@ class _Walk:
 
 
 def repo_paths(cfg: Config) -> list[str]:
-    return walk_projects(cfg)[0]
+    return walk_projects(cfg).repos
 
 
 def private_terms(cfg: Config) -> list[str]:
@@ -1218,7 +1232,7 @@ def known_repos(cfg: Config) -> list[RepoInfo]:
     found: list[RepoInfo] = []
     for rel in repo_paths(cfg):
         path = cfg.projects_root / rel
-        rule, _ = _match_rule(cfg, rel)
+        rule = _match_rule(cfg, rel).rule
         found.append(
             RepoInfo(
                 rel=rel,
@@ -1587,7 +1601,14 @@ def claude_session_repo(cfg: Config) -> Path | None:
     return next((repo for repo in _candidate_repos(cfg) if encode_project_dir(repo) == encoded), None)
 
 
-def session_anchor(cfg: Config) -> tuple[Path | None, str]:
+class SessionAnchor(NamedTuple):
+    """Where this session lives, and which of the three signals said so."""
+
+    repo: Path | None
+    source: str
+
+
+def session_anchor(cfg: Config) -> SessionAnchor:
     """The repo this session belongs to, and which signal said so.
 
     Three tiers, most trustworthy first, because the guard that uses this is only as good as its
@@ -1606,20 +1627,20 @@ def session_anchor(cfg: Config) -> tuple[Path | None, str]:
         root = repo_root_of(Path(override).expanduser())
         if root is None:
             raise PlanError(f"$PLAN_DOCS_SESSION_REPO is {override!r}, which is not inside a git repository")
-        return root, "$PLAN_DOCS_SESSION_REPO"
+        return SessionAnchor(root, "$PLAN_DOCS_SESSION_REPO")
     found = claude_session_repo(cfg)
     if found is not None:
-        return found, "this session's transcript"
-    return repo_root_of(Path.cwd()), "cwd (no session anchor — see doctor)"
+        return SessionAnchor(found, "this session's transcript")
+    return SessionAnchor(repo_root_of(Path.cwd()), "cwd (no session anchor — see doctor)")
 
 
 def session_repo(cfg: Config) -> Path | None:
-    return session_anchor(cfg)[0]
+    return session_anchor(cfg).repo
 
 
 def session_is_anchored(cfg: Config) -> bool:
     """Whether the answer came from a real anchor rather than the drift-prone fallback."""
-    return not session_anchor(cfg)[1].startswith("cwd")
+    return not session_anchor(cfg).source.startswith("cwd")
 
 
 def is_foreign(target: Path | None, cfg: Config) -> bool:
@@ -2280,15 +2301,15 @@ def cmd_absorb(args: argparse.Namespace) -> int:
     chosen = [plan for plan in pending if wanted is None or plan.path.name in wanted]
     moved, blocked = _take_plans(chosen, target)
 
-    for plan, destination in moved:
-        print(f"absorbed: {plan.path.name} -> {destination}")
+    for entry in moved:
+        print(f"absorbed: {entry.plan.path.name} -> {entry.destination}")
     for plan in blocked:
         print(f"CONFLICT: {plan.path.name} already exists in {target}; resolve it by hand — the two")
         print(f"          cover the same topic, which is a merge, not a rename. Filed copy: {plan.path}")
     if moved:
         store = cfg.store_for(routing.rel)
         print(f"\n{len(moved)} absorbed. Run this repo's quality gate, then commit here and in {store}.")
-    landed = {plan.path.name for plan, _ in moved}
+    landed = {entry.plan.path.name for entry in moved}
     owed = {name: related for name, related in pairs.items() if name in landed}
     if owed:
         print()
@@ -2350,7 +2371,21 @@ def _print_consolidation_note() -> None:
     print("say so in their own words. Nothing re-surfaces a genuine pair once absorbed.")
 
 
-def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFile, Path]], list[PlanFile]]:
+class MovedPlan(NamedTuple):
+    """A plan and where it now is."""
+
+    plan: PlanFile
+    destination: Path
+
+
+class TakenPlans(NamedTuple):
+    """The outcome of absorbing a batch: what moved, and what a name collision held back."""
+
+    moved: list[MovedPlan]
+    blocked: list[PlanFile]
+
+
+def _take_plans(chosen: list[PlanFile], target: Path) -> TakenPlans:
     """Move each plan into the target directory, skipping any whose name is already taken.
 
     A collision is never renamed around: two plans sharing a name is the moment a merge is wanted,
@@ -2361,7 +2396,7 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFi
     redundant answer to a question the location now answers — the same argument the skill makes
     against marking in-transit plans at all.
     """
-    moved: list[tuple[PlanFile, Path]] = []
+    moved: list[MovedPlan] = []
     blocked: list[PlanFile] = []
     for plan in chosen:
         destination = target / plan.path.name
@@ -2372,8 +2407,8 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> tuple[list[tuple[PlanFi
         text = strip_frontmatter_key(plan.path.read_text(encoding="utf-8"), "repo")
         destination.write_text(text, encoding="utf-8")
         plan.path.unlink()
-        moved.append((plan, destination))
-    return moved, blocked
+        moved.append(MovedPlan(plan, destination))
+    return TakenPlans(moved, blocked)
 
 
 def cmd_move(args: argparse.Namespace) -> int:
@@ -3033,7 +3068,7 @@ def store_problems(cfg: Config) -> list[str]:
 def layout_problems(cfg: Config, *, strict: bool = False) -> list[str]:
     """The tree's own shape, and which collections nobody has categorised yet."""
     try:
-        _, found = walk_projects(cfg)
+        found = walk_projects(cfg).problems
     except PlanError as exc:
         # doctor is the command whose job is saying what is wrong, so the one fatal layout error is
         # reported here rather than raised out of it.
@@ -3046,7 +3081,7 @@ def layout_problems(cfg: Config, *, strict: bool = False) -> list[str]:
     # no registry, just the config read as a record of what has been answered.
     known = repo_paths(cfg)
     roots = sorted({rel.split("/")[0] for rel in known})
-    undecided = [name for name in roots if _match_rule(cfg, f"{name}/x")[1] == "default"]
+    undecided = [name for name in roots if _match_rule(cfg, f"{name}/x").source == "default"]
     out += [f"{name}: no explicit rule, using `default` — config set roots.{name} <repo|store>" for name in undecided]
     return out + inert_root_rules(cfg, known)
 
@@ -3109,7 +3144,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     for rel in repo_paths(cfg):
         roots.setdefault(rel.split("/")[0], []).append(rel)
     holding = sorted(((rel, counts[rel]) for rel in counts if rel != UNSCOPED_DIR and counts[rel]), key=lambda p: -p[1])
-    unrouted = [rel for rel, _ in holding if _match_rule(cfg, rel)[1] == "no rule"]
+    unrouted = [rel for rel, _ in holding if _match_rule(cfg, rel).source == "no rule"]
 
     if args.json:
         payload = {
@@ -3133,8 +3168,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "roots": [
                 {
                     "root": name,
-                    "rule": (rule.describe() if (rule := _match_rule(cfg, f"{name}/x")[0]) else "(no rule — asks)"),
-                    "source": _match_rule(cfg, f"{name}/x")[1],
+                    "rule": (rule.describe() if (rule := _match_rule(cfg, f"{name}/x").rule) else "(no rule — asks)"),
+                    "source": _match_rule(cfg, f"{name}/x").source,
                     "tier": cfg.tier_of(name),
                     "repos": len(members),
                 }
@@ -3181,7 +3216,7 @@ def _print_doctor(
             f"{len(members):>3} repo(s), {with_plans} with plans"
         )
 
-    ignored = sum(1 for problem in walk_projects(cfg)[1] if problem.kind == "no repos")
+    ignored = sum(1 for problem in walk_projects(cfg).problems if problem.kind == "no repos")
     if ignored and not strict:
         # Counted here rather than listed under problems: on a healthy machine these are all
         # deliberate — playgrounds, docs, scratch folders — and a permanent entry in a problems
@@ -3268,7 +3303,17 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     return 0
 
 
-def split_config_key(key: str) -> tuple[str, str]:
+class ConfigKey(NamedTuple):
+    """A dotted config key split into the table it lives in and the name inside it.
+
+    An empty `table` means the key is a top-level one, not that it is unknown.
+    """
+
+    table: str
+    name: str
+
+
+def split_config_key(key: str) -> ConfigKey:
     """`view.idea_limit` -> ("view", "idea_limit"); `roots.github.com-personal` -> ("roots", rest).
 
     Split on the first dot only, and only when what precedes it is a known table: a repo key is a
@@ -3276,8 +3321,8 @@ def split_config_key(key: str) -> tuple[str, str]:
     """
     table, _, rest = key.partition(".")
     if rest and table in CONFIG_TABLES:
-        return table, rest
-    return "", key
+        return ConfigKey(table, rest)
+    return ConfigKey("", key)
 
 
 def render_toml_value(raw: str) -> str:
@@ -3298,17 +3343,24 @@ def render_toml_key(name: str) -> str:
     return name if re.fullmatch(r"[A-Za-z0-9_-]+", name) else json.dumps(name)
 
 
-def table_span(lines: list[str], table: str) -> tuple[int, int] | None:
+class LineSpan(NamedTuple):
+    """A half-open range of line indices, as `range` and slicing take it."""
+
+    start: int
+    end: int
+
+
+def table_span(lines: list[str], table: str) -> LineSpan | None:
     """The line range a table's entries live in, exclusive of its header. None if it has none."""
     if not table:
         end = next((i for i, line in enumerate(lines) if line.lstrip().startswith("[")), len(lines))
-        return 0, end
+        return LineSpan(0, end)
     header = f"[{table}]"
     start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
     if start is None:
         return None
     end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
-    return start + 1, end
+    return LineSpan(start + 1, end)
 
 
 def set_config_value(path: Path, key: str, value: str) -> str:

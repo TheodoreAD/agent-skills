@@ -882,7 +882,7 @@ def test_a_non_claude_harness_gets_the_same_guard_via_the_neutral_variable(ws, c
     monkeypatch.chdir(other)  # drifted
 
     assert plans.session_is_anchored(plans.load_config())
-    assert plans.session_anchor(plans.load_config())[1] == "$PLAN_DOCS_SESSION_REPO"
+    assert plans.session_anchor(plans.load_config()).source == "$PLAN_DOCS_SESSION_REPO"
     assert plans.main(["new", "drifted"]) == 1  # caught, with no Claude env at all
     assert not (other / "plans").exists()
 

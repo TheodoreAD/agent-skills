@@ -1,9 +1,14 @@
 ---
 status: idea
-updated: 2026-08-30
+updated: 2026-09-01
 ---
 
 # A session bumps `status:` with an editor, and `set-status`' gate never runs
+
+Merged 2026-09-01 from `2026-09-01-status-gate-bypassed-again-including-a-terminal-transition.md`,
+which recorded the second occurrence and is **merged away and deleted** —
+`plans.py archive --show 2026-09-01-status-gate-bypassed-again-including-a-terminal-transition.md`
+reads it back. It asked for this merge in its own body rather than standing as a second file.
 
 ## Context
 
@@ -14,40 +19,70 @@ session changing a plan's status is almost never changing _only_ that: it is alr
 file body, resolving `NEEDS CLARIFICATION` tags into `DECISION`s, and the frontmatter is four lines
 above the cursor.
 
-Measured in a `repo-tasks` session, 2026-08-30. Two plans were advanced in one sitting:
+Two occurrences now, in two repos, with the same proximate cause.
+
+**Occurrence 1** — a `repo-tasks` session, 2026-08-30. Two plans advanced in one sitting:
 
 | plan                                                | frontmatter change made by hand                       |
 | --------------------------------------------------- | ----------------------------------------------------- |
 | `2026-08-29-pytest-ini-anyio-mode.md`               | `status: idea` -> `in-progress`, `updated:` stamp     |
 | `2026-08-29-python-floor-in-the-shipped-configs.md` | `updated:` stamp, `depends_on: [scaffoldapy]` removed |
 
+**Occurrence 2** — a `github.com-personal/ingesta` session, 2026-09-01. Two more:
+
+| plan                                         | transition made by hand |
+| -------------------------------------------- | ----------------------- |
+| `2026-08-29-local-run-and-manual-testing.md` | `idea` -> `in-progress` |
+| `2026-09-01-local-catalogue-drift.md`        | `idea` -> **`landed`**  |
+
 Every one of those went through the file-editing tool. `set-status` was never called, so its gate
-never ran. The session had read the skill in the same sitting and still did this — it did not
-override a refusal, it simply never reached the code path that could refuse.
+never ran. Both sessions had the skill in context in the same sitting and still did this — neither
+overrode a refusal, both simply never reached the code path that could refuse.
 
 [PITFALL: the bypass leaves no trace, and the result looks exactly like a correct promotion. The
 frontmatter is well-formed, `list` renders the new status, and the next reader has no way to tell
-whether the gate passed or was never consulted. In this case the gate would have passed — the tags
-had been converted first — but that was luck, not process, and nothing in the artifact records which
-it was.]
+whether the gate passed or was never consulted. In both sessions the gate would have passed — the
+tags had been converted first — but that was luck, not process, and nothing in the artifact records
+which it was.]
+
+## What the terminal case adds
+
+The second occurrence's second transition was **terminal**. Occurrence 1 measured
+`idea -> in-progress` and `updated:` stamps — non-terminal, where a skipped gate costs a status that
+might be premature. `idea -> landed` is the transition that _precedes deletion_: it is the one
+`set-status` guards with the `UNVERIFIED`-blocks-`landed` rule and with the refusal to retire a plan
+still sitting in a repo-routed repo's store mirror. That session then retired the plan — migration
+section, reference fix, `git rm` — in the following three commits.
+
+So the gate that was skipped is not only the promotion gate. The same hand-edit reaches a status
+whose next step is a one-way door, and the two guards that exist specifically to stand in front of
+that door were both bypassed by an edit that looked like ordinary body work.
+
+## Evidence
+
+- Occurrence 1: measured in a `repo-tasks` session, 2026-08-30.
+- Occurrence 2 transcript:
+  `~/.claude/projects/-home-tdumitrescu-projects-github-com-personal-ingesta/81ef32cd-7240-48b8-b0a3-4cd53845adad.jsonl`,
+  session start `2026-09-01T09:01:27.595Z`. That session had invoked `plan-docs` in its first turn
+  and held the skill in context throughout.
+- Occurrence 2 commits, in `github.com-personal/ingesta`: `88dda8a` (the `in-progress` bump), and
+  `a4c70dc` / `bb76f58` / `898bc07` (the `landed` bump and the retirement that followed it).
 
 ## Open questions
 
-[NEEDS CLARIFICATION: which of the three failure shapes this is. It is not "the rule was followed
-and produced a bad outcome", and it is not quite "reasoned around" either — the session never
-weighed the rule at all, because the rule lives under a heading (**Promoting a plan**) that reads as
-being about the `idea -> planned` transition specifically, while the case here was
-`idea ->
-in-progress` arriving as a side effect of an edit. Closest to "not followed", which the
-skill's own routing calls a measurement question rather than a rewording one. Worth deciding before
-choosing a fix, since the three have different ones.]
+[DECISION: this is the "not followed" failure shape, which the harvest skill's own routing calls a
+measurement question rather than a rewording one. Settled by the second occurrence rather than by
+argument: two sessions, two repos, the same proximate cause, and no evidence in either transcript of
+the rule being weighed at all. It beat "reasoned around" because neither session overrode anything,
+and it beat "followed and produced a bad outcome" because the gate never ran.]
 
-[NEEDS CLARIFICATION: whether the wording alone can fix this. A stronger sentence in the skill is
-the cheap option, but the failure mode is a session that is already holding the file open in an
-editor — the moment of temptation is not the moment it reads the skill. Options, roughly by cost:
-say explicitly that a status or `updated` line is never hand-edited whatever else in the file is
-being changed; have `set-status` accept the transition as part of a normal editing flow so it is not
-a second command; or detect it after the fact.]
+[NEEDS CLARIFICATION: whether wording alone can fix this — the question to decide first, now that
+the classification is settled. A stronger sentence in the skill is the cheap option, but the failure
+mode is a session already holding the file open in an editor: the moment of temptation is not the
+moment it reads the skill, and both sessions read it. Options, roughly by cost: say explicitly that
+a status or `updated` line is never hand-edited whatever else in the file is being changed; have
+`set-status` accept the transition as part of a normal editing flow so it is not a second command;
+or detect it after the fact.]
 
 [NEEDS CLARIFICATION: whether anything should _notice_ a hand-edited status. `git log -p` over
 `plans/` can see a `status:` line changing in a commit, and `set-status` could leave a marker the
@@ -66,6 +101,11 @@ matters" — a session that never consulted the rule is not persuaded by a stron
 gate — but "these two lines are the command's output, not yours to type", which is a rule about the
 file rather than about the transition, and so does not depend on the session having classified what
 kind of transition it is making.
+
+**Do not aim the rule at "promotion".** The heading it currently lives under (**Promoting a plan**)
+reads as being about `idea -> planned` specifically, and none of the four hand-edits across the two
+sessions was that transition — two were `idea -> in-progress`, one was `idea -> landed`, one was a
+bare `updated:` stamp. A rule scoped to promotion is invisible to every case actually measured.
 
 Related: the skill's command surface was reshaped in the same week, and the reasoning — including
 why `set-status` keeps its name and why the inspection command could not be called `status` — is in

@@ -57,6 +57,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 NEEDS_DECISION = 3
 
@@ -563,6 +564,18 @@ def _strings(value: object, key: str) -> tuple[str, ...]:
 # routing
 
 
+class PlanDir(NamedTuple):
+    """One directory a session can read plans from, under the name that directory goes by.
+
+    A `NamedTuple` rather than a frozen dataclass because it replaces a bare `(where, path)` pair
+    that is already unpacked positionally at every call site: the positional surface exists whether
+    or not it is named, so naming it costs nothing and reaches no caller.
+    """
+
+    where: str  # repo | store | unscoped
+    path: Path
+
+
 @dataclass(frozen=True)
 class Routing:
     verdict: str  # ok | needs-decision
@@ -605,10 +618,10 @@ class Routing:
             raise PlanError(f"this repo has no {self.rule.write!r} directory to write to")
         return target
 
-    def read_dirs(self) -> list[tuple[str, Path]]:
+    def read_dirs(self) -> list[PlanDir]:
         if self.rule is None:
             return []
-        return [(where, found) for where in self.rule.read if (found := self.dir_for(where)) is not None]
+        return [PlanDir(where, found) for where in self.rule.read if (found := self.dir_for(where)) is not None]
 
 
 def git(args: list[str], cwd: Path, env: dict[str, str] | None = None) -> str | None:
@@ -870,7 +883,18 @@ def plan_files(routing: Routing) -> list[PlanFile]:
     return found
 
 
-def family_plans(cfg: Config) -> list[tuple[str, PlanFile]]:
+class ScopedPlan(NamedTuple):
+    """A plan together with the repo it belongs to, which is what a listing row is.
+
+    `repo` is the path relative to `projects_root`, or `_unscoped` for the area that belongs to no
+    repo yet — the same string the `--json` payload calls `repo`.
+    """
+
+    repo: str
+    plan: PlanFile
+
+
+def family_plans(cfg: Config) -> list[ScopedPlan]:
     """Every plan on the machine, paired with the repo it belongs to, plus the unscoped area.
 
     Both possible directories are read for every repo, rather than only the ones its rule names:
@@ -878,23 +902,23 @@ def family_plans(cfg: Config) -> list[tuple[str, PlanFile]]:
     routed yet is exactly the one whose backlog stays invisible. Cheap because `repo_paths` stops
     at each `.git` — no repo's own contents are walked.
     """
-    found: list[tuple[str, PlanFile]] = []
+    found: list[ScopedPlan] = []
     for rel in repo_paths(cfg):
         for where, directory in (("repo", cfg.projects_root / rel / "plans"), ("store", cfg.store_for(rel) / rel)):
-            found.extend((rel, plan) for plan in plans_in(directory, where))
-    found.extend((UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
+            found.extend(ScopedPlan(rel, plan) for plan in plans_in(directory, where))
+    found.extend(ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
     return found
 
 
-def visible_dirs(cfg: Config, routing: Routing) -> list[tuple[str, Path]]:
+def visible_dirs(cfg: Config, routing: Routing) -> list[PlanDir]:
     """Every directory a session in this repo can see a plan in, whatever the route says.
 
     The route decides where a *write* lands; a read that obeys it cannot see a plan filed into the
     store mirror from another repo, so `set-status` and friends could not act on one at all. Same
     argument, and the same fix, as the per-repo listing.
     """
-    dirs = [(where, found) for where in ("repo", "store") if (found := routing.dir_for(where)) is not None]
-    return [*dirs, ("unscoped", cfg.unscoped)]
+    dirs = [PlanDir(where, found) for where in ("repo", "store") if (found := routing.dir_for(where)) is not None]
+    return [*dirs, PlanDir("unscoped", cfg.unscoped)]
 
 
 def locate(cfg: Config, routing: Routing, name: str) -> PlanFile:
@@ -914,7 +938,7 @@ def locate(cfg: Config, routing: Routing, name: str) -> PlanFile:
         if plan.path.name == Path(name).name
     ]
     if not matches:
-        searched = ", ".join(str(d) for _, d in visible_dirs(cfg, routing)) or "(no readable directory)"
+        searched = ", ".join(str(d.path) for d in visible_dirs(cfg, routing)) or "(no readable directory)"
         raise PlanError(f"no plan named {name!r} in {searched}")
     if len(matches) > 1:
         joined = ", ".join(str(m.path) for m in matches)
@@ -1266,10 +1290,10 @@ def archive_sources(cfg: Config, routing: Routing | None) -> list[Source]:
         found = [Source("repo", cfg.projects_root / rel, "plans/") for rel in repo_paths(cfg)]
         return [*found, *(Source("store", path, "", tier) for tier, path in cfg.stores())]
     found = []
-    for where, _ in routing.read_dirs():
-        if where == "repo" and routing.repo_root is not None:
+    for read in routing.read_dirs():
+        if read.where == "repo" and routing.repo_root is not None:
             found.append(Source("repo", routing.repo_root, "plans/"))
-        elif where == "store" and routing.rel is not None:
+        elif read.where == "store" and routing.rel is not None:
             tier = cfg.tier_of(routing.rel)
             found.append(Source("store", cfg.store_of(tier), f"{routing.rel}/", tier))
     return found
@@ -1414,7 +1438,7 @@ def retired_plans(cfg: Config, sources: list[Source], search: str | None) -> lis
 def live_plans(cfg: Config, routing: Routing | None) -> dict[str, Path]:
     """Plan files that exist right now, by filename — the same scope the archive is searched at."""
     if routing is None:
-        return {plan.path.name: plan.path for _, plan in family_plans(cfg)}
+        return {entry.plan.path.name: entry.plan.path for entry in family_plans(cfg)}
     return {plan.path.name: plan.path for plan in plan_files(routing)}
 
 
@@ -1786,7 +1810,7 @@ def auto_scope(cfg: Config, routing: Routing) -> str:
     return "repo" if routing.verdict == "ok" else "family"
 
 
-def repo_scope_plans(cfg: Config, routing: Routing) -> list[tuple[str, PlanFile]]:
+def repo_scope_plans(cfg: Config, routing: Routing) -> list[ScopedPlan]:
     """Everything about the repo the session is in, plus the plans that belong to no repo yet.
 
     Deliberately not `routing.read_dirs()`. A route decides where a *write* lands; letting it decide
@@ -1796,12 +1820,12 @@ def repo_scope_plans(cfg: Config, routing: Routing) -> list[tuple[str, PlanFile]
     routing config being complete.
     """
     label = routing.rel or (routing.repo_root.name if routing.repo_root else "(repo)")
-    found: list[tuple[str, PlanFile]] = []
+    found: list[ScopedPlan] = []
     for where in ("repo", "store"):
         directory = routing.dir_for(where)
         if directory is not None:
-            found.extend((label, plan) for plan in plans_in(directory, where))
-    found.extend((UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
+            found.extend(ScopedPlan(label, plan) for plan in plans_in(directory, where))
+    found.extend(ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
     return found
 
 
@@ -1819,7 +1843,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         require_ok(routing)
         entries = repo_scope_plans(cfg, routing)
     elif scope == "unscoped":
-        entries = [(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped")]
+        entries = [ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped")]
     else:
         entries = family_plans(cfg)
 
@@ -1856,7 +1880,7 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_retirements_owed(entries: list[tuple[str, PlanFile]], args: argparse.Namespace) -> None:
+def _print_retirements_owed(entries: list[ScopedPlan], args: argparse.Namespace) -> None:
     """Terminal-status plans are hidden from the rows but never silently.
 
     `plans/` is a working set that empties out, so a `landed` plan still sitting in one is a
@@ -1866,7 +1890,7 @@ def _print_retirements_owed(entries: list[tuple[str, PlanFile]], args: argparse.
     """
     if args.all or args.status:
         return
-    owed = [pair for pair in entries if pair[1].group in TERMINAL_STATUSES]
+    owed = [pair for pair in entries if pair.plan.group in TERMINAL_STATUSES]
     if owed:
         print(f"{len(owed)} plan(s) at a terminal status await retirement — --all to see them")
 
@@ -1876,18 +1900,18 @@ def _idea_limit(args: argparse.Namespace, cfg: Config) -> int:
     return cfg.idea_limit if args.limit is None else args.limit
 
 
-def _select(entries: list[tuple[str, PlanFile]], args: argparse.Namespace) -> list[tuple[str, PlanFile]]:
+def _select(entries: list[ScopedPlan], args: argparse.Namespace) -> list[ScopedPlan]:
     """An explicit --status wins over the open-work default, so `--status landed` still works."""
     if args.status:
-        entries = [pair for pair in entries if pair[1].status.startswith(args.status)]
+        entries = [pair for pair in entries if pair.plan.status.startswith(args.status)]
     elif not args.all:
-        entries = [pair for pair in entries if pair[1].group not in TERMINAL_STATUSES]
+        entries = [pair for pair in entries if pair.plan.group not in TERMINAL_STATUSES]
     if args.tag:
-        entries = [pair for pair in entries if pair[1].tags.get(args.tag)]
+        entries = [pair for pair in entries if pair.plan.tags.get(args.tag)]
     if args.stale is not None:
-        entries = [pair for pair in entries if _is_stale(pair[1], args.stale)]
+        entries = [pair for pair in entries if _is_stale(pair.plan, args.stale)]
     if args.since is not None:
-        entries = [pair for pair in entries if _moved_since(pair[1], args.since)]
+        entries = [pair for pair in entries if _moved_since(pair.plan, args.since)]
     return entries
 
 
@@ -1940,7 +1964,7 @@ def _plan_payload(rel: str, plan: PlanFile) -> dict[str, object]:
     }
 
 
-def _print_rows(entries: list[tuple[str, PlanFile]], *, show_repo: bool, limit: int, stale: int | None) -> int:
+def _print_rows(entries: list[ScopedPlan], *, show_repo: bool, limit: int, stale: int | None) -> int:
     """Render the grouped index, capping the `idea` tier only. Returns how many rows were elided.
 
     Only `idea` is capped. The live tiers are bounded by how much work can actually be in flight —
@@ -1950,11 +1974,11 @@ def _print_rows(entries: list[tuple[str, PlanFile]], *, show_repo: bool, limit: 
     next" is worse than an untruncated long one.
     """
     order = {name: index for index, name in enumerate((*STATUS_ORDER, "unknown"))}
-    grouped: dict[str, list[tuple[str, PlanFile]]] = {}
-    for rel, plan in sorted(entries, key=lambda pair: (order[pair[1].group], pair[0], pair[1].path.name)):
-        grouped.setdefault(plan.status, []).append((rel, plan))
-    repo_width = max(len(rel) for rel, _ in entries) if show_repo else 0
-    name_width = max(len(plan.path.name) for _, plan in entries)
+    grouped: dict[str, list[ScopedPlan]] = {}
+    for entry in sorted(entries, key=lambda pair: (order[pair.plan.group], pair.repo, pair.plan.path.name)):
+        grouped.setdefault(entry.plan.status, []).append(entry)
+    repo_width = max(len(entry.repo) for entry in entries) if show_repo else 0
+    name_width = max(len(entry.plan.path.name) for entry in entries)
 
     elided = 0
     for status, group in grouped.items():
@@ -1962,8 +1986,8 @@ def _print_rows(entries: list[tuple[str, PlanFile]], *, show_repo: bool, limit: 
         if status == "idea" and limit > 0 and len(group) > limit:
             # Newest first inside the capped tier: an idea nobody has touched in months is the one
             # row a cap may drop without costing anything.
-            shown = sorted(group, key=lambda pair: pair[1].updated, reverse=True)[:limit]
-            shown = sorted(shown, key=lambda pair: (pair[0], pair[1].path.name))
+            shown = sorted(group, key=lambda pair: pair.plan.updated, reverse=True)[:limit]
+            shown = sorted(shown, key=lambda pair: (pair.repo, pair.plan.path.name))
             elided += len(group) - limit
         # A free-form status can be a whole paragraph; the drift section prints it in full instead.
         heading = status if len(status) <= HEADING_WIDTH else status[: HEADING_WIDTH - 1] + "…"
@@ -1981,22 +2005,22 @@ def _print_rows(entries: list[tuple[str, PlanFile]], *, show_repo: bool, limit: 
     return elided
 
 
-def _print_footer(cfg: Config, entries: list[tuple[str, PlanFile]], elided: int) -> None:
-    totals = Counter(name for _, plan in entries for name in plan.tags.elements())
+def _print_footer(cfg: Config, entries: list[ScopedPlan], elided: int) -> None:
+    totals = Counter(name for entry in entries for name in entry.plan.tags.elements())
     open_tags = "  ".join(f"{totals[name]} {name}" for name in TAG_NAMES if totals[name])
-    print(f"\n{len(entries)} plan(s) across {len({rel for rel, _ in entries})} location(s)")
+    print(f"\n{len(entries)} plan(s) across {len({entry.repo for entry in entries})} location(s)")
     if elided:
         print(f"{elided} idea(s) not shown — --limit 0 for all of them")
     if open_tags:
         print(f"open tags: {open_tags}")
 
     public = set(cfg.public_root_names())
-    if any(rel.split("/")[0] not in public and rel != UNSCOPED_DIR for rel, _ in entries):
+    if any(entry.repo.split("/")[0] not in public and entry.repo != UNSCOPED_DIR for entry in entries):
         print("Rows outside a public root name repos that are not yours to disclose — this listing is")
         print("for deciding what to work on, never for pasting into a repo you publish.")
 
 
-def _blocked_by(entries: list[tuple[str, PlanFile]]) -> dict[str, list[str]]:
+def _blocked_by(entries: list[ScopedPlan]) -> dict[str, list[str]]:
     """`depends_on` as a blocked-by view, which is the only thing that ever made the field useful.
 
     A plan naming a sibling repo is waiting on work there; from that repo's own `plans/` directory
@@ -2010,7 +2034,7 @@ def _blocked_by(entries: list[tuple[str, PlanFile]]) -> dict[str, list[str]]:
     return waiting
 
 
-def _print_family_dependencies(entries: list[tuple[str, PlanFile]]) -> None:
+def _print_family_dependencies(entries: list[ScopedPlan]) -> None:
     """Counts, not edges.
 
     Every edge printed here is one line, so the section grows with the corpus exactly the way the
@@ -2049,10 +2073,10 @@ def _print_inbound_dependencies(cfg: Config, routing: Routing) -> None:
         print(f"  {dependent}")
 
 
-def _print_status_drift(entries: list[tuple[str, PlanFile]]) -> None:
+def _print_status_drift(entries: list[ScopedPlan]) -> None:
     """Statuses outside the vocabulary. Only ever visible from here: each repo's own gate sees one
     repo, so a family-wide drift like `done` where `landed` is defined has nowhere else to surface."""
-    drifted = sorted({plan.status for _, plan in entries if not status_is_known(plan.status)})
+    drifted = sorted({entry.plan.status for entry in entries if not status_is_known(entry.plan.status)})
     if not drifted:
         return
     vocabulary = " | ".join((*STATUS_EXACT, "blocked on …", "superseded by …"))
@@ -3044,8 +3068,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"  - {exc}")
         return 0
     counts: dict[str, int] = {}
-    for rel, _ in entries:
-        counts[rel] = counts.get(rel, 0) + 1
+    for entry in entries:
+        counts[entry.repo] = counts.get(entry.repo, 0) + 1
 
     # Aggregated per root, not per repo. Routing is a per-root decision, so the root is the unit
     # that answers "what is enrolled" — and a per-repo listing on this author's machine was 71 rows
@@ -3087,7 +3111,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 for name, members in sorted(roots.items())
             ],
             "holding_plans": [{"repo": rel, "plans": n} for rel, n in holding],
-            "statuses": dict(Counter(plan.group for _, plan in entries)),
+            "statuses": dict(Counter(entry.plan.group for entry in entries)),
             "problems": _all_problems(cfg, unrouted, strict=args.strict),
         }
         print(json.dumps(payload, indent=2))
@@ -3099,7 +3123,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 def _print_doctor(
     cfg: Config,
-    entries: list[tuple[str, PlanFile]],
+    entries: list[ScopedPlan],
     roots: dict[str, list[str]],
     counts: dict[str, int],
     holding: list[tuple[str, int]],
@@ -3140,9 +3164,9 @@ def _print_doctor(
         for rel, count in holding:
             print(f"  {rel.ljust(width)}  {count} plan(s)")
 
-    statuses = Counter(plan.group for _, plan in entries)
+    statuses = Counter(entry.plan.group for entry in entries)
     tally = "  ".join(f"{statuses[name]} {name}" for name in (*STATUS_ORDER, "unknown") if statuses[name])
-    tags = Counter(name for _, plan in entries for name in plan.tags.elements())
+    tags = Counter(name for entry in entries for name in entry.plan.tags.elements())
     print(f"\ntally ({len(entries)} plan(s))")
     print(f"  {tally or '(none)'}")
     if tags:

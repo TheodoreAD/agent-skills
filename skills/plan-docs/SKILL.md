@@ -828,9 +828,19 @@ Code contracts and verification logs are usually the bulk of the deletable volum
    `§11` is not a link. Confirmed 2026-08-30 retiring two plans: `refs` found 9 real hits across
    seven files and missed two more, both written by earlier sessions that had the plan open and
    cited its sections the way a reader in context would. Both dangled at deletion, and both were
-   found only because that session ran the grep on a hunch. The output is short enough to eyeball —
-   17 lines on one repo, of which 2 were the finding — and a plan organised into numbered sections
+   found only because that session ran the grep on a hunch. A plan organised into numbered sections
    is precisely the one whose citations will be section-shaped.
+
+   **Expect most of the output to be noise, and expect the ratio to get worse as a repo grows.**
+   Measured twice: 17 lines of which 2 were real on one repo, 2026-08-30; **45 lines of which 0 were
+   real** on a second repo, 2026-09-02, retiring six plans across two runs. The difference is not
+   luck — on the second repo 24 of the 45 were one reference document's own internal `§N` numbering,
+   which is a permanent noise floor that grows with the corpus and never contains a finding. So read
+   the output, but read it expecting nothing; the grep earns its place because a real hit is silent
+   and unrecoverable, not because it is often right. **That is also why this stays a documented grep
+   rather than a `refs` flag** — at 0 real hits in 45, a flag would be reporting its own noise, and
+   `refs` answers "who links to this file", which is well defined and is what the deletion gate
+   needs.
 4. **Add a `## Migrated to` section** naming each destination, and name what you deliberately did
    _not_ migrate and why. **Commit this addition on its own, before deleting the file** —
    add-and-delete in one commit means the section is never recorded in history at all, which defeats

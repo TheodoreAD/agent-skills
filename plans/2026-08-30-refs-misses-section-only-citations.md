@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-30
+status: landed
+updated: 2026-09-02
 ---
 
 # `plans.py refs` misses citations that name a section but not a file
@@ -77,3 +77,40 @@ section, so the fix was to name the destination heading in the new rationale doc
 citation was only provenance — to drop the pointer and keep the fact. The procedure's step 5 already
 says this ("don't blindly swap the old path for the new one at every hit"), and a real run confirms
 it is the common case rather than the exception: 9 of 9.
+
+## Outcome, 2026-09-02
+
+**The second data point this plan was waiting for arrived from this repo's own retirements**, and it
+answers the only question left: the sweep does **not** earn a place in `plans.py`.
+
+Six plans retired across two runs on 2026-09-02, `rg -c '§'` over `plans/` and `skills/`:
+
+| corpus                       | lines | real findings |
+| ---------------------------- | ----: | ------------: |
+| the 2026-08-30 run, one repo |    17 |             2 |
+| this repo, 2026-09-02        |    45 |         **0** |
+
+**The ratio got worse for a structural reason, not by luck.** 24 of the 45 are a single reference
+document's own internal `§N` numbering — a permanent noise floor that grows with the corpus and can
+never contain a finding, since a document citing its own sections is not a dangling pointer. The
+rest cite live plans or the § convention itself.
+
+So the blunt version is right and the flag is not: a `--sections` flag would be reporting its own
+noise, and it cannot distinguish a document's internal numbering from a citation of the plan being
+deleted without knowing which headings belong to whom. The first open question is answered "neither
+— it stays a documented grep", which is where the first half already landed.
+
+What did change is the skill's cost estimate, which claimed "17 lines, of which 2 were the finding"
+as though that were typical. It is now stated as the optimistic case, with the reason the ratio
+decays and the reason the grep is still worth running: a real hit is silent and unrecoverable, so
+the check earns its place by consequence rather than by hit rate.
+
+## Migrated to
+
+- `skills/plan-docs/SKILL.md`, retirement step 3 — the second measurement, the structural reason the
+  noise floor grows, and the explicit decision that this stays a grep rather than becoming a `refs`
+  flag.
+
+The rest of this plan needed no migrating: the first half landed 2026-08-30, and the notes on what
+already works (`refs` matching the bare filename, 9 of 9 citations needing a rewrite rather than a
+path swap) are statements about behaviour that has not changed.

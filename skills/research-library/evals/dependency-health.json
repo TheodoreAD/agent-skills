@@ -1,0 +1,56 @@
+{
+  "about": [
+    "Does a request to judge a named third-party package select research-library? The skill gained",
+    "that responsibility on 2026-09-02, with scripts/package_health.py and the criteria section, and",
+    "its description had to widen to reach it — the old wording named only the library at",
+    "$RESEARCH_HOME, so none of the positives below could have fired on it.",
+    "",
+    "The pair to watch is db-defaults, which owns 'which datastore for this shape of data'. The",
+    "boundary drawn here is that db-defaults answers what KIND of thing to reach for and this skill",
+    "answers whether a NAMED candidate is fit to depend on. The two negatives are the boundary,",
+    "not decoration: a description written as 'choosing a library' would take the datastore case",
+    "too, and a suite of positives alone would pass for it.",
+    "",
+    "The last negative is the harder one. It is about a dependency and it is still not this skill:",
+    "adding a package that has already been chosen is ordinary work, not an evaluation.",
+    "",
+    "Measured 2026-09-02, candidate mode, 3 runs: 6/7, and the adopted wording won 9 of the 12",
+    "fires against its own incumbent twin. The three positives the widening was written for went",
+    "3/3 each and the clone case correctly stayed with the incumbent, which is the adopt test.",
+    "",
+    "The py.typed case failed 0/3 and is KEPT rather than reworded. It names no package and no repo",
+    "— 'does this package ship py.typed' reads as a generic typing question, and the description is",
+    "deliberately scoped to a NAMED candidate. It is the boundary seen from the inside, and a suite",
+    "that only holds cases the description already wins measures nothing."
+  ],
+  "cases": [
+    {
+      "prompt": "We're about to depend on aiogram. Is anyone still maintaining it, or is it one person?",
+      "expect": "research-library"
+    },
+    {
+      "prompt": "Before I add httpx to pyproject.toml, check how often it actually releases and whether its test suite is real.",
+      "expect": "research-library"
+    },
+    {
+      "prompt": "Does this package ship py.typed, and how much typing work are we going to inherit from it?",
+      "expect": "research-library"
+    },
+    {
+      "prompt": "python-telegram-bot caps pydantic below 2.14. Is that cap going to hold us back?",
+      "expect": "research-library"
+    },
+    {
+      "prompt": "Clone the anyio repo into the research library so I can read its source instead of the docs.",
+      "expect": "research-library"
+    },
+    {
+      "prompt": "We need somewhere to keep session state that survives a restart. What kind of datastore fits?",
+      "expect": "db-defaults"
+    },
+    {
+      "prompt": "Add the pinned version of requests to this project's dependency group and lock it.",
+      "expect": null
+    }
+  ]
+}

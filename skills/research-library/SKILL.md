@@ -1,6 +1,6 @@
 ---
 name: research-library
-description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library."
+description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library. Also owns judging a named third-party package or repo before depending on it: whether it is still maintained, who is actually committing to it, how often it releases on its stable line, whether it ships py.typed, how much test suite is behind it, whether a version cap it carries will hold you back — read from PyPI, the GitHub API and the project's own source rather than from a search summary."
 ---
 
 # Research library
@@ -85,6 +85,55 @@ This is also why source beats a hands-on trial for an open-source candidate, whe
 available: a trial exercises the path you happened to walk, source shows every path there is, and it
 answers questions no UI exposes — whether a dose amount is a number or free text, whether a
 permission is stripped from the manifest.
+
+## Judging a candidate dependency
+
+Picking a library is the same activity as the rule above, one step earlier: the question is what the
+source says, not what the summary claims. `~/AGENTS.md` says to judge a package from its own PyPI
+file list rather than a search summary; this is what to look at once you are there.
+
+**Judge each candidate against an absolute bar, on its own, before any head-to-head.** Popularity is
+a weak signal past a threshold and is never a tiebreaker — a less popular project that clears the
+bar beats a more popular one that does not. Stated 2026-08-30 while choosing between two Telegram
+libraries, and it is the reason the script prints stars under `not scored`.
+
+```shell
+python3 $S/scripts/package_health.py <pypi-name> <owner/repo>
+python3 $S/scripts/package_health.py anyio agronholm/anyio --clone $RESEARCH_HOME/repos/github.com--agronholm--anyio
+```
+
+Stdlib only, `S=~/.agents/skills/research-library`. PyPI over HTTPS, GitHub through `gh api` so it
+uses your own token and rate limit. `--clone` adds what no API answers — `py.typed`, the
+test-to-source ratio, the CI inventory, the licence files actually present. `--generated <glob>` is
+repeatable and marks a mechanical layer so the ratio is taken against hand-written code. `--json`
+for the whole answer.
+
+The four axes it reports, and what each is for:
+
+- **Maintenance** — releases on the **stable** line and their median gap, last push against last
+  release (which separates "actively developed, slow to release" from "stalled"), human contributor
+  count and bus factor over the last year, time to close an issue, archived flag, licence, yanked
+  releases.
+- **Typing** — `py.typed`, the project's own type-checker config and its strictness, which predicts
+  what leaks. Then measure: run **your** checker in **your** mode over a small real usage sample.
+  Nothing else tells you what your gate will say.
+- **Battle-tested** — test-to-source ratio against hand-written source, whether coverage is enforced
+  in CI or only reported, and what the CI workflows actually cover.
+- **Fit** — runtime dependency count and names (never the raw `requires_dist`, which is mostly
+  extras), version ceilings and whether they bind the distributed artifact or only the dev lockfile,
+  licence compatibility, and whether the thing can be exercised offline.
+
+**Three of the report's lines are traps wearing the shape of an answer, so read them as written:**
+`open issues+PRs` is GitHub's field and counts both; a `PRE-RELEASE ONLY` or `pre-releases` line
+means a dev version is moving while the stable one may not be; a `shallow clone` line means any
+history question needs `git fetch --deepen` first. Confirmed 2026-09-02 on `httpx`: read naively,
+PyPI says 4 releases in the last year with the newest yesterday. On the stable line it is **zero in
+the last year, the last one 634 days ago** — the opposite answer to "is this maintained for me".
+
+Everything the numbers hide — the bot that dominates a bus factor, the dual-licensed project the API
+reports as GPL, why a version cap is not a cost until its historical lag says so, and how to prove
+offline-testability — is in [`references/dependency-health.md`](references/dependency-health.md).
+Read it before writing a recommendation, not before running the script.
 
 ## No symlinks into project repos
 

@@ -62,6 +62,32 @@ refuted; see item 6 in the ledger of failed heuristics. The miss is real and sti
 changed is that it is no longer attributable to the request's breadth, which makes it a fact about
 one pair of skills rather than about the corpus.]
 
+### A widening measured before adoption, 2026-09-02
+
+`research-library` took a second responsibility — judging a named third-party package before
+depending on it — and its description had to widen to reach it: the old wording named only the
+library at `$RESEARCH_HOME`, so none of the new positives could have fired on it. Candidate mode,
+`evals/dependency-health.json`, 7 cases, 3 runs:
+
+| case                                          | result                                           |
+| --------------------------------------------- | ------------------------------------------------ |
+| "is anyone still maintaining aiogram"         | candidate 3/3                                    |
+| "how often httpx releases, is its suite real" | candidate 3/3                                    |
+| "will this pydantic cap hold us back"         | candidate 3/3                                    |
+| "clone anyio into the research library"       | **incumbent** 3/3 — the old responsibility, kept |
+| "does this package ship py.typed"             | nothing, 0/3                                     |
+| "what kind of datastore fits" (negative)      | `db-defaults` 3/3                                |
+| "add the pinned requests and lock it" (null)  | nothing, 3/3                                     |
+
+**6/7, and the candidate won 9 of 12 fires for the skill.** Adopted on the test this file states: it
+won cases the incumbent could not have won and lost none the incumbent held. `db-defaults` was the
+pair to watch — it owns "which _kind_ of datastore" — and it kept its case cleanly, which is the
+boundary the widening was written around: a named candidate's fitness here, a category choice there.
+
+The py.typed miss is the interesting one and the case is **kept rather than reworded**. It names no
+package and no repo, so it reads as a generic typing question, and the description is deliberately
+scoped to a named candidate. Rewording the case to make the suite pass would have measured nothing.
+
 [PITFALL: **an easy suite cannot tell "no contention" from "cases too easy".** The first suite
 passed 24/24 and every prompt in it named something only one skill claims. It was the second,
 phrased in the region a broad skill's description actually claims, that produced a finding. This is

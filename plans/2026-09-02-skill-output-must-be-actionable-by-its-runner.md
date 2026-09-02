@@ -88,7 +88,13 @@ it, or open an issue upstream) rather than printing a table.]
 cheap and needs nothing: an explicit `--root`, or a `./skills` directory in a git repo, is
 authorable; `~/.agents/skills` and `~/.claude/skills` are not. Per-skill would be sharper — a reader
 who forked and installed from their own fork is editing the right thing when they edit the hub copy
-— but nothing on disk says whose fork it came from, so it cannot be decided without asking.]
+— but nothing on disk says whose fork it came from, so it cannot be decided without asking.
+
+Checked before assuming: the `skills` CLI is **not** in `$RESEARCH_HOME/repos` (only
+`anthropics/skills` is, which is a different project), so "does a `--global` install record its
+source anywhere the CLI could be asked" is unanswered rather than answered no. The absence of a lock
+file under `~`, `~/.agents` and `~/.claude` is the observation; the CLI's own intent is not. Cloning
+it into the library is the next concrete step for this question.]
 
 [NEEDS CLARIFICATION: **whether this belongs in `skill-authoring` as a rule, in `skill-fitness` as a
 behaviour, or both.** Both, probably, and they are different statements: `skill-fitness` has to
@@ -96,11 +102,33 @@ change what it prints, while `skill-authoring` has to make the next skill ask th
 of writing it only as a rule is that it is exactly the kind of rule an author satisfies on their own
 machine without noticing, per the PITFALL above.]
 
-[NEEDS CLARIFICATION: **whether the corpus ships any other reader-facing report about the author's
-own work.** One known instance: `skill-fitness/references/baselines/derivable-*.json` is this
-corpus's own counts, shipped into every install. Harmless in size, but it is literally a report
-about somebody else's skills sitting inside the reader's copy, and a `--compare` run against it
-would measure their corpus against ours. Not audited beyond this one file.]
+[DECISION: **the corpus ships three kinds of reader-facing artefact about the author's own work, and
+one of them spends the reader's money.** Audited 2026-09-02 against a real install
+(`~/.agents/skills`), so this is what a reader actually receives, not what the repo intends to send:
+
+- **Two baselines**, both measured on this machine and both offered as a `--compare` target.
+  `skill-fitness/references/baselines/derivable-2026-09-02.json` names this corpus's fourteen skills
+  and their counts — compared against a reader's own set it reports `new` for everything they have
+  and `no_longer_present` for everything of ours they do not, which is noise dressed as drift.
+  `session-bash-audit/references/baselines/2026-08-24-auto-mode.json` holds this author's own
+  per-model Bash rates under a named `~/AGENTS.md` revision.
+- **Eleven eval suites** under `skill-fitness/evals/` and `research-library/evals/`, each written
+  for a contention between two skills of _this_ corpus and each expecting our skill names to win.
+  This is the expensive one: `trigger.py` is the only thing in `skill-fitness` that costs tokens,
+  and a reader who runs a shipped suite pays real money to measure whether our pair contends inside
+  their installed set.
+
+The line worth drawing is not "ship no measurements". A published finding is evidence and travels
+fine — SkillsBench's numbers are quoted throughout and lose nothing by being someone else's. What
+does not travel is a **machine-specific measurement offered as the reader's own comparison target**:
+a baseline to diff against, a suite to run. Evidence is read; a baseline is executed.]
+
+[NEEDS CLARIFICATION: **whether a shipped baseline should be renamed, relocated, or refused.** Three
+shapes, unresolved: name it for whose machine it came from and leave `--compare` as is; move
+baselines and evals out of the skill and into the repo (they are the author's test data, not part of
+the installed artefact — but `evals/` is one of the three directories a skill is allowed to have,
+added deliberately on 2026-08-31); or have `--compare` and `trigger.py run` refuse a baseline or
+suite whose corpus does not match the one in front of them, and say why.]
 
 [DEFERRED: **the "editing this skill" footer** carried by five skills tells the reader to edit the
 source in the author's repo and push. That is the same principle in miniature — an instruction to do

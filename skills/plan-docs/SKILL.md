@@ -654,15 +654,29 @@ group whose cost is unbounded. The cap is `[view] idea_limit` (default 10), `--l
 call, and the footer always says how many rows were elided. **Never read a capped listing as the
 whole set** — if you are about to conclude something about every plan, pass `--limit 0` first.
 
-Two things only `--scope family` reports, because no per-repo command can see them:
+One thing only `--scope family` reports, because no per-repo command can see it: **`depends_on` as a
+blocked-by view**, summarised as counts. The plans themselves print under `--scope repo` in the repo
+being waited on, as "waiting on this repo" — that is where the wait is actionable, and printing
+every edge machine-wide is a section that grows with the corpus exactly the way the idea tier does
+(measured 2026-08-29: 22 of 81 lines).
 
-- **`depends_on` as a blocked-by view**, summarised as counts. The plans themselves print under
-  `--scope repo` in the repo being waited on, as "waiting on this repo" — that is where the wait is
-  actionable, and printing every edge machine-wide is a section that grows with the corpus exactly
-  the way the idea tier does (measured 2026-08-29: 22 of 81 lines).
-- **Status drift.** A status outside the vocabulary — `done` where `landed` is defined, or a
-  free-form paragraph where an enum belongs — is only visible across repos, since each repo's own
-  gate sees one repo. Both were found on this view's first real run, 2026-08-29.
+**Status drift prints at every scope, and a drifted status is not what it looks like.** A status
+outside the vocabulary — `done` where `landed` is defined, or a free-form paragraph where an enum
+belongs — renders as its own group heading, so at repo scope it reads as a deliberate `blocked on …`
+rather than as a mistake. Family scope is still the only view that catches drift in a repo nobody is
+working in, and it found the first two instances (2026-08-29) and two more (2026-09-02) — but it is
+the wrong _only_ place to report it, because writing into another repo is out, so every finding had
+to be filed as a plan and wait for the one session that would never be shown it. Nothing about the
+check needs the family: the vocabulary is a fixed enum, so one repo has everything required.
+
+[PITFALL: **a drift that reads as a synonym hides more than one that reads as prose.** A paragraph
+where an enum belongs is obviously wrong to any reader. `done` is a single plausible word that
+renders as a tidy heading — and it is the more consequential of the two, because it quietly asserts
+the plan is finished while `landed`, the vocabulary's real terminal status, is **gated**:
+`set-status landed` refused that same plan on an open `UNVERIFIED` tag the moment it was asked. The
+synonym did not merely mislabel the state, it routed around the check. Drift is therefore read off
+the _unfiltered_ set — a `landed by hand` is grouped as terminal and would otherwise be dropped from
+the rows before the check ever saw it.]
 
 **A terminal-status plan is hidden from the rows but never silently.** `plans/` is a working set
 that empties out, so a `landed` plan still sitting in one is a retirement owed; the footer counts

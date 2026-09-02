@@ -635,8 +635,22 @@ rather than reasoning: the first run of the aggregator surfaced both.
 It reports and does not enforce, deliberately. A gate that refused an unknown status would have to
 live in every repo's own gate to catch anything, which is the arrangement that missed these in the
 first place; and a free-form status is sometimes the honest answer while a plan is genuinely between
-states. Naming the drift where the whole family is visible is enough — nobody has to remember to
-look, because the listing is already the command being run.
+states. Nobody has to remember to look, because the listing is already the command being run.
+
+**It was family-scope-only until 2026-09-02, and that was an accident of where the code sat rather
+than a design constraint.** The asymmetry it produced is what forced the change: the session that
+_sees_ a drift from family scope is standing in another repo and may not write to the one that owns
+it, so the finding gets filed as a plan and waits for a session that — at repo scope, where the
+drifted string renders as an ordinary group heading — would never be shown it. Two more instances
+were found that way on 2026-09-02, both in another repo, both filed rather than fixed. Unlike the
+`depends_on` view, which genuinely needs the whole corpus because an edge points at another repo,
+drift needs nothing a single repo lacks: the vocabulary is a fixed enum. Family scope keeps the
+check for the case only it can serve — a repo nobody is currently working in.
+
+The unfiltered set is what the check reads, which matters for one shape: a drift beginning with a
+terminal status (`landed by hand`) groups as terminal, so the default open-work filter drops it
+before the rows are printed. Reading drift off the displayed rows would hide exactly the drift that
+claims a plan is finished.
 
 ### Why one command with a scope axis, and not two commands
 

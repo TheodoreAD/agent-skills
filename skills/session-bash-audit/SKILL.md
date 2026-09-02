@@ -55,6 +55,19 @@ python3 $S/scripts/audit.py --session <session-id> --compare $S/references/basel
 The id is the transcript's filename stem, and a unique prefix is enough. Everything else in this
 script measures a trend after the fact; this measures the run you are in.
 
+[PITFALL: **run it unpiped — every mode, every time.** The output is a few dozen lines and the
+harness keeps it whole; `| head -N` on a report whose own subject is `head/tail` truncation is the
+one place the habit costs a wrong conclusion rather than a re-run. Confirmed 2026-09-02: a harvest
+ran this command as `… --compare … | head -12`, saw the rates line and the first sample blocks, and
+concluded `--compare` had produced no comparison at all — no error, no `OK`/`MISS` column, no
+`n/m expectations met` line. It then reconstructed the deltas by reading the baseline JSON by hand
+and filed a plan naming the script and the baseline as the two candidate causes. Neither was it: the
+comparison had printed, forty lines below the cut. The same session measured **45% `head/tail`**,
+which is how the finding and its cause arrived in one run.
+
+The comparison now prints **above** the sample blocks in both modes so a truncated run loses the
+bulk rather than the verdict — but that is a second line of defence, not permission to pipe.]
+
 [PITFALL: **an agent that just authored a rule is not more likely to follow it**, so this number can
 never be replaced by asking the session how it went. Confirmed twice. 2026-08-30: a session that had
 spent the day writing the rule against piping a gate through `head`/`tail` produced that shape in

@@ -522,7 +522,7 @@ def _group(calls: list[Call], key: Callable[[Call], str]) -> dict[str, list[Call
     return groups
 
 
-def report(calls: list[Call], samples: int) -> None:
+def report(calls: list[Call], samples: int, compare_with: Path | None = None) -> None:
     random.seed(1)
     print(f"Bash calls: {len(calls)}  (subagent: {sum(c.subagent for c in calls)})")
 
@@ -530,6 +530,12 @@ def report(calls: list[Call], samples: int) -> None:
     main_calls = [c for c in calls if not c.subagent]
     by_session = _group(main_calls, lambda c: f"{short_project(c.project)}/{c.session[:8]} {c.model}")
     _print_rates("per session (main, largest first)", by_session, limit=25)
+
+    # The verdict prints here, above the samples, because the samples are the bulk and the verdict is
+    # the answer. See report_session's note: a run piped through `head -12` lost the comparison
+    # entirely when it printed last, and reported the rates as though they were the finding.
+    if compare_with:
+        compare(calls, compare_with)
 
     print("\n== pattern totals ==")
     totals = Counter(t for c in calls for t in c.tags)
@@ -642,12 +648,20 @@ def report_session(args: argparse.Namespace) -> None:
     if args.until:
         print(f"#   excluding {whole - len(calls)} at or after {args.until} — the run's own sweep")
     print(_rate_row("this session", calls, RATE_COLUMNS))
-    if args.samples:
-        _print_samples(calls, args.samples)
-    print("\nCompare against the baseline with --compare; a rate worse than it is the finding,")
-    print("and authoring a rule is not evidence of following it.")
+    # Comparison first, samples after. The samples run to dozens of lines and the comparison is one
+    # block, so printing the comparison last put the only judged output behind the bulk. Confirmed
+    # 2026-09-02: a harvest ran this exact command as `… --compare … | head -12`, saw the rates line
+    # and the first sample blocks, and concluded `--compare` had silently produced no comparison —
+    # then filed a plan naming the script and the baseline as the two candidate causes. Neither was
+    # it. The rule against piping is what should have prevented it and the ordering is what makes
+    # the failure survivable, so both exist.
     if args.compare:
         compare(calls, args.compare)
+    else:
+        print("\nCompare against the baseline with --compare; a rate worse than it is the finding,")
+        print("and authoring a rule is not evidence of following it.")
+    if args.samples:
+        _print_samples(calls, args.samples)
 
 
 def main() -> None:
@@ -684,9 +698,7 @@ def main() -> None:
     if not calls:
         print("no Bash calls found — check --days / --project / --until")
         return
-    report(calls, args.samples)
-    if args.compare:
-        compare(calls, args.compare)
+    report(calls, args.samples, args.compare)
     if args.save_baseline:
         save_baseline(calls, args.save_baseline, args.days, args.note)
     if args.json:

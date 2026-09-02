@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-02
 ---
 
@@ -49,21 +49,49 @@ generator that always writes the file is a better fix than a sweep that reports 
   own remote, a clone whose fetch refspec is pinned to one tag (the documented trap that makes
   `research-update` report "up to date" on something years stale).
 
-[NEEDS CLARIFICATION: does `add` clone, or print the clone command? The skill is published and a
-script that clones into `$RESEARCH_HOME` is a script that writes outside the repo on a machine whose
-layout it assumes. Printing the exact command keeps it read-only and still removes the derivation,
-which is the whole finding; cloning removes a step but adds an assumption. `check` is unambiguous
-either way and is the half with no downside.]
+[DECISION: **`add` clones, and `--dry-run` is the printing mode rather than the whole design.** The
+objection was real — a script that writes outside the repo assumes a machine layout — and it is
+answered by where it writes: only under `$RESEARCH_HOME`, which the script refuses to invent if it
+does not exist, exactly as the skill's own rule says. Printing alone would have left the two halves
+that actually get skipped (the canonical name and the provenance file) as manual steps, which is the
+finding. `name` and `check` stay read-only, so the read path never has a write in it.]
 
-[NEEDS CLARIFICATION: `research-update` already exists as a deployed script in the machine's own
-setup repo, and refreshes every clone. Does `library.py check` belong beside it instead of in the
-skill? Probably not — the convention is the skill's, and a check that lives on one machine cannot
-travel with the published skill — but the overlap should be stated rather than discovered later.]
+[DECISION: **`check` lives in the skill, and it does not overlap `research-update`.** They answer
+different questions: the machine-local refresher moves every clone forward, `check` says whether
+moving a clone forward can do anything at all. A check that lived only in the machine's setup repo
+could not travel with a published skill, and the convention it enforces is the skill's. Filed
+separately for the machine's own repo: `research-update` could end by calling `library.py check` and
+printing what it found, which is where the two do meet.]
 
-## Evidence
+## What landed, 2026-09-02
 
-- `fitness.py derivable --root skills`, 2026-09-02: 105 fenced command lines, 93 delegated, 7
-  derivable, and this is one of them. Baseline committed at
-  `skills/skill-fitness/references/baselines/derivable-2026-09-02.json`.
-- `$RESEARCH_HOME/README.md`'s own Naming, Provenance and Updating sections, which are the
-  transformation this would carry.
+`skills/research-library/scripts/library.py`, stdlib only, four subcommands: `name`, `add`,
+`provenance`, `check`. The `SKILL.md` now delegates the derivation instead of describing it, and the
+`fitness.py derivable` count for this skill went **1 → 0**, with delegated rising 2 → 6.
+
+**The first run of `check` over the real 52-entry library found four things, and one of them was a
+bug in the check itself.** The rule as first written — flag any fetch refspec that is not the
+`+refs/heads/*` wildcard — reported **49 of 52 entries**, every one of them cloned exactly as this
+skill instructs. `git clone --depth 1` implies `--single-branch`, so a refspec naming one branch is
+what a _correct_ entry looks like here.
+
+[PITFALL: the documented trap is narrower than "a single-branch refspec", and reading the 49 is what
+showed it. A clone made with an explicit `--branch <tag>` leaves **HEAD detached** and tracks a ref
+that never moves; that is the signature, it is free to check, and it caught the one real instance
+(`gitlab.gnome.org--GNOME--gnome-shell`). Whether a tracked branch is still the remote's _default_
+cannot be answered offline at all, so it is `--remote` and off by default. An audit that flags 94%
+of a conformant corpus is one nobody runs twice.]
+
+The other three findings are the store's own, and are reported rather than fixed here — the entries
+are outside every repo and the vocabulary belongs to the store's README, not to this parser:
+
+- `docs/adv360-smartset-action-tokens-v3-31-23.pdf` and
+  `docs/adv360-smartset-direct-programming-guide-v12-2-22.pdf` — no `ref`, and
+  `kind: site-mirror (single PDF)`;
+- `docs/skillsbench-2026.pdf` — `kind: reference-pdf`.
+
+[DEFERRED: three real entries reached for a kind the store's three-value vocabulary does not have,
+which is evidence the vocabulary is missing one for a flat downloaded document rather than evidence
+that three people typed it wrong. Widening it is a change to `$RESEARCH_HOME/README.md` and to this
+skill together, and it is the user's store to decide about — so `check` reports the mismatch and
+changes nothing.]

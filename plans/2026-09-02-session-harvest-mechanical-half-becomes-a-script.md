@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-02
 ---
 
@@ -112,30 +112,27 @@ signal that the fix is not wording.
 - **Anything that writes.** The harvest files plans through `plans.py` and edits through the normal
   tools. A script that both measures and writes is one an agent will run without reading.
 
-## Open questions
+## Open questions, all four answered by building it
 
-[NEEDS CLARIFICATION: does `sweep` need to know which repos the session touched, and how? The honest
-input is the transcript's own write paths and `cd`/`git -C` targets, which the script can extract —
-but a session that only _read_ another repo is not "touched" for this purpose, and the distinction
-decides whether the sweep reports six repos or two. Start from the transcript and let `--repo` add
-one by hand.]
+[DECISION: `sweep` takes the repos from the transcript's own write paths (`Edit`/`Write`/
+`NotebookEdit`) and its `cd`/`git -C` targets, each resolved to a git root, with `--repo` to add one
+by hand. **Reads are excluded**, which is the whole distinction: a session that only read another
+repo has not touched it for this purpose, and counting reads is the difference between a sweep
+reporting six repos and reporting the two that matter.]
 
-[NEEDS CLARIFICATION: how much of step 5 can be verified by tests? `plans.py` and
-`package_health.py` both took fixture-backed suites, and the same trick works here for the
-transcript reader and the git-state parsing. It does not obviously work for `ps`/`ss`/`docker`,
-whose output is the machine's live state. Probably: fixture the parsers, inject the command runner,
-and assert no test shells out — the same shape `package_health.py` used for the network.]
+[DECISION: everything is testable except this machine's live state. The parsers take text, every
+external command goes through an injected runner, and an autouse fixture replaces `subprocess.run`
+with something that fails the test — the same shape `package_health.py` used for the network. That
+covers the `ps`/`ss`/`docker` parsers too; what stays untested is only whether this machine's `ps`
+prints what the fixture claims, which no unit test could answer anyway.]
 
-[NEEDS CLARIFICATION: does this earn an allowlist rule, and is that the point or a side effect? A
-single `Bash(python3 *skills/session-harvest/scripts/harvest.py:*)` prefix would remove the prompt
-the user raised. But `~/AGENTS.md` says an approval prompt is a friction cost and never a
-prohibition, and "a shape you keep paying for is a candidate for `inv allowlist.review`" — so the
-rule is a separate decision that belongs to the machine's repo, and this plan should not assume it.]
+[DECISION: no allowlist rule is assumed or proposed here. It belongs to the machine's own repo, as
+the question framed it, and the script's value does not depend on it — one prefix to approve instead
+of a dozen unrelated commands is worth having either way.]
 
-[NEEDS CLARIFICATION: what happens to the 937 lines? The claim above is that the prose gets shorter,
-and that should be measured rather than asserted — a script whose flags need three paragraphs each
-has moved the words, not removed them. Worth stating a target (say, under 700 lines with the
-judgement intact) and checking it at the end.]
+[DECISION: the 700-line target is reported as missed rather than met by deleting evidence. 967 →
+848: every command spelling is gone, and what is left is judgement and dated confirmations that the
+plan's own scope note says must stay. The per-section numbers are in "What landed" below.]
 
 ## Evidence
 
@@ -147,3 +144,46 @@ judgement intact) and checking it at the end.]
   python code all the hand-rolled recurring bash and python scripts".
 - The three transcript-reader failures listed above, all already written into `SKILL.md` as prose
   corrections, the last of them committed the same day as this plan.
+
+## What landed, 2026-09-02
+
+`skills/session-harvest/scripts/harvest.py` (stdlib only, run by path, `--json` everywhere,
+read-only throughout) with the six subcommands as proposed: `boundary`, `transcript`, `turns`,
+`skills-state`, `sweep`, `claims`. `tests/unit/test_harvest.py` covers it with 30 tests, one per
+documented trap, no test shelling out — asserted by an autouse fixture that replaces
+`subprocess.run` with something that fails the test.
+
+The four open questions, answered by building it:
+
+1. **What `sweep` counts as a repo the session touched:** write paths from the transcript's own
+   `Edit`/`Write`/`NotebookEdit` inputs, plus `cd` and `git -C` targets from its Bash commands, each
+   resolved to a git root; reads are excluded, and `--repo` adds one by hand. As filed.
+2. **How much is testable:** all of it except the live machine state. The parsers are fixture-backed
+   and every external command goes through an injected runner, the same seam `package_health.py`
+   used for the network. `ps`/`ss` output is fed to the tests as text, so even those parsers are
+   covered — what is untested is only whether this machine's `ps` prints what the fixture says.
+3. **The allowlist rule:** deliberately not assumed here. It is a decision for the machine's own
+   repo, exactly as the question framed it.
+4. **The line count: 967 → 848, not under 700, and the target is the thing that was wrong.** The
+   mechanical prose is gone — step 0's command spellings, step 4's heredoc instructions, and roughly
+   a third of step 5's bullets are now a flag with a docstring behind it. What is left is judgement
+   and dated evidence, which the plan's own DECISION says must stay. Step 5 fell 270 → 218 and step
+   0 127 → 109, while step 2 (129 lines of routing filters) never had a command in it to remove.
+   Cutting the remaining 150 lines would mean deleting the evidence that makes the rules survive
+   review, so the number is reported rather than met.
+
+**One thing the build found that the plan did not predict:** the `AskUserQuestion` filter did not
+need a third string-matching fix at all. `tool_result.tool_use_id` links back to a `tool_use` block
+whose `name` is `AskUserQuestion`, which asks the transcript what the tool _was_ rather than what
+its output looks like — immune to every failure this rule has had. Measured on the transcript the
+answer-extraction plan cites: 7 answers by id, 8 by anchored preamble, the extra being a grep's own
+output. The preamble count is still printed beside it as the self-check that plan asked for.
+
+Two more surprises, both caught by running the thing against this machine rather than by reasoning:
+
+- Comparing `scripts/` directories raw reported three skills as differing at once, because the
+  checkout accumulates a `__pycache__` the moment a script is imported and the installed copy does
+  not. A false "the install is behind" on the exact comparison step 0 exists to get right.
+- Reading a listening process's `/proc/<pid>/cwd` as "what it serves" turned a browser started from
+  a repository into a finding about that repository. The served directory is now inferred only for
+  something that looks like a file server, or that names `--directory` outright.

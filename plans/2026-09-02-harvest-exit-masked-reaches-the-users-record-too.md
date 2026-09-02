@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-02
 source_repo: github.com-personal/ingesta
 source_session: bf19d40e-bb8f-4341-a396-77194e946991.jsonl

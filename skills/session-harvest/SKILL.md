@@ -450,6 +450,21 @@ gate and a wrong branch both come back as a calm `0`.
   read the log — and make the gate conditional on the number so a slow gate is not re-run for
   nothing.
 
+  **The re-run settles whether the greens were true. It does not touch the fact that they were
+  asserted.** A session with a non-zero `exit-masked` has usually told the user "gate green" several
+  times over the run, each time on evidence a filter had already discarded, and those sentences
+  stand in the conversation whatever the re-run comes back with. So **count them** — the transcript
+  is open for the audit anyway — and report the count with the re-run's verdict attached. "Said the
+  gate was green 15 times on masked calls; re-run exits 0, so the claims hold" is a footnote. The
+  same sentence ending "re-run exits 1" is a **live inaccuracy with a reader**: the same shape as an
+  unpushed commit correcting something already pushed, and it goes in "needs action now" for the
+  same reason. The conversation is the record the user is actually working from, and it is the one
+  artefact a later commit cannot amend — only a later message corrects it, and only if someone
+  writes one. Confirmed 2026-09-02: a ten-hour session at 28% `exit-masked` had reported the gate
+  green roughly fifteen times, every one from a `| tail`-ed run. The re-run exited 0 and all fifteen
+  held — which is the outcome that makes this rule easy to skip, and the reason it is written as a
+  count rather than as a warning.
+
   The transcript says what the session intended; this says what it actually typed. It is not in the
   narrative, not in git, not in CI, and — the reason it belongs here rather than nowhere — **not in
   the session's own impression of how the run went**. Report the two numbers and the comparison, in

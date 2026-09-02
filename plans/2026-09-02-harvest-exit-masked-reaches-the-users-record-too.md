@@ -35,6 +35,17 @@ many times the session asserted a green result on a masked call, say so with the
 attached, and put it in "needs action now" if the re-run disagrees. The count is available from the
 transcript, which the harvest is already reading.
 
+**Landed 2026-09-02, as suggested.** The `exit-masked` paragraph in step 5 now says the re-run
+settles whether the greens were true and not that they were asserted, asks for the count, and routes
+it by the re-run's verdict — footnote on 0, "needs action now" on non-zero, borrowing the git-state
+bullet's "live inaccuracy with a reader" wording so the two read as one shape. One addition beyond
+the suggestion: the conversation is named as the artefact a later commit cannot amend, which is the
+part that makes it "needs action now" rather than a note.
+
+This incident is the evidence, stated as the count rather than as a warning, precisely because the
+re-run exited 0 and all fifteen claims held. A rule whose only worked example is a near miss is the
+one a session skips.
+
 ## 2. `--compare` produced no comparison output, and the prescribed reading was silent about it
 
 Step 5 prescribes:

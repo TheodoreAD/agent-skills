@@ -216,6 +216,46 @@ alternatives, the story behind a rule — goes in `references/`, loaded only whe
   apply rather than a preference. So a pilot that only confirms what you already believed is a pilot
   worth being suspicious of.
 
+## Anything the skill can derive deterministically goes in a script, not in prose
+
+**If a competent script could produce the answer, the skill ships that script and the body says
+which flag to run.** A `SKILL.md` is instructions for a model that re-reads them from scratch every
+time, so a paragraph explaining how to spell a command is a rule that has to be followed correctly
+on every single run, while a script is followed once and then only invoked. The cost of getting it
+wrong is not evenly spread either: prose fails silently and plausibly — a wrong branch name, a
+dropped flag, a filter that eats an exit code — and the output still looks like an answer.
+
+This is sharpest for the interfaces with real syntax: **a CLI's flags and subcommands, an HTTP API's
+request and response shape, a SQL query, a JSON traversal, a parser over some tool's output.** Those
+are deterministic, they are non-trivial, and a model gains nothing by re-deriving them. Anything
+multi-step is the same case one level up: "run this, read that, then run this other thing depending
+on what it said" is a program, and writing it as prose asks the agent to be the interpreter.
+
+The measured case, 2026-09-02: `session-harvest` was 967 lines of prose whose mechanical half was
+re-derived per run — 24,429 Bash calls across 1,134 transcripts on this machine included 568
+plans-store status calls, 498 hand-written ahead-counts and 164 bespoke Python heredocs over a
+transcript, no two alike. Six of its rules existed because a specific mistake kept recurring, each
+had already been sharpened as prose, and each recurred anyway. They stopped recurring when they
+became code: not because the wording improved, but because there was no longer a wording to follow.
+
+**What legitimately stays in prose**, so this doesn't read as "no commands in a `SKILL.md`":
+
+- a fixed literal a reader runs once, with no parts assembled from context
+  (`npx skills add <owner>/<repo> --global`);
+- a single call into the skill's own script — that _is_ the delegation, placeholders and all;
+- a one-off emergency procedure nobody runs twice a year (a history purge), where the script would
+  be read less often than the prose;
+- the command that names the consuming repo's own tooling, which a portable script must not
+  hard-code — a skill cannot know whether a repo's gate is `inv quality.precommit` or something
+  else, so it says "run the repo's gate" and stops there.
+
+**Audit it rather than trusting it, because this is exactly what drifts.** A skill improves one
+sentence at a time, and each added command line looks harmless.
+`python3 <skill-fitness>/scripts/fitness.py derivable` splits every fenced command in a corpus into
+delegated, derivable and fixed, tags what kind of derivation each one is, and diffs against a saved
+baseline — a rise in a skill's derivable count is the finding. Save a baseline when a skill is in
+good shape; compare after a run of edits.
+
 ## A script in `scripts/` declares its own dependencies, or has none
 
 **Standard library only is the default, and it is not a limitation to apologise for.** A skill is

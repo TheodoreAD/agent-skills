@@ -481,9 +481,48 @@ def test_family_scope_summarises_depends_on_while_repo_scope_names_the_plans(ws,
     assert "github.com-personal/repo-tasks/2026-01-01-waiting.md" in out
 
 
+def test_status_drift_reaches_the_repo_that_owns_the_plan(ws, capsys):
+    """Family scope found the two real instances and could not fix either: writing into another
+    repo is out, so the finding had to be filed and wait for a session that — at repo scope, where a
+    drifted status renders as a group heading — would never be shown it."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-drifted.md", "status: done\nupdated: 2026-01-01")
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "scope:   repo" in out
+    assert "status drift (1)" in out
+    assert "'done'" in out
+
+
+def test_status_drift_survives_the_open_work_filter(ws, capsys):
+    """A drift starting with a terminal status is grouped as terminal and dropped from the rows, so
+    reading drift off the displayed set would hide the one that asserts a plan is finished."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-hand-landed.md", "status: landed 2026-01-01\nupdated: 2026-01-01")
+    plan(ws.personal / "plans", "2026-01-02-open.md", "status: idea\nupdated: 2026-01-02")
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "status drift (1)" in out
+    assert "2026-01-01-hand-landed.md" in out
+
+
+def test_status_drift_is_reported_when_nothing_is_open(ws, capsys):
+    """The empty-rows path returns early. A repo holding only a drifted terminal plan is exactly
+    where the early return would swallow the finding."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-hand-landed.md", "status: landed by hand\nupdated: 2026-01-01")
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "(no open plans)" in out
+    assert "status drift (1)" in out
+
+
 def test_status_drift_no_single_repo_can_see(ws, capsys):
-    """`done` where `landed` is defined, and prose where an enum belongs. Each repo's own gate sees
-    one repo, so this is the only place either can surface."""
+    """`done` where `landed` is defined, and prose where an enum belongs. Family scope is still the
+    only view that catches drift in a repo nobody is currently working in."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plan(ws.personal / "plans", "2026-01-01-drifted.md", "status: done\nupdated: 2026-01-01")
     plan(

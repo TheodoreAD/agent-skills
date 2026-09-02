@@ -2042,6 +2042,7 @@ def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
         # Not necessarily an empty repo: a `plans/` holding nothing but landed plans is a
         # retirement backlog, and "(no plan files)" on its own would be a lie of omission.
         print("\n(no open plans)")
+        _print_status_drift(all_entries)
         _print_retirements_owed(all_entries, args)
         return 0
 
@@ -2051,7 +2052,7 @@ def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
         _print_inbound_dependencies(ws, routing)
     elif scope == "family":
         _print_family_dependencies(entries)
-        _print_status_drift(entries)
+    _print_status_drift(all_entries)
     _print_footer(cfg, entries, elided)
     _print_retirements_owed(all_entries, args)
     return 0
@@ -2252,8 +2253,18 @@ def _print_inbound_dependencies(ws: Workspace, routing: Routing) -> None:
 
 
 def _print_status_drift(entries: list[ScopedPlan]) -> None:
-    """Statuses outside the vocabulary. Only ever visible from here: each repo's own gate sees one
-    repo, so a family-wide drift like `done` where `landed` is defined has nowhere else to surface."""
+    """Statuses outside the vocabulary, at every scope.
+
+    Family scope is the only view that catches drift in a repo nobody is working in, but it is the
+    wrong *only* place to catch it: the session that can see a repo-scoped finding from family scope
+    is in another repo and may not write to the one that owns it, while the session that can fix it
+    saw a drifted status rendered as a group heading and read it as deliberate. The check needs
+    nothing a single repo lacks — the vocabulary is a fixed enum — so it runs wherever `list` does.
+
+    Takes the *unfiltered* set on purpose. A drift that begins with a terminal status
+    (`landed 2026-08-30`) is grouped as terminal and dropped by the default open-work filter, so
+    passing the displayed rows would hide the drift most likely to be asserting a plan is finished.
+    """
     drifted = sorted({entry.plan.status for entry in entries if not status_is_known(entry.plan.status)})
     if not drifted:
         return

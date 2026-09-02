@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-02
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 361b5d16-284b-4286-8233-45c011924707.jsonl
@@ -62,32 +62,36 @@ the body — the exact mid-edit shape that plan describes, so it looked like one
 no command to bypass and no gate to skip; hand-editing the frontmatter was the only way to change a
 status at the time. That plan still stands at two occurrences.]
 
-## Open questions
+## Answered by building it
 
-[NEEDS CLARIFICATION: **whether repo scope should report drift, or whether `set-status` should
-refuse to leave one in place.** Reporting is the smaller change and fits `list`'s existing footer
-habit — it already prints a terminal-plan count and an absorb hint. The alternative is louder: a
-plan whose current status is not in the vocabulary is a plan every `set-status` call could surface
-regardless of the transition being asked for. Reporting is probably right, since drift is a state to
-notice rather than an error to block on.]
+[DECISION: **report at every scope; `set-status` stays a transition gate.** `_print_status_drift`
+now runs for repo, unscoped and family alike, in the same position family scope already used — after
+the rows, before the footer. Making `set-status` speak for the plan's _current_ status regardless of
+the transition asked for was the louder alternative and was refused: drift is a state to notice, and
+a command that answers a question nobody asked is the shape that gets ignored.]
 
-[NEEDS CLARIFICATION: **whether `absorb` should carry it too.** It already speaks for the aged
-retirement backlog at the top of a session, which is the same shape of problem — a thing the repo's
-own sessions would otherwise never be prompted about. Against: `absorb`'s prompt is deliberately one
-question about one decision, and adding a second class of finding is how that becomes a status
-report nobody reads.]
+[DECISION: **`absorb` does not carry it.** Its prompt is one question about one decision, and the
+listing is already the command a session runs to see what is open. A second class of finding there
+is how a prompt becomes a status report nobody reads.]
 
-[NEEDS CLARIFICATION: **whether a valid-looking hand-landed status is worth chasing at all.** A plan
-that was hand-edited to a status the vocabulary contains, before the gate existed, is invisible to
-any check that compares against the vocabulary — the count above cannot see it by construction.
-Whether that matters depends on how many plans predate 2026-08-28 and have moved status since. Cheap
-to count, not counted.]
+[DECISION: **drift is read off the unfiltered set, not the displayed rows** — found while writing
+the test, not predicted. A drift beginning with a terminal status (`landed by hand`) groups as
+terminal, so the default open-work filter drops it before the check would have seen it, and the
+early return for a repo with no open plans skipped the check entirely. Both paths now pass
+`all_entries`. That is the drift most worth catching, since it is the one asserting a plan is
+finished.]
 
-## Recommended direction
+[DECISION: **the valid-looking hand-landed status is not chased here.** The cheap count was taken:
+**no plan file in this repo was created before 2026-08-28**, so the population it asks about is
+empty here. It is also invisible to any check comparing against the vocabulary, by construction — so
+it belongs to `2026-08-30-plan-docs-status-gate-bypassed-by-hand-editing.md`, which owns
+hand-editing, and not to a drift check. Measuring it family-wide would need each repo's own git
+history, one repo at a time.]
 
-Compute drift at repo scope as well as family scope, and print it in `list`'s footer where the
-terminal-plan count already goes. The check needs nothing the repo does not already have, and the
-current split means every drift found is found by a session that is not allowed to fix it.
+## Landed
 
-Leave the family-scope section as it is — it is still the only view that catches drift in a repo
-nobody is currently working in.
+`skills/plan-docs/scripts/plans.py` — drift at every scope, over `all_entries`, both call sites.
+Three tests in `tests/unit/test_plan_store.py` (repo scope, the terminal-prefixed drift, the
+no-open-plans early return), each confirmed failing against the pre-change script. The reasoning is
+in `references/design-rationale.md` ("Why the listing reports status drift"); the PITFALL about a
+synonym hiding more than prose is in `SKILL.md`.

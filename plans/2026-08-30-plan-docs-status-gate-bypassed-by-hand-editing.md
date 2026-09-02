@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 ---
 
 # A session bumps `status:` with an editor, and `set-status`' gate never runs
@@ -76,19 +76,36 @@ argument: two sessions, two repos, the same proximate cause, and no evidence in 
 the rule being weighed at all. It beat "reasoned around" because neither session overrode anything,
 and it beat "followed and produced a bad outcome" because the gate never ran.]
 
-[NEEDS CLARIFICATION: whether wording alone can fix this — the question to decide first, now that
-the classification is settled. A stronger sentence in the skill is the cheap option, but the failure
-mode is a session already holding the file open in an editor: the moment of temptation is not the
-moment it reads the skill, and both sessions read it. Options, roughly by cost: say explicitly that
-a status or `updated` line is never hand-edited whatever else in the file is being changed; have
-`set-status` accept the transition as part of a normal editing flow so it is not a second command;
-or detect it after the fact.]
+[DECISION: **wording first, and the cheapest of the three options.** Settled 2026-09-02, taking the
+first option — say explicitly that a status or `updated` line is never hand-edited whatever else in
+the file is being changed. The two rejected options were both more expensive than the evidence
+supports: folding the transition into a normal editing flow means `set-status` grows a mode that
+edits the body, and after-the-fact detection is the question below, which this decision does not
+foreclose. Four occurrences is enough to justify a sentence and not enough to justify a mechanism —
+and the sentence has to be tried first anyway, or a detector's hit rate is measured against a rule
+nobody was told.]
 
-[NEEDS CLARIFICATION: whether anything should _notice_ a hand-edited status. `git log -p` over
-`plans/` can see a `status:` line changing in a commit, and `set-status` could leave a marker the
-check reads, but a marker in frontmatter is a new field to maintain and drift. A cheaper version:
-have `doctor` or `list` report a plan whose `updated:` disagrees with its file mtime or its last
-commit date, which is the same smell from a different angle and needs nothing new stored.]
+[DEFERRED: whether anything should _notice_ a hand-edited status. `git log -p` over `plans/` can see
+a `status:` line changing in a commit, and `set-status` could leave a marker the check reads, but a
+marker in frontmatter is a new field to maintain and drift. A cheaper version — have `doctor` or
+`list` report a plan whose `updated:` disagrees with its file mtime or its last commit date — was
+looked at on 2026-09-02 and is **not** as clean as it reads: an ordinary body edit that changes no
+status legitimately leaves `updated:` behind, so the check fires on the common case and the backlog
+it prints is mostly noise. That is the alarm-fatigue shape the retirement-prompt work already argues
+against. Revisit only if the wording above is measured to have failed — a fifth occurrence after
+2026-09-02 is the trigger, and it is a cheap grep of the corpus to look for.]
+
+## What landed, 2026-09-02
+
+The rule is in `plan-docs`' **"Run the script, don't re-derive it"** section — the first section of
+the file, alongside the command surface — and not under **Promoting a plan**, for the reason the
+recommendation below gives: none of the four measured hand-edits was `idea -> planned`, so a rule
+scoped to promotion would have been invisible to every case.
+
+It is stated as the recommendation asked: "`status:` and `updated:` are `set-status`' output. They
+are never lines you type", followed by the four-hand-edit measurement and the `[PITFALL:]` about the
+bypass leaving no trace. **Promoting a plan** keeps one clause pointing at it, so a reader who
+arrives there is sent to the measurement rather than given a second copy of the rule.
 
 ## Recommended direction
 

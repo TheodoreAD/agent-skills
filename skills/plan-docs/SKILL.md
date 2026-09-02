@@ -31,6 +31,25 @@ every invocation below is the whole path:
 python3 ~/.agents/skills/plan-docs/scripts/plans.py list
 ```
 
+**`status:` and `updated:` are `set-status`' output. They are never lines you type.** This is a rule
+about those two lines, not about any particular transition — it holds for `idea -> in-progress`, for
+a bare `updated:` refresh, and for `landed`, the status that precedes deletion. Whatever else you
+are editing in the file, the frontmatter is changed by `python3 <path> set-status <file> <status>`
+and by nothing else, because that command is the only thing that runs the gate and the only thing
+that knows today's date.
+
+Measured across two repos and two sessions, 2026-08-30 and 2026-09-01: **four hand-edits, no gate
+run.** Two `idea -> in-progress`, one `updated:` stamp that also dropped a `depends_on:`, and one
+`idea -> landed` whose plan was then retired — `git rm` and all — in the next three commits. Every
+one went through the file-editing tool. Neither session overrode a refusal; neither reached the code
+path that could refuse. Both had this skill in context at the time, which is why the sentence above
+is a rule about two lines rather than an argument that the gate matters.
+
+[PITFALL: **the bypass leaves no trace, and the result is indistinguishable from a correct
+promotion.** The frontmatter is well-formed, `list` renders the new status, and nothing records
+whether the gate passed or was never consulted. In all four cases it would have passed — the tags
+had been resolved first — but that was sequencing, not process.]
+
 **Start here. These three answer most sessions**, and nothing below is needed until the lifecycle
 reaches it:
 
@@ -714,8 +733,9 @@ gate and refuses while any remain, so a refusal is the answer, not an obstacle t
 `--force`. Rewrite the body as `## Context` → `## Design` (numbered subsections, one per
 file/component touched, rationale inline) → `## Files touched` → `## Verification`.
 
-As work proceeds, bump `status` again with the same command (it also stamps `updated`); the sections
-don't change:
+As work proceeds, bump `status` again with the same command (it also stamps `updated`) — never by
+editing the frontmatter, per "`status:` and `updated:` are `set-status`' output" above, which is
+where the measurement lives. The sections don't change:
 
 - `in-progress` — actively being built.
 - `blocked on <reason>` — stalled on something external, with the reason in the status line itself,

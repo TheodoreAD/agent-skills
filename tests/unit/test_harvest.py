@@ -635,6 +635,86 @@ def test_green_claims_are_counted_against_the_masked_exits(tmp_path, monkeypatch
     assert [claim["line"] for claim in payload["green_claims"]] == ["Gate green, committing now."]
 
 
+def test_a_claim_made_inside_a_question_is_still_a_claim():
+    """An `AskUserQuestion`'s wording is a sentence the user reads and decides on.
+
+    Confirmed 2026-09-02 on the session that wrote this: `claims` reported zero green-gate
+    assertions while two of the three questions it had asked opened "Gate green, scan clean" — the
+    same shape as the answer filter's miss, a user-facing population that is not the obvious entry
+    type.
+    """
+    entries = [
+        blocks_entry(
+            "assistant",
+            [
+                {
+                    "type": "tool_use",
+                    "id": "q1",
+                    "name": "AskUserQuestion",
+                    "input": {"questions": [{"question": "Gate green, scan clean. Push?"}]},
+                }
+            ],
+        ),
+        blocks_entry("assistant", [{"type": "text", "text": "Nothing to report."}]),
+    ]
+    texts = [t for _, t in harvest.assistant_text(entries)]
+    assert "Gate green, scan clean. Push?" in texts
+
+
+def test_a_reference_clone_is_not_a_repo_this_session_owns(tmp_path, monkeypatch):
+    """One `cd` into a vendor clone to read its refspec pulled it into the sweep, which then
+    fetched a stranger's remote and reported eight of that project's CI runs as findings."""
+    library = tmp_path / "research"
+    (library / "repos" / "github.com--astral-sh--uv").mkdir(parents=True)
+    monkeypatch.setenv("RESEARCH_HOME", str(library))
+    entries = [
+        blocks_entry(
+            "assistant",
+            [
+                {
+                    "type": "tool_use",
+                    "id": "a",
+                    "name": "Bash",
+                    "input": {"command": f"cd {library}/repos/github.com--astral-sh--uv && git status"},
+                }
+            ],
+        )
+    ]
+
+    def runner(argv, cwd=None):
+        if "rev-parse" in argv and "--show-toplevel" in argv:
+            return harvest.Ran(tuple(argv), 0, str(argv[2]) + "\n", "")
+        return harvest.Ran(tuple(argv), 0, "", "")
+
+    swept = harvest._touched_repos(runner, [], entries)
+    assert not any("github.com--astral-sh--uv" in str(p) for p in swept)
+
+
+def test_a_path_inside_a_test_file_is_a_fixture_not_an_instruction():
+    entries = [
+        blocks_entry(
+            "assistant",
+            [
+                {
+                    "type": "tool_use",
+                    "id": "a",
+                    "name": "Edit",
+                    "input": {
+                        "file_path": "/repo/tests/unit/test_harvest.py",
+                        "new_string": "assert x == '~/.agents/skills/demo/scripts/gone.py'",
+                    },
+                }
+            ],
+        )
+    ]
+    assert harvest.promised_paths(entries) == []
+
+
+def test_each_differing_subdirectory_gets_its_own_consequence():
+    assert "inert" in harvest.SUBDIR_CONSEQUENCE["references"]
+    assert "earlier" in harvest.SUBDIR_CONSEQUENCE["scripts"]
+
+
 # --------------------------------------------------------------------------------------------
 # the shape of the tool itself
 # --------------------------------------------------------------------------------------------

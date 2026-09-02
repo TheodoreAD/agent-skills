@@ -560,12 +560,30 @@ def bash_calls(entries: Iterable[dict[str, Any]]) -> list[tuple[str, str]]:
 
 
 def assistant_text(entries: Iterable[dict[str, Any]]) -> list[tuple[str, str]]:
+    """Everything the agent put in front of the user — including an `AskUserQuestion`'s own text.
+
+    A question's wording is a sentence the user reads and decides on, so a claim made there is as
+    live as one in a message. Scanning only `text` blocks missed it, and the miss is the same shape
+    as the answer-filter's: a user-facing population that is not the obvious entry type. Confirmed
+    2026-09-02, by this function's own session — `claims` reported **0** green-gate assertions while
+    two of the three questions it asked opened "Gate green, scan clean" and "gate green (393
+    tests)", both of them decision prompts the user answered on that basis.
+    """
     out: list[tuple[str, str]] = []
     for entry, block in iter_blocks(entries):
+        stamp = str(entry.get("timestamp", ""))
         if entry.get("type") == "assistant" and block.get("type") == "text":
             text = str(block.get("text", "")).strip()
             if text:
-                out.append((str(entry.get("timestamp", "")), text))
+                out.append((stamp, text))
+        elif block.get("type") == "tool_use" and block.get("name") == "AskUserQuestion":
+            payload = block.get("input")
+            if isinstance(payload, dict):
+                asked = " ".join(
+                    str(q.get("question", "")) for q in payload.get("questions", []) if isinstance(q, dict)
+                ).strip()
+                if asked:
+                    out.append((stamp, asked))
     return out
 
 
@@ -631,7 +649,7 @@ def repo_state(runner: Runner, repo: Path, since: str | None, do_fetch: bool) ->
         if not ran.ok:
             aged = runner(["git", "-C", str(repo), "log", "-1", "--format=%cr", upstream])
             ref_age = aged.out.strip()
-            notes.append(f"ahead-count is against a ref last updated {ref_age or 'unknown'} ago")
+            notes.append(f"ahead-count is against a ref last updated {ref_age or 'an unknown time ago'}")
 
     ahead: list[dict[str, str]] = []
     overlap: list[str] = []
@@ -791,6 +809,16 @@ def _same_file(left: Path, right: Path) -> bool:
     return left.read_bytes() == right.read_bytes()
 
 
+# What a difference in each subdirectory actually costs. Printed per differing subdirectory rather
+# than as one sentence covering both: a references-only difference was reported with the `scripts/`
+# consequence attached ("an earlier call may have run the other copy"), which is a warning about
+# something that cannot happen for an inert file. Confirmed 2026-09-02 on this skill's own output.
+SUBDIR_CONSEQUENCE = {
+    "scripts": "shelled out to, so an *earlier* call in this session may have run the other copy",
+    "references": "read on demand and inert — nothing in this session ran from it",
+}
+
+
 def _subdir_diffs(installed: Path, checkout: Path) -> list[str]:
     """Which of `scripts/` and `references/` differ, reported apart from `SKILL.md`.
 
@@ -916,11 +944,8 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
     for state in states:
         print(f"\n== {state['skill']} ==")
         print(f"  {state['verdict']}")
-        if state.get("subdirs_differing"):
-            print(
-                f"  also differing: {', '.join(state['subdirs_differing'])} — scripts/ is shelled out to, so "
-                "an *earlier* call in this session may have run the other copy; references/ is inert"
-            )
+        for sub in state.get("subdirs_differing", []):
+            print(f"  also differing: {sub}/ — {SUBDIR_CONSEQUENCE[sub]}")
         for line in state.get("checkout_dirty", [])[:10]:
             print(f"  dirty: {line}")
         for line in state.get("unpushed_commits", []):
@@ -1282,6 +1307,11 @@ def ci_runs(runner: Runner, repo: Path, branch: str, since: str | None) -> dict[
 
 
 HOME_PATH_RE = re.compile(r"(?:~|/home/[\w.-]+)/[\w./@-]+")
+TEST_PATH_RE = re.compile(r"(^|/)(tests?|conftest)(/|\.py$)|(^|/)test_[\w-]+\.py$|_test\.py$")
+
+
+def _is_test_path(path: str) -> bool:
+    return bool(path) and bool(TEST_PATH_RE.search(path))
 
 
 def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
@@ -1301,6 +1331,12 @@ def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
         payload = block.get("input")
         if not isinstance(payload, dict):
             continue
+        # A path written into a *test* is a fixture: it is supposed not to exist, and that is
+        # frequently the whole point of the test. Confirmed 2026-09-02 by this check reporting
+        # `~/.agents/skills/demo/scripts/gone.py` — the literal argument of the test that pins this
+        # very function — as a machine-wide instruction pointing at a missing file.
+        if _is_test_path(str(payload.get("file_path", ""))):
+            continue
         body = " ".join(str(payload.get(key, "")) for key in ("new_string", "content"))
         for match in HOME_PATH_RE.finditer(body):
             candidate = match.group(0).rstrip(".,;:)`\"'")
@@ -1313,12 +1349,23 @@ def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
 
 def _touched_repos(runner: Runner, extra: Sequence[str], entries: Sequence[dict[str, Any]]) -> list[Path]:
     """The repos to sweep: every git root the session wrote into or pointed a command at, plus
-    `--repo`, and the current one when the transcript shows nothing."""
+    `--repo`, and the current one when the transcript shows nothing.
+
+    **A reference clone under `$RESEARCH_HOME` is excluded**, and the exclusion is not tidiness. Those
+    are disposable vendor checkouts: fetching one asks a stranger's remote (which failed outright on
+    a shallow single-branch clone), and reading its CI reports a stranger's workflow runs as though
+    this session had pushed them. Neither is a loose end this session can own — `research-update`
+    refreshes them and `research-library`'s `library.py check` is their checker. Confirmed
+    2026-09-02: one `cd` into a clone to read its refspec pulled `astral-sh/uv` into the sweep, which
+    then reported eight of that project's own CI runs and an untracked `SOURCE.md` (which every
+    conformant entry has) as findings.
+    """
+    library = Path(os.environ.get("RESEARCH_HOME", str(Path.home() / "research"))).expanduser()
     repos: dict[str, Path] = {}
     candidates = [*(Path(p).expanduser() for p in extra), *written_paths(entries), *shell_targets(entries)]
     for raw in candidates or [Path.cwd()]:
         root = git_root(runner, raw)
-        if root is not None:
+        if root is not None and not root.is_relative_to(library):
             repos[str(root)] = root
     if not repos:
         root = git_root(runner, Path.cwd())

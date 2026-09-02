@@ -52,6 +52,25 @@ Write a script that counts the specific shape — an `ast` walk, not a grep, and
 and keep it, because the same script is what re-measures at the end. A large diff that moves no
 count did not do the job.
 
+**"Keep it" means commit it, and a scratch directory does not count.** The natural home while
+working — a temp dir, the harness's own job scratch space — is deleted with the session, so the
+before/after numbers survive in the plan while the only thing that can reproduce them does not.
+Confirmed 2026-09-02: a pass wrote its counts into a plan and a skill, and left both `ast` scripts
+in a job scratch directory that is destroyed when the job is. Put the script beside the code it
+measures, or in the skill if it generalises; a number nobody can re-derive is an assertion.
+
+Two that generalised are here, stdlib-only and taking a file path:
+
+```shell
+python3 <skill>/scripts/count_shapes.py <module.py>    # anonymous tuple returns AND parameters, dict fields/params
+python3 <skill>/scripts/find_mutations.py <module.py>  # every attribute assignment, i.e. what is actually mutated
+```
+
+`find_mutations.py` is the cheaper of the two and answers a question that otherwise gets argued:
+whether a record is ever written to. On a 3,500-line module it returned four assignments, three of
+them one record's enrichment and one a constructor — which turned "should these be frozen" from a
+matter of taste into a two-minute check.
+
 **These five are where to start, because each maps to a specific defect rather than to size.** An
 agent can run them over a module without reading it, which is the point — the counts are the review,
 not a preamble to it. A diff-scoped review of the pilot file the same week found one bug and two

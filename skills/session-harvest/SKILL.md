@@ -349,6 +349,17 @@ verifying it when one is. **Never reconstruct a path from an id you inferred** �
 names nothing errors out, while one that names the wrong file cannot be told from a right one by
 reading the output.
 
+**The brief arrives in three ways, and a run that finds two has not been told so.** A user turn is
+one; an `AskUserQuestion` answer is the second; the third is a message the user sends **while a turn
+is still running**, which the harness records as a `queue-operation` rather than as a user turn.
+`turns` prints all three, labelled, with the harness's own noise (task notifications, interruption
+markers, slash-command wrappers) counted separately so "six user turns" cannot mean three. Confirmed
+2026-09-02: a session's richest instruction — new scope, roughly its last third, two plans and six
+commits — was sent mid-turn and appeared in none of the six turns the extraction reported. **The
+miss is invisible exactly where it costs most**, because a mid-turn message is what a user sends
+when they think of something while the agent is working, so it is disproportionately new scope with
+no earlier trace to recover it from.
+
 **The answers are half the brief, and on a tool-driven session they are most of it.** A user turn is
 `type == "user"` with text; an answer to an `AskUserQuestion` is not, so a scan written for the
 first finds none of the second. Confirmed 2026-08-31: a five-hour session's extraction returned ten

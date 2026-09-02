@@ -147,6 +147,76 @@ def test_user_turns_separate_real_text_from_command_wrappers():
     ]
 
 
+def queued(text, operation="enqueue", timestamp="2026-09-02T10:05:00.000Z") -> dict[str, object]:
+    return {"type": "queue-operation", "operation": operation, "timestamp": timestamp, "content": text}
+
+
+def test_a_message_sent_mid_turn_is_recovered(tmp_path, monkeypatch):
+    """The third population, and the one whose absence is invisible.
+
+    A message the user sends while a turn is running is recorded as a `queue-operation`, not as
+    `type: "user"`, so a scan built on user turns plus answers finds neither. Filed 2026-09-02 by a
+    session where the richest instruction of the run — new scope, its last third, six commits — was
+    exactly such a message and appeared nowhere in the extraction.
+    """
+    entries = [
+        user_entry("start here"),
+        queued("i also want an asciinema recording for the front page"),
+        queued("i also want an asciinema recording for the front page", operation="remove"),
+    ]
+    found, attachments = harvest.queued_messages(entries)
+    assert [(t.kind, t.text) for t in found] == [("mid-turn", "i also want an asciinema recording for the front page")]
+    assert attachments == 0, "no queued_command attachment in this fixture"
+
+
+def test_a_queued_message_is_counted_once_not_twice():
+    """Each is recorded as `enqueue` and again as `remove` when it is delivered."""
+    entries = [queued("do the thing"), queued("do the thing", operation="remove")]
+    found, _ = harvest.queued_messages(entries)
+    assert len(found) == 1
+
+
+def test_the_harness_speaking_is_not_the_user_speaking():
+    """A background-task notification arrives in the same population as a mid-turn message, and an
+    interruption marker arrives as a user turn. Both are real signal and neither is an instruction,
+    so they are labelled rather than counted as the brief."""
+    notification = "<task-notification>\n<task-id>abc</task-id>\n<status>completed</status>\n</task-notification>"
+    found, _ = harvest.queued_messages([queued(notification)])
+    assert [t.kind for t in found] == ["notification"]
+
+    turns = harvest.user_turns([user_entry("[Request interrupted by user for tool use]")])
+    assert [t.kind for t in turns] == ["interrupt"]
+
+
+def test_the_attachment_copy_is_a_cross_check_not_a_second_source():
+    """`attachment` carries mostly harness noise — 230 token reminders in the transcript this was
+    measured on — so matching the type would be the over-broad half of the mistake this step has
+    already made twice on the answer filter. Only `queued_command` is counted, and only to compare."""
+    entries = [
+        {"type": "attachment", "attachment": {"type": "queued_command", "command": "x"}},
+        {"type": "attachment", "attachment": {"type": "total_tokens_reminder"}},
+    ]
+    found, attachments = harvest.queued_messages(entries)
+    assert found == []
+    assert attachments == 1
+
+
+def test_turns_reports_all_three_populations(tmp_path, monkeypatch):
+    path = write_transcript(
+        tmp_path / "s.jsonl",
+        [
+            user_entry("the opening brief"),
+            *transcript_with_answers()[1:5],
+            queued("and also do this other thing"),
+        ],
+    )
+    monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
+    args = harvest.build_parser().parse_args(["turns", "--session", str(path), "--json"])
+    payload = harvest.cmd_turns(args, FakeRunner())
+    counts = payload["counts"]
+    assert (counts["user"], counts["mid_turn"], counts["answers"]) == (1, 1, 2)
+
+
 def test_written_paths_ignore_reads():
     """A repo this session only read is not a repo it touched — the difference between a sweep
     reporting six repos and reporting the two that matter."""

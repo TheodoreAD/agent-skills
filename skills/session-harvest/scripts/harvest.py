@@ -381,6 +381,12 @@ def iter_blocks(entries: Iterable[dict[str, Any]]) -> Iterator[tuple[dict[str, A
 
 SYSTEM_REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
 COMMAND_WRAPPER_RE = re.compile(r"<command-(name|message|args)>|<local-command-(caveat|stdout)>")
+# Not the user speaking, whichever population it arrives in: the harness reporting a background
+# task, and the marker left when a tool call is rejected. Both are real signal and neither is an
+# instruction, so they are labelled rather than dropped — a run that says "six user turns" when
+# three of them are these has miscounted the brief in the direction that matters.
+TASK_NOTIFICATION_RE = re.compile(r"<task-notification>|<local-command-stdout>")
+INTERRUPT_RE = re.compile(r"^\[Request interrupted by user")
 
 
 @dataclass
@@ -412,9 +418,55 @@ def user_turns(entries: Iterable[dict[str, Any]]) -> list[Turn]:
         text = SYSTEM_REMINDER_RE.sub("", text).strip()
         if not text:
             continue
-        kind = "command" if COMMAND_WRAPPER_RE.search(text) or entry.get("isMeta") else "user"
-        turns.append(Turn(kind, str(entry.get("timestamp", "")), text))
+        turns.append(Turn(classify_turn(text, bool(entry.get("isMeta"))), str(entry.get("timestamp", "")), text))
     return turns
+
+
+def classify_turn(text: str, meta: bool = False) -> str:
+    if INTERRUPT_RE.match(text):
+        return "interrupt"
+    if TASK_NOTIFICATION_RE.search(text):
+        return "notification"
+    return "command" if COMMAND_WRAPPER_RE.search(text) or meta else "user"
+
+
+def queued_messages(entries: Iterable[dict[str, Any]]) -> tuple[list[Turn], int]:
+    """A message the user sends **while a turn is still running** — the third population.
+
+    Claude Code surfaces those inside the running turn and records them as `queue-operation`
+    entries, not as `type: "user"`, so a scan built on user turns plus answers finds neither.
+    Filed 2026-09-02 by a session that measured it: `turns` reported six user turns and five
+    answers, and the single richest instruction of the session — new scope, roughly its last
+    third, two plan files and six commits — appeared in none of them.
+
+    **The miss is invisible exactly where it costs most.** A mid-turn message is what a user sends
+    when they think of something while the agent is working, so it is disproportionately new scope
+    rather than a correction to what is already running — an instruction with no earlier trace in
+    the transcript to recover it from. A session where the user waited their turn loses nothing.
+
+    Each queued message is recorded twice, `operation: "enqueue"` then `operation: "remove"` when
+    it is delivered, so only the enqueue is taken. The same message also appears as an
+    `attachment` of type `queued_command`; that count is returned as the cross-check rather than
+    as a second source, because `attachment` carries mostly harness noise (230 token reminders in
+    the transcript this was measured on) and matching the type would be the over-broad half of the
+    mistake this step has already made twice.
+    """
+    found: list[Turn] = []
+    attachments = 0
+    for entry in entries:
+        if entry.get("type") == "attachment":
+            payload = entry.get("attachment")
+            if isinstance(payload, dict) and payload.get("type") == "queued_command":
+                attachments += 1
+            continue
+        if entry.get("type") != "queue-operation" or entry.get("operation") != "enqueue":
+            continue
+        text = SYSTEM_REMINDER_RE.sub("", str(entry.get("content", ""))).strip()
+        if not text:
+            continue
+        kind = classify_turn(text)
+        found.append(Turn("mid-turn" if kind == "user" else kind, str(entry.get("timestamp", "")), text))
+    return found, attachments
 
 
 def answers(entries: Sequence[dict[str, Any]]) -> tuple[list[Turn], int]:
@@ -655,17 +707,23 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     transcript = resolve_transcript(args.session, args.job, args.expect, Path.cwd())
     turns = user_turns(transcript.entries)
     found, preamble_hits = answers(transcript.entries)
-    everything = sorted([*turns, *found], key=lambda t: t.timestamp)
-    real = [t for t in everything if t.kind != "command"]
+    queued, queued_attachments = queued_messages(transcript.entries)
+    everything = sorted([*turns, *found, *queued], key=lambda t: t.timestamp)
+    quiet = {"command", "notification"}
+    real = [t for t in everything if t.kind not in quiet]
 
     payload = {
         "transcript": transcript.as_dict(),
         "turns": [{"kind": t.kind, "timestamp": t.timestamp, "text": t.text} for t in everything],
         "counts": {
             "user": sum(1 for t in turns if t.kind == "user"),
+            "mid_turn": sum(1 for t in queued if t.kind == "mid-turn"),
             "command_wrappers": sum(1 for t in turns if t.kind == "command"),
+            "notifications": sum(1 for t in everything if t.kind == "notification"),
+            "interrupts": sum(1 for t in everything if t.kind == "interrupt"),
             "answers": len(found),
             "answers_by_preamble": preamble_hits,
+            "queued_attachments": queued_attachments,
         },
     }
     if args.json:
@@ -674,8 +732,12 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     print(f"# transcript: {transcript.path}  ({transcript.how})")
     counts = payload["counts"]
     print(
-        f"# {counts['user']} user turns, {counts['command_wrappers']} slash-command wrappers, "
+        f"# {counts['user']} user turns, {counts['mid_turn']} sent mid-turn, "
         f"{counts['answers']} AskUserQuestion answers"
+    )
+    print(
+        f"# also {counts['command_wrappers']} slash-command wrappers, {counts['notifications']} task "
+        f"notifications, {counts['interrupts']} interruptions — none of them an instruction"
     )
     if preamble_hits != len(found):
         print(
@@ -683,10 +745,18 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
             "matched by tool-use id — the difference is text quoting the marker (this skill, a "
             "grep's output), not a missed answer. Read the samples if it is large."
         )
+    # The same cross-check for the third population: a queued message is also recorded as a
+    # `queued_command` attachment, so a disagreement means the entry shape has moved and the
+    # mid-turn count is the one that would silently read as "the user sent nothing mid-turn".
+    if queued_attachments and not queued:
+        print(
+            f"# self-check: {queued_attachments} queued_command attachment(s) but no queue-operation "
+            "entries — the transcript shape has changed; read the raw entries before trusting this"
+        )
     if not real:
         print("# no user text and no answers: this is somebody else's transcript, or the wrong one")
     for turn in everything:
-        if turn.kind == "command" and not args.all:
+        if turn.kind in quiet and not args.all:
             continue
         body = turn.text if args.chars <= 0 else turn.text[: args.chars]
         print(f"\n--- {turn.kind} {turn.timestamp} ---\n{body}")

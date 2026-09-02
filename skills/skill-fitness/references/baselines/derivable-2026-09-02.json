@@ -1,0 +1,61 @@
+{
+  "saved": "2026-09-02",
+  "skills": {
+    "plan-docs": {
+      "derivable": 3,
+      "delegated": 46
+    },
+    "skill-authoring": {
+      "derivable": 3,
+      "delegated": 4
+    },
+    "research-library": {
+      "derivable": 1,
+      "delegated": 2
+    },
+    "db-defaults": {
+      "derivable": 0,
+      "delegated": 0
+    },
+    "invoke-task-conventions": {
+      "derivable": 0,
+      "delegated": 0
+    },
+    "mcp-python-conventions": {
+      "derivable": 0,
+      "delegated": 0
+    },
+    "mcp-server-shipping": {
+      "derivable": 0,
+      "delegated": 0
+    },
+    "polite-mcp-conventions": {
+      "derivable": 0,
+      "delegated": 0
+    },
+    "python-conventions": {
+      "derivable": 0,
+      "delegated": 0
+    },
+    "python-refactor-audit": {
+      "derivable": 0,
+      "delegated": 2
+    },
+    "python-testing-conventions": {
+      "derivable": 0,
+      "delegated": 0
+    },
+    "session-bash-audit": {
+      "derivable": 0,
+      "delegated": 7
+    },
+    "session-harvest": {
+      "derivable": 0,
+      "delegated": 7
+    },
+    "skill-fitness": {
+      "derivable": 0,
+      "delegated": 4
+    }
+  }
+}

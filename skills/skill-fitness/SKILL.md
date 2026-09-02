@@ -44,7 +44,7 @@ python3 <this skill>/scripts/fitness.py report
 ```
 
 Read-only, stdlib, deterministic, no tokens. Sub-commands when you want one section: `inventory`,
-`budget`, `overlap`, `usage`, `absorb`. Every one takes `--json`.
+`budget`, `overlap`, `usage`, `absorb`, `derivable`. Every one takes `--json`.
 
 | the question                                    | the command |
 | ----------------------------------------------- | ----------- |
@@ -53,6 +53,7 @@ Read-only, stdlib, deterministic, no tokens. Sub-commands when you want one sect
 | which skills compete for the same request       | `overlap`   |
 | what actually gets invoked                      | `usage`     |
 | what one-liners should be skill code            | `absorb`    |
+| what a skill makes an agent compose by hand     | `derivable` |
 | everything, in reading order                    | `report`    |
 
 By default it reads `~/.agents/skills`, `~/.claude/skills`, and `./skills` when run from a skills
@@ -205,6 +206,41 @@ have.
 Propose the absorption as a diff. Do not apply it silently — where the code lands is an authoring
 decision, and `skill-authoring` owns that.
 
+**`derivable` asks the same question of the skill instead of the transcripts.** `absorb` needs a
+transcript store and only sees what an agent already re-wrote by hand; `derivable` reads the
+`SKILL.md` itself, so it works on a corpus nobody has run and catches a skill before anyone pays for
+it. Each fenced command line lands in one of three buckets:
+
+- **delegated** — it calls a `scripts/*.py`, its own or a sibling skill's. The shape being aimed at,
+  and it stays delegated however many placeholders it carries.
+- **derivable** — a placeholder, a pipeline, a chain, an HTTP call, a SQL query, a JSON traversal:
+  something the agent assembles from context on every run, and not a script call.
+- **fixed** — a literal with no variable parts. Cheap, and not a finding.
+
+**Read the samples, not the count.** Legitimate residue exists and the report prints it alongside
+everything else: an external CLI's own documented one-liner, a one-off emergency procedure, the
+consuming repo's own gate command a portable script must not hard-code. What is not residue is a
+composed pipeline, a query, a parse, or a multi-step sequence — see `skill-authoring`'s "Anything
+the skill can derive deterministically goes in a script" for the authoring rule this measures.
+
+**A single run cannot show drift, which is the question this exists for.** Save a baseline while a
+corpus is in good shape and compare after a run of edits; a rise in a skill's derivable count is the
+finding, and a fall is reported rather than celebrated (a skill can shed command lines by being
+cut).
+
+```shell
+python3 <this skill>/scripts/fitness.py derivable --save-baseline <path>.json
+python3 <this skill>/scripts/fitness.py derivable --compare <path>.json
+```
+
+[PITFALL: every early run of this measure was dominated by its own false positives, and reading the
+residue line by line is what found them — a layout diagram in an untagged fence read as seven
+commands, a wrapped invocation read as three, a skill abbreviating its own script path
+(`python3 <path> list`) read as 48 derivable lines out of 49 when 46 of them are calls into that
+script. Each is pinned by a test in `tests/unit/test_derivable.py`. If you extend the classifier,
+extend those first: an audit whose output is mostly noise is one that gets switched off after its
+first run.]
+
 ## Scoring a skill's quality
 
 The script deliberately does not score writing quality: that is judgement, and a heuristic
@@ -251,6 +287,10 @@ Say so rather than reporting a smaller number as if it were the whole one.
   session recorded; on a machine with no listings recorded, the total is a floor and says so.
 - **A trigger probe contaminates its own corpus.** Any synthetic skill created to test triggering
   appears in later `usage` runs; exclude it with `--exclude <name>`.
+- **`derivable` only reads fenced blocks.** A skill that describes a command in a sentence — "query
+  the API for the run's conclusion and read `status`" — asks for exactly the same re-derivation and
+  is invisible to it. So a zero is not a certificate; it means nothing is fenced. The fenced form is
+  the common one and the one that grows, which is why the measure is worth having anyway.
 
 ## Trigger cases, when the static pass is not enough
 

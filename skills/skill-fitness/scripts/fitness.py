@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure a set of installed skills: contention, listing budget, real usage, absorbable scripts.
+"""Measure a set of installed skills: contention, listing budget, real usage, work that should be code.
 
 Stdlib only, read-only, deterministic, zero tokens. Everything here is a *measurement*; nothing in
 this file judges wording or rewrites a description. That split is deliberate and evidence-backed:
@@ -14,6 +14,7 @@ Subcommands, cheapest first:
     overlap     ranked pairs sharing trigger vocabulary, plus directional shadowing
     usage       real invocation counts from the transcript store (Claude Code only)
     absorb      ad-hoc python -c payloads that recur, i.e. candidates for skill code
+    derivable   commands a SKILL.md asks an agent to compose that a script could carry
     report      all of the above, in the order a reader wants them
 
 Every subcommand takes --json.
@@ -579,6 +580,154 @@ def _shape(src: str) -> str:
     return " ".join(sorted(type(n).__name__ for n in ast.walk(tree)))
 
 
+FENCE = re.compile(r"^\s*```(\S*)")
+# Fences whose contents are commands. An untagged fence is included because the convention is
+# widespread, and filtered afterwards by `_is_command` — an untagged block is just as likely to hold
+# a directory tree, and counting one of those as commands is how this measure becomes noise.
+COMMAND_LANGS = frozenset({"", "shell", "bash", "sh", "zsh", "console", "shell-session", "sql", "http"})
+# A command starts with a bare program name, optionally behind `VAR=value` or a `$ ` prompt. A first
+# token containing a slash is a path — the tell that separates `git -C <store> log` from
+# `repos/<host>--<owner>--<repo>/`, which is a layout diagram and not a command at all.
+ENV_PREFIX = re.compile(r"^(?:\$\s+)?(?:[A-Za-z_]\w*=\S*\s+)*")
+COMMAND_HEAD = re.compile(r"^[A-Za-z][\w.+-]*$|^[~./][\w./+-]*[\w.+-]$|^\$\w+$")
+SCRIPT_CALL = re.compile(r"scripts/[\w.-]+\.(py|sh)|\b[\w.-]+\.py\b")
+# `python3 <path> list`, `python3 $H sweep` — a skill abbreviating its own script's path. Counting
+# these as derivable put `plan-docs` at 48 of 49, when 45 of them are calls into `plans.py`: the
+# measure would have reported the repo's best-delegated skill as its worst offender.
+SCRIPT_INDIRECT = re.compile(r"\b(?:python3?|uv\s+run)\s+(?:<[^>]+>|\$\w+)")
+PLACEHOLDER = re.compile(r"<[^>\s][^>]*>|\$[A-Z][A-Z0-9_]{2,}|\{\w+\}")
+SQL_HEAD = re.compile(r"^\s*(select|insert|update|delete|create|alter|with)\b", re.IGNORECASE)
+# SQL anywhere in the line, not only at its start: the shape that actually appears in a SKILL.md
+# is a query quoted inside a CLI call (`psql -c "SELECT …"`, `sqlite3 db "…"`), and a head-only
+# match sees none of those — the category the principle names most explicitly.
+SQL_BODY = re.compile(
+    r"\bselect\b[^\"']*\bfrom\b|\binsert\s+into\b|\bupdate\b[^\"']*\bset\b|"
+    r"\bdelete\s+from\b|\bcreate\s+(table|index|view)\b|\balter\s+table\b",
+    re.IGNORECASE,
+)
+# A request tool, not merely a URL: `uv tool install git+https://…` is a fixed install line with
+# nothing to derive, and matching bare URLs reported it as an HTTP API call.
+HTTP_CALL = re.compile(r"\bcurl\b|\bhttpie?\b|\bgh\s+api\b|\bwget\b|\bhttpx?\.(get|post)\b")
+JSON_WORK = re.compile(r"\bjq\b|--json\b|json\.tool|\bpython3?\s+-c\b.*json")
+FLAGGED = re.compile(r"(?:^|\s)--?[A-Za-z][\w-]*")
+
+
+def command_lines(body: str) -> list[str]:
+    """Every command line in a `SKILL.md`'s fenced blocks, continuations joined, comments dropped.
+
+    Joining `\\`-continuations is not cosmetic: an `audit.py` invocation wrapped over three lines
+    counted as three commands, two of which had lost the program name that made them delegation.
+    Every early false positive in this measure came from reading a fragment as a command.
+    """
+    out: list[str] = []
+    lang: str | None = None
+    pending = ""
+    for raw in body.splitlines():
+        fence = FENCE.match(raw)
+        if fence:
+            lang, pending = (fence.group(1).lower() if lang is None else None), ""
+            continue
+        if lang is None or lang not in COMMAND_LANGS:
+            continue
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.endswith("\\"):
+            pending += line[:-1].strip() + " "
+            continue
+        command = (pending + line).strip()
+        pending = ""
+        if _is_command(command):
+            out.append(command)
+    return out
+
+
+def _is_command(line: str) -> bool:
+    if SQL_HEAD.match(line):
+        return True
+    head = ENV_PREFIX.sub("", line).split()
+    return bool(head) and bool(COMMAND_HEAD.match(head[0]))
+
+
+def classify_command(line: str, has_scripts: bool = False) -> set[str]:
+    """What a command line asks of the reader. An empty set means a fixed literal — nothing to do.
+
+    `script` wins over everything: a call to a `scripts/*.py` is the delegation this whole measure
+    is trying to produce, and it is still delegation when it carries `<session-id>` and a pipe.
+    """
+    body = line.split("#", 1)[0] if " #" in line else line
+    if SCRIPT_CALL.search(body) or (has_scripts and SCRIPT_INDIRECT.search(body)):
+        return {"script"}
+    kinds: set[str] = set()
+    if PLACEHOLDER.search(body):
+        kinds.add("placeholder")
+    # Placeholders are stripped before the shell operators are looked for: `<path>` closes with a
+    # `>`, so every placeholder line read as a redirect and the tag appeared on 48 lines that have
+    # no redirect in them.
+    shell = PLACEHOLDER.sub(" ", body)
+    if "|" in shell:
+        kinds.add("pipeline")
+    if "&&" in shell or ";" in shell:
+        kinds.add("chain")
+    if re.search(r"\d?>>?\s*\S", shell):
+        kinds.add("redirect")
+    if HTTP_CALL.search(body):
+        kinds.add("http")
+    if SQL_HEAD.match(body) or SQL_BODY.search(body):
+        kinds.add("sql")
+    if JSON_WORK.search(body):
+        kinds.add("json")
+    if len(FLAGGED.findall(body)) >= 2:
+        kinds.add("flags")
+    return kinds
+
+
+def scan_derivable(skills: list[Skill]) -> list[dict[str, Any]]:
+    """Work a skill asks an agent to compose in prose that a script could do once.
+
+    The static half of the question `absorb` answers dynamically. `absorb` needs a transcript store
+    and only sees what an agent already re-wrote; this reads the `SKILL.md` itself, so it catches a
+    skill that has drifted *before* anybody pays for it, and it works on a corpus nobody has run.
+
+    The principle it measures, stated by the user 2026-09-02: anything non-trivial a skill can
+    derive deterministically belongs in a script — a CLI's flag syntax, an HTTP request shape, a SQL
+    query, a JSON traversal. Having a model re-derive those every run is wasteful and risky, and a
+    rule that tells an agent *how to spell a command* has to be followed correctly every single
+    time, while a script is followed once. Confirmed by `session-harvest`, which carried six such
+    rules as prose warnings and had each of them missed at least once anyway.
+
+    Three buckets per command line, and the middle one is the finding:
+
+    - **delegated** — the line calls a `scripts/*.py`, its own or a sibling skill's. The target
+      shape, and it stays delegated however many placeholders it carries.
+    - **derivable** — a placeholder, a pipeline, a chain, an HTTP call, a query, a JSON traversal:
+      something assembled from context on every run, and not a script call.
+    - **fixed** — a literal with no variable parts. Cheap to read, cheap to run, not a finding.
+    """
+    rows: list[dict[str, Any]] = []
+    for skill in skills:
+        body = (skill.path / "SKILL.md").read_text(encoding="utf-8", errors="replace")
+        lines = command_lines(body)
+        buckets: dict[str, list[dict[str, Any]]] = {"delegated": [], "derivable": [], "fixed": []}
+        for line in lines:
+            kinds = classify_command(line, skill.has_scripts)
+            bucket = "delegated" if "script" in kinds else ("derivable" if kinds else "fixed")
+            buckets[bucket].append({"command": line[:200], "kinds": sorted(kinds - {"script"})})
+        tags = Counter(k for row in buckets["derivable"] for k in row["kinds"])
+        rows.append({
+            "skill": skill.name,
+            "has_scripts": skill.has_scripts,
+            "commands": len(lines),
+            "delegated": len(buckets["delegated"]),
+            "derivable": len(buckets["derivable"]),
+            "fixed": len(buckets["fixed"]),
+            "kinds": dict(tags.most_common()),
+            "samples": buckets["derivable"],
+        })  # fmt: skip
+    rows.sort(key=lambda r: (-int(r["derivable"]), r["skill"]))
+    return rows
+
+
 def scan_absorbable(min_sessions: int = 2) -> list[dict[str, Any]]:
     """Recurring throwaway Python: the agent solving the same problem again instead of reaching
     for a script.
@@ -874,10 +1023,52 @@ def collect(want: str, skills: list[Skill], args: argparse.Namespace) -> tuple[d
         out["overlap_corpus_stats"] = stats
         out["ubiquitous_terms"] = getattr(idf, "ubiquitous", [])
 
+    if want in ("derivable", "report"):
+        out["derivable"] = scan_derivable(skills)
+        if args.compare:
+            out["derivable_drift"] = compare_derivable(out["derivable"], Path(args.compare))
+
     if want in ("absorb", "report"):
         out["absorbable"] = scan_absorbable()[: args.top]
 
     return out, usage
+
+
+def save_derivable_baseline(rows: list[dict[str, Any]], path: Path) -> None:
+    payload = {
+        "saved": datetime.now(tz=UTC).date().isoformat(),
+        "skills": {str(r["skill"]): {"derivable": r["derivable"], "delegated": r["delegated"]} for r in rows},
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=1) + "\n", encoding="utf-8")
+
+
+def compare_derivable(rows: list[dict[str, Any]], baseline_path: Path) -> dict[str, Any]:
+    """Drift, which is the whole point of storing a baseline.
+
+    A count is only evidence about one moment; the question the user asked is whether a skill drifts
+    back toward prose *after a series of improvements*, and nothing answers that without a stored
+    previous run. A rise is the finding. A fall is not automatically progress — a skill can shed
+    command lines by being cut — so it is reported and not celebrated.
+    """
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    before: dict[str, Any] = baseline.get("skills", {})
+    deltas: list[dict[str, Any]] = []
+    for row in rows:
+        was = before.get(str(row["skill"]))
+        if was is None:
+            deltas.append({"skill": row["skill"], "derivable": row["derivable"], "verdict": "new"})
+            continue
+        delta = int(row["derivable"]) - int(was["derivable"])
+        deltas.append({
+            "skill": row["skill"],
+            "was": was["derivable"],
+            "derivable": row["derivable"],
+            "delta": delta,
+            "verdict": "DRIFTED" if delta > 0 else ("improved" if delta < 0 else "unchanged"),
+        })  # fmt: skip
+    gone = sorted(set(before) - {str(r["skill"]) for r in rows})
+    return {"baseline": baseline.get("saved"), "skills": deltas, "no_longer_present": gone}
 
 
 def _render_overlap(out: dict[str, Any], top: int) -> None:
@@ -979,6 +1170,39 @@ def _render_observed(obs: dict[str, Any]) -> None:
     _print_table(obs["demoted"], ["skill", "listings", "last"])
 
 
+def _render_derivable(out: dict[str, Any], top: int) -> None:
+    rows: list[dict[str, Any]] = out["derivable"]
+    print("\n## derivable work — commands a skill asks an agent to compose, that code could carry")
+    print("  delegated = calls the skill's own (or a sibling's) script. derivable = assembled per run.")
+    print("  A fixed literal with no variable parts is neither, and is not a finding.")
+    _print_table(rows, ["skill", "commands", "delegated", "derivable", "has_scripts"])
+    for row in rows[:top]:
+        if not row["derivable"]:
+            continue
+        kinds = ", ".join(f"{k}={v}" for k, v in row["kinds"].items())
+        note = "no scripts/ at all" if not row["has_scripts"] else "has a script that does not carry these"
+        print(f"\n  {row['skill']}: {row['derivable']} derivable ({kinds}) — {note}")
+        for sample in row["samples"][:4]:
+            print(f"    {sample['command'][:150]}")
+    print("\n  Read the samples before acting on the count. Legitimate residue: an external CLI's own")
+    print("  documented one-liner, a one-off emergency procedure, the repo command a script must not")
+    print("  hard-code. Drift: a composed pipeline, a query, a parse, a multi-step sequence.")
+
+    drift = out.get("derivable_drift")
+    if not drift:
+        print("\n  No baseline compared. --save-baseline <path> now, --compare <path> later: a single")
+        print("  run says what is true today, and the question is whether a skill drifts back.")
+        return
+    print(f"\n## drift vs baseline {drift['baseline']}")
+    for row in drift["skills"]:
+        if row["verdict"] in ("unchanged", "new") and not row.get("derivable"):
+            continue
+        was = row.get("was", "-")
+        print(f"  {row['skill']:28} {was} -> {row['derivable']:<4} {row['verdict']}")
+    for name in drift["no_longer_present"]:
+        print(f"  {name:28} in the baseline, not in this corpus")
+
+
 def _render_absorbable(out: dict[str, Any]) -> None:
     print("\n## absorbable one-liners — recurring ad-hoc python, candidates for skill code")
     print("  read `shapes` first: it is the count of distinct payloads, and a cluster whose shape")
@@ -1015,13 +1239,16 @@ def render(out: dict[str, Any], skills: list[Skill], usage: Usage, args: argpars
     if "usage" in out and args.command == "usage":
         _render_usage(skills, usage)
 
+    if "derivable" in out:
+        _render_derivable(out, args.top)
+
     if "absorbable" in out:
         _render_absorbable(out)
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["inventory", "budget", "overlap", "usage", "absorb", "report"])
+    p.add_argument("command", choices=["inventory", "budget", "overlap", "usage", "absorb", "derivable", "report"])
     p.add_argument("--root", action="append", type=Path, help="a skills directory; repeatable")
     p.add_argument("--json", action="store_true")
     p.add_argument("--top", type=int, default=12, help="rows to show in ranked sections")
@@ -1037,6 +1264,16 @@ def main() -> int:
         default=DEFAULT_CONTEXT_TOKENS,
         help="tokens in the model's context window; the listing budget is 1%% of it, times 4 chars",
     )
+    p.add_argument(
+        "--compare",
+        type=Path,
+        help="a derivable baseline JSON to diff against; a rise in a skill's derivable count is the finding",
+    )
+    p.add_argument(
+        "--save-baseline",
+        type=Path,
+        help="write this run's per-skill derivable counts, so a later run can measure drift",
+    )
     args = p.parse_args()
 
     roots = args.root or [r for r in DEFAULT_SCOPES if r.exists()]
@@ -1050,6 +1287,10 @@ def main() -> int:
         return 2
 
     out, usage = collect(args.command, skills, args)
+
+    if args.save_baseline and "derivable" in out:
+        save_derivable_baseline(out["derivable"], args.save_baseline)
+        print(f"# derivable baseline written to {args.save_baseline}", file=sys.stderr)
 
     if args.json:
         print(json.dumps(out, indent=2))

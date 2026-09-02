@@ -9,10 +9,6 @@
       "derivable": 3,
       "delegated": 4
     },
-    "research-library": {
-      "derivable": 1,
-      "delegated": 2
-    },
     "db-defaults": {
       "derivable": 0,
       "delegated": 0
@@ -45,6 +41,10 @@
       "derivable": 0,
       "delegated": 0
     },
+    "research-library": {
+      "derivable": 0,
+      "delegated": 6
+    },
     "session-bash-audit": {
       "derivable": 0,
       "delegated": 7
@@ -55,7 +55,7 @@
     },
     "skill-fitness": {
       "derivable": 0,
-      "delegated": 4
+      "delegated": 6
     }
   }
 }

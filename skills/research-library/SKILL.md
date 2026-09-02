@@ -32,38 +32,52 @@ $RESEARCH_HOME/
   README.md                        # full conventions + rationale
 ```
 
-## Naming (repos)
+## Naming, adding, and checking entries
 
-Always `<host>--<owner>--<repo>` — every repo, every host, no exceptions, no GitHub special case.
-Check the actual `origin` remote rather than assuming from the URL you were given; self-hosted
-instances (e.g. `gitlab.gnome.org`) can look like they might be GitHub and aren't.
+The convention is `<host>--<owner>--<repo>` for every repo on every host, with no exceptions and no
+GitHub special case, and every entry carries a provenance file. **Do not derive either by hand** —
+`scripts/library.py` is that derivation, and the reason it exists is that both failures are silent:
+a name derived from the URL you were handed rather than from the clone's own `origin` looks
+completely normal (self-hosted instances resemble the popular host, and a renamed repo redirects
+without saying so), and a store nothing version-controls has nothing else that would notice.
 
-## Adding an entry
-
+```shell
+python3 $S/scripts/library.py name <url>            # the entry name, from any spelling of a remote
+python3 $S/scripts/library.py add <url>             # clone, canonical name, SOURCE.md written
+python3 $S/scripts/library.py add <url> --dry-run   # the clone and the file it would write
+python3 $S/scripts/library.py check                 # every entry against these conventions
 ```
-git clone --depth 1 <url> "$RESEARCH_HOME/repos/<host>--<owner>--<repo>"
-```
 
-Then write that entry's `SOURCE.md` (or a `<file>.source.md` sibling for a flat `docs/` file):
+`S=~/.agents/skills/research-library`. `add` re-derives the name from the clone's own remote after
+cloning and renames the entry when they disagree; it records `ref` as the branch and short sha it
+actually got. For an entry that is not a git clone — a downloaded PDF, a mirrored docs site — fetch
+it however the material requires, then
+`library.py provenance <path> --url <url> --kind <kind> --ref <ref>` writes the metadata half, which
+is the deterministic part and the part that gets skipped. `--json` on everything; `name` and `check`
+are read-only, `add` and `provenance` write only inside `$RESEARCH_HOME`.
 
-```
-url: <repo or docs URL actually fetched from>
-kind: repo-clone | llms-txt-mirror | site-mirror
-ref: <branch/tag/commit for a repo-clone, or fetch date for a mirror>
-fetched: <date>
-note: <only when non-obvious — e.g. docs publish from a different branch/repo than what's cloned>
-```
+The provenance file's shape, since `check` enforces it and a reader may need to fix one by hand:
+`url`, `kind` (`repo-clone`, `llms-txt-mirror` or `site-mirror`), `ref` (branch/tag/commit for a
+clone, fetch date for a mirror), `fetched`, and `note` only when non-obvious — e.g. docs publishing
+from a different branch or repo than the one cloned.
 
 ## Updating
 
 Refresh every clone under `repos/` to its default branch's latest commit — a shallow fetch and hard
 reset, since these are disposable reference clones, not working copies with local commits to
 preserve. Where the machine provides a refresher on `PATH` for this, use it (on this author's
-machine, `research-update`); otherwise loop the clones directly. If an entry looks suspiciously
-stale after running it, check `git config --get-all remote.origin.fetch` in that clone: a repo
-originally cloned with an explicit `--branch <tag>` keeps tracking only that pinned ref forever, not
-the moving default branch, until the fetch refspec is corrected (find the real default branch via
-`git ls-remote --symref origin HEAD`).
+machine, `research-update`); otherwise loop the clones directly. That refresher and
+`library.py
+check` answer different questions and neither replaces the other: one moves every clone
+forward, the other says whether moving it forward can possibly do anything.
+
+**An entry that looks suspiciously stale after a refresh is usually pinned**, and `check` names it:
+a clone made with an explicit `--branch <tag>` leaves `HEAD` detached and keeps tracking that one
+ref forever, so `git fetch origin` re-fetches the same thing and the refresh reports "up to date" on
+something years old. Confirmed 2026-09-02, the first run of `check` over a 52-entry library: one
+such clone, and 51 entries that a cruder rule would have flagged as pinned when they were cloned
+exactly as this skill says. `check --remote` adds the one question that needs the network — whether
+the tracked branch is still the remote's default — and is off by default so the rest stays instant.
 
 ## Grep the real source, don't trust docs/README prose
 

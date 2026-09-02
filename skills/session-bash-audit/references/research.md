@@ -573,3 +573,29 @@ the direction that flatters the number:
 
 The rule text and the permission allowlist live in `power-user-linux-setup`; this repo supplies the
 measurement and that one decides what to do about it.
+
+## `compare` invented verdicts for tags the baseline predates (2026-09-02)
+
+`compare` read the baseline side as `old.get(tag, 0.0)`, so a tag **absent** from a baseline was
+indistinguishable from one measured at zero. For a `"down"` expectation the test then became
+`0.0 < 0.0` — false — and a pattern at a **clean 0% reported MISS**, dragging the score down with
+it. Absent tags whose current rate was also 0% collected the mirror-image error: an unearned `OK`.
+
+Found by running the tool on the session that had added `find-not-fd` hours earlier, against the
+2026-08-24 baseline that predates it. That run first printed **9/12**; the honest figure is
+**9/11**, with four tags (`find-not-fd`, `redirect-then-filter`, `echo-exit`, `git-C-own-repo`)
+absent from the baseline entirely.
+
+The fix distinguishes the two cases, and the second half of it is the part worth remembering:
+
+- a **`"down"`** expectation with no baseline value cannot be judged — printed `(new)` and left out
+  of the verdicts, the same way an under-50-call model is shown but not called;
+- a **`"zero"`** expectation is **absolute** — `after <= 0.02` needs no `before` — so it is still
+  judged. Skipping those too was the first attempt, and it silently dropped a real 23%
+  `git-C-own-repo` miss out of the score, which is the same class of error in the opposite
+  direction.
+
+**Consequence for older records: any score quoted from a run whose baseline predates one of its
+patterns is wrong in an unknown direction.** Both `session-bash-audit`'s own history and the
+adherence samples filed for `power-user-linux-setup` contain such runs. Re-derive rather than
+compare, when an old score matters.

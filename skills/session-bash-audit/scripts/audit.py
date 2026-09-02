@@ -438,7 +438,22 @@ def compare(calls: list[Call], baseline_path: Path) -> None:
         judge = min(int(cur["n"]), int(old["n"])) >= 50
         cells = []
         for tag, want in EXPECTATIONS.items():
-            before, after = float(old.get(tag, 0.0)), float(cur.get(tag, 0.0))
+            after = float(cur.get(tag, 0.0))
+            if tag not in old and want != "zero":
+                # A "down" expectation on a pattern added since this baseline was saved has nothing
+                # to be judged against, and defaulting the missing side to 0.0 does not degrade
+                # gracefully: the test becomes `0.0 < 0.0`, so a **clean** rate of 0% reports MISS
+                # and drags the score down with it. Confirmed 2026-09-02 by `find-not-fd`, added
+                # that day, reporting `0%(+0pp,MISS)` against a 2026-08-24 baseline — and by
+                # `redirect-then-filter`, absent from the same baseline, collecting an equally
+                # unearned OK. The bug manufactured both verdicts, not just the harsh one.
+                #
+                # A **"zero"** expectation is absolute — `after <= 0.02` needs no `before` — so it
+                # is still judged here. Skipping those too was the over-correction, and it silently
+                # dropped a real 23% `git-C-own-repo` rate out of the score.
+                cells.append(f"{tag}={after:.0%}(new)")
+                continue
+            before = float(old.get(tag, 0.0))
             delta = (after - before) * 100
             ok = after <= 0.02 if want == "zero" else after < before
             mark = ("OK" if ok else "MISS") if judge else "?"

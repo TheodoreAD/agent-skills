@@ -215,6 +215,45 @@ reason _is_ the caveat, delivered at the moment it matters instead of three hund
 a separate decision that is cheap and clearly right for the baselines and expensive and arguable for
 the evals.
 
+### Three things share the name "baseline", and only one belongs on the reader's machine
+
+Asked by the user 2026-09-03 — whether 1 and 3 together mean the data moves to a home directory and
+each machine saves its own. Neither option says that; both keep the file shipped. But the question
+splits the artefact in a way the options did not, and most of the difficulty dissolves once it is:
+
+| what it is                                                  | example                                            | where it belongs                              |
+| ----------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------- |
+| **the repo's own gate fixture**                             | `skill-fitness/.../derivable-2026-09-02.json`      | committed, in the repo, **outside `skills/`** |
+| **a published reference point**, labelled as someone else's | `session-bash-audit/.../2026-08-24-auto-mode.json` | ships, and legitimately — it is evidence      |
+| **a user's own saved baseline**                             | whatever their first run writes                    | their machine, and nowhere near the install   |
+
+The gate fixture has to stay committed or CI cannot reproduce it, so "move it to a home directory"
+is wrong for it; it simply has no business being inside a published skill. The reference point is
+the case `session-bash-audit` already handles correctly in prose. Only the third is per-machine, and
+that is the one with a live bug.
+
+[PITFALL: **the skill currently tells the reader to save their own baseline inside the installed
+copy.** `session-bash-audit`'s `SKILL.md`, with `S=~/.agents/skills/session-bash-audit`:
+`--save-baseline $S/references/baselines/<date>-<what-changed>.json`. That is the deployed artefact
+— the same directory this corpus elsewhere calls drift to edit — and a re-install copies the skill
+back over it. So the one piece of genuinely per-machine state the corpus asks a user to keep is kept
+in the one place designed to be replaced. Whether `skills add` actually prunes files it did not
+place is **unverified**; at best the baseline lives inside something documented as disposable.
+Verifying the prune is the cheap next check.]
+
+[DECISION: **no new env var, and no new home-directory convention.** Both `--save-baseline` and
+`--compare` already take an explicit path with no default, in both scripts, so nothing has to be
+invented — the instruction is simply pointing at the wrong directory. Adding a `$SKILL_FITNESS_HOME`
+would also create exactly the class of thing the portability audit flags, and the corpus already
+carries four such variables (`$PLANS_HOME`, `$PLANS_SENSITIVE_HOME`, `$RESEARCH_HOME`,
+`$PLAN_DOCS_CONFIG`). A fifth is hard to justify for a file that, under the opt-in decision above,
+only an author ever writes: baselines are author-side work. If a default is wanted later, follow XDG
+(`~/.local/state/<tool>/`) rather than inventing another variable.]
+
+**What survives of option 3 after that split:** `trigger.py` and the eval suites. A suite cannot be
+generated per machine the way a baseline can — it is authored, and it is a worked example — so "each
+machine makes its own" has no meaning there, and the token spend is untouched by everything above.
+
 [DEFERRED: **the "editing this skill" footer** carried by five skills tells the reader to edit the
 source in the author's repo and push. That is the same principle in miniature — an instruction to do
 work in a repo the reader does not own — and it was already on the fix list as a dead pointer. It

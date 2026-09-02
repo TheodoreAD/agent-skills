@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-30
+status: landed
+updated: 2026-09-02
 ---
 
 # Dependency health: the criteria, and a script that stops re-deriving them
@@ -185,16 +185,17 @@ What it must compute, beyond the obvious field reads:
 - with `--clone`, the source/test line split, `py.typed`, CI workflow inventory, and the licence
   files actually present
 
-[NEEDS CLARIFICATION: Whether `--clone` should clone into `$RESEARCH_HOME` itself when the path is
-absent, or refuse and tell the caller to add the entry first. Cloning is the convenient behaviour
-and it would put entries in the library as a side effect of an unrelated question, which is how a
-library fills with things nobody chose to keep.]
+[DECISION: **`--clone` never clones.** It reads a path the caller already has and refuses one that
+is not a directory. The convenient behaviour would put entries in `$RESEARCH_HOME` as a side effect
+of an unrelated question, which is how a library fills with material nobody chose to keep — and the
+library's own conventions require a `SOURCE.md` beside every entry, which a side-effect clone would
+not write. Settled 2026-09-02 with the implementation.]
 
-[NEEDS CLARIFICATION: Whether to include a download-count metric. PyPI's own stats are available via
-BigQuery or pypistats.org rather than the JSON API, so it is a second network dependency for a
-signal that is close to popularity — which this plan's whole premise says is weak. Probably not, but
-"is anybody using this at all" is a different question from "is it the most popular", and the first
-one is legitimate.]
+[DECISION: **no download-count metric.** PyPI's stats come from BigQuery or pypistats.org rather
+than the JSON API, so it is a second network dependency for a signal close to popularity — which
+this plan's whole premise says is weak. "Is anybody using this at all" is a legitimate and different
+question; when it needs answering, the dependents graph and the tracker's traffic answer it better
+than a download count that CI mirrors inflate.]
 
 ### 4. Tests
 
@@ -218,3 +219,54 @@ the primary output again.]
 [DEFERRED: Generalising beyond PyPI. The same questions apply to npm, crates.io and Go modules, and
 the metric definitions would transfer with a different fetch layer. Not now; there is one ecosystem
 in play and a premature abstraction over registries would be shaped by exactly one of them anyway.]
+
+## What landed, 2026-09-02
+
+All four sections, in `research-library`:
+
+- **`scripts/package_health.py`** — stdlib only, PyPI over HTTPS and GitHub through `gh api` so it
+  uses the caller's own token. The fetch layer is a `Transport` protocol, which is what makes the
+  computations testable. `--clone` for what no API answers, `--generated <glob>` for the binding
+  layer, `--json` for the whole answer.
+- **`SKILL.md`, "Judging a candidate dependency"** — the absolute bar, the four axes, and the three
+  report lines that are traps wearing the shape of an answer.
+- **`references/dependency-health.md`** — every trap and every methodology decision, loaded when a
+  recommendation is being written rather than when the script is being run.
+- **`tests/unit/test_package_health.py`** — 53 tests, one per trap, driven from fixtures captured
+  from the real PyPI and GitHub APIs and trimmed to the fields the script reads. An autouse fixture
+  replaces `urllib.request.urlopen` and `subprocess.run` with functions that fail the test, so "no
+  test may reach the network" is asserted rather than intended.
+
+### Three traps this plan did not know about, found by running the thing
+
+Each was found the way the plan's own methodology says to find them — by measuring a real candidate
+rather than reasoning about the metric — and each would have produced a confident wrong answer.
+
+**PyPI's release map holds pre-releases, and counting them inverts the maintenance verdict.** On
+`httpx`, the three most recent uploads are `1.0.dev4/5/6`, so the naive reading is "4 releases in
+the last year, the newest yesterday". On the stable line it is **zero in the last year and the last
+one 634 days ago** — the opposite answer to "is this maintained for me". `cadence` now splits the
+two and reports the pre-release line beside the stable one; `.post` stays a real release.
+
+**`open_issues_count` counts pull requests and survives a repo with no issue tracker.** `httpx`
+reports `has_issues: false` and `open_issues_count: 143`, every one a PR. The plan's own criterion —
+"open issue count relative to project size" — would have compared a review backlog against a support
+backlog. `has_issues` is now carried beside the count and the report says which it is.
+
+**A recent-closed sample can hold zero issues.** 300 closed items across three pages of `httpx`'s
+issues endpoint, not one an issue, so the median was `None` for a project that has closed thousands.
+A bare `None` is indistinguishable from a project that closes nothing, so the sample composition
+travels with the median. `pallets/click`, which does use its tracker, yielded 4 issues in 50 — the
+metric is obtainable and thin, which is itself worth printing.
+
+### The description was widened, and measured before adoption
+
+The old wording named only the library at `$RESEARCH_HOME`, so none of the new requests could have
+selected the skill. Candidate mode, `evals/dependency-health.json`, 7 cases at 3 runs: **6/7, with
+the candidate winning 9 of 12 fires**, the three new positives at 3/3 each, the clone case correctly
+staying with the incumbent, and `db-defaults` keeping its "what kind of datastore" case cleanly —
+that pair being the boundary the widening was written around. Full table in
+`skills/skill-fitness/references/measurements.md`.
+
+The one failing case is kept rather than reworded: "does this package ship py.typed" names no
+package and no repo, and the description is deliberately scoped to a named candidate.

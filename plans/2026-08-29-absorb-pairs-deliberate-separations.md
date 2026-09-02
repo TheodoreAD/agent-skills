@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-08-30
+status: landed
+updated: 2026-09-02
 ---
 
 ## Context
@@ -37,25 +37,27 @@ a deliberate separation someone reasoned about in writing, and the reasoning goe
 
 ## Open questions
 
-[NEEDS CLARIFICATION: can the genuine case be detected at all, rather than guessed? The
-distinguishing fact is not in the plan text — it is that the store had uncommitted changes at the
-moment the second plan was written. That is knowable from the store's own git history at write time
-and unknowable afterwards. If the harvest wrote a marker when it took the fallback, the pairing
-becomes exact; with no marker, any detector is reading intent out of prose.]
+[DECISION: **no detector, and no write-time marker. Closed 2026-09-02 on the numbers this plan
+gathered itself.** The genuine case is not detectable from the plan text — the distinguishing fact
+is that the store had uncommitted changes at the moment the second plan was written, which is
+knowable at write time and unknowable afterwards — so any detector would be reading intent out of
+prose. The only exact mechanism is a marker written by the harvest when it takes the dirty-store
+fallback, and that costs a frontmatter key set by exactly one code path, which is the kind that
+drifts; the tag vocabulary is closed at five and this is provenance rather than a tag, so it has no
+home that does not create one.
 
-[NEEDS CLARIFICATION: if a marker is the answer, where does it go without becoming a sixth tag? The
-tag vocabulary is deliberately closed at five, and this is not a tag — it is provenance about why a
-file exists. Frontmatter is the obvious home, but the skill's own reasoning against marking
-in-transit plans ("route plus location already says it, so there is nothing to set and nothing to
-drift") applies here too, and a key that is only ever set by one code path is exactly the kind that
-drifts.]
+What settles it is not the design difficulty but the tally, which moved twice in one day and both
+times against building anything: **seven cross-references against five genuine splits**, measured
+2026-08-30 across four absorptions. A mechanism is worth its drift when the case it catches is the
+common one. This one is the minority, and the reworded report already puts the judgement in front of
+an agent that is about to open both files.]
 
-[NEEDS CLARIFICATION: is the cheap fix simply to reword the report? Dropping the causal claim —
-`references 2026-08-…` with a line saying a reference may be a deliberate separation, read both
-before merging — costs nothing, needs no mechanism, and moves the judgement to where the evidence
-is. It loses the property that a genuine split is actively pushed toward consolidation, which was
-the point of the pairing. Probably still the right trade, since the report is advice to an agent
-that is about to read both files anyway.]
+[DECISION: **the cheap fix was the answer.** Dropping the causal claim — `references …` plus a line
+saying a citation is usually a related plan — cost one string, needed no mechanism, and moved the
+judgement to where the evidence is. It loses the property that a genuine split is actively pushed
+toward consolidation, which was the original point of the pairing; that is the trade, and the tally
+above is why it is the right one. Landed 2026-08-30 with recommendations 3 and 4 in the same
+commit.]
 
 ## The first true positives, and a second gap they exposed
 
@@ -117,6 +119,11 @@ the numbers — and the numbers moved further against it in the same pass. A fou
 same day produced four more pairings, every one a cross-reference, taking the tally to **seven false
 against five true**. One of the four cited its sibling in a table row listing files that needed
 fixing, which is about as far from a dirty-store split as a citation gets.
+
+**Recommendation 2 is closed rather than carried, 2026-09-02** — see the `[DECISION:]` above.
+Nothing is left to build here, so all four recommendations are resolved and the plan is `landed`.
+The one thing still genuinely open is the `[DEFERRED:]` below about the collision rule, which is a
+different rule tested by a different event.
 
 ## Recommended direction
 

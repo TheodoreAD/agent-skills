@@ -16,27 +16,52 @@ On-demand only. Installing hooks, wiring `settings.json`, or running on any sche
 out of scope — that's a different, heavier tool (see `references/rationale.md` for the prior art
 considered and rejected).
 
+## The script
+
+`scripts/harvest.py` carries every mechanical step: the boundary, the installed-vs-checkout
+comparison, resolving this session's transcript, extracting the turns and answers, the live-state
+sweep, and the green-claim count. **Run it rather than composing the commands by hand** — measured
+2026-09-02 across 24,429 Bash calls in 1,134 transcripts, those commands were re-invented every run
+and drifted, so answers that ought to be comparable across harvests were not. Six documented
+failures are now code the script cannot repeat (the upstream branch is read rather than typed,
+nothing runs through a shell so no pipe can eat an exit code, CI is read as JSON, `depends_on` is
+anchored, a job's transcript comes from its `state.json`, answers are matched by tool-use id).
+
+```shell
+H=~/.agents/skills/session-harvest/scripts/harvest.py   # or <checkout>/skills/session-harvest/scripts/harvest.py
+python3 $H boundary                                     # step 0, first command of the run
+python3 $H transcript --expect '<a command this session ran>'
+python3 $H turns                                        # step 4
+python3 $H skills-state --since <session start>         # step 0
+python3 $H sweep --boundary <instant>                   # step 5
+python3 $H claims --until <instant>                     # step 5, the exit-masked rule
+```
+
+Every subcommand is read-only and takes `--json`. Two things are deliberately **not** in it: the
+gate re-run (that is the repo's own command, and hard-coding one would be wrong in every repo that
+spells it differently) and anything that writes — a script that both measures and writes is one an
+agent runs without reading. The judgement below is the rest of the skill, and none of it moves.
+
 ## Procedure
 
 ### 0. Check the copy you are running is the current one
 
-**First, before anything else this run does, record the boundary: `date -Is`.** Keep the value; step
-5 passes it to `--until` so the adherence figure describes the session's work rather than this
-harvest's own sweep. It has to be the harvest's first command — every step below adds Bash calls of
-a different character to the transcript, and a boundary taken later has already lost some of them.
+**`python3 $H boundary` is the harvest's first command, before anything else this run does.** Keep
+the value; step 5 passes it to `--until` so the adherence figure describes the session's work rather
+than this harvest's own sweep. Every step below adds Bash calls of a different character to the
+transcript, so a boundary taken later has already lost some of them.
 
 The running skill is a file copy dropped at install time, so a harvest can silently execute a
 version older than the source — skipping exactly the checks most recently added, and reporting a
-clean run because it never looked. Diff the installed copy against the checkout before starting
-(`diff -q ~/.agents/skills/session-harvest/SKILL.md <checkout>/skills/session-harvest/SKILL.md`),
-and do the same for any other skill this run leans on. If they differ, say so; a stale harvest is
-worse than no harvest, because its report reads identical. Added 2026-08-29 after the user asked for
-a harvest "with the latest versions" — behaviour the skill did not have, and could not have
-confirmed if asked.
+clean run because it never looked. `python3 $H skills-state --since <session start>` compares the
+installed copy against the checkout for this skill and the others a harvest leans on; add
+`--skill <name>` for anything else this run used. If they differ, say so; a stale harvest is worse
+than no harvest, because its report reads identical. Added 2026-08-29 after the user asked for a
+harvest "with the latest versions" — behaviour the skill did not have, and could not have confirmed
+if asked.
 
 **A difference has three causes, and only one of them is the stale install this step assumes.** The
-diff is the trigger; what to offer depends on `git -C <checkout> status --short` and
-`git log origin/<branch>..HEAD`, not on the diff:
+subcommand prints the verdict; what matters is that you act on the right one:
 
 | the checkout is              | what it means        | what to offer                      |
 | ---------------------------- | -------------------- | ---------------------------------- |
@@ -49,11 +74,11 @@ model — "re-installing syncs them" — is wrong in both: the installer's sourc
 working tree. Offering one against a dirty checkout is a no-op dressed as a remedy, and worse, it
 reframes another session's live restructure as an install-hygiene problem and invites exactly the
 cross-repo interference the global rules forbid. Confirmed 2026-08-29 on `plan-docs`, mid
-two-tier-store-split: 672 uncommitted insertions, nothing ahead of the remote, mtimes in the same
-minute as the check — `git log` showed a settled history, and only `status --short` saw it.
-Confirmed in the other direction 2026-08-30: same non-empty diff, clean checkout level with the
-remote, two commits pushed minutes earlier — row one exactly as written, and a re-install was the
-right answer. The same diff meant opposite things a day apart.
+two-tier-store-split: 672 uncommitted insertions, nothing ahead of the remote — `git log` showed a
+settled history, and only `status --short` saw it. Confirmed in the other direction 2026-08-30: same
+non-empty diff, clean checkout level with the remote, two commits pushed minutes earlier — row one
+exactly as written, and a re-install was the right answer. The same diff meant opposite things a day
+apart.
 
 A dirty checkout does **not** block the run. Both sessions above harvested correctly, because every
 command they ran was against the committed version. Confirm in passing that the commands this run
@@ -61,42 +86,32 @@ needs are not themselves inside the uncommitted diff, and — **only if this ses
 skills repo** — treat it as a finding about step 6's fold-back, since that is the one case where the
 fold-back is an edit into a checkout another session may be holding. From anywhere else it blocks
 nothing: step 6 files a plan rather than editing, and a filing needs nothing from that checkout.
-Confirmed 2026-08-30 by a run that treated a four-file dirty checkout as a fold-back finding and
-then filed a plan, which the dirt could not have obstructed.
 
 **A clean diff is not the whole answer, and this is the outcome it cannot see.** The comparison
 comes back identical whenever the installer has already run — while the copy frozen in _this
 session's context_ at load time is still the old one. No filesystem comparison reaches that. The
 consequence is worse than running stale code: it produces confident, specific, wrong statements
-about the very skills the harvest is auditing, in the report nobody re-checks. So compare the
-skill's last change against when this session began:
-
-```shell
-git -C <checkout> log -1 --format='%cI' -- skills/<name>/SKILL.md   # ISO with offset, not %cd
-```
-
-against the first `timestamp` in this session's transcript (step 4 already opens that file, so the
-cost is one more line). Compare them as instants, never as strings — the transcript stamp is UTC `Z`
-and git's is local-with-offset, so a lexical comparison is wrong by the offset. If the skill moved
-after the session started, **re-read the `SKILL.md` from disk before relying on it**, whatever the
-diff said — **from the checkout when the checkout is the one that is ahead.** Re-reading the
-installed copy is the fix for a stale _context_ against a current install; when the install is
-itself behind, it hands back the same superseded text the session already holds, and the instruction
-reads as satisfied. Confirmed 2026-08-30: a harvest ran fourteen minutes after a commit to this very
-skill, re-read the installed copy as written, and got its own stale wording back; the checkout was
-clean, pushed, and two paragraphs ahead.
+about the very skills the harvest is auditing, in the report nobody re-checks. That is what
+`--since <session start>` answers: it compares the skill's last commit against the instant this
+session began, as instants rather than as strings. If the skill moved after the session started,
+**re-read the `SKILL.md` from disk before relying on it**, whatever the diff said — **from the
+checkout when the checkout is the one that is ahead.** Re-reading the installed copy is the fix for
+a stale _context_ against a current install; when the install is itself behind, it hands back the
+same superseded text the session already holds, and the instruction reads as satisfied. Confirmed
+2026-08-30: a harvest ran fourteen minutes after a commit to this very skill, re-read the installed
+copy as written, and got its own stale wording back; the checkout was clean, pushed, and two
+paragraphs ahead.
 
 **One case makes the whole branch a no-op, and it is the common one in this repo: the commits that
-moved the skill are _this session's own_.** `git log --since=<session start> -- skills/<name>/`
-names the author of the move, and when every one of them is this run, the context holding the newest
-text on the machine is not stale — nothing was superseded, because nothing was written by anyone
-else. Say so in one line and move on; do not re-read four files to confirm that the session
-remembers what it just wrote. The re-read exists for a _different_ session's commit landing under
-this one's feet, and treating the two alike is how the most expensive step in this procedure fires
-on the case it was never about. Confirmed 2026-09-02: a harvest in this repo found all four skills
-it leaned on moved after session start, all four by its own commits. What still pays is the second
-half — checking whether anything already done ran under superseded wording — because a script
-committed mid-session does change what an earlier call returned.
+moved the skill are _this session's own_.** The subcommand lists them; when every one of them is
+this run, the context holding the newest text on the machine is not stale — nothing was superseded,
+because nothing was written by anyone else. Say so in one line and move on; do not re-read four
+files to confirm that the session remembers what it just wrote. The re-read exists for a _different_
+session's commit landing under this one's feet, and treating the two alike is how the most expensive
+step in this procedure fires on the case it was never about. Confirmed 2026-09-02: a harvest in this
+repo found all four skills it leaned on moved after session start, all four by its own commits. What
+still pays is the second half — checking whether anything already done ran under superseded wording
+— because a script committed mid-session does change what an earlier call returned.
 
 **The cheapest trigger for all of this is free and arrives unprompted: the available-skills listing
 changing mid-session.** A skill present that was not there before, or a description reworded, is
@@ -107,44 +122,37 @@ not using still tells you the install state moved. Confirmed 2026-08-31, and it 
 re-check that the prescribed checks would not have: both changed skills' installed copies matched
 the checkout, so the diff said "same" for everything and would have prompted nothing.
 
-**Scope that path to `SKILL.md`, not to the skill's directory.** The three subdirectories fail
-differently: only `SKILL.md` is held in this session's context, so only it can go stale there.
-`scripts/` is shelled out to, so the next call already runs the new code, and `references/` is read
-on demand and is inert. A directory-scoped query cannot tell them apart, and the branch it triggers
-— re-read plus an audit of everything already done — is the most expensive one in this procedure.
-Confirmed 2026-08-30: it fired on a commit that touched only a `references/` page, and the audit was
-empty because the held wording had never changed. A `scripts/` change is worth its own one-line note
-instead: nothing to re-read, but a command run _earlier_ in the session may have run the old script.
+The three subdirectories fail differently, which is why the subcommand reports `SKILL.md` and the
+rest apart. Only `SKILL.md` is held in this session's context, so only it can go stale there.
+`scripts/` is shelled out to, so the next call already runs the new code — but a call made _earlier_
+in the session ran the old one, which is worth its own one-line note. `references/` is read on
+demand and is inert. Confirmed 2026-08-30: a directory-scoped query fired the re-read-and-audit
+branch on a commit that touched only a `references/` page, and the audit was empty because the held
+wording had never changed.
 
 **When the checkout is ahead, its push state decides what may be offered as the remedy.** The
 installer clones from the remote, so a re-install cannot deliver a commit that has not been pushed —
 it reinstalls the identical stale copy, in a report that has just told the user re-installing is
-what resolves the staleness. `git -C <checkout> log origin/<branch>..HEAD` is the check, and the
-harvest is already running it for step 5. If the commit that closes the staleness is unpushed, say
-so and name whose commit it is rather than closing on "re-install to pick this up": the push is
-outward-facing and belongs to whoever authored it, per step 5's rule about unpushed commits.
-Confirmed 2026-08-30: the checkout was `ahead 1`, and that one commit was exactly the one carrying
-the wording the run had just re-read. Note the asymmetry that makes this easy to miss — the session
-is not blocked, since reading the checkout is enough to run correctly. Only the remedy is broken,
-which is the part nobody re-checks.
+what resolves the staleness. If the commit that closes the staleness is unpushed, say so and name
+whose commit it is rather than closing on "re-install to pick this up": the push is outward-facing
+and belongs to whoever authored it, per step 5's rule about unpushed commits. Confirmed 2026-08-30:
+the checkout was `ahead 1`, and that one commit was exactly the one carrying the wording the run had
+just re-read. Note the asymmetry that makes this easy to miss — the session is not blocked, since
+reading the checkout is enough to run correctly. Only the remedy is broken, which is the part nobody
+re-checks.
 
-**And when the session has already _acted_ on that skill, re-reading is only half the fix.** List
-what changed — `git log --oneline --since=<session start> -- skills/<name>/` — and ask whether
-anything already done was done under superseded wording. Re-reading corrects the next call; it does
-nothing about the pushes already made. Confirmed 2026-08-30: a session had run `plan-docs`'
+**And when the session has already _acted_ on that skill, re-reading is only half the fix.** Ask
+whether anything already done was done under superseded wording. Re-reading corrects the next call;
+it does nothing about the pushes already made. Confirmed 2026-08-30: a session had run `plan-docs`'
 `scan --mode tree` before pushing a store, while a commit landing four hours after it loaded that
 skill had changed the pre-push gate to `--mode history`. Re-reading would have left the pushed
 history unchecked; running the superseding command retroactively is what closed it, and it came back
 clean.
 
-Confirmed twice, 2026-08-29/30. Once as the failure: a session held `plan-docs` from load time, was
-told by a later commit that the store's pre-push gate is `scan --mode history` rather than
+The failure this whole branch exists for, confirmed 2026-08-29: a session held `plan-docs` from load
+time, was told by a later commit that the store's pre-push gate is `scan --mode history` rather than
 `--mode tree`, never saw it, and filed the opposite claim into a plan — a confidentiality gate,
-reasoned about from stale wording. Once as the near-miss: the run that added this check was saved
-only because the install happened to be stale _too_, so the diff fired for the wrong reason; had the
-installer already run, the check would have passed clean and the session would have applied a
-superseded bullet without knowing. The check above, run on that same session, correctly reports the
-skill as having moved after it began.
+reasoned about from stale wording.
 
 ### 1. Significance test first
 
@@ -202,24 +210,18 @@ For what survives the significance test:
   deployed copy loaded into a session's context can be structurally stale against it.** Confirmed
   2026-08-24: a session held a ~20 flat-section `~/AGENTS.md` while the source had been restructured
   to 7 clustered ones, so an addition drafted against the section names in context would have
-  targeted headings that no longer existed. `grep -n '^## ' <source>` first. Loaded into every
-  session regardless of repo, so it's the actual bloat-avoidance-and-reviewability lever for content
-  that isn't tied to one project, the same way a repo's own `AGENTS.md` is for that repo. Confirmed
-  as a real gap 2026-08-22: a session found ~30 `feedback`-type memories accumulated across multiple
-  projects' memory folders — each project's memory is invisible to every other project's sessions,
-  so a genuinely cross-repo preference saved there never actually reaches a session in a different
-  repo. Most had simply never been promoted because nothing routed them anywhere else. **A candidate
-  that's a _variant_ of a rule already in `~/AGENTS.md` extends that rule's existing section — it
-  doesn't get a new one.** "Already covered → skip" (below) is for an exact duplicate; this is the
-  near-miss case, where the principle is written down but this particular shape of it isn't. Default
-  to appending a short paragraph to the section that already frames it, because that file is loaded
-  into every session in every repo, so a new heading costs context everywhere and a reader who sees
-  three instances under one principle generalizes better than one holding three unrelated rules.
-  Reach for a new section only when the trigger and the detection signal are both genuinely
-  different from anything already there. Resolved 2026-08-23: "don't characterize a multi-file diff
-  from one sampled file" was folded into "Verify what actually happened, not what output looks like"
-  — which already covered clean-stdout-vs-exit-code and test-suite-vs-throwaway-script, both the
-  same "the convenient surface signal isn't the real signal" shape.
+  targeted headings that no longer existed. `grep -n '^## ' <source>` first. **A candidate that's a
+  _variant_ of a rule already there extends that rule's existing section — it doesn't get a new
+  one.** "Already covered → skip" (below) is for an exact duplicate; this is the near-miss case,
+  where the principle is written down but this particular shape of it isn't. Default to appending a
+  short paragraph to the section that already frames it, because that file is loaded into every
+  session in every repo, so a new heading costs context everywhere and a reader who sees three
+  instances under one principle generalizes better than one holding three unrelated rules. Reach for
+  a new section only when the trigger and the detection signal are both genuinely different from
+  anything already there. Resolved 2026-08-23: "don't characterize a multi-file diff from one
+  sampled file" was folded into "Verify what actually happened, not what output looks like" — which
+  already covered clean-stdout-vs-exit-code and test-suite-vs-throwaway-script, both the same "the
+  convenient surface signal isn't the real signal" shape.
 - **A skill that already owns the topic beats a new always-loaded rule.** `~/AGENTS.md` is not the
   default home for every cross-repo finding. Whatever document states that file's admission criteria
   is the gate (on this author's machine, `power-user-linux-setup/contributing/global-agents-md.md`'s
@@ -231,8 +233,7 @@ For what survives the significance test:
   them, and the user should decide with that in view. Resolved 2026-08-25: `pgrep -f` matching the
   harness's own `zsh -c … eval` wrapper (a false positive that reads as a real process) went to
   `session-bash-audit` — which already invites newly noticed Bash anti-patterns and can _measure_
-  the rate — rather than becoming a 34th rule in a file already at 33 rules / 390 lines. A finding
-  that a topic-owning skill can act on is usually better there than restated globally.
+  the rate — rather than becoming a 34th rule in a file already at 33 rules / 390 lines.
   Counter-example, resolved 2026-08-28 the other way: a non-terminating CI-poll loop went to the
   always-loaded file _despite_ it standing at 37 rules / 446 lines, because the tier test is decided
   by the miss, not by the budget — this miss is silent by construction (a loop that cannot fail
@@ -250,15 +251,8 @@ For what survives the significance test:
   away unread, and conflicts with whatever session is doing the restructuring. Applies to any
   destination with an open plan owning its shape, not just `~/AGENTS.md`. Resolved 2026-08-23: two
   cross-repo rules routed to `~/AGENTS.md` while the (since retired) leanness pass was actively
-  cutting it from 30 sections and adding admission rules of its own — now permanent in
-  `contributing/global-agents-md.md` ("Admitting a new rule"); both candidates were parked in that
-  plan instead of appended, and were decided at its close. **When the destination is a _different
-  repo_ that is mid-restructure, the queue is a plan in the current repo carrying
-  `depends_on: [<that-repo>]`** — you cannot park a `[NEEDS CLARIFICATION: ...]` in a plan you are
-  not in, and holding the candidate in the session is how it is lost. Confirmed 2026-08-29: a
-  session produced nine evidence-backed edits owed to two skills in `agent-skills` while that repo
-  was undergoing surgery; they went to a `depends_on`-tagged plan in the project that found them,
-  with the evidence attached, so the edits can be made in one pass later.
+  cutting it from 30 sections and adding admission rules of its own; both candidates were parked in
+  that plan instead of appended, and were decided at its close.
 - **A candidate belonging to another repo is _filed_ there, not queued here.** As of 2026-08-29
   `plan-docs` has `plans.py new <topic> --for <repo>`, which writes the plan into that repo's store
   mirror outside every working tree: no commit crosses, and the session that next works in that repo
@@ -267,8 +261,7 @@ For what survives the significance test:
   never looks. Commit the filed plan in the store immediately — a dirty store forces every other
   session into the add-a-new-file fallback for as long as it lasts. `depends_on` keeps its own,
   different meaning: **this** work cannot land until that repo changes, which is a dependency rather
-  than a delivery. Used this way on the run that added it, to route two `~/AGENTS.md` corrections to
-  the repo that owns the fragments.
+  than a delivery.
 - **A skill or an instructions file that was misused, misread or ignored → filed immediately,
   against the repo that owns it.** Not held for the report, not described in prose at the end: use
   `plan-docs`' own routing — `plans.py new <topic>` when this repo owns the skill,
@@ -296,19 +289,19 @@ For what survives the significance test:
   is written for the live-state sweep and is easy not to apply here. When it is owned, the session's
   numbers are _evidence for that plan_, so they go into it rather than into a new file; `plan-docs`
   prefers one plan per topic, and a second one splits the corpus the first is accumulating.
-  Confirmed 2026-08-30: a session measured its own Bash calls against `~/AGENTS.md`, found 36% piped
-  through `head`/`tail`, and was about to file it — two plans already owned the contradiction, one
-  of them citing "25–36% for two other sessions the same day". What survived as genuinely new was
-  one row nobody had measured, and it landed in the existing plan as a fourth sample.
+  Confirmed 2026-08-30: a session measured its own Bash calls, found 36% piped through `head`/`tail`
+  and was about to file it — two plans already owned the contradiction, one of them citing "25–36%
+  for two other sessions the same day". What survived as genuinely new was one row nobody had
+  measured, and it landed in the existing plan as a fourth sample.
 - **Already covered → skip.** If an existing doc already says this, don't write a duplicate — check
   first.
 - **Meta-conventions about how to build things in this ecosystem (e.g. "skills should do X by
   default") → the relevant existing skill's own docs, not a feedback memory** — even though on the
   surface "how to approach work" sounds like the `feedback` bucket. Resolved via `AskUserQuestion`
   during this skill's own design: a preference about how _new skills_ should be authored belongs in
-  `mcp-skill-shipping` (durable, version-controlled, visible to every contributor/tool), not this
-  harness's private memory store. Use that as the default for similar cases rather than re-asking
-  each time.
+  the skill-authoring skill (durable, version-controlled, visible to every contributor/tool), not
+  this harness's private memory store. Use that as the default for similar cases rather than
+  re-asking each time.
 
 ### 3. There is no memory tier
 
@@ -340,142 +333,94 @@ worth resuming, or say plainly that it's fine to let go if it's genuinely epheme
 
 **Read the conversation, not only the summary.** A compacted session hands you someone else's
 précis: intermediate summaries drop exactly the loose ends this step exists to catch, and their
-confident tone reads as completeness. Extract the real user turns from the session transcript
-(`~/.claude/projects/<slugged-cwd>/<session-id>.jsonl`, `type == "user"` entries with real text
-content — a few dozen lines of Python, and typically under ten turns even in a long session) and
-re-read the original instructions rather than the recap of them. Confirmed 2026-08-28: the brief's
-own "this needs a full tier run afterwards, only one common cause was established" survived into no
-summary, and neither did an explicitly-declined consumer sweep.
+confident tone reads as completeness. `python3 $H turns` prints the real user turns and every
+`AskUserQuestion` answer from the transcript, in order — re-read the original instructions rather
+than the recap of them. Confirmed 2026-08-28: the brief's own "this needs a full tier run
+afterwards, only one common cause was established" survived into no summary, and neither did an
+explicitly-declined consumer sweep.
 
-**In a background job the session id is not the transcript id, and every guess at it lands on a real
-file belonging to someone else.** The job's `state.json` names the right one: `linkScanPath` is the
-full path, and `resumeSessionId` the id — while `sessionId`, which is what the job's own directory
-name and its task-output paths are built from, points at a different transcript in the same
-directory. Read `linkScanPath`; never reconstruct a path from an id you inferred. Confirmed
-2026-09-01: a harvest took the UUID from its task-output path, and both this step and step 5's audit
-ran against a stranger's session — 386 calls, none of them the job's, reported without a single sign
-anything was wrong. The check that costs nothing: grep the file for a command this session
-definitely ran.
+**Confirm the transcript is yours before reading anything into it.** In a background job the session
+id is not the transcript id, and every guess at it lands on a real file belonging to someone else —
+confirmed 2026-09-01, when a harvest read a stranger's session and reported 386 calls, none of them
+the job's, without a single sign anything was wrong. The script resolves this from the job's
+`state.json` and prints the path it settled on; `--expect '<a command this session definitely ran>'`
+is the check that costs nothing, selecting the transcript by content when no id is to hand and
+verifying it when one is. **Never reconstruct a path from an id you inferred** — a wrong id that
+names nothing errors out, while one that names the wrong file cannot be told from a right one by
+reading the output.
 
-**Find `state.json` rather than assuming where it sits — this rule named the wrong path for a
-build.** It said `$CLAUDE_JOB_DIR/../state.json`, which resolves to the jobs _root_ when the
-variable points at the job directory itself: there is no `state.json` there, only `pins.json` and
-one directory per job. Confirmed 2026-09-02 by following it and getting `FileNotFoundError` on CLI
-2.1.252, where `$CLAUDE_JOB_DIR/state.json` is correct and `$CLAUDE_JOB_DIR/tmp` is the scratch
-directory. Try the job directory first, then one level up (which is right on a build that points the
-variable at the scratch subdirectory), and treat a miss on both as a reason to `ls` rather than to
-fall back on an inferred id — falling back is the exact failure this bullet exists to prevent.
+**The answers are half the brief, and on a tool-driven session they are most of it.** A user turn is
+`type == "user"` with text; an answer to an `AskUserQuestion` is not, so a scan written for the
+first finds none of the second. Confirmed 2026-08-31: a five-hour session's extraction returned ten
+"user turns", of which most were slash-command wrappers and one was `/clear` — while every
+substantive instruction in the session had arrived as an answer and appeared in none of them. A
+harvest reading only the turns would have concluded the user said almost nothing and harvested
+against its own summary. The two populations differ in content, which is why an incomplete filter is
+worse than a miscount: a listed option is a word or two a harvest could infer from what the session
+then did, while a typed answer is the user writing prose about what they want, which is exactly what
+this step exists to recover.
 
-**`audit.py` now resolves this for you, and the belt-and-braces is deliberate.** Passed a job id, it
-reads that job's `linkScanPath` and says so; and it prints the transcript path it settled on
-whichever id you gave it, so the resolution is visible in the output rather than assumed. That
-closes step 5's half by construction — but this step reads the transcript itself, with no script in
-the loop, so the rule above is still yours to follow here.
-
-**Extract the `AskUserQuestion` answers too, not only the user turns — on a session driven by this
-tool they carry the entire brief.** A user turn is `type == "user"` with text; an answer to a
-question is not, so a transcript scan written for the first finds none of the second. Confirmed
-2026-08-31: a five-hour session's extraction returned ten "user turns", of which most were slash
-command wrappers and one was `/clear` — while every substantive instruction in the session ("propose
-an entirely new structure based on what the community is doing", "I write prompts, ideas, make
-decisions, but not things word by word", "come up with questions at the end of the analysis, before
-implementation") had arrived as an `AskUserQuestion` answer and appeared in none of them. A harvest
-reading only the turns would have concluded the user said almost nothing and harvested against its
-own summary — the exact failure this step exists to prevent, reached by a different route. The
-tool's answers come back in the tool-result blocks, so scan those for the question-and-answer text
-rather than filtering them out as tool noise. This skill's own steps 2 and 7 tell you to reach for
-`AskUserQuestion`, so the gap is self-inflicted and grows with how well the rest of the skill is
-followed.
-
-**Match the literal preambles — there are two, and the one that is easy to miss carries the brief.**
-The tool result's opening line depends on how the user answered:
-
-| the user                          | the result opens                     |
-| --------------------------------- | ------------------------------------ |
-| picked a listed option            | `Your questions have been answered:` |
-| typed custom text, or added notes | `The user answered:`                 |
-
-**Match on both, and understand why rather than memorising the strings** — a future answer shape
-with a third preamble would otherwise reintroduce this silently. The two populations differ in
-content, which is what makes a one-marker filter worse than a miscount: a listed option is a word or
-two a harvest could infer from what the session then did, while a custom answer is the user writing
-prose about what they want, which is exactly what this step exists to recover. Confirmed 2026-09-02
-on a `power-user-linux-setup` session: five listed-option answers of a few words each, and **three**
-typed ones that between them carried the whole brief for the session's second half. A harvest
-matching only the first marker would have concluded the user gave almost no direction.
-
-**Anchor the match to the start of a tool-result block, never to a raw transcript line.** Once this
-skill names the markers, the skill's own text contains them — so a line-level grep over any session
-that loaded it counts itself, as does the harvest's own extraction script and that script's output.
-Measured on the same transcript: matching anywhere in a block gives 7 and 4; matching only where the
-block _begins_ with the preamble gives the true **5 and 3**.
-
-**Cheap self-check, the same shape as the `exit-masked` count.** Compare the number of answers you
-extracted against a raw count of both preambles, and say so when they disagree — it converts a
-silent undercount into a visible one, which is the failure mode every version of this rule has had.
-
-[PITFALL: this rule has now been wrong twice in opposite directions, both times on 2026-09-02. First
-a heuristic looking for "question" and "answers" anywhere in a tool result, which returned five
-`Read` outputs alongside the real answers. Then the narrowing that replaced it, which named
-`Your questions have been answered:` as _the_ marker and missed every typed answer. The narrowing's
-own confirming note predicted its successor's failure without recognising it — "harmless here
-because both real ones were found, and precisely the shape that returns a plausible, incomplete set
-on a session with more of them" — and the very next session was the one with more of them. A filter
-that is _plausible and incomplete_ is the recurring shape here, so the self-check above earns its
-line more than any further tightening of the match.]
+[PITFALL: **this filter has been wrong in both directions, and both times the wrong version looked
+right.** First a heuristic looking for "question" and "answers" anywhere in a tool result, which
+returned `Read` outputs alongside real answers. Then a narrowing that named
+`Your questions have been answered:` as _the_ marker and missed every typed answer — those open
+`The user answered:` — on a session where three typed answers carried the whole second half of the
+brief. The narrowing's own confirming note predicted its successor's failure without recognising it:
+"harmless here because both real ones were found, and precisely the shape that returns a plausible,
+incomplete set on a session with more of them". `turns` now matches by **tool-use id** — it asks the
+transcript what the tool was, rather than what its output looks like — and prints a raw preamble
+count beside it so a disagreement is visible rather than silently resolved. A disagreement is
+normal: this skill's own text quotes both markers, so any transcript that loaded it counts itself.]
 
 ### 5. Live-state sweep
 
 The parts of "dangling" that are not in the conversation at all. The transcript says what was
-_intended_; these say what is actually true now. Run them even when the session felt tidy, because
-every one of them has been wrong at least once.
+_intended_; these say what is actually true now. `python3 $H sweep --boundary <instant>` runs them —
+processes, listening sockets, disk artifacts, git state for every repo the session wrote to, CI,
+both stores, the absorb queue, `depends_on` plans, files written outside every repository, and paths
+named in edits that do not exist. Add `--repo <path>` for a repo the transcript cannot show. Run it
+even when the session felt tidy, because every one of these has been wrong at least once.
 
-**Write these inspections unpiped, and the last bullet below is why.** Every check here is a
-long-output command you want narrowed, so the form that comes naturally — `… | head`, `… | tail -3`,
-`… | wc -l` — is exactly the shape this same step then measures and reports as a miss. Count first
-(`rg -c`, `wc -l` on its own) or run it plain and let the harness truncate; never pre-truncate to
-save context, and never wrap a command whose **exit code** is the answer, which is how a failing
-gate and a wrong branch both come back as a calm `0`.
+What the script cannot do is decide what a finding means. That is this list:
 
-- **Processes this session started.** Backgrounded polls and watchers outlive the turn that spawned
-  them. Check for live children (`ps -o pid,stat,etimes,args`, and whether a `sleep` child was
-  respawned seconds ago — that is the difference between hung and still-working). Confirmed
-  2026-08-28: four CI-poll loops, 36 hours old, still polling, whose exit condition could never be
-  true; the harvest was the only thing that would ever have found them.
-
-  **Then ask what the survivors _expose_, not only whether they are alive: `ss -ltnp`, read
-  alongside `ps`.** For anything holding a listening socket, the bind address and the directory it
-  serves are the finding — neither is visible to `ps`, and a long-running dev server is _supposed_
-  to be running, so liveness never flags it. **Drop "this session started" here**: the harder case
-  is a process this session reused because the port answered, whose own session ended without ever
-  harvesting it. Confirmed 2026-08-31: `python3 -m http.server 8765 --directory
-  <repo root>`, 24
-  hours up, bound to `0.0.0.0`, serving that repository's `.env` and `.git` to the whole LAN —
-  `curl http://127.0.0.1:8765/.env` returned 200. It was caught only because the sweep happened to
-  run `ss -ltnp`, which nothing then asked for. The general fact: **a development server's default
+- **Processes and what they serve.** A backgrounded poll outlives the turn that spawned it —
+  confirmed 2026-08-28, four CI-poll loops 36 hours old, still polling, whose exit condition could
+  never be true; the harvest was the only thing that would ever have found them. For anything
+  holding a listening socket the bind address and the directory it serves are the finding, not
+  liveness: a long-running dev server is _supposed_ to be running. **A development server's default
   bind is usually every interface**, and that default is invisible locally, since bound or unbound
-  every local run behaves identically and only the reachable audience differs.
+  every local run behaves identically and only the reachable audience differs. Confirmed 2026-08-31:
+  `python3 -m http.server --directory <repo root>`, 24 hours up, on `0.0.0.0`, serving that
+  repository's `.env` and `.git` to the whole LAN.
+
+  **A loopback bind narrows the audience; it does not close the finding.** An orphaned server is
+  still an orphan, and the directory it serves is still readable to everything running as this user
+  — which on a machine with several agent sessions and a browser is not a small set. Report an
+  unowned listener over a repository root whatever its bind address, and say what is under it; the
+  sweep names the served directory and any secret-shaped file in it, and `curl` on one gitignored
+  path turns that into a status code. Confirmed 2026-09-02: an `http.server` deliberately bound to
+  `127.0.0.1` by the repo's own task — the 2026-08-31 hazard designed out — three and a half hours
+  old, orphaned by a one-shot command, whose gitignored `.env` answered 200. The run nearly stopped
+  at "bound to loopback, safe". Both cases belong in the report side by side, so the next reader
+  does not learn "check the bind address" as the whole rule.
 - **Disk artifacts outside any repo.** Container images and build caches, throwaway interpreters,
-  volumes — none of which `ps`, `ss`, `git status` or either store can see, and which a session that
-  verified anything in containers will have several gigabytes of. `docker images`,
-  `docker system df` for the cache, `uv python list --only-installed` for interpreters added to test
-  a version floor. Report the sizes with a proposed removal line the user can approve; do not delete
-  unasked, because the build cache is shared with every other project on the machine and an image
-  another session is about to reuse costs a rebuild. **Say which were one-off verification artifacts
-  and which a committed README names — the session is the only party that can still tell those
-  apart.** Confirmed 2026-09-01: a run that had verified a container fix left a 4.11 GB image, 445
-  MB of others and a ~58 GB machine-wide build cache, while the processes bullet reported clean and
-  correctly so, every container having already been removed.
-- **Files this session edited that no repository and no store covers.** Take the write paths from
-  the session's own transcript, subtract everything inside a git repo or a known store, and report
-  what is left **with what would recover it** — because every other bullet here asks whether a store
-  was left tidy, and a file belonging to no store is not untidy, it is unseen. The recovery half is
-  the work: an example file in a repo plus a validator that rejects a bad one is a real recovery
-  path and not an obvious one; "no copy anywhere" is a finding worth stating plainly. Confirmed
-  2026-09-01: a session edited an unversioned config outside every working tree — no diff, no
-  history, no backup, and operational data of the kind the repo that reads it exists to protect. The
-  edit was correct and user-approved, which is what makes it the right instance: nothing went wrong
-  and the sweep still could not see it, so a wrong edit would have been equally invisible.
+  volumes — none of which `ps`, `git status` or either store can see. Report the sizes with a
+  proposed removal line the user can approve; do not delete unasked, because the build cache is
+  shared with every other project on the machine and an image another session is about to reuse
+  costs a rebuild. **Say which were one-off verification artifacts and which a committed README
+  names — the session is the only party that can still tell those apart.** Confirmed 2026-09-01: a
+  run that had verified a container fix left a 4.11 GB image, 445 MB of others and a ~58 GB
+  machine-wide build cache, while the processes check reported clean and correctly so.
+- **Files this session edited that no repository and no store covers.** The sweep subtracts every
+  write path inside a git repo and reports what is left; the work is saying **what would recover
+  it**. Every other check here asks whether a store was left tidy, and a file belonging to no store
+  is not untidy, it is unseen. An example file in a repo plus a validator that rejects a bad one is
+  a real recovery path and not an obvious one; "no copy anywhere" is a finding worth stating
+  plainly. Confirmed 2026-09-01: a session edited an unversioned config outside every working tree —
+  no diff, no history, no backup, and operational data of the kind the repo that reads it exists to
+  protect. The edit was correct and user-approved, which is what makes it the right instance:
+  nothing went wrong and the sweep still could not see it, so a wrong edit would have been equally
+  invisible.
 - **This session's own rule adherence**, which nothing else in the sweep reaches:
 
   ```shell
@@ -484,15 +429,15 @@ gate and a wrong branch both come back as a calm `0`.
     --compare ~/.agents/skills/session-bash-audit/references/baselines/<baseline>.json
   ```
 
-  **Get `<session-id>` from step 4's rule, not from a path you happen to have** — in a background
-  job the id in the task-output path names a different transcript, the audit runs clean against it,
-  and the verdict describes a session that is not yours.
+  **Get `<session-id>` from the transcript the script resolved**, not from a path you happen to have
+  — in a background job the id in the task-output path names a different transcript, the audit runs
+  clean against it, and the verdict describes a session that is not yours.
 
   **`--until` is not optional, and the reason is not that the sweep looks bad.** A figure that
   includes this sweep measures the sweep: its calls are inspections, a different population from the
   session's working commands, and they drag the rate toward their own shape in whichever direction
-  that happens to lean. Measured 2026-09-01 on two runs the same day — one rose 37% -> 40% on
-  `head`/`tail`, the other **fell** 22% -> 17% on `git -C`. "The harvest inflates its own number" is
+  that happens to lean. Measured 2026-09-01 on two runs the same day — one rose 37% → 40% on
+  `head`/`tail`, the other **fell** 22% → 17% on `git -C`. "The harvest inflates its own number" is
   the wrong claim and would have made the second run look like a refutation. **Report both
   numbers**, one line: "6% during the work, 14% including this sweep." The first is the session; the
   second is the honesty.
@@ -502,189 +447,129 @@ gate and a wrong branch both come back as a calm `0`.
   reported success through a filter that discarded the real answer. Confirmed 2026-08-31: a session
   ran `inv quality.precommit 2>&1 | grep -Ei "…" | tail -3` perhaps twenty times, read the absence
   of a match as success, and pushed three red commits — `basedpyright` printed
-  `0 errors, 6 warnings` and the gate exited 1, but the pipe reported `grep`'s exit code. The same
-  harvest measured `exit-masked` at 28% across 306 calls and drew no conclusion from it, which is
-  the gap this sentence closes. Re-run it unpiped — `inv quality.check > log 2>&1; echo $?`, then
-  read the log — and make the gate conditional on the number so a slow gate is not re-run for
-  nothing.
+  `0 errors, 6 warnings` and the gate exited 1, but the pipe reported `grep`'s exit code. Re-run it
+  unpiped — `inv quality.check > log 2>&1`, then read the log — and make the gate conditional on the
+  number so a slow gate is not re-run for nothing. This is the one command the script deliberately
+  does not run for you: it is the repo's, not this skill's.
 
   **The re-run settles whether the greens were true. It does not touch the fact that they were
   asserted.** A session with a non-zero `exit-masked` has usually told the user "gate green" several
   times over the run, each time on evidence a filter had already discarded, and those sentences
-  stand in the conversation whatever the re-run comes back with. So **count them** — the transcript
-  is open for the audit anyway — and report the count with the re-run's verdict attached. "Said the
-  gate was green 15 times on masked calls; re-run exits 0, so the claims hold" is a footnote. The
-  same sentence ending "re-run exits 1" is a **live inaccuracy with a reader**: the same shape as an
-  unpushed commit correcting something already pushed, and it goes in "needs action now" for the
-  same reason. The conversation is the record the user is actually working from, and it is the one
-  artefact a later commit cannot amend — only a later message corrects it, and only if someone
-  writes one. Confirmed 2026-09-02: a ten-hour session at 28% `exit-masked` had reported the gate
-  green roughly fifteen times, every one from a `| tail`-ed run. The re-run exited 0 and all fifteen
-  held — which is the outcome that makes this rule easy to skip, and the reason it is written as a
-  count rather than as a warning.
+  stand in the conversation whatever the re-run comes back with.
+  `python3 $H claims --until <the
+  boundary>` counts them against the masked calls. Report the
+  count with the re-run's verdict attached. "Said the gate was green 15 times on masked calls;
+  re-run exits 0, so the claims hold" is a footnote. The same sentence ending "re-run exits 1" is a
+  **live inaccuracy with a reader**: the same shape as an unpushed commit correcting something
+  already pushed, and it goes in "needs action now" for the same reason. The conversation is the
+  record the user is actually working from, and it is the one artefact a later commit cannot amend —
+  only a later message corrects it, and only if someone writes one. Confirmed 2026-09-02: a ten-hour
+  session at 28% `exit-masked` had reported the gate green roughly fifteen times, every one from a
+  `| tail`-ed run. The re-run exited 0 and all fifteen held — which is the outcome that makes this
+  rule easy to skip, and the reason it is written as a count rather than as a warning.
 
-  The transcript says what the session intended; this says what it actually typed. It is not in the
-  narrative, not in git, not in CI, and — the reason it belongs here rather than nowhere — **not in
-  the session's own impression of how the run went**. Report the two numbers and the comparison, in
-  the skill-and-instruction-misuse group rather than in the verdict; a self-flagellating report
-  buries the findings the user needs. Confirmed 2026-08-30: a session that had spent the day
-  authoring the rule against piping a gate through `head`/`tail` then produced that shape in a third
-  of its own calls, and reported "went well, gate green throughout" — true, and beside the point.
-  **Authoring a rule is not evidence of following it**, which is exactly why the number has to come
-  from the transcript.
-- **Git state, every repo the session touched** — not just the primary one. Dirty tree, unpushed
-  commits (`git log origin/<branch>..HEAD`), and whether the remote moved under you. An unpushed
-  commit is the most common real loose end, and a session that ends with one usually believes it
-  pushed. **Resolve the branch before counting, and do not type `main`** —
-  `git -C <repo> rev-parse --abbrev-ref '@{u}'` prints the ref that belongs on the left of `..`.
-  Measured 2026-08-30 across this machine's clones: 22 of 71 were on `main`, fewer than were on
-  `master`, with the remaining third on a feature branch — so the substitution a session reaches for
-  is wrong more often than it is right. **Then run the count unpiped**, because a wrong branch is
-  only loud unpiped: `git log` exits 128 with `fatal: ambiguous argument`, while
-  `git log origin/main..HEAD --oneline | wc -l` discards that exit code and prints a calm `0`.
-  Confirmed 2026-08-30: that exact pipeline reported `0` for a store 32 commits ahead, and the run
-  caught it only because a later command happened to name the branch. Again 2026-08-30, with this
-  sentence in front of it: a run typed `origin/main` against a `master` store and saw the `fatal:`
-  only because the filter that day was `| head`, which passes stderr through, rather than `| wc -l`,
-  which swallows it. **Whether the mistake is loud is decided by which filter you happened to reach
-  for, not by anything you did right** — and that is the second occurrence after the rule existed
-  and was in context, so treat rereading as not the lever here. This goes before the fetch check
-  rather than after it — a fetch that succeeds against the right remote still leaves the count wrong
-  if the branch is wrong. **Check that the `git fetch` actually succeeded before trusting either
-  answer**: on this machine a fetch needs the Zenity SSH-passphrase dialog, which fails with
-  `Permission denied (publickey)` when nobody is at the keyboard — and a failed fetch leaves
-  `origin/<branch>` exactly where it was, so the ahead-count still prints a plausible number
-  computed against a stale ref. Same silent-by-construction shape as the CI loop above: the wrong
-  answer and the right one are indistinguishable. Read the fetch's exit code, and when it failed say
-  how old the ref is (`git log -1 --format=%cr origin/<branch>`) rather than reporting the count
-  flat. **The command is `git fetch origin`, alone in its own call, with nothing after it** — then
-  read the ahead-count in a second call. Any `| tail`, `; echo $?` or `2>/dev/null` on that line
-  reports the filter's exit rather than git's, so the very check meant to catch a stale ref reads
-  clean while the fetch is failing. Confirmed 2026-08-28; again 2026-08-29 by this bullet failing to
-  prevent it; and a third time 2026-08-30, by a run that had this sentence in front of it and piped
-  anyway — which is why the rule now opens on the command to type instead of the mistake to avoid.
-  When it is the empty-agent case, the machine's own diagnostic names the fix (`inv ssh.check` on
-  this machine) — do not reach for `ssh-add`, and apply that fix as a per-call environment prefix
-  rather than an `export`, which does not survive to the next Bash call. **Then check who wrote the
-  unpushed commits before recommending a push.** Where sessions run in parallel the ahead-count is
-  not necessarily this session's work, and "you have two unpushed commits, push them" publishes
-  another session's unfinished history under a recommendation that reads as routine. Name which are
-  this session's and which are not, and let the user decide. Confirmed 2026-08-29: two commits from
-  a parallel session appeared in the ahead-count between one push and the next, and asking rather
-  than pushing was the only thing that surfaced them. **Then ask, of this session's own unpushed
-  commits, whether any corrects something this session already pushed.** That one is not deferred
-  work — it is a live inaccuracy with a reader — and reported flat it is indistinguishable from
-  three plan updates in an ahead-count. Name it in the report's "needs action now", with what the
-  remote currently claims, so the user is deciding about a published error rather than about a
-  backlog. The signal is a path in the unpushed set that an earlier commit in the same session
-  already published: `git log origin/<branch>..HEAD --name-only` against
-  `git log <session-start-sha>..origin/<branch> --name-only`. An overlap is not proof, but it is a
-  short list to read and empty for most sessions. Confirmed 2026-08-30: a session pushed a package
-  description arguing why the package existed, learned an hour later from a parallel session's filed
-  plan that the argument was false, and committed the correction without pushing — so the remote
-  served a justification known to be wrong while its fix sat in the ahead-count alongside ordinary
-  tidying. Keep it to the same-session case; "is anything this repo currently publishes known-wrong"
-  is a different question that no harvest can answer in bounded time. **Re-read every count at
-  report time; one taken earlier in the session is not evidence about now.** The whole point of this
-  bullet is that the session's memory is not the current state, and a number carried forward from an
-  hour ago is exactly that memory wearing a measurement's clothes. Confirmed 2026-08-30: a session
-  reported the plans store as "7 unpushed commits, 4 of them other sessions'", correct when counted;
-  at harvest it was 27, of which 25 were other sessions'. On a machine this parallel the count moves
-  fastest in the repositories several sessions share, which are the ones a harvest is most likely to
-  be asked about.
+  Report the two numbers and the comparison in the skill-and-instruction-misuse group rather than in
+  the verdict; a self-flagellating report buries the findings the user needs. Confirmed 2026-08-30:
+  a session that had spent the day authoring the rule against piping a gate through `head`/`tail`
+  then produced that shape in a third of its own calls, and reported "went well, gate green
+  throughout" — true, and beside the point. **Authoring a rule is not evidence of following it**,
+  which is exactly why the number has to come from the transcript.
+- **Git state, every repo the session touched** — not just the primary one. An unpushed commit is
+  the most common real loose end, and a session that ends with one usually believes it pushed. The
+  sweep reads the upstream branch rather than typing `main` (measured 2026-08-30: 22 of 71 clones
+  were on `main`, fewer than were on `master`), runs the count unpiped so a wrong branch exits 128
+  rather than printing a calm `0`, and checks the `git fetch` succeeded before trusting either
+  answer — on this machine a fetch needs the Zenity SSH-passphrase dialog and fails with
+  `Permission denied (publickey)` when nobody is at the keyboard, leaving `origin/<branch>` exactly
+  where it was so the ahead-count still prints a plausible number against a stale ref. When that
+  happens the machine's own diagnostic names the fix (`inv ssh.check` here) — do not reach for
+  `ssh-add`, and apply the fix as a per-call environment prefix rather than an `export`, which does
+  not survive to the next Bash call.
+
+  Three judgements the count does not make for you:
+  - **Who wrote the unpushed commits.** Where sessions run in parallel the ahead-count is not
+    necessarily this session's work, and "you have two unpushed commits, push them" publishes
+    another session's unfinished history under a recommendation that reads as routine. Name which
+    are this session's and which are not, and let the user decide. Confirmed 2026-08-29: two commits
+    from a parallel session appeared in the ahead-count between one push and the next, and asking
+    rather than pushing was the only thing that surfaced them.
+  - **Whether any of them corrects something already pushed.** That is not deferred work — it is a
+    live inaccuracy with a reader — and reported flat it is indistinguishable from three plan
+    updates in an ahead-count. The sweep lists paths that are both unpushed now and published
+    earlier in this session; an overlap is not proof, but it is a short list to read and empty for
+    most sessions. Name it in "needs action now", with what the remote currently claims. Confirmed
+    2026-08-30: a session pushed a package description arguing why the package existed, learned an
+    hour later that the argument was false, and committed the correction without pushing — so the
+    remote served a justification known to be wrong while its fix sat in the ahead-count alongside
+    ordinary tidying. Keep it to the same-session case; "is anything this repo currently publishes
+    known-wrong" is a different question no harvest can answer in bounded time.
+  - **That the count is from now.** Re-read it at report time; one taken earlier in the session is
+    the session's memory wearing a measurement's clothes. Confirmed 2026-08-30: a session reported
+    the plans store as "7 unpushed commits, 4 of them other sessions'", correct when counted; at
+    harvest it was 27, of which 25 were other sessions'. On a machine this parallel the count moves
+    fastest in the repositories several sessions share, which are the ones a harvest is most likely
+    to be asked about.
 - **Sibling repos this skill itself wrote to.** A skill self-update (step 6) commits locally and
   reaches nothing until it is pushed and re-installed, so `agent-skills` is a repo the session
   touched and it is the one most likely to be forgotten — the edit felt done when it was committed.
-  Check its ahead-count too, and report it with the rest.
 - **Paths this session told other sessions to run.** A rule written into an always-loaded
   instructions file, or a `SKILL.md` command block, names a path on this machine — usually an
-  installed copy, not the checkout the session was editing. Run one of them. Confirmed 2026-08-29: a
-  session deployed a `~/AGENTS.md` rule pointing at `~/.agents/skills/<name>/scripts/<file>` while
-  the installed skill still had no `scripts/` directory, so a machine-wide rule instructed every
-  future session to run a file that did not exist. The checkout worked perfectly throughout, which
-  is why nothing surfaced it.
-- **CI, for anything this session pushed. The command is
-  `gh run view <id> --json status,conclusion`, or `gh run watch <id> --exit-status` bare, with
-  nothing after it** — then read the result. A green local gate is not a green CI run, and a
-  hand-rolled `until` loop is never the waiter. **Any pipe destroys the check**: `| tail` reports
-  `tail`'s exit, so `--exit-status` — the flag whose whole purpose is turning a red run into a
-  non-zero exit — is discarded by the very command reading it, and a failed run prints `0`.
-  Confirmed three times, each by a harvest executing this checklist with this bullet in front of it:
-  2026-08-29 a run reported `WATCH_EXIT=0` from `tail`; 2026-08-30 twice more, piped both times, and
-  the runs happened to be green so nothing surfaced it until the session counted its own Bash calls.
-  That is the argument for reading the conclusion as JSON rather than watching at all — `--json` has
-  no exit code to lose, so there is nothing for a pipe to take away. Same shape as the `git fetch`
-  bullet above, and rewritten the same way, to open on the command rather than the mistake, after
-  the prose version failed to prevent it twice more.
+  installed copy, not the checkout the session was editing. The sweep reports home-rooted paths
+  written into files that do not exist; run one of the ones that do. Confirmed 2026-08-29: a session
+  deployed a `~/AGENTS.md` rule pointing at `~/.agents/skills/<name>/scripts/<file>` while the
+  installed skill still had no `scripts/` directory, so a machine-wide rule instructed every future
+  session to run a file that did not exist. The checkout worked perfectly throughout, which is why
+  nothing surfaced it.
+- **CI, for anything this session pushed.** A green local gate is not a green CI run. The sweep
+  reads `gh run list --json`, and reading the conclusion as JSON is the point: `--json` has no exit
+  code to lose, so there is nothing for a pipe to take away. Never hand-roll an `until` loop, and
+  never watch through a filter — confirmed three times, each by a harvest executing this checklist
+  with the warning in front of it, reporting `tail`'s `0` as the run's.
 - **Shared stores outside any repo.** `$RESEARCH_HOME` clones, caches, anything the session added to
   a location no `git status` covers. The failure is a half-finished convention rather than a missing
   file — a clone without its `SOURCE.md`, or one that failed partway — and it is invisible to every
-  other check here precisely because _this_ store is not version-controlled. (That reasoning is
-  specific to it. The plans store below is a git repository and is invisible for a different reason,
-  which is why the two are separate bullets rather than one with a shared rationale.) Cheap to
-  verify (does each new entry exist, and does it carry whatever metadata that store's convention
-  requires), and nothing else will. **Also check the entries the session _changed_, not only the
-  ones it added** — a deliberate divergence from the store's shape is invisible to the same checks
-  and reads as conformant, because the entry is present and its metadata is intact. Confirmed
-  2026-08-30: a session deepened a `--depth 1` reference clone to ~436 commits to read a
+  other check here precisely because _this_ store is not version-controlled. **Also check the
+  entries the session _changed_, not only the ones it added**: a deliberate divergence from the
+  store's shape reads as conformant, because the entry is present and its metadata is intact.
+  Confirmed 2026-08-30: a session deepened a `--depth 1` reference clone to ~436 commits to read a
   dependency's constraint history, which was the right call and left the store holding one entry
   that silently no longer matched its own convention. Record the divergence and why, in whatever
   file that store uses for per-entry metadata.
-- **The plans store, `$PLANS_HOME` — a separate bullet, for a different reason.** Two commands, both
-  cheap:
-
-  ```shell
-  git -C $PLANS_HOME status --porcelain    # an uncommitted plan this session left
-  python3 <plans.py> absorb                # plans filed FOR this repo that nobody took
-  ```
-
-  The first is this session's own mess, the second another session's gift — separate failures with
-  separate owners. **The reason this went unnoticed in a skill whose whole subject is unswept state
-  is that both neighbouring bullets appear to own it**: the store is a git repository (so the git
-  bullet seems to cover it) and it sits outside every working tree (so the shared-stores bullet
-  seems to). Each framing hands it to the other.
-
-  What the git bullet actually misses is **uncommitted** work: an uncommitted plan is not a commit,
-  so no ahead-count sees it on any repository, and nothing walks to a directory outside every
-  working tree. Do not write "the store has no remote" — the shareable tier has one and the
-  sensitive tier deliberately does not, so committed-but-unpushed plans are a real second finding on
-  the shareable half, gated by that skill's content scan before any push.
-
-  **Run `absorb` here even though `plan-docs` already tells every session to run it first.** Not
-  redundant: the queue refills for as long as the session runs, because the sessions filing into it
-  run concurrently. Measured 2026-08-30 in a session that followed the first-call rule correctly — 4
-  plans at session start, 4 more two hours in, and 1 more at five hours, that last one a credential
-  exposure that sat unread for half an hour and surfaced only because the harvest happened to be
-  looking at the store for another reason. `absorb` prints nothing when nothing is waiting, which is
-  what makes it cheap enough to run every time. Report a mid-transaction store — uncommitted changes
-  that are not yours — rather than working around it; it means another session is actively holding
-  that directory.
+- **The plans store, `$PLANS_HOME` — a separate bullet, for a different reason.** The sweep reports
+  its dirty state and its unpushed commits, and runs `plans.py absorb` read-only. Two failures with
+  separate owners: an uncommitted plan is this session's own mess, and a plan filed _for_ this repo
+  is another session's gift. **The reason this went unnoticed in a skill whose whole subject is
+  unswept state is that both neighbouring bullets appear to own it**: the store is a git repository
+  (so the git bullet seems to cover it) and it sits outside every working tree (so the shared-stores
+  bullet seems to). Each framing hands it to the other. What the git bullet actually misses is
+  **uncommitted** work: an uncommitted plan is not a commit, so no ahead-count sees it. Do not write
+  "the store has no remote" — the shareable tier has one and the sensitive tier deliberately does
+  not, so committed-but-unpushed plans are a real second finding on the shareable half, gated by
+  that skill's content scan before any push. **`absorb` runs here even though `plan-docs` already
+  tells every session to run it first**: the queue refills for as long as the session runs, because
+  the sessions filing into it run concurrently. Measured 2026-08-30 in a session that followed the
+  first-call rule correctly — 4 plans at session start, 4 more two hours in, and 1 at five hours,
+  that last one a credential exposure that sat unread for half an hour. Report a mid-transaction
+  store — uncommitted changes that are not yours — rather than working around it; it means another
+  session is actively holding that directory.
+- **`depends_on` plans whose blocker may have lifted.** The routing filter above parks work owed to
+  a mid-restructure repo in a `depends_on`-tagged plan — which stores it safely and gives it no
+  trigger. Nothing watches the named repo, so a plan waiting on a repo that has been ready for days
+  is indistinguishable from one waiting on a repo that is still busy. The sweep lists the tagged
+  plans and their targets; **sorting them is yours**, because the tag carries two meanings that take
+  opposite answers. Work parked because that repo was mid-restructure (this bullet's case, and a
+  deprecated one now that `new --for <repo>` exists) is answered by that repo's current state.
+  `plan-docs`' own documented meaning — "sibling repos this plan can't fully land without" — is not:
+  the named repo being idle says nothing, because the blocker is a change that repo has not made
+  yet, and only reading the plan answers whether it has. Report readiness only for the first kind;
+  "seven plans ready" assembled from clean `git status` output is a claim the check never made.
+  Confirmed 2026-08-29: eight tagged plans, three sibling repos all clean, and exactly one of the
+  eight was queue-shaped. And verify against the working tree rather than the plan's prose — the
+  same check that day read "surgery finished" from a clean `git status` and a landed plan, then
+  found two modified files a few minutes later.
 - **Work the session promised but never verified** — a test tier it added to but never ran, a
   consumer it changed but never swept. "I'll report when it lands" in the last message is a promise
   the harvest has to either keep or retract.
-- **`depends_on` plans whose blocker may have lifted.** The routing filter above parks work owed to
-  a mid-restructure repo in a `depends_on`-tagged plan — which stores it safely and gives it no
-  trigger. Nothing watches the named repo, so the queue is discovered only when someone thinks to
-  look, and a plan waiting on a repo that has been ready for days is indistinguishable from one
-  waiting on a repo that is still busy. Cheap to close: for each `depends_on` plan the current repo
-  has, check that repo's tree and recent commits, and report the ones whose blocker is gone as ready
-  rather than blocked. Anchor the match — `rg -l '^depends_on:' plans/`, not a bare
-  `rg -l 'depends_on'`, which also hits a plan whose body tabulates a data schema having a field of
-  that name, and a false positive here reads exactly like a real queue entry. That was caught by the
-  "run one of them" rule above, applied to this bullet on the run that added it. Confirmed
-  2026-08-29: nine skill edits parked five hours earlier were already unblocked, and were found only
-  because the user asked what plans needed other repos — the harvest that created the queue had not
-  scheduled anything to drain it. Verify against the working tree, not the plan's prose: the same
-  check that day read "surgery finished" from a clean `git status` and a landed plan, then found two
-  modified files a few minutes later. **A clean tree only answers the queue case.** The tag carries
-  two meanings — work parked because that repo was mid-restructure (this bullet's case, and a
-  deprecated one now that `new --for <repo>` exists), and `plan-docs`' own documented meaning,
-  "sibling repos this plan can't fully land without". For the second, the named repo being idle says
-  nothing: the blocker is a change that repo has not made yet, and only reading the plan answers
-  whether it has. Sort the tagged plans into the two kinds before reporting any of them, and report
-  readiness only for the first — "seven plans ready" assembled from clean `git status` output is a
-  claim the check never made. Confirmed 2026-08-29: eight tagged plans, three sibling repos all
-  clean, and exactly one of the eight was queue-shaped.
 - **Work handed off to another session, and what it blocks here.** This user runs parallel sessions,
   so "another session is doing X, don't touch it" is a routine instruction — and it creates state no
   other check finds: not a process, not git state, not CI, not an unkept promise, but a dependency
@@ -697,13 +582,13 @@ gate and a wrong branch both come back as a calm `0`.
 - **Whether a finding is already owned, before reporting it as new.** A sweep that reaches back
   through history or across repos surfaces things this session did not cause, and on a machine
   running parallel sessions the likeliest explanation for a real finding is that someone else
-  already found it. Check before escalating: the sibling repos' recent commits
-  (`git log --oneline -10`) and their open plans. Report an already-owned finding as _confirmed
-  still open_ and name the plan that owns it — never as a discovery, and never by acting on it.
-  Confirmed 2026-08-29: a confidentiality scan returned 55 hits in published history and was minutes
-  from being reported as urgent, when another session had already rewritten both histories,
-  force-pushed, opened a support request for the residue, and written all of it into a plan. Several
-  probing calls, and nearly a duplicate alarm, for work that was done.
+  already found it. Check before escalating: the sibling repos' recent commits and their open plans.
+  Report an already-owned finding as _confirmed still open_ and name the plan that owns it — never
+  as a discovery, and never by acting on it. Confirmed 2026-08-29: a confidentiality scan returned
+  55 hits in published history and was minutes from being reported as urgent, when another session
+  had already rewritten both histories, force-pushed, opened a support request for the residue, and
+  written all of it into a plan. Several probing calls, and nearly a duplicate alarm, for work that
+  was done.
 
 ### 6. Improve the skill on every run
 
@@ -721,9 +606,11 @@ incomplete, or unhelpful anywhere?_ Signals, in rough order of how often they ar
 - The skill contradicted itself, or an instruction turned out ambiguous when applied.
 
 Act on it now rather than filing it for later; a deferred skill fix is a skill fix that does not
-happen. Keep the change small and additive. If a run genuinely surfaces nothing, say so in the
+happen. Keep the change small and additive. **A correction that a script can simply not make belongs
+in the script, not in a new paragraph** — six of them are already there, each one having been
+written as prose first and then recurred anyway. If a run genuinely surfaces nothing, say so in the
 report in one line — an explicit "no skill changes needed this run" is the evidence the check
-happened, and it should be the exception rather than the norm while the skill is young.
+happened.
 
 **Where the session is decides whether "act on it now" means an edit or a filing**, and this is not
 a preference:
@@ -807,9 +694,7 @@ it still only in the chat?" is the question the whole report exists to answer:
   plan filed early in a session had been absorbed, merged into an existing plan there, and its
   store-side deletion committed and pushed hours before the harvest ran. A report written from the
   session's own memory would have named a path that no longer existed and called a published commit
-  unpushed — two ordinary-looking status lines, neither of which reads as a guess. Same class as the
-  parallel-session rule on the ahead-count: this session's record of what it did is not evidence
-  about the current state.
+  unpushed — two ordinary-looking status lines, neither of which reads as a guess.
 - **Only in this conversation** — everything not written to a file anywhere. This group is the point
   of the list: it is exactly what the user must either decide now or carry into the next session's
   prompt, and it disappears when the window closes. Keep it short by writing things down, not by
@@ -920,11 +805,9 @@ the current session:
   the store. Do not locate the checkout in order to write to it: an edit there is a commit in
   another session's working tree, which is what the global rule forbids outright. The filing is not
   a weaker outcome; `absorb` hands it to the next session that works there.
-- When you _are_ in that repo, edit `skills/session-harvest/SKILL.md`: a small, additive change — a
-  new bullet under the relevant routing filter, or a note under "On friction, ask" if the friction
-  was about the escalation process itself. Not a rewrite. Rationale for _why_ a resolution was made
-  a particular way goes in `references/rationale.md` instead, matching the split already used for
-  the rest of this skill.
+- When you _are_ in that repo, edit `skills/session-harvest/SKILL.md` (or `scripts/harvest.py`, and
+  its tests in `tests/unit/test_harvest.py`): a small, additive change. Rationale for _why_ a
+  resolution was made a particular way goes in `references/rationale.md` instead.
 - Run that repo's quality gate, then commit — locally, without asking, per step 7. Its own
   `tests/unit/test_skill_layout.py` is part of that gate and enforces real limits (the description
   cap among them), so run it rather than eyeballing the frontmatter. Then tell the user what
@@ -941,23 +824,21 @@ the current session:
   The install fixes the file on disk; the copy this session loaded at start is still the old one, so
   a harvest that edits itself and then runs cannot use what it just wrote. Push, re-install, then
   have the harness reload the skill — in Claude Code, `/reload-skills`, after which the skill has to
-  be invoked again to pick the new body up. Confirmed 2026-09-01: a session rewrote this step 9,
-  pushed, re-installed, verified the installed copy matched the checkout, and still held the
-  superseded wording; the user supplied the missing move (`/reload-skills`, then "use it"), which is
-  behaviour this section described nowhere. Say which of the three is outstanding rather than
-  reporting "re-installed" as though the loop were closed.
+  be invoked again to pick the new body up. Confirmed 2026-09-01: a session rewrote step 9, pushed,
+  re-installed, verified the installed copy matched the checkout, and still held the superseded
+  wording; the user supplied the missing move (`/reload-skills`, then "use it"). Say which of the
+  three is outstanding rather than reporting "re-installed" as though the loop were closed.
 - **Say plainly that a committed edit still reaches nothing.** The installer clones from the remote,
   so the change takes effect only once it is pushed _and_ re-installed
   (`npx skills add TheodoreAD/agent-skills --global --skill session-harvest`) — including for other
   projects on the same machine, whose `~/.agents/skills/` copy is now stale against the source. **If
   the user declines the re-install, that is not a licence to state what the machine is now running**
   — on a machine with parallel sessions the installer may already have been run by one of them, so
-  the install state is shared and has to be measured before it is reported. Diff it. Confirmed
-  2026-08-30: a harvest closed with "this one keeps running the old copy", the user asked, and the
-  installed copy already carried the fix, re-installed by another session twenty minutes earlier — a
-  confident, specific, wrong sentence in the zone of the report reserved for what needs action. Ask
-  before that step, and verify afterwards by diffing the installed copy against the source rather
-  than trusting the installer's output.
+  the install state is shared and has to be measured before it is reported. Diff it (that is what
+  `skills-state` is for). Confirmed 2026-08-30: a harvest closed with "this one keeps running the
+  old copy", the user asked, and the installed copy already carried the fix, re-installed by another
+  session twenty minutes earlier — a confident, specific, wrong sentence in the zone of the report
+  reserved for what needs action.
 
 ## Full rationale
 

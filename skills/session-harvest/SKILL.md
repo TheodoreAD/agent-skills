@@ -387,12 +387,42 @@ rather than filtering them out as tool noise. This skill's own steps 2 and 7 tel
 `AskUserQuestion`, so the gap is self-inflicted and grows with how well the rest of the skill is
 followed.
 
-**Match the literal marker, not a heuristic.** Every answer's tool result opens
-`Your questions have been answered:` and then quotes each question and the chosen option, so that
-string alone is an exact filter. Confirmed 2026-09-02: a scan that instead looked for "question" and
-"answers" anywhere in a tool result returned five `Read` outputs alongside the two real answers —
-harmless here because both real ones were found, and precisely the shape that returns a plausible,
-incomplete set on a session with more of them.
+**Match the literal preambles — there are two, and the one that is easy to miss carries the brief.**
+The tool result's opening line depends on how the user answered:
+
+| the user                          | the result opens                     |
+| --------------------------------- | ------------------------------------ |
+| picked a listed option            | `Your questions have been answered:` |
+| typed custom text, or added notes | `The user answered:`                 |
+
+**Match on both, and understand why rather than memorising the strings** — a future answer shape
+with a third preamble would otherwise reintroduce this silently. The two populations differ in
+content, which is what makes a one-marker filter worse than a miscount: a listed option is a word or
+two a harvest could infer from what the session then did, while a custom answer is the user writing
+prose about what they want, which is exactly what this step exists to recover. Confirmed 2026-09-02
+on a `power-user-linux-setup` session: five listed-option answers of a few words each, and **three**
+typed ones that between them carried the whole brief for the session's second half. A harvest
+matching only the first marker would have concluded the user gave almost no direction.
+
+**Anchor the match to the start of a tool-result block, never to a raw transcript line.** Once this
+skill names the markers, the skill's own text contains them — so a line-level grep over any session
+that loaded it counts itself, as does the harvest's own extraction script and that script's output.
+Measured on the same transcript: matching anywhere in a block gives 7 and 4; matching only where the
+block _begins_ with the preamble gives the true **5 and 3**.
+
+**Cheap self-check, the same shape as the `exit-masked` count.** Compare the number of answers you
+extracted against a raw count of both preambles, and say so when they disagree — it converts a
+silent undercount into a visible one, which is the failure mode every version of this rule has had.
+
+[PITFALL: this rule has now been wrong twice in opposite directions, both times on 2026-09-02. First
+a heuristic looking for "question" and "answers" anywhere in a tool result, which returned five
+`Read` outputs alongside the real answers. Then the narrowing that replaced it, which named
+`Your questions have been answered:` as _the_ marker and missed every typed answer. The narrowing's
+own confirming note predicted its successor's failure without recognising it — "harmless here
+because both real ones were found, and precisely the shape that returns a plausible, incomplete set
+on a session with more of them" — and the very next session was the one with more of them. A filter
+that is _plausible and incomplete_ is the recurring shape here, so the self-check above earns its
+line more than any further tightening of the match.]
 
 ### 5. Live-state sweep
 

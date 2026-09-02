@@ -15,6 +15,7 @@ Subcommands, cheapest first:
     usage       real invocation counts from the transcript store (Claude Code only)
     absorb      ad-hoc python -c payloads that recur, i.e. candidates for skill code
     derivable   commands a SKILL.md asks an agent to compose that a script could carry
+    portability what a SKILL.md assumes about its reader's machine, and whether it says so
     report      all of the above, in the order a reader wants them
 
 Every subcommand takes --json.
@@ -728,6 +729,178 @@ def scan_derivable(skills: list[Skill]) -> list[dict[str, Any]]:
     return rows
 
 
+# --------------------------------------------------------------------------------------------
+# portability: what a skill assumes about the machine that is reading it
+
+# `skills add` puts every install under the same hub on every machine, so a skill citing its own
+# script by that path cites something the reader actually has. It is the one `~/` path that is not
+# an assumption, and excluding it is what keeps the measure from reporting the correct idiom.
+PORTABLE_HOME = ("~/.agents/skills",)
+# A path is followed by prose punctuation as often as not, and `~/AGENTS.md.` reported as a distinct
+# token from `~/AGENTS.md` is one finding printed twice.
+HOME_PATH = re.compile(r"~/[\w./*-]*[\w*]")
+ABS_HOME = re.compile(r"/(?:home|Users)/[\w.-]+(?:/[\w./*-]*[\w*])?")
+# Three characters and up, so a `$S=…` shorthand a fenced block defines on its own first line is
+# not reported as something the reader has to have set before running anything.
+ENV_VAR = re.compile(r"\$([A-Z][A-Z0-9_]{2,})")
+ENV_UNIVERSAL = frozenset({"HOME", "PATH", "PWD", "USER", "SHELL", "EDITOR", "TMPDIR", "LANG", "TERM"})
+# Runners whose *targets* come from a repo rather than from the tool. `inv quality.precommit` is a
+# task that exists in the author's repos and nowhere else; `git status` is the same everywhere.
+TASK_RUNNERS = frozenset({"inv", "invoke", "make", "just", "rake", "nox", "tox", "task", "mise"})
+INSTALL_LINE = re.compile(r"skills\s+add\s+([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+)")
+GITHUB_LINK = re.compile(r"github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+)")
+CODE_INLINE = re.compile(r"`([^`]+)`")
+
+# The corpus's own idiom for owning an assumption instead of stating it as fact. Deliberately
+# narrow: a loose pattern marks everything declared and the measure reports nothing. "on this
+# author's machine" is the phrase this corpus already uses in the places that got it right.
+DECLARED = re.compile(
+    r"on (?:this|the) author'?s machine|this author'?s own|on my machine|"
+    r"the repo'?s (?:own )?equivalent|your own|substitute|if you have|if your|"
+    r"where no such|where a repo has one|assumes|unavailable|not available|"
+    r"only if|set (?:it|this|that) to|defaults? to|\(default|overrides?\b|export |"
+    r"points at|if (?:it|one) (?:is|exists)|where you keep|cannot know|if it exports",
+    re.IGNORECASE,
+)
+
+
+def author_vocabulary(skills: list[Skill], extra: list[str] | None = None) -> tuple[str, list[str]]:
+    """The author's repo names, derived from the corpus rather than from the machine running this.
+
+    A machine-derived list (the way a private-name scanner reads the project roots) would make the
+    answer depend on whose laptop the audit runs on, and the question here is about the *reader's*
+    machine, not the author's. Two self-describing sources instead: the `skills add <owner>/<repo>`
+    line the corpus carries for its own install names the owner, and every `github.com/<that
+    owner>/…` link in the corpus names a repo that owner has. Both travel with the files.
+
+    The vocabulary is seeded from every markdown file in a skill, not only its `SKILL.md`: a repo
+    linked once from a `references/rationale.md` is still the repo whose name appears bare in three
+    other skills' bodies, and reading `SKILL.md` alone missed exactly that case.
+
+    The known gap: a sibling repo the corpus never links (one `*-mcp` of five is linked, the rest
+    are named in prose) is invisible here. `--author-repo` adds one by hand.
+    """
+    texts = [
+        path.read_text(encoding="utf-8", errors="replace") for s in skills for path in sorted(s.path.rglob("*.md"))
+    ]
+    owners: Counter[str] = Counter()
+    repos: set[str] = set(extra or [])
+    for text in texts:
+        for owner, repo in INSTALL_LINE.findall(text):
+            owners[owner] += 1
+            repos.add(repo)
+    if not owners:
+        return "", sorted(repos)
+    owner = owners.most_common(1)[0][0]
+    for text in texts:
+        repos.update(repo for linked, repo in GITHUB_LINK.findall(text) if linked == owner)
+    return owner, sorted(repos)
+
+
+def _blocks_by_line(lines: list[str]) -> list[int]:
+    """Which blank-line-separated block each line belongs to. A bullet list with no blank lines
+    between its items is one block, which is deliberate: a hedge in the lead-in sentence covers the
+    bullets under it, and that is how the corpus's correct instances are actually written."""
+    out: list[int] = []
+    block = 0
+    for line in lines:
+        if not line.strip():
+            block += 1
+        out.append(block)
+    return out
+
+
+def _references(line: str, in_fence: bool, repos: re.Pattern[str] | None, own_name: str = "") -> list[tuple[str, str]]:
+    """Every assumption one line makes about the reader's machine, as (kind, token) pairs.
+
+    `own_name` exempts the runner a skill is *about*: `invoke-task-conventions` naming `inv` on
+    every second line is its subject, not an assumption, and reporting it buries the skills where
+    the same token is an instruction the reader cannot follow.
+    """
+    found: list[tuple[str, str]] = [
+        ("home-path", path) for path in HOME_PATH.findall(line) if not path.startswith(PORTABLE_HOME)
+    ]
+    found.extend(("abs-path", path) for path in ABS_HOME.findall(line))
+    found.extend(("env-var", f"${name}") for name in ENV_VAR.findall(line) if name not in ENV_UNIVERSAL)
+    if repos is not None:
+        found.extend(("author-repo", name) for name in repos.findall(line))
+    code = line if in_fence else " ".join(CODE_INLINE.findall(line))
+    heads = re.findall(r"(?:^|[`\s(])([a-z][\w-]*)\s+[\w.:-]+", code)
+    found.extend(("task-runner", h) for h in heads if h in TASK_RUNNERS and h not in own_name)
+    return found
+
+
+def scan_portability(skills: list[Skill], extra_repos: list[str] | None = None) -> dict[str, Any]:
+    """What a `SKILL.md` assumes its reader's machine already has, and whether it admits to it.
+
+    A skill is installed by strangers. The reader has none of the author's repos, none of the
+    author's dotfiles, and no task whose name the author invented — so every reference a skill makes
+    outside itself is either something the reader can satisfy or a dead end that reads as an
+    instruction. The repo rule this measures: where a skill genuinely needs an environment
+    assumption, it must say so in the skill rather than failing mysteriously.
+
+    So the finding is never "this skill names the author's repo". Evidence is supposed to name real
+    things — "confirmed 2026-08-24 in <repo>" is honest and a stranger loses nothing by it. The
+    finding is an assumption stated as **fact**: a pointer to a document only the author can open, a
+    command whose task only the author's repos define, a `$VAR` nobody was told to set. Each
+    reference is therefore `declared` or `bare`, decided by whether its own block owns the
+    assumption in the corpus's existing idiom ("on this author's machine", "or the repo's
+    equivalent", "if you have one"), and only the bare ones are findings.
+    """
+    owner, repos = author_vocabulary(skills, extra_repos)
+    pattern = re.compile(r"(?<![\w/-])(" + "|".join(re.escape(r) for r in repos) + r")(?![\w-])") if repos else None
+    rows: list[dict[str, Any]] = []
+    for skill in skills:
+        lines = (skill.path / "SKILL.md").read_text(encoding="utf-8", errors="replace").splitlines()
+        blocks = _blocks_by_line(lines)
+        declared_blocks = {blocks[i] for i, line in enumerate(lines) if DECLARED.search(line)}
+        hits: list[dict[str, Any]] = []
+        in_fence = False
+        for index, line in enumerate(lines):
+            if FENCE.match(line):
+                in_fence = not in_fence
+                continue
+            for kind, token in _references(line, in_fence, pattern, skill.name):
+                hits.append({
+                    "kind": kind,
+                    "token": token,
+                    "line": index + 1,
+                    "where": "fence" if in_fence else "prose",
+                    "declared": blocks[index] in declared_blocks,
+                    "text": line.strip()[:160],
+                })  # fmt: skip
+        # The description is what the harness shows every session and has no block around it to
+        # carry a declaration, so it can only ever inherit one from the body.
+        hits.extend(
+            {"kind": kind, "token": token, "line": 0, "where": "description", "declared": False, "text": "(desc)"}
+            for kind, token in _references(skill.description, False, pattern, skill.name)
+        )
+        # Declaration is per *token*, file-wide, not per block. A skill that says once what
+        # `$RESEARCH_HOME` is has told its reader; requiring the hedge beside every later mention
+        # marked a correctly-written skill as six findings and is how a measure gets switched off.
+        owned = {(h["kind"], h["token"]) for h in hits if h["declared"]}
+        refs: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for hit in hits:
+            key = (hit["kind"], hit["token"])
+            if key in seen:
+                continue
+            seen.add(key)
+            refs.append({**hit, "status": "declared" if key in owned else "bare"})
+        bare = [r for r in refs if r["status"] == "bare"]
+        rows.append({
+            "skill": skill.name,
+            "refs": len(refs),
+            "bare": len(bare),
+            "in_fence": sum(1 for r in bare if r["where"] == "fence"),
+            "declared": len(refs) - len(bare),
+            "kinds": dict(Counter(r["kind"] for r in bare).most_common()),
+            "samples": bare,
+        })  # fmt: skip
+    rows.sort(key=lambda r: (-int(r["bare"]), r["skill"]))
+    return {"author": owner, "author_repos": repos, "skills": rows}
+
+
 def scan_absorbable(min_sessions: int = 2) -> list[dict[str, Any]]:
     """Recurring throwaway Python: the agent solving the same problem again instead of reaching
     for a script.
@@ -1028,6 +1201,9 @@ def collect(want: str, skills: list[Skill], args: argparse.Namespace) -> tuple[d
         if args.compare:
             out["derivable_drift"] = compare_derivable(out["derivable"], Path(args.compare))
 
+    if want in ("portability", "report"):
+        out["portability"] = scan_portability(skills, args.author_repo)
+
     if want in ("absorb", "report"):
         out["absorbable"] = scan_absorbable()[: args.top]
 
@@ -1203,6 +1379,29 @@ def _render_derivable(out: dict[str, Any], top: int) -> None:
         print(f"  {name:28} in the baseline, not in this corpus")
 
 
+def _render_portability(out: dict[str, Any], top: int) -> None:
+    data = out["portability"]
+    print("\n## portability — what a SKILL.md assumes about the machine reading it")
+    print('  bare = stated as fact. declared = the block owns it ("on this author\'s machine", ...).')
+    print("  Naming the author's repo as *evidence* is fine and portable; naming it as a place the")
+    print("  reader should go and read something is a dead end. The status column is that difference.")
+    if data["author_repos"]:
+        print(f"\n  author repos, derived from the corpus's own links: {', '.join(data['author_repos'])}")
+    else:
+        print("\n  no `skills add <owner>/<repo>` line in this corpus — author-repo references unmeasured")
+    _print_table(data["skills"], ["skill", "refs", "bare", "in_fence", "declared"])
+    print("\n  in_fence is the sharper half: a bare assumption inside a fenced block is a command the")
+    print("  reader is being told to run. The same token in prose may be a quotation of evidence.")
+    for row in data["skills"][:top]:
+        if not row["bare"]:
+            continue
+        kinds = ", ".join(f"{k}={v}" for k, v in row["kinds"].items())
+        print(f"\n  {row['skill']}: {row['bare']} bare ({kinds})")
+        for sample in row["samples"][:6]:
+            print(f"    L{sample['line']:<4} {sample['where']:<11} {sample['kind']:<12} {sample['token']}")
+            print(f"           {sample['text']}")
+
+
 def _render_absorbable(out: dict[str, Any]) -> None:
     print("\n## absorbable one-liners — recurring ad-hoc python, candidates for skill code")
     print("  read `shapes` first: it is the count of distinct payloads, and a cluster whose shape")
@@ -1217,38 +1416,50 @@ def _render_absorbable(out: dict[str, Any]) -> None:
         print(f"    {r['example'][:160]}")
 
 
+def _render_inventory(out: dict[str, Any], count: int) -> None:
+    print(f"\n## inventory ({count} skills)")
+    _print_table(out["inventory"], ["skill", "desc_chars", "body_lines", "scripts", "refs", "evals"])
+    if out["stale_copies"]:
+        print("\n  same name, different content — one copy is stale, and only one is loaded:")
+        for c in out["stale_copies"]:
+            print(f"    {c['name']}: loaded from {c['read_from']}, differs in {c['differs_in']}")
+
+
 def render(out: dict[str, Any], skills: list[Skill], usage: Usage, args: argparse.Namespace) -> None:
+    """Sections print in reading order, and only the ones `collect` gathered."""
     print(f"# skill fitness — {out['generated']}")
     for r in out["roots"]:
         print(f"  scope: {r}")
 
-    if "inventory" in out:
-        print(f"\n## inventory ({len(skills)} skills)")
-        _print_table(out["inventory"], ["skill", "desc_chars", "body_lines", "scripts", "refs", "evals"])
-        if out["stale_copies"]:
-            print("\n  same name, different content — one copy is stale, and only one is loaded:")
-            for c in out["stale_copies"]:
-                print(f"    {c['name']}: loaded from {c['read_from']}, differs in {c['differs_in']}")
-
-    if "budget" in out:
-        _render_budget(out, args)
-
-    if "overlap" in out:
-        _render_overlap(out, args.top)
-
+    sections: list[tuple[str, Any]] = [
+        ("inventory", lambda: _render_inventory(out, len(skills))),
+        ("budget", lambda: _render_budget(out, args)),
+        ("overlap", lambda: _render_overlap(out, args.top)),
+        ("derivable", lambda: _render_derivable(out, args.top)),
+        ("portability", lambda: _render_portability(out, args.top)),
+        ("absorbable", lambda: _render_absorbable(out)),
+    ]
+    # `usage` is collected for `budget` too, where its own section would be noise; only the
+    # subcommand that asked for it prints it.
     if "usage" in out and args.command == "usage":
         _render_usage(skills, usage)
-
-    if "derivable" in out:
-        _render_derivable(out, args.top)
-
-    if "absorbable" in out:
-        _render_absorbable(out)
+    for key, draw in sections:
+        if key in out:
+            draw()
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["inventory", "budget", "overlap", "usage", "absorb", "derivable", "report"])
+    p.add_argument(
+        "command",
+        choices=["inventory", "budget", "overlap", "usage", "absorb", "derivable", "portability", "report"],
+    )
+    p.add_argument(
+        "--author-repo",
+        action="append",
+        default=[],
+        help="a repo of the author's the corpus never links, so portability can see it named in prose",
+    )
     p.add_argument("--root", action="append", type=Path, help="a skills directory; repeatable")
     p.add_argument("--json", action="store_true")
     p.add_argument("--top", type=int, default=12, help="rows to show in ranked sections")

@@ -1243,6 +1243,97 @@ def test_a_reference_to_a_plan_that_does_not_exist_is_not_a_pair(ws, capsys):
     assert "2026-01-02-thing.md" in out
 
 
+def test_absorb_raises_the_retirement_backlog_it_used_to_walk_past(ws, capsys):
+    """The convention was never missing the retirement mechanism, only a trigger for it.
+
+    Demonstrated 2026-08-29: `absorb` printed a filing notice for one incoming plan while the repo
+    held two `landed` ones and mentioned neither.
+    """
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-done.md", "status: landed\nupdated: 2026-01-01")
+    plan(ws.personal / "plans", "2026-01-02-killed.md", "status: abandoned\nupdated: 2026-01-02")
+    plan(ws.personal / "plans", "2026-01-03-open.md", "status: idea\nupdated: 2026-01-03")
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "awaiting retirement" in out
+    assert "2026-01-01-done.md" in out
+    assert "2026-01-02-killed.md" in out
+    assert "2026-01-03-open.md" not in out  # an open plan is not a retirement owed
+    assert "'not now' a real answer" in out  # the offer names its own cost and can be declined
+
+
+def test_absorb_leaves_a_freshly_terminal_plan_to_the_session_that_landed_it(ws, capsys):
+    """The throttle is age, and it is what keeps this from firing on work still in flight.
+
+    `absorb` runs at the top of a session, so anything that reached a terminal status today was
+    landed by some other session that is probably still holding it; `session-harvest` reports those
+    under "decisions waiting". This one only speaks for the aged backlog.
+    """
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-fresh.md", f"status: landed\nupdated: {plans.today()}")
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_absorb_reads_a_stalled_retirement_as_finish_this_not_start_this(ws, capsys):
+    """A plan carrying `## Migrated to` has had the expensive half done and is minutes from gone.
+
+    Confirmed 2026-08-29: one of nine terminal plans machine-wide was stalled exactly here — the
+    section written and committed, steps 5 and 6 never run — and nothing in any listing told it
+    apart from one nobody had started. It is raised whatever its age, because finishing it is cheap
+    and losing it is silent.
+    """
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(
+        ws.personal / "plans",
+        "2026-01-01-halfway.md",
+        f"status: landed\nupdated: {plans.today()}",
+        "\n## Migrated to\n\n- `docs/rationale.md`\n",
+    )
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "STALLED mid-retirement" in out
+    assert "2026-01-01-halfway.md" in out
+    assert "awaiting retirement" not in out  # not counted twice, and not the same request
+    assert "Minutes, not a session." in out
+
+
+def test_absorb_caps_the_retirement_rows_so_a_backlog_does_not_train_its_own_dismissal(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    for index in range(plans.RETIREMENT_PROMPT_ROWS + 3):
+        plan(
+            ws.personal / "plans",
+            f"2026-01-{index + 1:02d}-old.md",
+            f"status: landed\nupdated: 2026-01-{index + 1:02d}",
+        )
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert f"{plans.RETIREMENT_PROMPT_ROWS + 3} plan(s) at a terminal status" in out
+    assert "… and 3 more" in out
+    assert "2026-01-01-old.md" in out  # oldest first
+    assert "2026-01-08-old.md" not in out
+
+
+def test_absorb_json_carries_the_retirement_backlog_uncapped(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    plan(ws.personal / "plans", "2026-01-01-done.md", "status: landed\nupdated: 2026-01-01")
+    plan(
+        ws.personal / "plans",
+        "2026-01-02-halfway.md",
+        "status: abandoned\nupdated: 2026-01-02",
+        "\n## Migrated to\n\n- nothing, it was killed\n",
+    )
+
+    assert plans.main(["absorb", "--json", "--path", str(ws.personal)]) == 0
+    owed = json.loads(capsys.readouterr().out)["retirements_owed"]
+    assert [entry["name"] for entry in owed] == ["2026-01-02-halfway.md", "2026-01-01-done.md"]
+    assert [entry["stalled_mid_retirement"] for entry in owed] == [True, False]
+
+
 def test_list_footer_surfaces_absorbable_plans(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     plans.main(["new", "waiting", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])

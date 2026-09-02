@@ -137,6 +137,25 @@ STATUS_ORDER = ("in-progress", "blocked", "planned", "idea", "landed", "abandone
 # "what is still open everywhere", and a retired-but-not-yet-deleted plan is noise against it.
 TERMINAL_STATUSES = ("landed", "abandoned", "superseded")
 
+# Step 4 of the retirement procedure. `archive` matches it a line at a time; `read_plan` searches a
+# whole file for it, because its presence is what tells a stalled retirement — the expensive half
+# done, the delete never run — from one nobody has started. MULTILINE serves the second caller and
+# is inert for the first, a single line having only one start.
+MIGRATED_RE = re.compile(r"^#{2,}\s+migrated to\b", re.IGNORECASE | re.MULTILINE)
+
+# How long a plan sits at a terminal status before `absorb` raises it. The throttle is age because
+# age needs no state: a marker file would be a second lifecycle store with no retirement of its own,
+# which is the objection this convention already makes to parking anything outside `plans/`.
+# Three days rather than one so a plan landed on a Friday does not nag on the Saturday, and so the
+# session that made it terminal keeps ownership of it — `session-harvest` already reports those
+# under "decisions waiting", and `absorb` runs at the top of a session, before this one has landed
+# anything.
+RETIREMENT_PROMPT_AFTER_DAYS = 3
+
+# The prompt names at most this many aged plans before collapsing the rest to a count. A prompt that
+# is declined trains its own dismissal, and the backlog it draws from is machine-wide.
+RETIREMENT_PROMPT_ROWS = 5
+
 # A well-formed status line: one of these exactly, or one of the two prefixes followed by a reason.
 # The vocabulary is open-ended at the end, never at the start, which is what makes drift detectable.
 STATUS_EXACT = ("in-progress", "planned", "idea", "landed", "abandoned")
@@ -835,6 +854,7 @@ class PlanFile:
     updated: str
     tags: Counter[str]
     depends_on: tuple[str, ...] = ()
+    migrated: bool = False
 
     @property
     def group(self) -> str:
@@ -906,6 +926,7 @@ def read_plan(path: Path, where: str) -> PlanFile:
         updated=fields.get("updated", ""),
         tags=Counter(match.group(1) for match in TAG_RE.finditer(text)),
         depends_on=parse_depends_on(fields.get("depends_on", "")),
+        migrated=bool(MIGRATED_RE.search(text)),
     )
 
 
@@ -1296,7 +1317,6 @@ UNIT = "\x1f"
 # takes POSIX extended regex, not Python's.
 ERE_SPECIAL = re.compile(r"([.^$*+?()\[\]{}|\\])")
 
-MIGRATED_RE = re.compile(r"^#{2,}\s+migrated to\b", re.IGNORECASE)
 HEADING_RE = re.compile(r"^#{1,6}\s")
 BULLET_RE = re.compile(r"^([-*]|\d+[.)])\s")
 
@@ -2365,17 +2385,56 @@ def absorbable(routing: Routing) -> list[PlanFile]:
     return plans_in(routing.store_dir, "store")
 
 
+def retirements_owed(routing: Routing) -> tuple[list[PlanFile], list[PlanFile]]:
+    """This repo's terminal plans, split into the ones stalled mid-retirement and the aged rest.
+
+    `plans/` is defined as a working set that empties out, and nothing has ever asked anyone to empty
+    it — the convention is missing a trigger, not a mechanism. Measured 2026-08-29, machine-wide:
+    nine terminal plans across five repos, two of them reached that day, so the backlog grew faster
+    than it drained while `list`'s footer printed throughout.
+
+    The stalled half is separated because it is a different request. A plan carrying `## Migrated to`
+    has had the expensive half done — triage, a home for the rationale, the section written and
+    committed — and is waiting on reference fixes and a delete. It is both the cheapest to finish and
+    the most likely to be lost, since no listing distinguishes it from one nobody has started.
+    """
+    terminal = [plan for plan in plan_files(routing) if plan.group in TERMINAL_STATUSES]
+    stalled = [plan for plan in terminal if plan.migrated]
+    aged = [
+        plan
+        for plan in terminal
+        if not plan.migrated and (age_in_days(plan.updated) or 0) >= RETIREMENT_PROMPT_AFTER_DAYS
+    ]
+    aged.sort(key=lambda plan: plan.updated or "")
+    return stalled, aged
+
+
+def _retirement_payload(plan: PlanFile, *, stalled: bool) -> dict[str, object]:
+    return {
+        "path": str(plan.path),
+        "name": plan.path.name,
+        "status": plan.status,
+        "updated": plan.updated,
+        "days": age_in_days(plan.updated),
+        "stalled_mid_retirement": stalled,
+    }
+
+
 def cmd_absorb(args: argparse.Namespace, ws: Workspace) -> int:
     """Take plans filed for this repo from the store into the repo's own `plans/`.
 
     Run from inside the repo that owns them, which is what keeps this from being a foreign commit:
     the session writes only to its own tree, and to the store only to remove what it just took.
+
+    It also carries the retirement prompt, because it is the once-per-session call: already
+    documented as the first thing a session runs, already silent when it has nothing to say, and
+    therefore the only command in this skill guaranteed to reach a session that is not otherwise
+    thinking about plans — which is exactly where the backlog accumulates.
     """
-    cfg = ws.config
     routing = ws.require_routable()
     pending = absorbable(routing)
-
     pairs = consolidation_pairs(routing, pending) if pending else {}
+    stalled, aged = retirements_owed(routing)
 
     if args.json:
         payload = [
@@ -2388,9 +2447,24 @@ def cmd_absorb(args: argparse.Namespace, ws: Workspace) -> int:
             }
             for plan in pending
         ]
-        print(json.dumps({"repo": routing.rel, "absorbable": payload}, indent=2))
+        retirements = [_retirement_payload(plan, stalled=True) for plan in stalled]
+        retirements += [_retirement_payload(plan, stalled=False) for plan in aged]
+        print(json.dumps({"repo": routing.rel, "absorbable": payload, "retirements_owed": retirements}, indent=2))
         return 0
 
+    status = _absorb_filed(args, ws, routing, pending, pairs)
+    _print_retirement_prompt(stalled, aged)
+    return status
+
+
+def _absorb_filed(
+    args: argparse.Namespace,
+    ws: Workspace,
+    routing: Routing,
+    pending: list[PlanFile],
+    pairs: dict[str, list[str]],
+) -> int:
+    cfg = ws.config
     if not pending:
         # Silence is the point: this runs at the top of a session, and a session with nothing
         # waiting should not be told so.
@@ -2426,6 +2500,37 @@ def cmd_absorb(args: argparse.Namespace, ws: Workspace) -> int:
             print(f"references: {name} cites {', '.join(related)} — now both in {target}")
         _print_consolidation_note()
     return 1 if blocked else 0
+
+
+def _print_retirement_prompt(stalled: list[PlanFile], aged: list[PlanFile]) -> None:
+    """The trigger `plans/` never had, on the one command a session runs without being asked.
+
+    Two groups, printed as two different requests. Naming the cost is deliberate: retiring a plan is
+    a judgement procedure — triage the content by lifecycle, find a home for the rationale, write
+    `## Migrated to`, fix inbound references, delete — not a command, so this is an offer to spend a
+    chunk of a session on something the user did not come here for. "Retiring these two will take
+    most of a session" is a different question from "shall I tidy up?", and only the first can be
+    answered honestly.
+    """
+    if not stalled and not aged:
+        return
+    if stalled:
+        print(f"\n{len(stalled)} plan(s) STALLED mid-retirement — step 4 done, steps 5-6 never ran:")
+        for plan in stalled:
+            print(f"  {plan.path.name:<52} {plan.status}  has ## Migrated to")
+        print("  Finish these first: refs <file>, fix what it finds, delete, commit. Minutes, not a session.")
+    if aged:
+        days_owed = RETIREMENT_PROMPT_AFTER_DAYS
+        print(f"\n{len(aged)} plan(s) at a terminal status for {days_owed}+ days, awaiting retirement:")
+        for plan in aged[:RETIREMENT_PROMPT_ROWS]:
+            days = age_in_days(plan.updated)
+            since = f"{days}d" if days is not None else "?"
+            print(f"  {plan.path.name:<52} {plan.status:<12} {since}")
+        if len(aged) > RETIREMENT_PROMPT_ROWS:
+            print(f"  … and {len(aged) - RETIREMENT_PROMPT_ROWS} more — plans.py list --status landed")
+        print("  Each is a chunk of a session, not a command — see 'Retiring a plan'.")
+    print("\nPut this to the user as ONE question before starting, with the cost in it, and make")
+    print("'not now' a real answer. Then carry on with what the session was for.")
 
 
 def _require_own_repo(routing: Routing, cfg: Config) -> None:

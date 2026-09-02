@@ -503,15 +503,15 @@ idea is exactly what it cannot catch. The sensitive tier has no remote, so there
 **On your first plan-docs call in a session, run `absorb` before anything else:**
 
 ```shell
-python3 <path> absorb            # report only — prints nothing at all if nothing is waiting
+python3 <path> absorb            # report only — silent when nothing is waiting and nothing is owed
 python3 <path> absorb --apply    # move them into this repo's plans/
 ```
 
-It is silent when the store holds nothing for this repo, so it costs nothing on the sessions where
-it does not apply. When it does print, **put the set to the user with `AskUserQuestion` before
-applying** — one question for the set, not one per plan — then apply, run the repo's quality gate,
-and commit **twice**: this repo for the additions, the store for the removals. Then carry on with
-whatever the session was for.
+It is silent when the store holds nothing for this repo and nothing is owed retirement, so it costs
+nothing on the sessions where it does not apply. When it does print filed plans, **put the set to
+the user with `AskUserQuestion` before applying** — one question for the set, not one per plan —
+then apply, run the repo's quality gate, and commit **twice**: this repo for the additions, the
+store for the removals. Then carry on with whatever the session was for.
 
 Once per session, not once per command. The script is stateless and cannot tell a first call from a
 fifth; you can, so the rule lives here. `list` also prints a one-line footer when plans are waiting,
@@ -559,6 +559,50 @@ retired and foreign plans in prose, and only a name matching a real file on eith
 
 Absorption applies only to a repo that keeps its own plans. For a repo routed to the store, the
 mirror **is** the permanent home and nothing is ever in transit.
+
+### The retirement prompt `absorb` also carries
+
+`plans/` is defined as a working set that empties out, and until 2026-09-02 **nothing ever asked
+anyone to empty it**. The convention was never missing the mechanism — a five-step procedure, a
+deletion gate, an inbound-reference check, `archive` to read a retired plan back — it was missing a
+trigger. Measured 2026-08-29, machine-wide: **nine terminal plans across five repos**, two of them
+reaching that status the same day, so the backlog grew faster than it drained while `list`'s footer
+printed throughout. One of the nine was not merely unretired but stalled mid-procedure.
+
+So `absorb` says it, in two groups that are two different requests:
+
+- **`STALLED mid-retirement`** — the plan carries a `## Migrated to` section, so step 4 is done and
+  steps 5–6 never ran. Cheapest to finish and likeliest to be lost, since nothing else distinguishes
+  it from a plan nobody has started. Raised **whatever its age**. Finish these first.
+- **awaiting retirement** — terminal for `RETIREMENT_PROMPT_AFTER_DAYS` (3) or more, oldest first,
+  at most five rows before the rest collapse to a count.
+
+**Put it to the user as one question, with the cost in it, and make "not now" a real answer.**
+Retirement is a judgement procedure, not a command: triage the content by lifecycle, find a home for
+the rationale, write `## Migrated to`, fix inbound references, delete. So the prompt is an offer to
+spend a chunk of the current session on something the user did not come here for. "Retiring these
+two will take most of a session" is a different question from "shall I tidy up?", and only the first
+one can be answered honestly. A stalled plan is minutes, and asking about it in the same breath as
+an unstarted one loses that.
+
+Three settled choices, each of which was an open question:
+
+- **The throttle is age, and age is chosen because it needs no state.** A marker file recording what
+  was asked and when would be a second lifecycle store with no retirement of its own — the objection
+  this convention already makes to parking anything outside `plans/`. Three days rather than one so
+  a plan landed on a Friday does not nag on the Saturday.
+- **Three surfaces, three distinct triggers, no split ownership.** `absorb` speaks for the _aged_
+  backlog at the top of a session. `session-harvest` already reports plans _this session_ made
+  terminal, under "decisions waiting" — and it has to, because `absorb` runs before this session has
+  landed anything. `list` keeps its passive one-line footer for a session already reading plan
+  state. Each answers a question the other two cannot see.
+- **The prompt trusts nothing but the status field it reads, and that is a known limit.** A plan
+  whose status was hand-edited past the gate looks identical here — which is why "`status:` and
+  `updated:` are `set-status`' output" is a rule at the top of this file rather than a note.
+
+**This does not propose retiring a backlog that already exists.** That is real work needing real
+sessions and should be scheduled deliberately; folding it into the change that adds the prompt would
+make the prompt's first run its worst.
 
 ## Plans that belong to no repo yet
 

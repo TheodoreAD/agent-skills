@@ -1,6 +1,6 @@
 ---
-status: in-progress
-updated: 2026-09-01
+status: landed
+updated: 2026-09-02
 ---
 
 # Two proposed additions to `absorb`: a next-session prompt, and a retirement prompt
@@ -76,29 +76,33 @@ handoff falls on the `plans/` side of the boundary, and what is left may not jus
 The residue worth measuring is ordering and immediacy — a plan file says what is open, not what to
 do first.]
 
-[NEEDS CLARIFICATION: does the prompt assert state or name the checks that re-derive it? Asserting
-is what makes it useful — "push `103b0b6`, then absorb the incoming plan" is actionable in a way
-"run `git status`" is not. Naming checks is what makes it survive a week on the shelf. The likely
-answer is both, split visibly: a short "here is what was true at <timestamp>" block that the reader
-is told to re-verify, and the commands to do it with. But an unread caveat is not a safeguard, so
-the split has to be structural rather than a sentence of hedging.]
+These four were the open questions, and all four were answered by what shipped rather than by
+argument. They are kept as the questions they were, each with the answer attached.
 
-[NEEDS CLARIFICATION: per-repo or per-machine? The session that asked for this touched `repo-tasks`,
-wrote to the plans store, and read three sibling repos. A per-repo prompt is easy to route and
-misses the cross-repo work, which is precisely the part that gets forgotten. A per-machine one has
-nowhere natural to live and reaches sessions it is irrelevant to.]
+[DECISION: **both, split structurally — verify-then-act.** The question was whether the prompt
+asserts state or names the checks that re-derive it: asserting is what makes it useful ("push
+`103b0b6`, then absorb the incoming plan" is actionable where "run `git status`" is not), naming
+checks is what makes it survive a week on the shelf, and an unread caveat is not a safeguard. What
+shipped pairs each item with the command that re-derives its state and the action if it still holds,
+which is the split made structural rather than hedged in a sentence.]
 
-[NEEDS CLARIFICATION: appended, or replaced? "Append" was the word in the request, and appending
-gives a history of what each session left behind. But an append-only file is a second lifecycle
-store with no retirement mechanism — the exact objection `session-harvest` already makes against
-parking plan content in memory. Replacing each time keeps it honest at the cost of losing the trail,
-which may not be a cost at all, since the trail is in git.]
+[DECISION: **per-repo, with a test rather than a ban for the cross-repo line.** A per-machine prompt
+has nowhere natural to live and reaches sessions it is irrelevant to. Another repo earns a line only
+when the item is high-risk or irreversible **and** would change what the next session in this repo
+does — an unpushed commit or an open plan elsewhere fails the second half, because that repo's own
+session is handed those by `absorb`.]
 
-[NEEDS CLARIFICATION: what is the boundary against `plans/`? Anything durable belongs in a plan;
-that is settled. What is left for the prompt is ordering, immediacy, and things too small or too
-perishable to earn a file — "push this", "absorb that", "the blocker on X lifted". If the prompt
-starts carrying reasoning it has become a plan with no status field, which is the failure mode the
-whole convention exists to prevent.]
+[DECISION: **neither: printed, never written.** Append-vs-replace was a question about a file, and
+the answer was that there is no file. An append-only file would have been a second lifecycle store
+with no retirement mechanism — the objection `session-harvest` already makes to parking plan content
+in memory — and replacing loses the trail. Printing dissolves both, plus the storage lifecycle and
+most of the staleness objection, because the user pastes it into the next session within minutes.]
+
+[DECISION: **the boundary against `plans/` is subtraction, not a definition.** Anything durable
+belongs in a plan; what is left is ordering, immediacy and the perishable. The mechanical test that
+shipped is stronger than the prose one this question was reaching for: run the next session's own
+opening moves — `absorb`, `list`, `git status` plus the ahead-count — and include only the delta.
+The cap of five is what keeps the prompt from becoming a plan with no status field.]
 
 [DECISION: **built 2026-09-01, in `session-harvest` step 9, as a printed paste-ready block and not a
 file.** The user asked for it a third time, naming the two constraints that resolve most of the open
@@ -193,38 +197,33 @@ thinking about plans. It currently says nothing about retirement: demonstrated 2
 printed a filing notice for one incoming plan while `repo-tasks` held two `landed` ones, and
 mentioned neither.
 
-[NEEDS CLARIFICATION: which command carries the prompt — `absorb` or `list`? `absorb` is the
-once-per-session ritual and reaches sessions that never ask about plans, which is where the backlog
-actually accumulates. `list` already computes the count and is where someone is already thinking
-about plan state, but it is called ad hoc and often, so prompting there risks asking three times in
-one session. A split is possible — `absorb` asks, `list` keeps its footer — but two surfaces for one
-concern is how the "shared stores" bullet in `session-harvest` ended up wrong.]
+[DECISION: **`absorb` carries it; `list` keeps its footer.** The split the question feared is not
+one, because the three surfaces have three different triggers rather than one concern spread thin:
+`absorb` runs once at the top of a session and speaks for the aged backlog; `list` is called ad hoc
+and keeps the passive count it already computes; `session-harvest` reports what _this_ session made
+terminal, which `absorb` structurally cannot see, running as it does before this session has landed
+anything. That last point is also the answer to "does this belong to `plan-docs` or to
+`session-harvest`" — it belongs to both, at different moments, and neither can cover the other's.]
 
-[NEEDS CLARIFICATION: what does "ask" mean when the script cannot do the work? Retirement is a
-judgement procedure — triage the content by lifecycle, find a home for the rationale, write
-`## Migrated to`, fix inbound references, delete — not a command. So the prompt is an offer to spend
-a chunk of the current session on something the user did not come here for. That is a real cost and
-it argues for the prompt naming it: "retiring these two will take most of a session" is a different
-question from "shall I tidy up?".]
+[DECISION: **"ask" means one `AskUserQuestion` with the cost inside it and "not now" as a real
+answer.** The script prints the sets and says so; the judgement stays with the agent, because
+retirement is a procedure and not a command. What the prompt must not do is ask "shall I tidy up?",
+which invites a yes to work the user has not been told the size of.]
 
-[NEEDS CLARIFICATION: every session, or throttled? Nine plans across five repos means a naive
-"always ask" fires in most sessions in most repos, and a prompt that is declined repeatedly trains
-its own dismissal — the same alarm-fatigue failure that made the footer useless. Options: ask only
-above a threshold, ask only about plans terminal for longer than N days, ask once per repo per day,
-or ask only when the current session is the one that made the plan terminal. The last is the
-narrowest and catches the case that produced this request, but it does nothing about the nine
-already there.]
+[DECISION: **throttled by age — terminal for three days or more — and capped at five rows.** Age
+beat the three alternatives on one property: it needs no state. A per-repo-per-day throttle or an
+above-a-threshold counter has to remember what it asked and when, which is a second lifecycle store
+with no retirement of its own — the objection this convention makes to parking anything outside
+`plans/`. Three days rather than one so a Friday landing does not nag on the Saturday. The fourth
+option, "ask only when this session made it terminal", is not `absorb`'s to take: `absorb` runs
+before this session has landed anything, and `session-harvest` already owns that case. The row cap
+is the answer to alarm fatigue that the age threshold alone does not give, since the backlog it
+draws from is machine-wide.]
 
-[NEEDS CLARIFICATION: should a stalled retirement be a louder case than an unstarted one? A plan
-with a `## Migrated to` section has had its expensive half done and is waiting on reference fixes
-and a delete, which is minutes. It is both the cheapest to finish and the most likely to be lost,
-since nothing distinguishes it in any listing. Detecting it is one grep per terminal plan.]
-
-[NEEDS CLARIFICATION: does the prompt belong to `plan-docs` at all, or to `session-harvest`? The
-harvest already surfaced these two, under "decisions waiting", and its whole subject is state a
-session would otherwise lose. Against: the harvest is invoked explicitly and rarely, so it reaches
-even fewer sessions than `absorb` does; and `plan-docs` owns the lifecycle, so a retirement trigger
-living in another skill is the same split-ownership problem as the surface question above.]
+[DECISION: **yes — its own group, above the aged one, and raised whatever its age.** A plan carrying
+`## Migrated to` is waiting on reference fixes and a delete, which is minutes, so it reads as
+"finish this" and not "start this". Detection is one regex against text `read_plan` already has in
+hand, so it costs nothing per plan.]
 
 [DEFERRED: nothing here proposes retiring the nine that exist. That is a real backlog needing real
 sessions, and it should be scheduled deliberately rather than folded into the change that adds the
@@ -251,11 +250,8 @@ rather than trusting the `status` field it reads.]
 
 Then, in order of confidence:
 
-1. **Build the retirement prompt** — it has a measured backlog, a cheap detector, and a mechanism
-   already fully specified behind it. Put it on `absorb`, ask with `AskUserQuestion` as one question
-   for the set, **name the cost in the question** ("retiring these two will take most of a
-   session"), make "not now" a first-class answer, throttle by something and say which, and detect
-   the stalled case separately so it reads as "finish this" rather than "start this".
+1. ~~**Build the retirement prompt.**~~ **Built 2026-09-02**, to this line exactly — see "What
+   landed" below.
 2. ~~**Price the next-session prompt against doing nothing.**~~ **Built 2026-09-01** — see the
    DECISION in Part 1. The pricing question was answered from the wrong end: the count of items
    belonging to no plan is indeed small, and the thing that was missing was never a store but a
@@ -273,3 +269,39 @@ the tool, not about the work. That is a harder constraint than the "staging area
 loading at session start is worth nothing if only one vendor's sessions get it. Whatever either half
 becomes has to be a plain file any agent can read, reachable by a documented command rather than by
 a harness feature.
+
+## What landed, 2026-09-02
+
+Part 2 shipped, in `plans.py` and `SKILL.md`, with tests. Both halves of this plan are now built, so
+the surface question the plan opened with is answered by the pair rather than by either alone:
+`absorb` says what is owed and `session-harvest` step 9 says what to do first.
+
+`absorb` now prints two groups after whatever it filed, and stays silent when both are empty:
+
+- **`STALLED mid-retirement`** — the plan carries `## Migrated to`, so step 4 is done and steps 5–6
+  never ran. Raised at any age, with "Minutes, not a session" attached. This is the case the
+  `[PITFALL:]` above found sitting in the machine-wide backlog, invisible in every listing.
+- **awaiting retirement** — terminal for three days or more, oldest first, five rows before the rest
+  collapse to a count and a `list --status landed`.
+
+Then one closing line telling the agent to put it to the user as a single question with the cost in
+it, and to treat "not now" as a real answer.
+
+Three constants carry the choices so they are one edit rather than a hunt:
+`RETIREMENT_PROMPT_AFTER_DAYS = 3`, `RETIREMENT_PROMPT_ROWS = 5`, and `MIGRATED_RE`, which moved up
+to the shared constants and gained `MULTILINE` — `archive` matches it one line at a time and
+`read_plan` now searches a whole file for it, the flag being inert for the first caller.
+
+`PlanFile` gained one field, `migrated`, computed where the text is already in hand, so the stalled
+detector costs no extra read. Five tests cover it: the backlog raised, a freshly-terminal plan left
+alone, the stalled group kept separate from the aged one, the row cap, and the uncapped `--json`
+payload.
+
+**Not done, and deliberately:** the existing backlog is still there. Retiring it is the
+`[DEFERRED:]` above and wants scheduled sessions, not the first run of a new prompt.
+
+**Known limit, stated in the skill:** the prompt trusts the `status` field it reads, so a plan whose
+status was hand-edited past the gate looks identical here. That is the `[PITFALL:]` above, and it is
+why "`status:` and `updated:` are `set-status`' output" now sits at the top of `plan-docs` — the
+retirement prompt does not re-run the gates over what it finds, and would only be trading one
+unverified reading for another if it did.

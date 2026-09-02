@@ -86,6 +86,18 @@ reads as satisfied. Confirmed 2026-08-30: a harvest ran fourteen minutes after a
 skill, re-read the installed copy as written, and got its own stale wording back; the checkout was
 clean, pushed, and two paragraphs ahead.
 
+**One case makes the whole branch a no-op, and it is the common one in this repo: the commits that
+moved the skill are _this session's own_.** `git log --since=<session start> -- skills/<name>/`
+names the author of the move, and when every one of them is this run, the context holding the newest
+text on the machine is not stale — nothing was superseded, because nothing was written by anyone
+else. Say so in one line and move on; do not re-read four files to confirm that the session
+remembers what it just wrote. The re-read exists for a _different_ session's commit landing under
+this one's feet, and treating the two alike is how the most expensive step in this procedure fires
+on the case it was never about. Confirmed 2026-09-02: a harvest in this repo found all four skills
+it leaned on moved after session start, all four by its own commits. What still pays is the second
+half — checking whether anything already done ran under superseded wording — because a script
+committed mid-session does change what an earlier call returned.
+
 **The cheapest trigger for all of this is free and arrives unprompted: the available-skills listing
 changing mid-session.** A skill present that was not there before, or a description reworded, is
 direct evidence that the installer has run since the session began — which is exactly when the
@@ -336,14 +348,23 @@ own "this needs a full tier run afterwards, only one common cause was establishe
 summary, and neither did an explicitly-declined consumer sweep.
 
 **In a background job the session id is not the transcript id, and every guess at it lands on a real
-file belonging to someone else.** `$CLAUDE_JOB_DIR/../state.json` names the right one:
-`linkScanPath` is the full path, and `resumeSessionId` the id — while `sessionId`, which is what the
-job's own directory name and its task-output paths are built from, points at a different transcript
-in the same directory. Read `linkScanPath`; never reconstruct a path from an id you inferred.
-Confirmed 2026-09-01: a harvest took the UUID from its task-output path, and both this step and step
-5's audit ran against a stranger's session — 386 calls, none of them the job's, reported without a
-single sign anything was wrong. The check that costs nothing: grep the file for a command this
-session definitely ran.
+file belonging to someone else.** The job's `state.json` names the right one: `linkScanPath` is the
+full path, and `resumeSessionId` the id — while `sessionId`, which is what the job's own directory
+name and its task-output paths are built from, points at a different transcript in the same
+directory. Read `linkScanPath`; never reconstruct a path from an id you inferred. Confirmed
+2026-09-01: a harvest took the UUID from its task-output path, and both this step and step 5's audit
+ran against a stranger's session — 386 calls, none of them the job's, reported without a single sign
+anything was wrong. The check that costs nothing: grep the file for a command this session
+definitely ran.
+
+**Find `state.json` rather than assuming where it sits — this rule named the wrong path for a
+build.** It said `$CLAUDE_JOB_DIR/../state.json`, which resolves to the jobs _root_ when the
+variable points at the job directory itself: there is no `state.json` there, only `pins.json` and
+one directory per job. Confirmed 2026-09-02 by following it and getting `FileNotFoundError` on CLI
+2.1.252, where `$CLAUDE_JOB_DIR/state.json` is correct and `$CLAUDE_JOB_DIR/tmp` is the scratch
+directory. Try the job directory first, then one level up (which is right on a build that points the
+variable at the scratch subdirectory), and treat a miss on both as a reason to `ls` rather than to
+fall back on an inferred id — falling back is the exact failure this bullet exists to prevent.
 
 **`audit.py` now resolves this for you, and the belt-and-braces is deliberate.** Passed a job id, it
 reads that job's `linkScanPath` and says so; and it prints the transcript path it settled on
@@ -365,6 +386,13 @@ tool's answers come back in the tool-result blocks, so scan those for the questi
 rather than filtering them out as tool noise. This skill's own steps 2 and 7 tell you to reach for
 `AskUserQuestion`, so the gap is self-inflicted and grows with how well the rest of the skill is
 followed.
+
+**Match the literal marker, not a heuristic.** Every answer's tool result opens
+`Your questions have been answered:` and then quotes each question and the chosen option, so that
+string alone is an exact filter. Confirmed 2026-09-02: a scan that instead looked for "question" and
+"answers" anywhere in a tool result returned five `Read` outputs alongside the two real answers —
+harmless here because both real ones were found, and precisely the shape that returns a plausible,
+incomplete set on a session with more of them.
 
 ### 5. Live-state sweep
 

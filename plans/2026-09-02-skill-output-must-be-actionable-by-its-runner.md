@@ -68,6 +68,23 @@ also a finding in a checkout the author can edit, and the report looks correct. 
 a machine where the two differ — that is, every machine but this one. Any check for this class has
 to be reasoned about, or run under a fake `HOME`, rather than read off a normal run.]
 
+**Reproduced as a reader, under a fake `HOME`** (2026-09-02), which is the only way to see it from
+here at all:
+
+- A reader who installed **two** of the fourteen skills gets **four findings in `session-harvest`**,
+  a file they must not edit, with neither of their real routes named.
+- In the same run `plan-docs` fell from 1 bare to **0** — not because anything changed in it, but
+  because `repo-tasks` left the derived author vocabulary when the skill that links it was not
+  installed. **The verdict on a skill therefore depends on what else the reader happens to have.**
+  That is tolerable in an author's audit of a whole corpus and indefensible in a reader-facing
+  report, and it is a second, independent argument that this measure is not one.
+
+**What is already safe, checked rather than assumed.** On an empty machine `audit.py` prints "no
+Bash calls found" and `fitness.py` prints "no skills found" — neither invents a zero. And the plans
+half of the user's sentence does not reproduce: a first-time reader running `plans.py list` in a
+fresh repo gets `(no open plans)`, and `absorb` returns `needs-decision` asking them to choose their
+own routing. `plan-docs` shows a reader nothing but their own files, at every scope.
+
 **The skills that already get it right, and why.** `plan-docs` routes rather than prints — `absorb`
 shows only plans filed **for the repo the session is in**, "waiting on this repo" is the actionable
 half of a dependency edge, and `new --for <repo>` is the mechanism for a finding whose home is

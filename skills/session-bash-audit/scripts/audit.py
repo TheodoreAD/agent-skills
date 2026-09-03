@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import re
 import time
@@ -28,6 +29,29 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+
+def state_dir(skill: str = "session-bash-audit") -> Path:
+    """Where this skill keeps a baseline it wrote — `$XDG_STATE_HOME/<skill>/`.
+
+    **State, not data**: the specification's own example for `$XDG_STATE_HOME` is history, and the
+    test is whether losing the file costs anything (`share`) or only a re-measurement (`state`). A
+    baseline is the second.
+
+    It used to have no home at all, so the skill told readers to write it into
+    `~/.agents/skills/session-bash-audit/references/baselines/` — the **installed copy**, which is
+    the artefact a re-install replaces and which this corpus elsewhere calls drift to edit. The one
+    piece of genuinely per-machine state here was being kept in the one place designed to be
+    overwritten.
+
+    Deliberately not a new environment variable: `$XDG_STATE_HOME` is one the user already controls,
+    so using it *removes* a setting rather than adding one. Ten lines duplicated per skill rather
+    than imported, because skills install individually and one cannot import another.
+    """
+    base = os.environ.get("XDG_STATE_HOME")
+    return (Path(base).expanduser() if base else Path.home() / ".local" / "state") / skill
+
+
 HEREDOC_RE = re.compile(r"<<-?\s*['\"]?[A-Za-z_]+['\"]?")
 SEPARATOR_RE = re.compile(r"&&|\|\||[;|\n]")
 
@@ -671,7 +695,16 @@ def main() -> None:
     ap.add_argument("--samples", type=int, default=8, help="samples to print per pattern (0 = none)")
     ap.add_argument("--json", type=Path, help="also dump every call with its tags to this JSON file")
     ap.add_argument("--compare", type=Path, help="baseline JSON to diff the per-model rates against, with verdicts")
-    ap.add_argument("--save-baseline", type=Path, help="write this run's per-model rates as a new baseline JSON")
+    ap.add_argument(
+        "--save-baseline",
+        nargs="?",
+        const=None,
+        default=False,
+        type=Path,
+        help="write this run's per-model rates as a baseline. With no path, "
+        "$XDG_STATE_HOME/session-bash-audit/<date>.json — never inside the installed skill, "
+        "which a re-install replaces",
+    )
     ap.add_argument("--note", default="", help="free-text label stored in the baseline (mode in force, why)")
     ap.add_argument("--probe", action="store_true", help="print the live permission probes and exit")
     ap.add_argument(
@@ -699,8 +732,9 @@ def main() -> None:
         print("no Bash calls found — check --days / --project / --until")
         return
     report(calls, args.samples, args.compare)
-    if args.save_baseline:
-        save_baseline(calls, args.save_baseline, args.days, args.note)
+    if args.save_baseline is not False:
+        default = state_dir() / f"{time.strftime('%Y-%m-%d', time.gmtime())}.json"
+        save_baseline(calls, args.save_baseline or default, args.days, args.note)
     if args.json:
         args.json.write_text(json.dumps([{**c.__dict__, "tags": sorted(c.tags)} for c in calls], indent=1, default=str))
         print(f"\nwrote {args.json}")

@@ -147,6 +147,16 @@ Both are ordinary git repositories with **full history**, so retirement, `archiv
 commit-immediately rule work identically in either. Nothing about the plan format, the status
 vocabulary or the tags changes with the tier.
 
+**Both are created mode `0700`, and `doctor` warns if one is not.** The tier decides what may leave
+the machine; the mode decides who on the machine may read it, and they are separate questions that
+were answered separately. Until 2026-09-03 only the first had an answer: every store was created at
+the umask default, so on a `002` machine the sensitive tier — the one holding employer and client
+work, deliberately with no remote — stood at `775`, world-readable, under a `$HOME` at `755` that
+gated nothing. **This matters if you move a store, restore one from a backup, or make one by hand**,
+because those get whatever your umask hands them and nothing else will tell you. `doctor` reports a
+widened store and never repairs it: a `chmod` here would override a decision it cannot see the
+reason for.
+
 **You never pick a tier.** A root's tier follows from `shareable_roots` (which defaults to
 `public_roots`), and every command resolves it for you — `where` prints it, `new --for` prints it
 and the exact `git -C` line to commit with, `archive` searches both. Read what the command tells you

@@ -72,7 +72,24 @@ happening, the checkout, `origin` and the install differed from each other.
 corpus: working tree — /home/you/projects/agent-skills/skills
 corpus: installed — /home/you/.agents/skills
         deployed copies — not yours to edit; a fix belongs to the skill's author
+corpus: git ref — origin/main @ 66d73b6, fetched 3h ago
+        what `skills add` would install
 ```
+
+**`--ref <ref>` is the only way to make a claim about what readers have.**
+`skills add <owner>/<repo>` clones the remote, so `origin/main` is the product; everything else is a
+draft of it. Use it before saying a finding is fixed, because a fix that is committed and not pushed
+is fixed for nobody.
+
+```shell
+python3 <this skill>/scripts/fitness.py portability --ref origin/main
+```
+
+**It never fetches.** A remote-tracking ref answers "what did I last fetch", not "what does the
+remote have" — so the header prints the sha and how old your last fetch is and leaves the judgement
+to you. There is no staleness threshold, deliberately: a threshold is a number nobody can defend,
+and it turns a plain fact into an argument. An unknown ref is refused with a note saying to fetch
+first, rather than the script reaching the network on your behalf.
 
 By default it reads `./skills` **first** when run from a skills repo, then `~/.agents/skills` and
 `~/.claude/skills`. The order matters and is not cosmetic: resolution is first-occurrence-wins, so

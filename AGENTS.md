@@ -46,14 +46,23 @@ description more carefully.
   by `skills/skill-fitness/scripts/trigger.py`. Write them for a **pair** the fitness analyzer
   flagged rather than a fixed number per skill, and include should-not-trigger cases: a suite of
   positives alone passes for a description that fires on everything.
+- **This repo's own test data lives in `tests/fixtures/`, never inside a skill.** Everything under
+  `skills/` is shipped to strangers by `skills add`, so a file put there is published whether or not
+  anyone meant to publish it. The derivable gate's baseline sat in
+  `skills/skill-fitness/references/baselines/` until 2026-09-03 for no better reason than that it
+  was written by a script living nearby: it named this corpus's fourteen skills and their counts,
+  the skill body never cited it, and its only consumer was `tests/unit/test_derivable.py`. The test
+  is where such a file belongs. What legitimately ships is a measurement offered as **evidence** and
+  labelled as somebody else's — `session-bash-audit`'s baseline says so in its own body — never one
+  a reader would reasonably point `--compare` at.
 - **Anything the skill can derive deterministically belongs in `scripts/`, not in the body** — a
   CLI's flags, an HTTP request shape, a SQL query, a JSON traversal, any multi-step sequence. Prose
   telling an agent how to spell a command has to be followed correctly on every run and fails
   silently when it is not; a script is followed once. `skill-authoring` carries the rule and what
   legitimately stays in prose, and `fitness.py derivable --compare <baseline>` measures the drift,
   which is the part that actually happens: a skill grows one harmless-looking command line at a
-  time. A rise against `skills/skill-fitness/references/baselines/derivable-*.json` fails
-  `tests/unit/test_derivable.py`, so the gate reports it rather than the next reader.
+  time. A rise against `tests/fixtures/derivable-*.json` fails `tests/unit/test_derivable.py`, so
+  the gate reports it rather than the next reader.
 - An install command in a fenced block must carry `--global` when its source is an `owner/repo`.
   Without the flag the CLI picks scope from the reader's cwd and silently writes `.agents/skills/`,
   a `.claude/skills` symlink and a `skills-lock.json` into whatever tree they are standing in. A

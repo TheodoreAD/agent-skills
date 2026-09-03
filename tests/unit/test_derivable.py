@@ -191,13 +191,13 @@ def test_this_repos_own_corpus_stays_within_its_baseline():
     """The audit run against the corpus that motivated it, which is where drift would show first.
 
     A rise here is a real finding, not a broken test: read
-    `skills/skill-fitness/references/baselines/derivable-2026-09-02.json`, decide whether the new
+    `tests/fixtures/derivable-2026-09-02.json`, decide whether the new
     command lines are legitimate residue, and either fix the skill or re-save the baseline
     deliberately.
     """
     skills = fitness.load_skills([REPO_ROOT / "skills"])
     rows = fitness.scan_derivable(skills)
-    baseline_path = REPO_ROOT / "skills" / "skill-fitness" / "references" / "baselines" / "derivable-2026-09-02.json"
+    baseline_path = REPO_ROOT / "tests" / "fixtures" / "derivable-2026-09-02.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))["skills"]
     risen = [
         f"{r['skill']}: {baseline[str(r['skill'])]['derivable']} -> {r['derivable']}"

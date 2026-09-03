@@ -16,7 +16,11 @@ Subcommands, cheapest first:
     absorb      ad-hoc python -c payloads that recur, i.e. candidates for skill code
     derivable   commands a SKILL.md asks an agent to compose that a script could carry
     portability what a SKILL.md assumes about its reader's machine, and whether it says so
-    report      all of the above, in the order a reader wants them
+    report      inventory + budget + usage, in the order a reader wants them
+
+`report` is deliberately not "all of the above". The four sections it leaves out — overlap, absorb,
+derivable, portability — all end in "edit the skill", which is work only a skill's author can do;
+a reader who installed it must not edit the deployed copy. Name one to run it.
 
 Every subcommand takes --json.
 """
@@ -1155,11 +1159,68 @@ def collect_budget(skills: list[Skill], usage: Usage, args: argparse.Namespace) 
     return out
 
 
+def resolve_roots(explicit: list[Path] | None, cwd: Path) -> list[Path]:
+    """Which directories to load skills from, in the order that decides which copy wins.
+
+    Order is the whole of this function, because `load_skills` is first-occurrence-wins. A skills
+    repo's own `skills/` goes **first**, not appended: appending made a bare run inside a checkout
+    measure the *installed* copies and silently ignore the working tree. Measured 2026-09-03 in this
+    repo — `plan-docs` reported at 1025 body lines from the hub while the tree held 1039, with only
+    `inventory`'s stale-copy line hinting at it and every other subcommand showing nothing at all.
+
+    Standing in a skills repo is an unambiguous statement about which corpus you mean.
+    """
+    if explicit:
+        return list(explicit)
+    roots = [r for r in DEFAULT_SCOPES if r.exists()]
+    repo_skills = cwd / "skills"
+    return [repo_skills, *roots] if repo_skills.is_dir() else roots
+
+
+def describe_corpus(skills: list[Skill], args: argparse.Namespace) -> dict[str, str]:
+    """Which population this run is measuring, so the number in the output means something.
+
+    A count is a statement about a specific set of files, and this tool can be pointed at four that
+    routinely disagree: the working tree, `origin`, the install hub, and an arbitrary `--root`.
+    Measured on the author's machine 2026-09-03 with a clean tree and nothing unusual happening,
+    three of them differed. A report that does not say which it read is a number whose meaning
+    changes depending on whether its author had pushed.
+
+    The `installed` case carries the extra sentence, because that is the one where the reader can
+    act on nothing: a deployed copy is not theirs to edit.
+    """
+    roots = sorted({s.scope for s in skills})
+    hub = {str(p.resolve()) for p in DEFAULT_SCOPES if p.exists()}
+    if args.root:
+        return {"kind": "explicit", "where": ", ".join(roots), "note": ""}
+    if roots and set(roots) <= hub:
+        return {
+            "kind": "installed",
+            "where": ", ".join(roots),
+            "note": "deployed copies — not yours to edit; a fix belongs to the skill's author",
+        }
+    return {"kind": "working tree", "where": ", ".join(roots), "note": ""}
+
+
 def collect(want: str, skills: list[Skill], args: argparse.Namespace) -> tuple[dict[str, Any], Usage]:
-    """Everything the requested sections need, gathered before anything is printed."""
+    """Everything the requested sections need, gathered before anything is printed.
+
+    **`report` runs the installer-side sections only.** `inventory`, `budget` and `usage` have
+    remedies belonging to whoever ran the command — refresh a stale copy, uninstall something,
+    accept the listing cost. `overlap`, `absorb`, `derivable` and `portability` do not: every one of
+    them ends in "edit the skill", which a reader who installed it must not do, since editing a
+    deployed copy is drift that reaches nothing.
+
+    So those four have to be named on the command line. The split is deliberately a property of the
+    **command** rather than of whichever corpus is in front of it: a rule that inspected the roots
+    would behave differently on the author's machine, where the hub and the checkout hold the same
+    names, than on every other machine — and that is precisely the class of bug this rule exists to
+    prevent, so it must not be implemented in a way that depends on it.
+    """
     out: dict[str, Any] = {
         "generated": datetime.now(tz=UTC).date().isoformat(),
         "roots": sorted({s.scope for s in skills}),
+        "corpus": describe_corpus(skills, args),
     }
     usage = Usage()
 
@@ -1190,21 +1251,21 @@ def collect(want: str, skills: list[Skill], args: argparse.Namespace) -> tuple[d
     if want in ("budget", "report"):
         out.update(collect_budget(skills, usage, args))
 
-    if want in ("overlap", "report"):
+    if want == "overlap":
         pairs, stats = overlap_pairs(skills)
         out["overlap"] = pairs[: args.top]
         out["overlap_corpus_stats"] = stats
         out["ubiquitous_terms"] = getattr(idf, "ubiquitous", [])
 
-    if want in ("derivable", "report"):
+    if want == "derivable":
         out["derivable"] = scan_derivable(skills)
         if args.compare:
             out["derivable_drift"] = compare_derivable(out["derivable"], Path(args.compare))
 
-    if want in ("portability", "report"):
+    if want == "portability":
         out["portability"] = scan_portability(skills, args.author_repo)
 
-    if want in ("absorb", "report"):
+    if want == "absorb":
         out["absorbable"] = scan_absorbable()[: args.top]
 
     return out, usage
@@ -1428,8 +1489,10 @@ def _render_inventory(out: dict[str, Any], count: int) -> None:
 def render(out: dict[str, Any], skills: list[Skill], usage: Usage, args: argparse.Namespace) -> None:
     """Sections print in reading order, and only the ones `collect` gathered."""
     print(f"# skill fitness — {out['generated']}")
-    for r in out["roots"]:
-        print(f"  scope: {r}")
+    corpus = out["corpus"]
+    print(f"  corpus: {corpus['kind']} — {corpus['where']}")
+    if corpus["note"]:
+        print(f"          {corpus['note']}")
 
     sections: list[tuple[str, Any]] = [
         ("inventory", lambda: _render_inventory(out, len(skills))),
@@ -1487,10 +1550,7 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    roots = args.root or [r for r in DEFAULT_SCOPES if r.exists()]
-    repo_skills = Path.cwd() / "skills"
-    if not args.root and repo_skills.is_dir():
-        roots.append(repo_skills)
+    roots = resolve_roots(args.root, Path.cwd())
     skills = load_skills(roots)
 
     if not skills:

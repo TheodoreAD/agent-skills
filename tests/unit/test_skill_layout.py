@@ -42,6 +42,15 @@ BLOCK_SCALARS = frozenset({">", "|", ">-", "|-", ">+", "|+"})
 # decision that should be made deliberately, in AGENTS.md, before it ships.
 ALLOWED_ENTRIES = {"SKILL.md", "references", "scripts", "evals"}
 
+# Every frontmatter key a skill may declare. `name` and `description` are what the format defines
+# and what every agent reads; anything else is a local invention that some consumer has to be told
+# about. `metadata: family:` was one, dropped 2026-09-04: five of fourteen skills carried it, no
+# code or test read it, the reference corpus defines no such key, and `family` already means
+# something else here (`plans.py --scope family`). A half-covered taxonomy is worse than none,
+# because it implies a scheme that was never finished — so the gate is here to keep the next one
+# from being added by habit rather than by decision.
+ALLOWED_FRONTMATTER = {"name", "description"}
+
 # Skills knowingly over the cap, each with the plan that owns the fix. An entry here is a debt on
 # the record, not an exemption: `test_no_stale_cap_debt` fails once the skill comes back under the
 # limit, so the entry cannot outlive the breach it documents.
@@ -259,6 +268,16 @@ def test_no_stale_cap_debt():
 def test_only_known_entries(skill: Path):
     unexpected = sorted(p.name for p in skill.iterdir() if p.name not in ALLOWED_ENTRIES)
     assert not unexpected, f"{skill.name} contains {unexpected}; allowed: {sorted(ALLOWED_ENTRIES)}"
+
+
+@each_skill
+def test_only_known_frontmatter_keys(skill: Path):
+    fields = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8"))
+    unexpected = sorted(set(fields) - ALLOWED_FRONTMATTER)
+    assert not unexpected, (
+        f"{skill.name}/SKILL.md declares {unexpected}; allowed: {sorted(ALLOWED_FRONTMATTER)}. "
+        "A new key is a decision to record in AGENTS.md first, not a field to add in passing."
+    )
 
 
 @each_skill

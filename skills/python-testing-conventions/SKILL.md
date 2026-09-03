@@ -1,8 +1,6 @@
 ---
 name: python-testing-conventions
 description: "Use when writing or restructuring Python tests — deciding how much duplication a test should carry before it stops being readable, what a fixture should cover and at what scope, when to parametrize instead of writing another test, whether a dependency should be doubled or run for real, and what belongs in a fast default suite versus a slower marked tier. Also for pytest specifics: fixtures, conftest placement, parametrize ids, markers, and keeping a suite from writing into the real home directory. Gives the default answer per question rather than an evaluation, so choices stay consistent across projects instead of drifting session to session, and each entry says whether it overrides a model's own instinct or just confirms it."
-metadata:
-  family: python
 ---
 
 # Python testing defaults

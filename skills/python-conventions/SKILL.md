@@ -1,8 +1,6 @@
 ---
 name: python-conventions
 description: "Use when writing, reviewing or refactoring Python and you want one settled answer rather than an evaluation — choosing between a dataclass, a Pydantic model, a NamedTuple, a TypedDict, attrs or msgspec; handling dates, times and timezones, including DST folds and gaps and where to convert to UTC; loading settings and secrets; when to use a guard clause, an early return or EAFP; designing an exception hierarchy; keeping type ignores honest; laying a package out under `src/`; building a CLI; async and concurrency; and how an HTTP client should handle sessions, timeouts and retries. Also when a module has accumulated global state, grown hard to follow, or needs restructuring — how far to break it up, when a module-level singleton with lazy properties is the right shape, and how to keep objects immutable and functions stateless. For tests see the Python testing skill; for MCP server internals see the MCP Python skill."
-metadata:
-  family: python
 ---
 
 # Python design and style defaults

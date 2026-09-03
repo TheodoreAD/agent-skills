@@ -1,8 +1,6 @@
 ---
 name: mcp-python-conventions
 description: "Use when writing the Python inside an MCP server and deciding how it should behave — where log output may go when stdout carries JSON-RPC framing and why a stray print breaks the protocol, what an exception at a tool boundary should turn into for the calling model, how much internal detail an error may safely expose, and how to write a tool docstring that the model reads as its instructions rather than as documentation for a human. Scoped to stdio-transport servers. For a server's packaging, installation and registration rather than its code, see the MCP server shipping skill; for general Python design questions, see the Python conventions skill."
-metadata:
-  family: python
 ---
 
 # MCP server code conventions

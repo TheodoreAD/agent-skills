@@ -41,6 +41,14 @@ description more carefully.
   the next editor who disagrees with it.
 - When a rule is observed being missed in practice, strengthen its language rather than lengthen its
   explanation.
+- **A skill's frontmatter declares `name` and `description`, and nothing else.** Those are what the
+  format defines and what every agent reads; anything further is a local invention some consumer has
+  to be told about. `metadata: family:` was one and was dropped 2026-09-04 — five of the fourteen
+  skills carried it, no code or test read it, the reference corpus defines no such key, and `family`
+  already means something else here (`plans.py --scope family`). **A half-covered taxonomy is worse
+  than none**, because it implies a scheme that was never finished.
+  `test_only_known_frontmatter_keys` gates it, so the next key is added by decision rather than by
+  habit.
 - A skill directory may hold `references/`, `scripts/` and `evals/`, and nothing else. `evals/` was
   added 2026-08-31 for trigger cases — JSON files of prompts with the skill each should select, run
   by `skills/skill-fitness/scripts/trigger.py`. Write them for a **pair** the fitness analyzer

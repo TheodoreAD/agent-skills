@@ -10,8 +10,6 @@ description: >-
   once, should be broken up or split into separate skills. Measures an installed set from
   frontmatter and from the session transcript store; it does not teach how to write or deploy a
   skill.
-metadata:
-  family: meta
 ---
 
 # Skill fitness

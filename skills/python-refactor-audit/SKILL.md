@@ -1,8 +1,6 @@
 ---
 name: python-refactor-audit
 description: "Use when an existing Python module has grown and the question is how to restructure it safely, not what to write — auditing a file nobody has reviewed as a whole, planning the change as a sequence of small commits each verified on its own, deciding which tests may be edited to follow a rename and which must not change at a character, proving an edited test still fails when the production change is reverted, finding a second oracle when the suite cannot see the change (a field's type changing under a name every caller already uses), measuring the shape you are trying to remove before and after so a large diff that moves nothing is caught, and deciding when not to restructure at all. For what a given piece of Python should look like — data modeling, dates, settings, modularity and singleton defaults — see the Python conventions skill; for what a test should cover, the Python testing skill."
-metadata:
-  family: python
 ---
 
 # Auditing and restructuring a Python module that grew

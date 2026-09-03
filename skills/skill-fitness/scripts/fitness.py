@@ -764,7 +764,7 @@ DECLARED = re.compile(
     r"on (?:this|the) author'?s machine|this author'?s own|on my machine|"
     r"the repo'?s (?:own )?equivalent|your own|substitute|if you have|if your|"
     r"where no such|where a repo has one|assumes|unavailable|not available|"
-    r"only if|set (?:it|this|that) to|defaults? to|\(default|overrides?\b|export |"
+    r"only if|set (?:it|this|that) to|defaults? to|\(default|by default|overrides?\b|export |"
     r"points at|if (?:it|one) (?:is|exists)|where you keep|cannot know|if it exports",
     re.IGNORECASE,
 )
@@ -836,6 +836,41 @@ def _references(line: str, in_fence: bool, repos: re.Pattern[str] | None, own_na
     return found
 
 
+def _declared_blocks(lines: list[str], blocks: list[int]) -> set[int]:
+    """Which blocks own an assumption, matched against the block's **joined text**.
+
+    Never per line. This corpus's markdown is reflowed by a formatter, so a multi-word idiom lands
+    wherever the wrap falls — and a phrase split across two lines is invisible to a per-line search
+    while reading perfectly to a human. Found on this measure's own author 2026-09-03: a sentence
+    ending "(`~/.local/state/…` by" / "default)" declared the path in prose and was reported bare,
+    and the same break could hit any of the phrases in `DECLARED` on any future reflow.
+    """
+    joined: dict[int, list[str]] = defaultdict(list)
+    for line, block in zip(lines, blocks, strict=True):
+        joined[block].append(line.strip())
+    return {block for block, parts in joined.items() if DECLARED.search(" ".join(parts))}
+
+
+def _is_owned(key: tuple[str, str], owned: set[tuple[str, str]]) -> bool:
+    """Whether a reference is covered by a declaration — for a path, by one of its **prefixes** too.
+
+    A skill that says what `~/.local/state` is has told its reader about
+    `~/.local/state/<skill>/<file>.json`; requiring the declaration to name the leaf reports the
+    same assumption once per filename. Found on this measure's own author 2026-09-03: declaring the
+    state directory in one sentence left the very next line's fuller path counted as bare.
+
+    Only for path kinds. An env var or a repo name has no prefix relation — `$PLANS_HOME` says
+    nothing about `$PLANS_SENSITIVE_HOME`, and treating one as covering the other would hide exactly
+    the pair a reader needs told apart.
+    """
+    kind, token = key
+    if key in owned:
+        return True
+    if kind not in ("home-path", "abs-path"):
+        return False
+    return any(k == kind and token.startswith(f"{t}/") for k, t in owned)
+
+
 def scan_portability(skills: list[Skill], extra_repos: list[str] | None = None) -> dict[str, Any]:
     """What a `SKILL.md` assumes its reader's machine already has, and whether it admits to it.
 
@@ -859,7 +894,7 @@ def scan_portability(skills: list[Skill], extra_repos: list[str] | None = None) 
     for skill in skills:
         lines = (skill.path / "SKILL.md").read_text(encoding="utf-8", errors="replace").splitlines()
         blocks = _blocks_by_line(lines)
-        declared_blocks = {blocks[i] for i, line in enumerate(lines) if DECLARED.search(line)}
+        declared_blocks = _declared_blocks(lines, blocks)
         hits: list[dict[str, Any]] = []
         in_fence = False
         for index, line in enumerate(lines):
@@ -892,7 +927,7 @@ def scan_portability(skills: list[Skill], extra_repos: list[str] | None = None) 
             if key in seen:
                 continue
             seen.add(key)
-            refs.append({**hit, "status": "declared" if key in owned else "bare"})
+            refs.append({**hit, "status": "declared" if _is_owned(key, owned) else "bare"})
         bare = [r for r in refs if r["status"] == "bare"]
         rows.append({
             "skill": skill.name,

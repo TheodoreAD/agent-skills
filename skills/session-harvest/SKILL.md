@@ -437,7 +437,7 @@ What the script cannot do is decide what a finding means. That is this list:
   ```shell
   python3 ~/.agents/skills/session-bash-audit/scripts/audit.py --session <session-id> \
     --until <the step 0 boundary> \
-    --compare ~/.agents/skills/session-bash-audit/references/baselines/<baseline>.json
+    --compare ~/.local/state/session-bash-audit/<baseline>.json
   ```
 
   **Get `<session-id>` from the transcript the script resolved**, not from a path you happen to have

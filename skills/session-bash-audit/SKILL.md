@@ -49,11 +49,16 @@ still act on it. `session-harvest`'s step 5 calls this; run it directly when a s
 how it is doing rather than how sessions in general are doing:
 
 ```shell
-python3 $S/scripts/audit.py --session <session-id> --compare $S/references/baselines/<file>.json
+python3 $S/scripts/audit.py --session <session-id> --compare ~/.local/state/session-bash-audit/<file>.json
 ```
 
 The id is the transcript's filename stem, and a unique prefix is enough. Everything else in this
 script measures a trend after the fact; this measures the run you are in.
+
+**Compare against a baseline you saved**, not the one shipped here. `$S/references/baselines/` holds
+one file measured on the author's machine under that machine's rules; it is a reference point, and
+`--compare`-ing a session against it reports how your session differs from somebody else's setup.
+Save your own on the first run (`--save-baseline`) and use that.
 
 [PITFALL: **run it unpiped — every mode, every time.** The output is a few dozen lines and the
 harness keeps it whole; `| head -N` on a report whose own subject is `head/tail` truncation is the
@@ -98,9 +103,15 @@ per expectation (`EXPECTATIONS` in the script: chaining, head/tail, sed -n, cat,
 git-in-chain should be _down_; own-repo `cd` and `git -C` mutations at zero). Models with fewer than
 50 calls in either run are shown as `?`, not judged. Report the verdict line and the misses to the
 user; then route each miss with the table in "Decide where the fix goes". After a rule or mode
-change, save a new baseline for the next comparison —
-`--save-baseline $S/references/baselines/<date>-<what-changed>.json --note "<mode in force>"` — and
-keep the old file; the deltas are the point.
+change, save a new baseline for the next comparison — `--save-baseline --note "<mode in force>"` —
+and keep the old file; the deltas are the point.
+
+**A baseline you save goes to `$XDG_STATE_HOME/session-bash-audit/`** (`~/.local/state/…` by
+default), which is what a bare `--save-baseline` now writes. Until 2026-09-03 this line named
+`$S/references/baselines/…` instead — **inside the installed skill**, which is the artefact a
+re-install replaces and which this corpus elsewhere calls drift to edit. The one piece of genuinely
+per-machine state the skill asks you to keep was being kept in the one place designed to be
+overwritten. Pass an explicit path if you want it somewhere else; anywhere but the install is fine.
 
 **Probe** — live permission behaviour, which no transcript can show:
 

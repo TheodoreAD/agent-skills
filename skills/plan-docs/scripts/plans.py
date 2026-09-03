@@ -137,6 +137,16 @@ STATUS_ORDER = ("in-progress", "blocked", "planned", "idea", "landed", "abandone
 # "what is still open everywhere", and a retired-but-not-yet-deleted plan is noise against it.
 TERMINAL_STATUSES = ("landed", "abandoned", "superseded")
 
+# A store holds the user's own writing, and the sensitive tier holds employer and client work that
+# by design never leaves the machine — so the mode is a property of the content, not of the path.
+# Measured 2026-09-03 before this existed: every store was created at the umask default, which on a
+# 002 machine is 775, world-readable and group-writable, under a $HOME at 755 that gated nothing.
+# A umask can only ever narrow a mode passed to mkdir, never widen it, so this is safe to pass
+# unconditionally. `parents=True` does not apply it to intermediate directories, which does not
+# matter here: a store root at 0700 blocks traversal to everything beneath it whatever those
+# children's own modes are. Setting it on a leaf instead is the version that would not work.
+STORE_MODE = 0o700
+
 # Step 4 of the retirement procedure. `archive` matches it a line at a time; `read_plan` searches a
 # whole file for it, because its presence is what tells a stalled retirement — the expensive half
 # done, the delete never run — from one nobody has started. MULTILINE serves the second caller and
@@ -3219,7 +3229,7 @@ def run_install(args: argparse.Namespace, ws: Workspace) -> int:
         print(f"exists:      {cfg.path}")
 
     for store in cfg.stores():
-        store.path.mkdir(parents=True, exist_ok=True)
+        store.path.mkdir(parents=True, exist_ok=True, mode=STORE_MODE)
         if not (store.path / ".git").is_dir():
             if git(["init", "-q"], store.path) is None:
                 raise PlanError(f"git init failed in {store.path}")
@@ -3544,6 +3554,30 @@ def _print_stores(cfg: Config) -> None:
             remotes = (git(["remote"], store.path) or "").split()
             state = f"remote: {', '.join(remotes)}" if remotes else "no remote"
         print(f"store:         {store.path} (from {store.source})  [{store.tier}, {state}]")
+        for line in store_mode_problems(store):
+            print(f"               {line}")
+
+
+def store_mode_problems(store: Store) -> list[str]:
+    """A store readable by other local accounts, reported and never silently repaired.
+
+    `install` creates a store at `STORE_MODE`; this is for the ones that predate that, or were
+    restored from a backup, or made by hand. It reports rather than fixing because a `chmod` would
+    override a widening the user may have chosen for a reason this code cannot see — and `doctor` is
+    read-only, which is the property that makes it safe to run when something is already wrong.
+
+    The permission that matters is *other*, not group: a per-user group is the common Linux default,
+    so group bits usually name only the user themselves and flagging them cries wolf.
+    """
+    if not store.path.is_dir():
+        return []
+    mode = store.path.stat().st_mode & 0o777
+    if not mode & 0o007:
+        return []
+    return [
+        f"WARNING: mode {mode:03o} — readable by other local accounts, and this store is {store.tier}",
+        f"         chmod {STORE_MODE:03o} {store.path}",
+    ]
 
 
 def cmd_uninstall(args: argparse.Namespace, ws: Workspace) -> int:

@@ -2063,3 +2063,50 @@ def test_commit_still_refuses_a_name_that_never_existed(ws, capsys):
 
     assert plans.main(["commit", "plans/2026-01-01-never-existed.md", "--path", str(ws.personal)]) == 1
     assert "no plan named" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------------------------
+# store permissions
+
+
+def test_install_creates_stores_unreadable_by_other_accounts(ws, capsys):
+    """The sensitive tier exists to hold employer and client work outside every working tree and
+    deliberately has no remote. That confidentiality design was implemented at every layer except
+    the filesystem: measured 2026-09-03, every store was created at the umask default, which on a
+    002 machine is 775 under a $HOME at 755 that gates nothing."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+
+    assert plans.main(["install"]) == 0
+    capsys.readouterr()
+
+    for store in (ws.store, ws.sensitive):
+        assert store.stat().st_mode & 0o777 == 0o700, f"{store} must not be readable by other accounts"
+
+
+def test_doctor_reports_a_widened_store_and_does_not_repair_it(ws, capsys):
+    """Reported, never fixed: a chmod would override a widening the user may have chosen for a
+    reason this code cannot see, and `doctor` is read-only, which is what makes it safe to run when
+    something is already wrong."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    assert plans.main(["install"]) == 0
+    capsys.readouterr()
+    ws.store.chmod(0o755)
+
+    assert plans.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+
+    assert "mode 755" in out
+    assert f"chmod 700 {ws.store}" in out
+    assert ws.store.stat().st_mode & 0o777 == 0o755, "doctor must not have repaired it"
+
+
+def test_a_group_readable_store_is_not_flagged(ws):
+    """A per-user group is the common Linux default, so group bits usually name only the user
+    themselves. Flagging them would cry wolf on every machine."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    assert plans.main(["install"]) == 0
+    ws.store.chmod(0o770)
+
+    store = next(s for s in plans.load_config().stores() if s.path == ws.store)
+
+    assert plans.store_mode_problems(store) == []

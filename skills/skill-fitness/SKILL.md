@@ -43,22 +43,45 @@ the trigger check is not. The loop is: draft → measure → a person decides wh
 python3 <this skill>/scripts/fitness.py report
 ```
 
-Read-only, stdlib, deterministic, no tokens. Sub-commands when you want one section: `inventory`,
-`budget`, `overlap`, `usage`, `absorb`, `derivable`. Every one takes `--json`.
+Read-only, stdlib, deterministic, no tokens. Every sub-command takes `--json`.
 
-| the question                                    | the command |
-| ----------------------------------------------- | ----------- |
-| what is installed, and from where               | `inventory` |
-| what is the listing costing, and who is at risk | `budget`    |
-| which skills compete for the same request       | `overlap`   |
-| what actually gets invoked                      | `usage`     |
-| what one-liners should be skill code            | `absorb`    |
-| what a skill makes an agent compose by hand     | `derivable` |
-| everything, in reading order                    | `report`    |
+**`report` runs the three sections whose remedy belongs to whoever ran it, and no others.** The
+other four all end in "edit the skill" — which a reader who merely _installed_ it must not do, since
+editing a deployed copy is drift that reaches nothing — so they have to be asked for by name.
 
-By default it reads `~/.agents/skills`, `~/.claude/skills`, and `./skills` when run from a skills
-repo. `--root <dir>` (repeatable) replaces that set — use it to score a corpus you do not have
-installed. `budget` also takes `--context-window <tokens>`, explained below.
+| the question                                    | the command   | whose remedy     |
+| ----------------------------------------------- | ------------- | ---------------- |
+| what is installed, and from where               | `inventory`   | the runner's     |
+| what is the listing costing, and who is at risk | `budget`      | the runner's     |
+| what actually gets invoked                      | `usage`       | the runner's     |
+| those three, in reading order                   | `report`      | the runner's     |
+| which skills compete for the same request       | `overlap`     | **the author's** |
+| what one-liners should be skill code            | `absorb`      | **the author's** |
+| what a skill makes an agent compose by hand     | `derivable`   | **the author's** |
+| what a skill assumes about its reader's machine | `portability` | **the author's** |
+
+That split is a property of the **command**, never of the corpus in front of it. A rule that
+inspected the roots instead would behave one way on the author's machine — where the hub and the
+checkout hold the same names — and another way everywhere else, which is the exact class of bug it
+exists to prevent.
+
+**Every run names the corpus it measured, and you should read that line first.** A count is a
+statement about a specific set of files, and this tool can be aimed at populations that routinely
+disagree: measured on one machine 2026-09-03, with a clean working tree and nothing unusual
+happening, the checkout, `origin` and the install differed from each other.
+
+```text
+corpus: working tree — /home/you/projects/agent-skills/skills
+corpus: installed — /home/you/.agents/skills
+        deployed copies — not yours to edit; a fix belongs to the skill's author
+```
+
+By default it reads `./skills` **first** when run from a skills repo, then `~/.agents/skills` and
+`~/.claude/skills`. The order matters and is not cosmetic: resolution is first-occurrence-wins, so
+before the repo was moved to the front, a bare run inside a checkout silently measured the installed
+copies instead of the files being edited. `--root <dir>` (repeatable) replaces the whole set — use
+it to score a corpus you do not have installed. `budget` also takes `--context-window <tokens>`,
+explained below.
 
 ## Reading the output
 

@@ -33,7 +33,9 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
+import tempfile
 import time
 import warnings
 from collections import Counter, defaultdict
@@ -1159,6 +1161,62 @@ def collect_budget(skills: list[Skill], usage: Usage, args: argparse.Namespace) 
     return out
 
 
+def materialize_ref(ref: str, cwd: Path, into: Path) -> tuple[Path, str]:
+    """Extract a git ref's `skills/` into a directory, so a corpus nobody has installed can be read.
+
+    This exists because `origin/main` is the **product** — `skills add <owner>/<repo>` clones the
+    remote — and nothing here could measure it. Every count this tool has ever printed described the
+    working tree or the install, so no number was ever a statement about what a reader has.
+
+    It never fetches. Every script in this corpus is read-only, stdlib and network-free, and a
+    silent fetch would trade that property for a convenience. Instead the sha and the age of the
+    last fetch are returned for the header to print, and the reader decides whether that is fresh
+    enough — the same shape as reporting a drift rather than gating on it. There is deliberately no
+    staleness threshold: a threshold is a number nobody can defend, and it turns a plain fact into a
+    policy argument.
+    """
+    sha = _git(["rev-parse", "--short", ref], cwd)
+    if sha is None:
+        raise SystemExit(
+            f"no such ref: {ref}\n"
+            "  --ref reads a local ref, and never fetches. If it is a remote-tracking ref you have\n"
+            "  never fetched, run `git fetch` first — that is your call to make, not this script's."
+        )
+    into.mkdir(parents=True, exist_ok=True)
+    archive = subprocess.run(
+        ["git", "archive", ref, "skills"],
+        cwd=cwd,
+        capture_output=True,
+        check=False,
+    )
+    if archive.returncode != 0:
+        raise SystemExit(f"git archive {ref} skills failed: {archive.stderr.decode(errors='replace').strip()}")
+    subprocess.run(["tar", "-x", "-C", str(into)], input=archive.stdout, check=True)
+    return into / "skills", f"{ref} @ {sha}, {_fetch_age(cwd)}"
+
+
+def _git(argv: list[str], cwd: Path) -> str | None:
+    done = subprocess.run(["git", *argv], cwd=cwd, capture_output=True, text=True, check=False)
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _fetch_age(cwd: Path) -> str:
+    """How stale the remote-tracking refs are, in the words a reader can act on.
+
+    `FETCH_HEAD`'s mtime is when the last fetch ran. A remote-tracking ref answers "what did I last
+    fetch", never "what does the remote have" — so a run against `origin/main` describes the product
+    only as of this moment.
+    """
+    common = _git(["rev-parse", "--git-common-dir"], cwd)
+    if common is None:
+        return "fetch age unknown"
+    head = (cwd / common / "FETCH_HEAD").resolve()
+    if not head.exists():
+        return "never fetched in this clone"
+    hours = (time.time() - head.stat().st_mtime) / 3600
+    return f"fetched {hours:.0f}h ago" if hours >= 1 else "fetched under an hour ago"
+
+
 def resolve_roots(explicit: list[Path] | None, cwd: Path) -> list[Path]:
     """Which directories to load skills from, in the order that decides which copy wins.
 
@@ -1191,6 +1249,8 @@ def describe_corpus(skills: list[Skill], args: argparse.Namespace) -> dict[str, 
     """
     roots = sorted({s.scope for s in skills})
     hub = {str(p.resolve()) for p in DEFAULT_SCOPES if p.exists()}
+    if getattr(args, "ref_label", None):
+        return {"kind": "git ref", "where": args.ref_label, "note": "what `skills add` would install"}
     if args.root:
         return {"kind": "explicit", "where": ", ".join(roots), "note": ""}
     if roots and set(roots) <= hub:
@@ -1524,6 +1584,11 @@ def main() -> int:
         help="a repo of the author's the corpus never links, so portability can see it named in prose",
     )
     p.add_argument("--root", action="append", type=Path, help="a skills directory; repeatable")
+    p.add_argument(
+        "--ref",
+        help="measure a git ref's skills/ instead — e.g. origin/main, what `skills add` installs. "
+        "Never fetches: the sha and the age of your last fetch are printed for you to judge",
+    )
     p.add_argument("--json", action="store_true")
     p.add_argument("--top", type=int, default=12, help="rows to show in ranked sections")
     p.add_argument(
@@ -1549,7 +1614,16 @@ def main() -> int:
         help="write this run's per-skill derivable counts, so a later run can measure drift",
     )
     args = p.parse_args()
+    args.ref_label = ""
 
+    with tempfile.TemporaryDirectory(prefix="fitness-ref-") as scratch:
+        if args.ref:
+            root, args.ref_label = materialize_ref(args.ref, Path.cwd(), Path(scratch))
+            args.root = [root]
+        return _run(args)
+
+
+def _run(args: argparse.Namespace) -> int:
     roots = resolve_roots(args.root, Path.cwd())
     skills = load_skills(roots)
 

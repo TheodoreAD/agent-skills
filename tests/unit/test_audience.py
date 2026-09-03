@@ -16,6 +16,7 @@ therefore builds its own corpus rather than reading the real one.
 
 import argparse
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -193,3 +194,57 @@ def test_an_explicit_root_replaces_the_defaults_rather_than_joining_them(tmp_pat
     """`--root` is documented as replacing the set, which is what makes it usable for scoring a
     corpus you do not have installed."""
     assert fitness.resolve_roots([tmp_path], Path("/nowhere")) == [tmp_path]
+
+
+# --------------------------------------------------------------------------------------------
+# measuring a git ref, which is the only population that describes the product
+
+
+def _init_repo(root: Path) -> None:
+    for argv in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "t@example.invalid"],
+        ["git", "config", "user.name", "T"],
+        ["git", "add", "-A"],
+        ["git", "commit", "-qm", "seed"],
+    ):
+        subprocess.run(argv, cwd=root, check=True, capture_output=True)
+
+
+def test_a_ref_is_materialized_and_labelled_with_its_sha(tmp_path):
+    """`skills add <owner>/<repo>` clones the remote, so the ref is the product. Until this existed
+    every count described the working tree or the install, and none was a statement about what a
+    reader could actually get."""
+    repo = tmp_path / "repo"
+    skill(repo / "skills", "alpha", description="As published.")
+    _init_repo(repo)
+
+    root, label = fitness.materialize_ref("HEAD", repo, tmp_path / "out")
+
+    assert (root / "alpha" / "SKILL.md").is_file()
+    assert label.startswith("HEAD @ ")
+    assert fitness.load_skills([root])[0].description == "As published."
+
+
+def test_a_ref_reflects_the_commit_not_the_working_tree(tmp_path):
+    """The whole point: an uncommitted edit must not show up in a number that claims to describe
+    what is published."""
+    repo = tmp_path / "repo"
+    skill(repo / "skills", "alpha", description="As published.")
+    _init_repo(repo)
+    skill(repo / "skills", "alpha", description="Edited but never committed.")
+
+    root, _ = fitness.materialize_ref("HEAD", repo, tmp_path / "out")
+
+    assert fitness.load_skills([root])[0].description == "As published."
+
+
+def test_an_unknown_ref_says_it_never_fetches(tmp_path):
+    """Refusing beats fetching: every script here is read-only and network-free, and trading that
+    for a convenience would make an audit reach the network without being asked."""
+    repo = tmp_path / "repo"
+    skill(repo / "skills", "alpha")
+    _init_repo(repo)
+
+    with pytest.raises(SystemExit, match="never fetches"):
+        fitness.materialize_ref("origin/nope", repo, tmp_path / "out")

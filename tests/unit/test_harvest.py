@@ -761,3 +761,36 @@ def test_every_subcommand_accepts_the_shared_flags_after_its_name():
         args = harvest.build_parser().parse_args([command, "--json"])
         assert args.json is True
         assert args.command == command
+
+
+# --------------------------------------------------------------------------------------------
+# finding the skills checkout
+
+
+def test_the_checkout_is_found_by_walking_up_from_the_script(tmp_path):
+    repo = tmp_path / "anywhere" / "my-skills"
+    (repo / "skills").mkdir(parents=True)
+    (repo / ".git").mkdir()
+    script = repo / "skills" / "session-harvest" / "scripts" / "harvest.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("", encoding="utf-8")
+
+    assert harvest.find_checkout(None, start=script) == repo
+
+
+def test_no_checkout_asks_rather_than_guessing_at_a_path(tmp_path):
+    """This carried a hard-coded `~/projects/<owner>/<repo>` fallback until 2026-09-03 — the
+    author's own checkout, in code shipped to strangers. It was guarded and so harmed nobody, which
+    is exactly why it survived review: a path that only ever helps one machine is invisible
+    everywhere else, right up until someone else's directory happens to match it."""
+    stranded = tmp_path / "installed" / "session-harvest" / "scripts" / "harvest.py"
+    stranded.parent.mkdir(parents=True)
+    stranded.write_text("", encoding="utf-8")
+
+    with pytest.raises(harvest.HarvestError, match="pass --checkout"):
+        harvest.find_checkout(None, start=stranded)
+
+
+def test_an_explicit_path_without_skills_is_rejected(tmp_path):
+    with pytest.raises(harvest.HarvestError, match="no skills/ directory"):
+        harvest.find_checkout(str(tmp_path))

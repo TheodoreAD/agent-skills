@@ -786,20 +786,28 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 # --------------------------------------------------------------------------------------------
 
 
-def find_checkout(explicit: str | None) -> Path:
-    """The skills checkout: what was passed, else this script's own repo, else the usual path."""
+def find_checkout(explicit: str | None, start: Path | None = None) -> Path:
+    """The skills checkout: what was passed, else this script's own repo.
+
+    There is deliberately no third resolution. This carried a hard-coded
+    `~/projects/<owner>/<repo>` fallback until 2026-09-03 — the author's own checkout path, in code
+    shipped to strangers. It was guarded and so harmed nobody, which is exactly why it survived
+    review: a path that only ever helps one machine is invisible everywhere else, right up until
+    someone else's directory happens to match it. Asking is the honest failure.
+
+    An installed copy under `~/.agents/skills/` reaches no checkout by design — its parent has a
+    `skills/` directory but no `.git`, so the walk finds nothing and the sweep's skills section
+    reports nothing rather than describing a repo the reader does not have.
+    """
     if explicit:
         path = Path(explicit).expanduser()
         if not (path / "skills").is_dir():
             raise HarvestError(f"{path} has no skills/ directory")
         return path
-    here = Path(__file__).resolve()
+    here = (start or Path(__file__)).resolve()
     for parent in here.parents:
         if (parent / "skills").is_dir() and (parent / ".git").exists():
             return parent
-    fallback = Path.home() / "projects" / "github.com-personal" / "agent-skills"
-    if (fallback / "skills").is_dir():
-        return fallback
     raise HarvestError("no skills checkout found — pass --checkout <path>")
 
 

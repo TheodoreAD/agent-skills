@@ -114,9 +114,17 @@ read it, never write it, and report **unavailable** rather than zeros when it is
 XDG directories get `0700` on creation, which the specification asks for anyway. See
 `2026-09-03-sensitive-store-is-world-readable.md`.
 
-**9. One skill owns a location; the others ask it rather than re-deriving it.** The `harvest.py`
-duplication above is the instance. A second copy of a default is a second thing to migrate when a
-rule like this one changes.
+**9. One skill owns a location and publishes it as configuration the others read.** The `harvest.py`
+duplication above is the instance: two copies of a default that must agree, with nothing keeping
+them in step.
+
+[DECISION: **amended 2026-09-04 — "the others _ask_ it" was wrong**, and the wording invited exactly
+the mistake `2026-09-03-skill-dependencies-and-bundling.md` refuses. Skills install individually, so
+one cannot import another without hard-coding the hub path this very document bans, and a behaviour
+that changes with what else is installed is the defect measured on 2026-09-02. The contract is the
+**config**, not a call: `$PLANS_HOME` and `~/.config/plan-docs/config.toml` already are the shared
+source of truth, and `harvest.py` should read them rather than reach into `plans.py`. Two readers of
+one source of truth is not duplication; two hard-coded defaults is.]
 
 **10. A skill can say where it resolved to.** `doctor`, `where`, or a line in the output. A
 wrong-directory bug is otherwise invisible, which `plan-docs` learned the expensive way.

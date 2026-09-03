@@ -72,15 +72,50 @@ run, and it pushes their own skills toward description-truncation — the death 
 to report. Published measurement points the same way: two to three skills applied to one task beat
 four or more (+18.6pp against +5.9pp). Someone who wants `db-defaults` should get `db-defaults`.]
 
-[NEEDS CLARIFICATION: **whether a documented _suggested set_ is worth having.** Free to write and
-carries no install-time cost: a README line saying which skills are commonly used together, and why.
-The risk is that it becomes a bundle by convention, which is the thing being refused. Leaning yes,
-as prose in the README's scope table rather than as anything a tool reads.]
+[NEEDS CLARIFICATION: **a documented _suggested set_ is a claim of the kind this corpus measures,
+and the measurement does not exist yet.** "These skills work well together" is a statement about
+which skills co-fire on one task — and the governing rule here is that nothing ships unmeasured,
+which is what separates a curated skill (+16.2pp) from an unaided one (−1.3pp). Writing the sentence
+from intuition is the failure mode, not the wording.
 
-[NEEDS CLARIFICATION: **whether `metadata: family:` should be used for this.** `skill-fitness`
-already carries `family: meta`, so a grouping concept exists in the frontmatter without a stated
-meaning. Either give it one — a hint for humans, never a resolver input — or drop it as an
-unmaintained field.]
+It is cheap to measure and currently impossible: `Usage` keeps `tool_calls`, `explicit`,
+`last_seen`, a session **count** and an availability flag — no per-session set of names, so
+co-occurrence cannot be computed from what the scanner retains. The scanner already walks each
+transcript and records every skill it sees, so keeping a set per session is a few lines.
+
+The measurement has a purpose beyond the README line, which is what makes it worth taking: published
+work puts **two to three skills on one task at +18.6pp against +5.9pp for four or more**. So the
+question is not "which skills are related" — the names answer that — but **which sets actually fire
+together, and whether any task is pulling in four**. A task that routinely does is an argument for
+sharpening a boundary, and that finding is unreachable without the same data.
+
+[PITFALL: co-occurrence measured from `tool_calls` alone **undercounts**. `explicit` is a person
+typing `/name`, which often injects the body directly and produces no tool call at all — measured
+2026-08-30, one skill ran 11 auto against 84 explicit. A co-firing set built from the auto column
+would describe the sessions where nobody typed a slash command.]
+
+So: leaning yes on the sentence, but only after the measure exists. If it turns out there are no
+natural sets, that is also an answer and a better one than a guess.]
+
+[DECISION: **`metadata: family:` is half a taxonomy and should be completed or dropped — recommend
+dropped.** The state of it, read 2026-09-04 rather than recalled:
+
+- **5 of 14 skills carry it**: `python` on four, `meta` on one. The other nine have no `metadata`
+  block at all, and there is no answer to what family `db-defaults` or `plan-docs` belongs to.
+- **Nothing reads it.** Every `family` hit across the scripts is `plan-docs`' unrelated
+  `--scope family`, and `tests/unit/test_skill_layout.py` does not validate it — so it cannot even
+  drift, because nothing would notice.
+- **It is not a spec field being honoured.** The reference corpus in the research library
+  (`anthropics/skills`) uses no such key; `metadata` appears there only in a benchmark schema and in
+  MCP prose. This is a local invention.
+- **The word already means something else here.** `family` in this corpus means "every repo on the
+  machine". Two meanings of one word inside one corpus is a cost paid by every future reader.
+
+It costs no listing budget — the listing is name plus description — so the only cost is a reader
+believing it means something. That is enough. A half-covered taxonomy is worse than none: it implies
+a scheme that was never finished. Completing it is the other coherent option, but the README's scope
+table already does the human-hint job better, and the decision above forbids any tool reading it,
+which leaves the field with no job to do.]
 
 ## Recommended direction
 

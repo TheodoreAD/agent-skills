@@ -237,9 +237,16 @@ copy.** `session-bash-audit`'s `SKILL.md`, with `S=~/.agents/skills/session-bash
 `--save-baseline $S/references/baselines/<date>-<what-changed>.json`. That is the deployed artefact
 — the same directory this corpus elsewhere calls drift to edit — and a re-install copies the skill
 back over it. So the one piece of genuinely per-machine state the corpus asks a user to keep is kept
-in the one place designed to be replaced. Whether `skills add` actually prunes files it did not
-place is **unverified**; at best the baseline lives inside something documented as disposable.
-Verifying the prune is the cheap next check.]
+in the one place designed to be replaced. At best the baseline lives inside something documented as
+disposable; at worst a routine re-install deletes it.
+
+**Whether `skills add` prunes files it did not place is still unverified, and not for lack of
+trying.** Attempted 2026-09-03: `npx skills add … --global --skill session-bash-audit` under a
+throwaway `HOME` hung and was killed at five minutes with nothing installed — a fresh `HOME` has no
+detected agents, so the CLI is almost certainly waiting on an interactive agent-selection prompt
+that a non-interactive session can never answer. **This one needs a human at a terminal**, which is
+worth knowing before the next session burns another five minutes on it. The fix does not depend on
+the answer: the instruction should not point at the install directory either way.]
 
 [DECISION: **no new env var, and no new home-directory convention.** Both `--save-baseline` and
 `--compare` already take an explicit path with no default, in both scripts, so nothing has to be

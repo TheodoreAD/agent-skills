@@ -121,13 +121,77 @@ rule like this one changes.
 **10. A skill can say where it resolved to.** `doctor`, `where`, or a line in the output. A
 wrong-directory bug is otherwise invisible, which `plan-docs` learned the expensive way.
 
+## What keys the per-skill directory
+
+Asked by the user 2026-09-03: an automatic way to derive a skill's config directory from unique git
+SCM URL components — org/user plus repo — or a better suggestion from community practice.
+
+The motivation is real. Two authors can both publish a skill called `plan-docs`, and if both write
+to `~/.config/plan-docs/` they collide. But three separate checks all point away from the URL, and
+the first one is fatal on its own.
+
+[DECISION: **the key is the skill's own `name`, and nothing else.** Three independent reasons:
+
+**The input does not exist at runtime.** An installed skill is not a git checkout. Verified
+2026-09-02: `~/.agents/skills/plan-docs/` contains `SKILL.md`, `references/` and `scripts/` and
+nothing else — no `.git`, no remote, and a `--global` install writes no `skills-lock.json` anywhere
+under `~`, `~/.agents` or `~/.claude`. There is no URL on the machine to derive anything from. A
+scheme whose input is missing on every machine that would run it is not a scheme.
+
+**Community practice on Linux is a flat application name, and this is measurable rather than
+arguable.** `platformdirs` is the de-facto answer to this exact question — pip, poetry and black all
+depend on it — and it takes an `appauthor` argument specifically so it can build
+`%APPDATA%\Author\App` on Windows and `~/Library/Application Support/Author/App` on macOS. Run on
+this machine, 2026-09-03, platformdirs 4.11.7:
+
+```text
+user_config_dir("plan-docs", "TheodoreAD")  ->  ~/.config/plan-docs
+user_config_dir("plan-docs")                ->  ~/.config/plan-docs
+```
+
+**The author segment is discarded on Linux**, deliberately, by the library that encodes the
+convention. Adding org/user to the path would be importing a Windows shape.
+
+**The config would be keyed more finely than the thing it configures.** `~/.agents/skills/<name>/`
+is already a flat, name-keyed namespace: two same-named skills cannot coexist installed, and
+`fitness.py inventory` reports exactly that as a collision. Keying config by URL solves a conflict
+the installer already refuses to create, and would break the case that does happen — a **fork**, or
+a repo rename, silently orphans the user's existing config while the skill still behaves the same.
+The name is stable across both; the URL is not.]
+
+The name is also already the right kind of key, and already gated:
+`tests/unit/test_skill_layout.py::test_name_matches_directory` enforces that the frontmatter `name`
+equals the directory name, and `NAME_PATTERN` constrains it to filesystem-safe characters. So
+`~/.config/<name>/`, `~/.local/state/<name>/` are unique-within-an-install and CI-verified by a test
+that already exists. It is also the identity the rest of the toolchain uses — what the harness
+matches on, and what `skills add --skill <name>` takes.
+
+[DECISION: **follow `platformdirs`' semantics, do not take the dependency.** These scripts are
+stdlib-only on purpose, so they run under a bare `python3` with nothing installed; the XDG lookup is
+about ten lines. Copy the semantics, cite the library as the reason they are what they are.]
+
+[NEEDS CLARIFICATION: **the escape hatch, if a skill ever genuinely needs to disambiguate.** The
+ecosystem-native option is a key in the skill's own frontmatter `metadata:`, which this corpus
+already uses (`metadata: family: meta` in `skill-fitness`). Cheap, explicit, needs no URL. Not
+needed until a collision actually happens, and may never be.]
+
+The one Linux precedent for putting an organisation in the path is worth naming so it is not
+rediscovered: reverse-DNS application IDs, as Flatpak uses for `~/.var/app/<app-id>/config` and
+GNOME for `org.gnome.Foo`. It does not transfer — those are desktop applications with a registered
+app ID, and a skill has no such identifier; its ecosystem key is the bare name.
+
 ## Open questions
 
-[NEEDS CLARIFICATION: **whether `~/plans` and `~/research` stay at the top level or move under one
-visible root** (`~/agents/`, say). Top level is shortest, is already in muscle memory, and both are
-git repos with remotes and config pointing at them — a move is a migration, not a rename. A shared
-root is tidier and makes "the agent stuff" one thing to back up or exclude. This is aesthetics
-against migration cost, and the rules above hold either way.]
+[DECISION: **`~/plans`, `~/plans-sensitive` and `~/research` stay exactly where they are**, for
+parity with `~/projects` — settled by the user 2026-09-03. They are the user's material by the axis
+above, and a move would be a migration touching git remotes and config for aesthetics.]
+
+[DECISION: **no hard-coded local path in a script, and least of all one tied to the author's dev
+environment** — stated by the user 2026-09-03 alongside the rules above. That makes
+`harvest.py:800`'s fallback to `~/projects/github.com-personal/agent-skills` a defect rather than
+the harmless note it was recorded as, and it answers the open question below about whether the
+portability audit should read `scripts/`: it has to, because this decision is unenforceable
+otherwise.]
 
 [NEEDS CLARIFICATION: **whether `$PLAN_DOCS_CONFIG` survives rule 4.** `$XDG_CONFIG_HOME` already
 lets a user relocate it, so the bespoke variable is a second way to do one thing. Against removing
@@ -138,21 +202,37 @@ test suite uses.]
 root.** A single root makes it easy to sync or back up both tiers with one gesture, and the entire
 purpose of that tier is that it must never leave the machine. Two variables is the cheaper mistake.]
 
-[NEEDS CLARIFICATION: **whether the portability audit should read `scripts/` as well as
-`SKILL.md`.** The hard-coded checkout path above is invisible to it today. Against: a script's paths
-are guarded by code the audit cannot evaluate — `harvest.py`'s fallback is genuinely harmless
-because three other resolutions come first — so a naive scan would report every `Path.home()` as a
-finding and bury the real ones. A narrower rule, such as flagging only a literal path with two or
-more segments under `$HOME`, might carry its weight.]
+[DECISION: **the portability audit reads `scripts/` as well as `SKILL.md`** — forced by the
+no-hard-coded-paths decision above, which nothing would otherwise enforce. The objection stands and
+shapes the rule rather than blocking it: a script's paths are guarded by code the audit cannot
+evaluate, so a naive scan reporting every `Path.home()` would bury the real findings under the
+correct ones. The narrow rule is what to build — **a literal path of two or more segments under
+`$HOME`**, which catches `~/projects/github.com-personal/agent-skills` and ignores
+`Path.home() / ".claude"`, a single-segment reference to another tool's directory that rule 7
+already governs.]
+
+[NEEDS CLARIFICATION: **what the audit should say about a hard-coded path that is only a guarded
+last-resort fallback.** `harvest.py:800` is reached only after an explicit argument and a walk up
+from the script, so it never misleads anyone — it just should not be there. Whether that is the same
+finding as an unguarded path or a lesser one is a question about the report's shape, and it is the
+same question the `bare`/`declared` split already answers for `SKILL.md`.]
 
 ## Recommended direction
 
-Adopt rules 1–10 as written, with the two open questions left open — none of them blocks the others.
-Then the concrete work is small and mostly deletion:
+Rules 1–10 are adopted, the visible stores stay where they are, and the per-skill key is the skill's
+own `name`. The concrete work is small and mostly deletion:
 
-- give baselines a real home (`$XDG_STATE_HOME/<skill>/`), which retires the "save it into the
+- **a shared stdlib path resolver**, ten lines with `platformdirs`' semantics, so
+  `~/.config/<name>/` and `~/.local/state/<name>/` are computed once rather than per script;
+- **give baselines a real home** (`$XDG_STATE_HOME/<name>/`), which retires the "save it into the
   installed copy" instruction on its own;
-- have `harvest.py` ask `plans.py` for a store path instead of re-deriving it;
-- add `mode=0o700` where directories are created;
-- write the table into `skill-authoring`, because the next skill needs the answer before it invents
-  a seventh destination.
+- **delete `harvest.py:800`'s dev-environment fallback**, and have `harvest.py` ask `plans.py` for a
+  store path instead of re-deriving it;
+- **`mode=0o700`** where directories are created;
+- **teach the portability audit to read `scripts/`** with the two-segment rule, so the
+  no-hard-coded-paths decision is enforced rather than remembered;
+- **write the destination table into `skill-authoring`**, because the next skill needs the answer
+  before it invents a seventh destination.
+
+The resolver comes first and everything else consumes it, which is also what keeps rule 9 honest:
+one owner per location has to mean one implementation, not one per skill.

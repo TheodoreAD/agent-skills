@@ -1,5 +1,5 @@
 ---
-status: idea
+status: planned
 updated: 2026-09-03
 ---
 
@@ -52,25 +52,28 @@ real the moment the sensitive tier is used on a shared or work machine, which is
 population it was designed for. Reading the local `775` as harmless because this laptop is
 single-user is reading the wrong machine.]
 
-## Open questions
+## Decisions
 
-[NEEDS CLARIFICATION: **which stores get `0700`.** The sensitive tier, certainly. The shareable tier
-is published to a private remote and holds this machine's own personal-repo plans — arguably also
-`0700`, on the grounds that "shareable" means "shareable with the people I choose", not "readable by
-any local uid". `$RESEARCH_HOME` holds third-party clones with no confidentiality need and is the
-weakest case.]
+[DECISION: **`0700` by content, not by a list of directories.** Both plan stores get it — the
+sensitive tier obviously, and the shareable tier because "shareable" means shareable with the people
+you choose, not readable by any local uid, and it costs nothing. `$RESEARCH_HOME` does **not**: it
+holds clones of public third-party repos, so `0700` there protects nothing and would be a gesture,
+and a rule that does visibly meaningless things is a rule that gets copied without thought. This is
+rule 8 of `2026-09-03-where-skills-put-things-on-disk.md` restated rather than an exception to it —
+the mode follows the content, which is why the answer differs per store without the rule differing.]
 
-[NEEDS CLARIFICATION: **whether `install`/`doctor` should report a wrong mode, or fix it.** `doctor`
-already reports how the machine is set up, and a mode is exactly the kind of thing it could check
-without changing anything. Fixing silently is the tempting option and is the one to be careful with:
-a `chmod` on a directory the user deliberately widened would be the tool overriding a decision it
-cannot see the reason for. Reporting, with the one-line `chmod` to run, is the smaller move and fits
-`doctor`'s existing shape.]
+[DECISION: **`install` creates with the right mode; `doctor` reports and never fixes.** These are
+not two answers to one question, they are two commands. Creating a directory correctly is not
+"fixing" anything, so `install` simply passes `mode=0o700` and there is nothing to decide there.
+`doctor` is documented read-only, and a silent `chmod` would both break that contract and override a
+widening the user may have chosen for a reason the tool cannot see — a `plans` store shared with a
+second account of their own, say. It reports the mode it found and the one-line `chmod` to run.]
 
-[NEEDS CLARIFICATION: **whether this belongs to `plan-docs` alone or is a corpus rule.** Every skill
-that creates a directory outside a repo has the same gap. A rule in `skill-authoring` — a skill that
-creates a directory for the user's own data states its mode, and defaults to `0700` when the data is
-private — would cover the next one too.]
+[DECISION: **it is a corpus rule, and it goes in `skill-authoring`** beside the destination table
+from `2026-09-03-where-skills-put-things-on-disk.md`. Every skill that creates a directory for a
+user's data has this gap; writing it only into `plan-docs` fixes the instance and leaves the class.
+One sentence: a skill that creates a directory for the user's own data states its mode, and it is
+`0700` when the content is private.]
 
 ## Recommended direction
 

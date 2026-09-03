@@ -1,5 +1,5 @@
 ---
-status: idea
+status: planned
 updated: 2026-09-03
 ---
 
@@ -94,24 +94,30 @@ and "shipped" as the same event, and they were not the same event for most of th
 skipped by hand-editing frontmatter. This one is about what the gate checks when it does run. They
 share a file and nothing else.]
 
-## Open questions
+## Decisions
 
-[NEEDS CLARIFICATION: **whether `landed` should be gated on being pushed, or merely report it.**
-Gating is tempting and has a real failure mode: a plan for work in a repo with no remote, or one
-landing in a store that deliberately has none — `~/plans-sensitive` is exactly that — would be
-permanently unable to reach `landed`. Reporting ("this plan's repo is 2 commits ahead of origin")
-costs nothing and fits `list`'s existing footer habit. Leaning strongly toward reporting, and toward
-putting it on **retirement** rather than on `landed`, since deletion is the irreversible step.]
+[DECISION: **report unpushed commits at retirement, never gate `landed` on being pushed.** Gating
+has a failure mode with no way out: a plan describing work in a repo with no remote — and
+`~/plans-sensitive` is deliberately one, permanently — could never reach `landed`, so the gate would
+be teaching people to `--force` past it, which is worse than not having it. Retirement is where the
+check earns its place, because deletion is the irreversible step and the loss is specific: the
+explanation of a change that never shipped. Concretely, `git log origin/<branch>..HEAD` for the repo
+the plan describes, and warn before deleting.]
 
-[NEEDS CLARIFICATION: **whether `--ref` should fetch, or refuse to run on a stale remote-tracking
-ref.** Fetching silently makes a read-only audit touch the network. Refusing with "your
-`origin/main` is N hours old, fetch first" keeps it honest and read-only. The second is more in
-keeping with the rest of the corpus.]
+[DECISION: **`--ref` never fetches. It prints the sha and the fetch age, and refuses only when there
+is no remote-tracking ref at all.** Every script in this corpus is documented read-only, stdlib and
+network-free; a silent fetch breaks that property for a convenience. No staleness threshold either —
+a threshold is a number nobody can defend and it turns a clear fact into a policy argument. Print
+`origin/main @ abc1234, fetched 3h ago` and let the reader judge, which is the same shape as
+reporting a drift rather than gating on it.]
 
-[NEEDS CLARIFICATION: **whether the portability report should name its population in every run.** A
-one-line header — `corpus: working tree` / `corpus: origin/main @ <sha>` / `corpus: installed` —
-would have made this session's "34 bare references" self-describing. Cheap. The question is only
-whether it belongs in every section's header or once at the top.]
+[DECISION: **name the population once at the top of every report, not per section.**
+`corpus:
+working tree` / `corpus: origin/main @ <sha>, fetched <age>` /
+`corpus: installed (~/.agents/skills) — deployed copies, not yours to edit`. Once, because a
+per-section repeat is noise for a value that cannot change within a run. This also closes the
+residual "authorable" question in `2026-09-02-skill-output-must-be-actionable-by-its-runner.md`: an
+explicit run against the hub needs to say what it is looking at, and that is the same line.]
 
 ## Recommended direction
 

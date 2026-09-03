@@ -1,5 +1,5 @@
 ---
-status: idea
+status: planned
 updated: 2026-09-03
 ---
 
@@ -14,8 +14,8 @@ in the standard config directory, and performance history or stats in the standa
 reason about whatever else needs a general rule, so there are rules rather than a decision per
 script.
 
-Nothing here is settled and nothing is implemented. The corpus currently has **one** location rule,
-written once and never stated as a rule: `plan-docs` resolves its config as `$PLAN_DOCS_CONFIG` →
+Settled below and not yet implemented. The corpus currently has **one** location rule, written once
+and never stated as a rule: `plan-docs` resolves its config as `$PLAN_DOCS_CONFIG` →
 `$XDG_CONFIG_HOME` → `~/.config/plan-docs/`. Everything else was decided per-script.
 
 ## What is actually on disk today
@@ -170,17 +170,21 @@ matches on, and what `skills add --skill <name>` takes.
 stdlib-only on purpose, so they run under a bare `python3` with nothing installed; the XDG lookup is
 about ten lines. Copy the semantics, cite the library as the reason they are what they are.]
 
-[NEEDS CLARIFICATION: **the escape hatch, if a skill ever genuinely needs to disambiguate.** The
-ecosystem-native option is a key in the skill's own frontmatter `metadata:`, which this corpus
-already uses (`metadata: family: meta` in `skill-fitness`). Cheap, explicit, needs no URL. Not
-needed until a collision actually happens, and may never be.]
+[DECISION: **no escape hatch is built.** If a skill ever genuinely needs to disambiguate, the
+ecosystem-native option is a key in its own frontmatter `metadata:`, which this corpus already uses
+(`metadata: family: meta` in `skill-fitness`) — cheap, explicit, needs no URL. It is not built now,
+for three reasons: no collision exists, the installer refuses to create one (two same-named skills
+cannot both occupy `~/.agents/skills/<name>/`), and an **optional** frontmatter key is
+backward-compatible, so adding it the day it is needed costs nothing that adding it today saves.
+Building it now ships an untested code path for a hypothetical. Recording the shape here is the
+whole of the preparation required.]
 
 The one Linux precedent for putting an organisation in the path is worth naming so it is not
 rediscovered: reverse-DNS application IDs, as Flatpak uses for `~/.var/app/<app-id>/config` and
 GNOME for `org.gnome.Foo`. It does not transfer — those are desktop applications with a registered
 app ID, and a skill has no such identifier; its ecosystem key is the bare name.
 
-## Open questions
+## Decisions
 
 [DECISION: **`~/plans`, `~/plans-sensitive` and `~/research` stay exactly where they are**, for
 parity with `~/projects` — settled by the user 2026-09-03. They are the user's material by the axis
@@ -193,10 +197,13 @@ the harmless note it was recorded as, and it answers the open question below abo
 portability audit should read `scripts/`: it has to, because this decision is unenforceable
 otherwise.]
 
-[NEEDS CLARIFICATION: **whether `$PLAN_DOCS_CONFIG` survives rule 4.** `$XDG_CONFIG_HOME` already
-lets a user relocate it, so the bespoke variable is a second way to do one thing. Against removing
-it: it is the only way to point at a single config file rather than a directory, which is what the
-test suite uses.]
+[DECISION: **`$PLAN_DOCS_CONFIG` stays, and it is not an exception to rule 4.** Checked rather than
+argued from the rule: it names a **file**, `$XDG_CONFIG_HOME` can only redirect a **directory**, and
+`tests/unit/test_plan_store.py:85` depends on exactly that — every test points the whole config at
+one path under `tmp_path` and would otherwise have to build an XDG tree. So it is not a second way
+to do one thing; it does something XDG cannot express. Rule 4 is therefore stated precisely as **no
+new variable for a location XDG already addresses**, which puts this outside its scope rather than
+against it.]
 
 [DECISION: **the sensitive tier keeps its own variable rather than becoming a subdirectory of one
 root.** A single root makes it easy to sync or back up both tiers with one gesture, and the entire
@@ -211,11 +218,17 @@ correct ones. The narrow rule is what to build — **a literal path of two or mo
 `Path.home() / ".claude"`, a single-segment reference to another tool's directory that rule 7
 already governs.]
 
-[NEEDS CLARIFICATION: **what the audit should say about a hard-coded path that is only a guarded
-last-resort fallback.** `harvest.py:800` is reached only after an explicit argument and a walk up
-from the script, so it never misleads anyone — it just should not be there. Whether that is the same
-finding as an unguarded path or a lesser one is a question about the report's shape, and it is the
-same question the `bare`/`declared` split already answers for `SKILL.md`.]
+[DECISION: **a guarded last-resort path is the same finding, with no severity tier.** `harvest.py`'s
+fallback is reached only after an explicit argument and a walk up from the script, so it misleads
+nobody — but the decision above is "no hard-coded local path, least of all a dev-environment one",
+without a carve-out for harmless ones, and the remedy is `delete it` either way. A tier would buy
+nothing and cost something real: it invites every instance to be argued down into the lower bucket,
+which is how a rule stops being one.
+
+**And the `bare`/`declared` split is not the precedent it looks like.** That split exists because a
+declared assumption is _legitimately_ declared — the skill told its reader, and the finding is
+genuinely closed. A guarded dev-environment path is not legitimate and not closed; it is merely not
+currently hurting anyone. Same word, opposite situations.]
 
 ## Recommended direction
 

@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-02
+status: planned
+updated: 2026-09-03
 ---
 
 # A skill's output must be actionable by whoever ran it
@@ -92,32 +92,37 @@ elsewhere. `session-harvest`, `session-bash-audit` and `research-library` report
 runner's own machine, repos and transcripts. None of that was derived from a stated rule; it came
 out right because each was written for the person running it.
 
-## Open questions
+## Decisions
 
-[NEEDS CLARIFICATION: **whether "authorable" is still a question at all under the opt-in decision.**
-It was the whole question while the plan was "scope the section to roots the reader can edit". With
-author-side sections named explicitly instead, a reader who runs `portability` has asked for it, and
-`--root` already lets them aim it. The residual case is narrow: whether an explicit run that finds
-_only_ hub copies should still say so before printing. Cheap either way, and it no longer blocks
-anything.
+[DECISION: **"authorable" dissolves into the population header, and needs no separate mechanism.**
+It was the whole question while the plan was "scope the section to roots the reader can edit". Under
+the opt-in decision a reader who runs `portability` has asked for it, and `--root` already lets them
+aim it — so all that is left is that the report should say what it is looking at, which
+`2026-09-03-which-version-a-measurement-describes.md` now decides for every report anyway:
+`corpus: installed (~/.agents/skills) — deployed copies, not yours to edit`. One line, already being
+built for another reason.
 
-If it is answered, the cheap answer is by **root**: an explicit `--root`, or a `./skills` directory
-in a git repo, is authorable; `~/.agents/skills` and `~/.claude/skills` are not. Per-skill would be
-sharper — a reader who forked and installed from their own fork is editing the right thing when they
-edit the hub copy — but nothing on disk says whose fork it came from, so it cannot be decided
-without asking.
+The classification, where it is needed, is by **root**: an explicit `--root`, or a `./skills`
+directory in a git repo, is authorable; `~/.agents/skills` and `~/.claude/skills` are not. Per-skill
+would be sharper — someone who forked and installed from their own fork is editing the right thing
+when they edit the hub copy — but nothing on disk says whose fork it came from.
 
 Checked before assuming: the `skills` CLI is **not** in `$RESEARCH_HOME/repos` (only
-`anthropics/skills` is, which is a different project), so "does a `--global` install record its
-source anywhere the CLI could be asked" is unanswered rather than answered no. The absence of a lock
-file under `~`, `~/.agents` and `~/.claude` is the observation; the CLI's own intent is not. Cloning
-it into the library is the next concrete step for this question.]
+`anthropics/skills` is, a different project), so "does a `--global` install record its source
+anywhere the CLI could be asked" stayed unanswered rather than answered no. The absence of a lock
+file under `~`, `~/.agents` and `~/.claude` is the observation; the CLI's own intent was never
+checked. It no longer blocks anything, so it is left uninvestigated deliberately.]
 
-[NEEDS CLARIFICATION: **whether this belongs in `skill-authoring` as a rule, in `skill-fitness` as a
-behaviour, or both.** Both, probably, and they are different statements: `skill-fitness` has to
-change what it prints, while `skill-authoring` has to make the next skill ask the question. The risk
-of writing it only as a rule is that it is exactly the kind of rule an author satisfies on their own
-machine without noticing, per the PITFALL above.]
+[DECISION: **both, and the behaviour ships first.** They are different statements meeting the reader
+at different moments: `skill-authoring` carries the authoring rule — before your skill prints a
+finding, ask who can act on it — and is read while writing a skill; `skill-fitness` carries the
+behaviour (opt-in sections, the population header) and is read while measuring. A rule in the wrong
+one is a rule nobody meets when it applies.
+
+Order matters and is not arbitrary. The behaviour is testable and the rule is not, and this plan's
+own PITFALL says why that asymmetry is decisive: this is exactly the kind of rule an author
+satisfies on their own machine without noticing, because on the author's machine the hub and the
+checkout hold the same names. Shipping the rule alone would feel like progress and change nothing.]
 
 [DECISION: **the corpus ships three kinds of reader-facing artefact about the author's own work, and
 one of them spends the reader's money.** Audited 2026-09-02 against a real install
@@ -164,11 +169,30 @@ cannot test. Rejected: scoping to authorable roots with a one-line skip, which l
 `report`'s path and makes behaviour depend on cwd; and printing two sections split by who acts,
 which keeps a count of somebody else's defects in front of the reader on every run.]
 
-[NEEDS CLARIFICATION: **whether a shipped baseline or suite should be renamed, relocated, or
-refused.** The user asked for the implications rather than choosing them; they are worked through in
-"What the shipped-data options actually cost" below. In short: the opt-in decision above already
-removes most of the _baseline_ exposure and none of the _eval_ exposure, and options 1 and 3 turn
-out to be complements rather than alternatives.]
+[DECISION: **each of the three options applies, to a different artefact. There was never one global
+answer, because the artefacts are not alike.** Settled 2026-09-03 after the implications below were
+worked through:
+
+- **The derivable baseline moves out of `skills/`, into `tests/fixtures/`.** It is not a baseline in
+  the reader-facing sense at all — `skill-fitness`'s body never cites it and
+  `tests/unit/test_derivable.py` is its only consumer, so it is this repo's gate fixture that
+  happens to live in a published directory. One path change, and it stops shipping as a consequence
+  of where it sits rather than as a policy.
+- **The bash baseline stays, as published evidence, with the caveat it already carries.** "One
+  author's machine under one set of rules — save your own on the first run" is the right sentence
+  and it is already written. The only work is at the point of use: `session-harvest` cites that
+  directory with a `<baseline>` placeholder and repeats none of it.
+- **The eval suites stay shipped as worked examples, and `trigger.py` refuses a suite whose `expect`
+  names are not installed, saying why.** Refusal is the only thing that actually stops the token
+  spend, it works whether or not the reader met a caveat, and the data to decide it already exists
+  in every case file.
+
+[PITFALL: **that last one is a gate, and this corpus's standing position is that these measures rank
+and never gate.** It is a deliberate exception, and the reason it is defensible here is that the
+cost being prevented is the reader's money rather than their attention — `trigger.py` is the only
+thing in `skill-fitness` that spends tokens. A refusal that fires wrongly is worse than a caveat
+that goes unread, so it needs an override flag and a message naming the mismatch. Flagged as the
+weakest of the four decisions in this block.]]
 
 ## What the shipped-data options actually cost
 

@@ -440,6 +440,11 @@ What the script cannot do is decide what a finding means. That is this list:
     --compare ~/.local/state/session-bash-audit/<baseline>.json
   ```
 
+  The baseline is one **you** saved with that skill's `--save-baseline`, which writes to
+  `~/.local/state/session-bash-audit/` by default; skip this step if you have never saved one, since
+  comparing against a baseline measured on somebody else's machine reports how your session differs
+  from their setup rather than from your rules.
+
   **Get `<session-id>` from the transcript the script resolved**, not from a path you happen to have
   — in a background job the id in the task-output path names a different transcript, the audit runs
   clean against it, and the verdict describes a session that is not yours.
@@ -521,8 +526,9 @@ What the script cannot do is decide what a finding means. That is this list:
     fastest in the repositories several sessions share, which are the ones a harvest is most likely
     to be asked about.
 - **Sibling repos this skill itself wrote to.** A skill self-update (step 6) commits locally and
-  reaches nothing until it is pushed and re-installed, so `agent-skills` is a repo the session
-  touched and it is the one most likely to be forgotten — the edit felt done when it was committed.
+  reaches nothing until it is pushed and re-installed, so **your skills repo** — whichever one these
+  skills were installed from — is a repo the session touched and the one most likely to be
+  forgotten, because the edit felt done when it was committed.
 - **Paths this session told other sessions to run.** A rule written into an always-loaded
   instructions file, or a `SKILL.md` command block, names a path on this machine — usually an
   installed copy, not the checkout the session was editing. The sweep reports home-rooted paths
@@ -536,33 +542,35 @@ What the script cannot do is decide what a finding means. That is this list:
   code to lose, so there is nothing for a pipe to take away. Never hand-roll an `until` loop, and
   never watch through a filter — confirmed three times, each by a harvest executing this checklist
   with the warning in front of it, reporting `tail`'s `0` as the run's.
-- **Shared stores outside any repo.** `$RESEARCH_HOME` clones, caches, anything the session added to
-  a location no `git status` covers. The failure is a half-finished convention rather than a missing
-  file — a clone without its `SOURCE.md`, or one that failed partway — and it is invisible to every
-  other check here precisely because _this_ store is not version-controlled. **Also check the
-  entries the session _changed_, not only the ones it added**: a deliberate divergence from the
-  store's shape reads as conformant, because the entry is present and its metadata is intact.
-  Confirmed 2026-08-30: a session deepened a `--depth 1` reference clone to ~436 commits to read a
+- **Shared stores outside any repo**, if you keep any. `$RESEARCH_HOME` — set it only if you use the
+  `research-library` skill — holds clones, caches, anything the session added to a location no
+  `git status` covers. The failure is a half-finished convention rather than a missing file — a
+  clone without its `SOURCE.md`, or one that failed partway — and it is invisible to every other
+  check here precisely because _this_ store is not version-controlled. **Also check the entries the
+  session _changed_, not only the ones it added**: a deliberate divergence from the store's shape
+  reads as conformant, because the entry is present and its metadata is intact. Confirmed
+  2026-08-30: a session deepened a `--depth 1` reference clone to ~436 commits to read a
   dependency's constraint history, which was the right call and left the store holding one entry
   that silently no longer matched its own convention. Record the divergence and why, in whatever
   file that store uses for per-entry metadata.
-- **The plans store, `$PLANS_HOME` — a separate bullet, for a different reason.** The sweep reports
-  its dirty state and its unpushed commits, and runs `plans.py absorb` read-only. Two failures with
-  separate owners: an uncommitted plan is this session's own mess, and a plan filed _for_ this repo
-  is another session's gift. **The reason this went unnoticed in a skill whose whole subject is
-  unswept state is that both neighbouring bullets appear to own it**: the store is a git repository
-  (so the git bullet seems to cover it) and it sits outside every working tree (so the shared-stores
-  bullet seems to). Each framing hands it to the other. What the git bullet actually misses is
-  **uncommitted** work: an uncommitted plan is not a commit, so no ahead-count sees it. Do not write
-  "the store has no remote" — the shareable tier has one and the sensitive tier deliberately does
-  not, so committed-but-unpushed plans are a real second finding on the shareable half, gated by
-  that skill's content scan before any push. **`absorb` runs here even though `plan-docs` already
-  tells every session to run it first**: the queue refills for as long as the session runs, because
-  the sessions filing into it run concurrently. Measured 2026-08-30 in a session that followed the
-  first-call rule correctly — 4 plans at session start, 4 more two hours in, and 1 at five hours,
-  that last one a credential exposure that sat unread for half an hour. Report a mid-transaction
-  store — uncommitted changes that are not yours — rather than working around it; it means another
-  session is actively holding that directory.
+- **The plans store, `$PLANS_HOME` — a separate bullet, for a different reason.** Set by the
+  `plan-docs` skill and absent if you do not use it, in which case the sweep skips this and says so.
+  The sweep reports its dirty state and its unpushed commits, and runs `plans.py absorb` read-only.
+  Two failures with separate owners: an uncommitted plan is this session's own mess, and a plan
+  filed _for_ this repo is another session's gift. **The reason this went unnoticed in a skill whose
+  whole subject is unswept state is that both neighbouring bullets appear to own it**: the store is
+  a git repository (so the git bullet seems to cover it) and it sits outside every working tree (so
+  the shared-stores bullet seems to). Each framing hands it to the other. What the git bullet
+  actually misses is **uncommitted** work: an uncommitted plan is not a commit, so no ahead-count
+  sees it. Do not write "the store has no remote" — the shareable tier has one and the sensitive
+  tier deliberately does not, so committed-but-unpushed plans are a real second finding on the
+  shareable half, gated by that skill's content scan before any push. **`absorb` runs here even
+  though `plan-docs` already tells every session to run it first**: the queue refills for as long as
+  the session runs, because the sessions filing into it run concurrently. Measured 2026-08-30 in a
+  session that followed the first-call rule correctly — 4 plans at session start, 4 more two hours
+  in, and 1 at five hours, that last one a credential exposure that sat unread for half an hour.
+  Report a mid-transaction store — uncommitted changes that are not yours — rather than working
+  around it; it means another session is actively holding that directory.
 - **`depends_on` plans whose blocker may have lifted.** The routing filter above parks work owed to
   a mid-restructure repo in a `depends_on`-tagged plan — which stores it safely and gives it no
   trigger. Nothing watches the named repo, so a plan waiting on a repo that has been ready for days
@@ -809,8 +817,10 @@ the current session:
   `.agents/skills/session-harvest/`) — is a plain file copy dropped there at install time.
   Hand-editing it is silently clobbered by the next install and never reaches any other project or
   machine anyway. Never edit it directly.
-- The canonical source is the [`agent-skills`](https://github.com/TheodoreAD/agent-skills) repo,
-  normally at `~/projects/github.com-personal/agent-skills`.
+- The canonical source is the repo these skills were installed from — for this author,
+  [`agent-skills`](https://github.com/TheodoreAD/agent-skills); for you, your own checkout or fork.
+  `harvest.py` finds it by walking up from its own location and asks with `--checkout <path>` rather
+  than guessing when it cannot.
 - **Only a session already working in that repo edits it.** From anywhere else the fold-back is a
   filing, per step 6 — `plans.py new <topic> --for github.com-personal/agent-skills`, committed in
   the store. Do not locate the checkout in order to write to it: an edit there is a commit in

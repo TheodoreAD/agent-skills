@@ -37,6 +37,14 @@ python3 $H sweep --boundary <instant>                   # step 5
 python3 $H claims --until <instant>                     # step 5, the exit-masked rule
 ```
 
+**The bare `turns`, `sweep` and `claims` lines resolve the transcript from
+`$CLAUDE_CODE_SESSION_ID`**, which Claude Code exports into every Bash call and which is the
+transcript's own filename stem; a background job's `state.json` still takes precedence, and
+`--session <id|path>` is for a harness that exports no id. Until 2026-09-05 they resolved from
+nothing — `transcript --expect` printed the right path and the next line exited 1 with
+`no transcript resolved` — and three harvests in two days re-typed `--session` by hand before the
+script was taught to read the variable that had been in its environment all along.
+
 **`skills-state` is the one subcommand `$H` from the install cannot answer**, because it compares
 the install _against a checkout_ and an installed copy has no repo above it: run from there it exits
 1 with `no skills checkout found — pass --checkout <path>`. That is the correct answer and it reads

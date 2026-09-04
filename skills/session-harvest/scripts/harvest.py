@@ -11,10 +11,15 @@ every time drifts, and its answers stop being comparable across runs.
 
     harvest.py boundary                          # step 0's instant; pass it to everything after
     harvest.py transcript --expect '<a command this session ran>'
-    harvest.py turns --session <id> --json
+    harvest.py turns --json
     harvest.py skills-state --since <session start>
-    harvest.py sweep --session <id> --boundary <instant>
-    harvest.py claims --session <id>
+    harvest.py sweep --boundary <instant>
+    harvest.py claims --until <instant>
+
+The transcript resolves, in order, from `--session <id|path>`, a background job's `state.json`
+(`$CLAUDE_JOB_DIR`), Claude Code's own `$CLAUDE_CODE_SESSION_ID` (exported into every Bash call, so
+the bare forms above work there), and last `--expect '<a command this session ran>'` by content.
+Pass `--session` on a harness that exports no id.
 
 Stdlib only, so it runs by path with no install step. **Every subcommand is read-only**: nothing
 here writes a file, commits, pushes, installs or deletes, and the one thing the skill genuinely
@@ -328,6 +333,15 @@ def resolve_transcript(session: str | None, job: str | None, expect: str | None,
     found = _from_session_argument(session) if session else None
     if found is None and (job or os.environ.get("CLAUDE_JOB_DIR")):
         found = _from_job(job)
+    if found is None and os.environ.get("CLAUDE_CODE_SESSION_ID"):
+        # Claude Code exports its own session id into every Bash call, so a bare `turns`/`sweep`/
+        # `claims` resolves with no state carried between invocations and nothing typed. After the
+        # job check on purpose: a background job's environment names the parent session, and its
+        # `state.json` is the only thing that knows the job's own transcript.
+        env_id = os.environ["CLAUDE_CODE_SESSION_ID"]
+        matches = _search_projects(env_id)
+        if matches:
+            found = matches[0], f"$CLAUDE_CODE_SESSION_ID ({env_id[:8]}), matched under ~/.claude/projects"
     if found is None and expect:
         hits = _by_content(expect, cwd)
         if len(hits) > 1:

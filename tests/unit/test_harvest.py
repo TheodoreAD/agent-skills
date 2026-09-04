@@ -299,8 +299,36 @@ def test_a_job_id_resolves_to_the_transcript_its_state_names(tmp_path, monkeypat
 
 def test_no_transcript_is_an_error_rather_than_a_guess(tmp_path, monkeypatch):
     monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     with pytest.raises(harvest.HarvestError, match=r"no transcript resolved"):
         harvest.resolve_transcript(None, None, None, tmp_path)
+
+
+def test_the_harness_session_id_resolves_a_bare_call(tmp_path, monkeypatch):
+    """Claude Code exports `CLAUDE_CODE_SESSION_ID` into every Bash call, and it is the transcript's
+    own stem — confirmed 2026-09-05 in a session whose bare `turns` had just exited 1 with
+    "no transcript resolved" one line after `transcript --expect` printed the right path. Three
+    harvests in two days had re-typed `--session` by hand; none of them needed to.
+    """
+    projects = tmp_path / "projects" / "-home-u-repo"
+    projects.mkdir(parents=True)
+    mine = write_transcript(projects / "4e6fc3cc-eebb-4ea1-b035-ca0112dc9982.jsonl", [user_entry("mine")])
+    write_transcript(projects / "5554513b-6e49-4d0b-be8f-cba212809203.jsonl", [user_entry("theirs")])
+    monkeypatch.setattr(harvest, "PROJECTS_DIR", tmp_path / "projects")
+    monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "4e6fc3cc-eebb-4ea1-b035-ca0112dc9982")
+
+    resolved = harvest.resolve_transcript(None, None, None, tmp_path)
+    assert resolved.path == mine
+    assert "CLAUDE_CODE_SESSION_ID" in resolved.how
+
+    # A job's own state still wins: in a background job the environment names the parent session.
+    real = write_transcript(tmp_path / "job.jsonl", [user_entry("the job's")])
+    job = tmp_path / "jobs" / "c9a20dab"
+    job.mkdir(parents=True)
+    (job / "state.json").write_text(json.dumps({"sessionId": "c9a20dab-1111", "linkScanPath": str(real)}))
+    monkeypatch.setenv("CLAUDE_JOB_DIR", str(job))
+    assert harvest.resolve_transcript(None, None, None, tmp_path).path == real
 
 
 def test_expect_verifies_a_transcript_it_did_not_choose(tmp_path, monkeypatch):

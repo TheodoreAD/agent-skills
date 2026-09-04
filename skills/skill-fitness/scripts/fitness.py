@@ -741,7 +741,20 @@ def scan_derivable(skills: list[Skill]) -> list[dict[str, Any]]:
 # `skills add` puts every install under the same hub on every machine, so a skill citing its own
 # script by that path cites something the reader actually has. It is the one `~/` path that is not
 # an assumption, and excluding it is what keeps the measure from reporting the correct idiom.
-PORTABLE_HOME = ("~/.agents/skills",)
+# The install hub, plus the XDG base directories and the user dirs beside them. None of these is an
+# assumption about a *particular* machine: they are published defaults that mean the same thing on
+# every one, so naming them is the opposite of the finding this measure looks for — a skill that
+# says it keeps state in `~/.local/state/<name>/` has told its reader everything there is to know.
+# Added 2026-09-04, when documenting the destinations in `skill-authoring` produced eleven findings
+# for a section whose entire purpose is declaring where things go.
+PORTABLE_HOME = (
+    "~/.agents/skills",
+    "~/.config",
+    "~/.local/state",
+    "~/.local/share",
+    "~/.cache",
+    "~/Documents",
+)
 # A path is followed by prose punctuation as often as not, and `~/AGENTS.md.` reported as a distinct
 # token from `~/AGENTS.md` is one finding printed twice.
 HOME_PATH = re.compile(r"~/[\w./*-]*[\w*]")
@@ -749,7 +762,13 @@ ABS_HOME = re.compile(r"/(?:home|Users)/[\w.-]+(?:/[\w./*-]*[\w*])?")
 # Three characters and up, so a `$S=…` shorthand a fenced block defines on its own first line is
 # not reported as something the reader has to have set before running anything.
 ENV_VAR = re.compile(r"\$([A-Z][A-Z0-9_]{2,})")
-ENV_UNIVERSAL = frozenset({"HOME", "PATH", "PWD", "USER", "SHELL", "EDITOR", "TMPDIR", "LANG", "TERM"})
+# Shell basics, plus the XDG variables — those are the specification's own, already under the user's
+# control, so a skill using one is *removing* a setting rather than asking for one. A skill-invented
+# `$SOMETHING_HOME` is the finding; `$XDG_STATE_HOME` never is.
+ENV_UNIVERSAL = frozenset({
+    "HOME", "PATH", "PWD", "USER", "SHELL", "EDITOR", "TMPDIR", "LANG", "TERM",
+    "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR",
+})  # fmt: skip
 # Runners whose *targets* come from a repo rather than from the tool. `inv quality.precommit` is a
 # task that exists in the author's repos and nowhere else; `git status` is the same everywhere.
 TASK_RUNNERS = frozenset({"inv", "invoke", "make", "just", "rake", "nox", "tox", "task", "mise"})

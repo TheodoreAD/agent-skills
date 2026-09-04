@@ -89,10 +89,13 @@ def test_declaring_a_directory_covers_the_files_under_it(tmp_path):
 
 
 def test_a_sibling_directory_is_not_covered(tmp_path):
-    """Prefix, not neighbour. Declaring one directory says nothing about the one beside it."""
-    row = scan_one(tmp_path, "State lives in `~/.local/state` by default.\n\nIt also reads `~/.config/demo`.")
+    """Prefix, not neighbour. Declaring one directory says nothing about the one beside it.
 
-    assert tokens(row) == {"~/.config/demo"}
+    The example is deliberately not a standard location: `~/.config` became portable on 2026-09-04,
+    so an earlier version of this test asserted a finding that is correctly no longer one."""
+    row = scan_one(tmp_path, "Notes live in `~/notes` by default.\n\nIt also reads `~/scratch/demo`.")
+
+    assert tokens(row) == {"~/scratch/demo"}
 
 
 def test_one_env_var_never_covers_another(tmp_path):
@@ -102,3 +105,36 @@ def test_one_env_var_never_covers_another(tmp_path):
     row = scan_one(tmp_path, "`$PLANS_HOME` defaults to `~/plans`.\n\nPlans also go to `$PLANS_SENSITIVE_HOME`.")
 
     assert tokens(row) == {"$PLANS_SENSITIVE_HOME"}
+
+
+# --------------------------------------------------------------------------------------------
+# a published standard location is not an assumption about a machine
+
+
+def test_the_xdg_base_directories_are_portable(tmp_path):
+    """`~/.config` is not the author's path, it is the specification's default, and it means the
+    same thing on every machine. Found 2026-09-04: documenting the destinations in `skill-authoring`
+    produced eleven findings for a section whose whole purpose is declaring where things go."""
+    row = scan_one(
+        tmp_path,
+        "Config goes in `~/.config/demo/`, state in `~/.local/state/demo/`, "
+        "cache in `~/.cache/demo/` and data in `~/.local/share/demo/`.",
+    )
+
+    assert row["bare"] == 0, f"still bare: {tokens(row)}"
+
+
+def test_an_xdg_variable_is_not_a_setting_the_skill_invented(tmp_path):
+    """Using `$XDG_STATE_HOME` *removes* a setting — the user already controls it. A skill-invented
+    `$SOMETHING_HOME` is the finding; the specification's own variable never is."""
+    row = scan_one(tmp_path, "It writes to `$XDG_STATE_HOME/demo/`, and to `$DEMO_HOME` if you set one.")
+
+    assert tokens(row) == {"$DEMO_HOME"}
+
+
+def test_a_dotfile_beside_a_standard_directory_is_still_a_finding(tmp_path):
+    """Prefix-portability must not leak: `~/.claude` is one tool's private store, not a standard,
+    and sits beside directories that are."""
+    row = scan_one(tmp_path, "It reads `~/.claude/projects/` and writes `~/.config/demo/`.")
+
+    assert tokens(row) == {"~/.claude/projects"}

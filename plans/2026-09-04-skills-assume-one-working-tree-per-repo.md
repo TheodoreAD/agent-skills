@@ -162,27 +162,22 @@ most likely to break it.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **is "the repository" or "this checkout" the right identity for a plan?** Both
-are defensible and the answer decides the `plan-docs` fix. Keying on the repository
-(`--git-common-dir`) means every worktree of a repo shares one mirror and one `absorb` queue, which
-matches how a human thinks about "the repo's plans" and makes a plan written on a feature branch
-visible from main. Keying on the checkout is what happens today, and has one real virtue: a plan
-written in a worktree is about the work in that worktree. The store case looks clearly like the
-first; the `mode = "repo"` case already behaves like the second for free, because the plan file
-travels with the branch it was committed on. So the likely answer is "repository, for the store
-mirror only" — but that asymmetry needs stating explicitly or it reads as a bug.]
+**Settled 2026-09-04 by the user — the repository, for the store mirror only.** Every worktree of a
+repo shares one store mirror and one `absorb` queue; `mode = "repo"` is untouched, because a plan
+file committed in a worktree travels with its branch and that is already right. The asymmetry needed
+no second code path: `rel` is derived from the repository while `repo_root` stays the checkout, and
+`repo_dir` was always `repo_root / "plans"`. Stated in `plan-docs`'s own body so it is not read as a
+bug. Step 4 below.
 
-[NEEDS CLARIFICATION: **should a worktree be reported, or silently normalised?** A session that does
-not know it is in a worktree is the one this plan is about, so there is a case for
-`plans.py where`/`doctor` naming it outright. Against: a line printed on every command in a
-perfectly healthy worktree is the "warning nobody can act on" this corpus keeps deleting. Probably
-`where` and `doctor` say it, and the routing commands just do the right thing.]
+**Settled 2026-09-04 as predicted — `where` and `doctor` say it, the routing commands just do the
+right thing.** `where` earns the line rather than warning with it: once the store mirror is the
+repository's, `rel` names a directory the session is not standing in, and unexplained that reads as
+a bug. `doctor` names the checkout a worktree belongs to. Nothing else prints anything.
 
-[NEEDS CLARIFICATION: **can `audit.py` know a slug is a worktree at all?** It reads transcripts
-offline, long after the directory may be gone, so it cannot ask git. The only signal in the data is
-the slug's own shape — a `-claude-worktrees-` segment for the Claude Code pattern, and nothing at
-all for a sibling worktree. That means a partial fix for one directory pattern and no fix for the
-other, which may be worse than a declared limitation.]
+**Settled 2026-09-04 — no, and it is declared rather than half-fixed.** The slug shape betrays only
+Claude Code's layout; VS Code's `<repo>.worktrees/<name>` and the flat `<repo>-<branch>` are
+indistinguishable from an ordinary repo name, so a partial fix would make the unfixed layouts read
+as verified. `session-bash-audit` carries the limitation beside the Windows one. Step 7 below.
 
 **Settled 2026-09-04 — the sibling pattern needs a fix, not a declaration.** The question as
 originally written assumed the walker would have to pay a `git worktree list` per candidate. It does
@@ -221,19 +216,21 @@ Cheapest first, and the first two are worth doing whatever the open questions se
    symlink precedent, so `doctor` prints "a linked worktree of `<checkout>`; plan in that checkout
    instead" without `--strict`. Both sibling layouts are parametrized in the tests, and the
    submodule guard is its own test.
-4. **Decide the identity question, then key the store mirror off `--git-common-dir`** — resolving to
-   the main checkout's `rel` for every worktree of that repo. `fitness.py`'s existing call is the
-   shape to copy; it is three lines and no new dependency.
+4. ~~**Decide the identity question, then key the store mirror off the repository**~~ — **done
+   2026-09-04**. Answered by the user: **the repository, for the store mirror only.** One line in
+   `resolve` — `identity = linked_worktree_of(root) or root`, with `rel` derived from it — and the
+   asymmetry falls out for free rather than needing a second branch: `repo_root` stays the checkout,
+   `repo_dir` has always been `repo_root / "plans"`, so a `mode = "repo"` plan still lands in the
+   worktree's own `plans/` and travels with its branch, while `rel` (and therefore the store mirror,
+   the tier lookup and rule matching) names the repository.
 
-   Step 3 **sharpened this one rather than covering it**, and that is worth knowing before reading
-   the code: `resolve` was deliberately left alone, so `repos` and `doctor` now say a worktree is
-   not a repo while `where` run from inside one still returns `verdict: ok` into a store mirror
-   named after the worktree path. Before step 3 the two agreed and were both wrong; now they
-   disagree, which is louder but still not a fix. The silent-plan-loss case is entirely here.
+   `--git-common-dir` was the shape the step proposed; `linked_worktree_of` is used instead because
+   step 3 already had it and it costs no subprocess. `where` prints a `worktree:` line, since `rel`
+   then names a directory the session is not standing in — that is open question 2 settled the way
+   it predicted: `where` and `doctor` say it, the routing commands just do the right thing.
 
-   Note when settling it that a `mode = "repo"` worktree needs **no** change — the plan file travels
-   with the branch it was committed on — so whatever this does must key off the store route, not off
-   being in a worktree.
+   This also closes the disagreement step 3 opened: `repos`/`doctor` and `where` now agree that the
+   repository is the unit.
 5. ~~**Add the worktree row to `session-harvest` step 0's table**~~ — **done 2026-09-04**. The table
    went from three causes to four, and `skills-state` prints a `worktree:` line naming the checkout
    it belongs to. `find_checkout` itself was left alone deliberately: resolving to the worktree is
@@ -254,7 +251,9 @@ Cheapest first, and the first two are worth doing whatever the open questions se
    verified. Worth noting the claim about that slug is **derived, not observed** — none of the 211
    project directories on this machine is a worktree, so no session here has ever run from one.
 
-Out of scope here and worth filing separately: `~/AGENTS.md` states that parallel sessions on this
+Out of scope here and **filed 2026-09-04**: `~/AGENTS.md` states that parallel sessions on this
 machine **share one working tree**, and several of its rules — undo by SHA rather than a relative
 ref, "nothing of theirs to reset", the caution about checking out an old commit — are reasoned from
-that. Worktrees make it false. That belongs to `power-user-linux-setup`, not here.
+that. Worktrees make it false. That belongs to `power-user-linux-setup`, whose store mirror now
+holds `2026-09-04-worktrees-break-the-one-working-tree-assumption.md`; a session working there is
+offered it by `absorb`. Nothing in this repo waits on it.

@@ -27,9 +27,30 @@ rather than about worktrees:
   `EnterWorktree` puts them. The nesting is what does the damage: the worktree path _contains_ the
   main repo path, so anything deriving identity by relative path produces a longer, still
   plausible-looking key.
-- **beside the repo** — `<repo>-feature`, `~/worktrees/<name>`, the shape a human types. This one is
-  invisible to the nesting problems and instead reads as a **second clone** to anything that walks a
-  projects root.
+- **beside the repo** — the shape every other tool produces, and the one this corpus handles worst.
+  It is invisible to the nesting problems above and instead reads as a **second clone** to anything
+  that walks a projects root.
+
+The sibling shapes are worth naming individually, because "beside the repo" is three conventions
+rather than one. Surveyed 2026-09-04:
+
+| shape                                             | who produces it                                     |
+| ------------------------------------------------- | --------------------------------------------------- |
+| `<repo>.worktrees/<name>` (a grouped sibling dir) | **VS Code's built-in worktree support, by default** |
+| `<repo>-<branch>`, flat beside the main checkout  | a human at the shell; the most-cited convention     |
+| `<repo>/<repo>.git` + `<repo>/<branch>/`          | the bare-clone parent layout                        |
+| `~/worktrees/<project>/<branch>`                  | centralising tools, and an open VS Code request     |
+
+VS Code's is the one to design for, because it is a default rather than a preference: its worktree
+test plan states "the default worktree path is a directory the same level as your main repo, named
+`<repoName>.worktrees`, and the name of your worktree is the last part of the path", and the request
+to make that configurable (microsoft/vscode#293884, Feb 2026) is still open and unanswered. So a VS
+Code user who makes a worktree at all gets `<repo>.worktrees/` unless they retype the path.
+
+Worth recording that the pattern advice runs directly against Claude Code: the widely-cited
+best-practice guide recommends the flat sibling layout precisely because nesting a worktree inside
+the main checkout "leads to confusing `.git` resolution and can break tools that walk up the
+directory tree" — which is this plan, arrived at from the outside.
 
 ## Evidence — measured 2026-09-04, throwaway repos, nothing in this repo touched
 
@@ -81,6 +102,34 @@ rather than in the braces.
 `?? .claude/worktrees/`, and `git add -A` adds it as an embedded git repository with a warning and
 exit 0 — `warning: adding embedded git repository`. `.gitignore` here covers `__pycache__`, `.venv`
 and friends, not `.claude/worktrees/`.
+
+**The sibling pattern is the worse of the two, and it was the one assumed harmless.** Measured
+2026-09-04 against a throwaway root holding one repo `abc` plus both sibling shapes
+(`abc.worktrees/feat` and `abc-hotfix`), with `plans.py` pointed at it by a fake config:
+
+- `repos` lists **three repos where there is one**. `visit` enrolls on `(path / ".git").exists()`,
+  and a linked worktree's `.git` is a plain file, so it passes. The nested pattern is skipped only
+  by the walker's dotted-directory rule — accidental, and it does not save the sibling shapes.
+- `where` returns `verdict: ok` from all three, with **three different store mirrors**:
+  `<store>/root/abc`, `<store>/root/abc-hotfix`, `<store>/root/abc.worktrees/feat`.
+- **A branch name entered the confidentiality term list.** `scan --list-terms` came back
+  `abc-hotfix`, `abc.worktrees`, `feat`, `root` — `feat` is there because a worktree directory is
+  named after its branch and repo-path segments become private terms. Branch names are short
+  ordinary words (`feat`, `main`, `docs`, `test`, `fix`), so this is the corpus's own named failure:
+  a gate that flags an ordinary word in every document is a gate that gets switched off. Only
+  `MIN_PRIVATE_TERM` kept `abc` itself out.
+
+**Detecting a worktree is free, which retires the objection that it costs a git call per
+candidate.** In a linked worktree — both sibling shapes and the nested one — `.git` is a plain
+**file** whose whole content is `gitdir: <main>/.git/worktrees/<name>`. The walker already stats
+that exact path; reading it when it is not a directory is one small read and no subprocess, and the
+line hands back the main checkout directly. `--git-common-dir` agrees (`<root>/abc/.git` from
+`abc.worktrees/feat`) and stays the right call anywhere a subprocess is already being spent.
+
+The one trap: **a submodule is also `.git`-as-a-file**, so "file means worktree" is wrong. The
+discriminator is inside the line — `…/.git/worktrees/<name>` for a worktree, `…/.git/modules/<path>`
+for a submodule (measured: `gitdir: ../../.git/modules/vendor/sub`, and relative, where a worktree's
+was absolute).
 
 ## Where each skill stands
 
@@ -135,12 +184,19 @@ the slug's own shape — a `-claude-worktrees-` segment for the Claude Code patt
 all for a sibling worktree. That means a partial fix for one directory pattern and no fix for the
 other, which may be worse than a declared limitation.]
 
-[NEEDS CLARIFICATION: **does the sibling pattern need anything, or only a declaration?**
-`plan-docs`'s collection walker skips dotted directories, so `<repo>/.claude/worktrees/` is
-invisible to `repos` and `doctor` — the nested pattern is accidentally safe there. A sibling
-worktree is not: it has a `.git` entry, so it is discovered as a repo and reads as a second clone of
-the same project. `git worktree list` distinguishes them in one call, but adding it to the walker
-costs a git invocation per candidate.]
+**Settled 2026-09-04 — the sibling pattern needs a fix, not a declaration.** The question as
+originally written assumed the walker would have to pay a `git worktree list` per candidate. It does
+not: `.git` being a file, and the `gitdir:` line inside it, answer both "is this a worktree" and
+"which checkout is it a worktree of" with no subprocess, per the evidence above. And the case for
+fixing rather than declaring got stronger once measured — one repo listed as three, three store
+mirrors, and a branch name in the confidentiality term list. VS Code producing `<repo>.worktrees/`
+by default, with no setting to change it, means this arrives without anyone opting in.
+
+What remains open is only the shape of the fix: whether `walk_projects` should **skip** a linked
+worktree outright (one repo, one row, one mirror — the worktree is unreachable as a plan
+destination) or **fold** it onto its main checkout (routing from inside it still works, and lands in
+the main repo's mirror). Folding is the better behaviour and depends on the identity question above;
+skipping is strictly less code and is already correct for `repos`, `doctor` and the term list.
 
 ## Recommended direction
 
@@ -155,16 +211,22 @@ Cheapest first, and the first two are worth doing whatever the open questions se
    `report_unread`, with the second scan to run. Exit status is still hits alone — an unread path is
    a scan to run, not a leak to redact. `tests/unit/test_plan_store.py` covers both halves against a
    real `git worktree add`, and `plan-docs`'s SKILL.md carries it as a fourth failure mode.
-3. **Decide the identity question, then key the store mirror off `--git-common-dir`** — resolving to
+3. **Teach `walk_projects` that a linked worktree is not a repo.** Promoted above the identity
+   question because it needs no decision from it and is the biggest measured damage: `.git` as a
+   file whose `gitdir:` names `…/.git/worktrees/…` is the whole test, no subprocess, at the one
+   `(path / ".git").exists()` call the walk already makes. Fixes `repos` counting one repo as three
+   and keeps branch names out of the private term list. Guard the submodule case
+   (`…/.git/modules/…`), which is `.git`-as-a-file too.
+4. **Decide the identity question, then key the store mirror off `--git-common-dir`** — resolving to
    the main checkout's `rel` for every worktree of that repo. `fitness.py`'s existing call is the
    shape to copy; it is three lines and no new dependency.
-4. **Add the worktree row to `session-harvest` step 0's table**, and teach `find_checkout` to say
+5. **Add the worktree row to `session-harvest` step 0's table**, and teach `find_checkout` to say
    which working tree it resolved. The existing table already has the vocabulary — a worktree on a
    feature branch is "clean, ahead by commits" wearing a different hat.
-5. **Say it in `skill-authoring`**: a skill edited in a worktree is not installable until its branch
+6. **Say it in `skill-authoring`**: a skill edited in a worktree is not installable until its branch
    is what the remote's default branch holds, so the deploy sequence needs either a merge first or
    the local-path install (`skills add ../my-skills`) it already documents for drafting.
-6. **Declare the limit in `session-bash-audit`** beside the Windows slug paragraph added the same
+7. **Declare the limit in `session-bash-audit`** beside the Windows slug paragraph added the same
    day, since it is the same defect with a different cause: an own-repo row that reads clean because
    the comparison could not fire.
 

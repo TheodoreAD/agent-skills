@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-04
 ---
 
@@ -40,14 +40,18 @@ The re-run exited 0 and all five claims held, which is the outcome that makes th
 The point is that the session could not have known that without running the audit the skip
 instruction would have cancelled.
 
-## Open questions
+## Open question, answered 2026-09-04
 
-[NEEDS CLARIFICATION: **whether a no-baseline run should be told to save one.** `--save-baseline`
-exists and costs one flag, so the natural closing sentence is "save one now, so the next harvest has
-something to compare against". Against it: a baseline saved from a session that has just been
-measured as non-compliant enshrines that session's rates as the reference. Possibly the advice is to
-save one only from a run whose numbers the user is content with, which is a judgement rather than a
-step — and it may belong in `session-bash-audit` rather than here.]
+**Yes, tell a no-baseline run to save one, and the objection does not hold.** It rested on a
+baseline saved from a non-compliant session "enshrining that session's rates as the reference" — but
+nothing in `audit.py` reads a baseline as a target. `EXPECTATIONS` is directional: every entry is
+`down` or `zero`, so the verdict is computed against the _delta_, never against the baseline's
+absolute numbers. A baseline measured on a bad day therefore sets a bar the next run must beat,
+which is the useful case rather than the dangerous one — and the alternative, saving only from a run
+whose numbers you like, is what actually corrupts the series, since it makes the reference a
+selection rather than a measurement.
+
+The advice belongs in `session-bash-audit` beside the flag, and it is one sentence.
 
 ## Recommended direction
 
@@ -62,3 +66,16 @@ Reword to name what is skipped rather than "this step": run the audit either way
 
 Small and additive. The 2026-09-03 correction stays intact; what changes is that the escape hatch
 stops cancelling the two paragraphs that follow it.
+
+## Migrated to
+
+- `skills/session-harvest/SKILL.md` step 5 — the reworded baseline sentence ("run the audit anyway
+  and drop `--compare`") plus a PITFALL recording that the first wording said "skip this step".
+  Landed 2026-09-03 in `718c05e` / `ceb712d`; this plan was the record of why.
+- `skills/session-bash-audit/SKILL.md` — the answer to the open question, beside the flag it is
+  about: save the first baseline even when its numbers are bad, because `EXPECTATIONS` is
+  directional and a curated reference is the thing that would actually corrupt the series. Commit
+  `7403e79`, 2026-09-04.
+
+Not migrated: the session id and the 23%-over-189-calls measurement, which were evidence that the
+narrow reading was the useful one rather than a rule anybody needs to follow.

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-04
 source_repo: github.com-personal/ingesta
 source_session: 54d36cb9-ba1c-4a48-8316-6f35ab58f452.jsonl
@@ -39,20 +39,14 @@ wording step 9 had while it was only a list of what to leave out.
   `$PLANS_HOME` and the skills-repo bullets). So the installed copy carries the conditional heading
   because the source does.
 
-## Open questions
+## Open questions, both answered 2026-09-04
 
-[NEEDS CLARIFICATION: **whether an unconditional prompt has a case where it is noise.** The
-subtraction rule already handles the empty case in principle — on a well-harvested session most
-candidates fail the three-command delta test — but "most" is not "all", and a prompt that prints an
-opening line and nothing else is worse than no prompt, because it reads as "nothing to carry" when
-it may mean "the subtraction was done badly". Either it is silent when the delta is empty, the way
-`absorb` is silent when it filed nothing, or it says explicitly that the delta was empty. The first
-matches the convention's existing precedent.]
-
-[NEEDS CLARIFICATION: **whether the ordering line survives an empty delta.** Ordering — what to do
-first, and why this rather than that — is the one category step 9 calls "usually the most valuable
-line", and it is never empty: there is always something to do next. So the honest version of the
-above may be that the prompt is never empty, and the silent case does not exist.]
+**Whether an unconditional prompt is ever noise, and whether it needs a silent empty case: no, and
+no — the second question answers the first.** Ordering is one of the three surviving categories and
+it is never empty, because there is always something to do next and no opening command prints it. So
+the empty prompt does not exist, there is nothing for a silence convention to cover, and a prompt
+that comes out as one opening line is a symptom of a subtraction done badly rather than of a session
+with nothing to carry. That is what the body now says, in place of the conditional heading.
 
 ## Recommended direction
 
@@ -73,3 +67,14 @@ above may be that the prompt is never empty, and the silent case does not exist.
 belongs as its own plan rather than as a reopened tag on that one — but it should cite it, because
 the design reasoning there is what makes the gate look deliberate to anyone who reads only the
 skill.
+
+## Migrated to
+
+- `skills/session-harvest/SKILL.md` step 9 — the unconditional heading, the "verdict is not the end
+  of the run" line at the end of step 8, and the paragraph answering both open questions (the prompt
+  is never empty, because ordering never is). Commit `359c29e`, 2026-09-04.
+- The same file's `description` frontmatter, which now names the prompt — the half that would
+  otherwise have kept the opt-in behaviour alive whatever the body said.
+
+Not migrated, deliberately: the transcript path and the user's quoted question. The rule stands on
+its own now, and the evidence for it is in this commit message and in this file's history.

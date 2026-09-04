@@ -137,14 +137,16 @@ STATUS_ORDER = ("in-progress", "blocked", "planned", "idea", "landed", "abandone
 # "what is still open everywhere", and a retired-but-not-yet-deleted plan is noise against it.
 TERMINAL_STATUSES = ("landed", "abandoned", "superseded")
 
-# A store holds the user's own writing, and the sensitive tier holds employer and client work that
-# by design never leaves the machine — so the mode is a property of the content, not of the path.
-# Measured 2026-09-03 before this existed: every store was created at the umask default, which on a
-# 002 machine is 775, world-readable and group-writable, under a $HOME at 755 that gated nothing.
-# A umask can only ever narrow a mode passed to mkdir, never widen it, so this is safe to pass
-# unconditionally. `parents=True` does not apply it to intermediate directories, which does not
-# matter here: a store root at 0700 blocks traversal to everything beneath it whatever those
-# children's own modes are. Setting it on a leaf instead is the version that would not work.
+# Created private because it costs nothing to do so: a umask can only narrow a mode passed to
+# mkdir, never widen it, and Windows ignores the argument entirely — so this needs no platform
+# branch and no capability test. `parents=True` does not apply it to intermediates, which does not
+# matter, because a store root at 0700 blocks traversal to everything beneath it.
+#
+# Nothing *checks* it, deliberately. A check would fire on every Windows run, where CPython
+# synthesises st_mode from file attributes and the concept does not exist, telling the reader to run
+# a command they do not have; and on a single-user Linux machine — the assumption this corpus makes
+# as of 2026-09-04 — there is no other human for it to protect against anyway. A free default is
+# worth keeping; a warning nobody can act on is not.
 STORE_MODE = 0o700
 
 # Step 4 of the retirement procedure. `archive` matches it a line at a time; `read_plan` searches a
@@ -3586,30 +3588,6 @@ def _print_stores(cfg: Config) -> None:
             remotes = (git(["remote"], store.path) or "").split()
             state = f"remote: {', '.join(remotes)}" if remotes else "no remote"
         print(f"store:         {store.path} (from {store.source})  [{store.tier}, {state}]")
-        for line in store_mode_problems(store):
-            print(f"               {line}")
-
-
-def store_mode_problems(store: Store) -> list[str]:
-    """A store readable by other local accounts, reported and never silently repaired.
-
-    `install` creates a store at `STORE_MODE`; this is for the ones that predate that, or were
-    restored from a backup, or made by hand. It reports rather than fixing because a `chmod` would
-    override a widening the user may have chosen for a reason this code cannot see — and `doctor` is
-    read-only, which is the property that makes it safe to run when something is already wrong.
-
-    The permission that matters is *other*, not group: a per-user group is the common Linux default,
-    so group bits usually name only the user themselves and flagging them cries wolf.
-    """
-    if not store.path.is_dir():
-        return []
-    mode = store.path.stat().st_mode & 0o777
-    if not mode & 0o007:
-        return []
-    return [
-        f"WARNING: mode {mode:03o} — readable by other local accounts, and this store is {store.tier}",
-        f"         chmod {STORE_MODE:03o} {store.path}",
-    ]
 
 
 def cmd_uninstall(args: argparse.Namespace, ws: Workspace) -> int:

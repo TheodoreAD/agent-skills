@@ -100,3 +100,17 @@ scattering top-level dotfiles. One caution if the sensitive store ever does move
 `~/.local/share/`: sitting among ordinary application data makes it **less** conspicuously separate,
 and part of why it has never been backed up or synced by accident is that it is conspicuous. If it
 moves, the `0700` matters more, not less.]
+
+## Superseded in part, 2026-09-04
+
+The user simplified the premise: **assume the Linux machine is single-user.** That removes the
+population this plan's severity argument turned on — its own PITFALL already said the low severity
+was a property of the machine rather than of the design, and the machine is now the assumption.
+
+**What landed:** stores are created `0700`, because that costs nothing and needs no platform branch.
+
+**What was reverted the next day:** `store_mode_problems` and the `doctor` warning, both deleted.
+Under a single-user assumption there is nobody for the check to protect against, and on Windows it
+would have fired forever on a concept that does not exist there — `2026-09-04-skills-on-windows.md`
+carries that reasoning. The three decisions above about which stores get `0700`, and about `install`
+creating versus `doctor` reporting, are answered by there being no reporting at all.

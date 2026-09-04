@@ -59,16 +59,20 @@ install step at all. PEP 723 plus `uv run` is the documented escape hatch and is
 smaller reason: it changes the documented call shape from `python3 <path>` to something requiring
 `uv`, in every skill body and every instruction that cites one.]
 
-**2. Permission is a capability question, and the answer is to say it is unavailable — not to
-emulate it.** There is no stdlib way to set an ACL, so the honest behaviour is: skip the
-enforcement, skip the warning, and **report that the protection is not in force**. That last part is
-the one that must not be dropped. It belongs in three places, for three different readers:
+[DECISION: **the permission question was deleted rather than ported, 2026-09-04.** The user's
+simplification — assume the Linux machine is single-user — removed the reason for the check, and
+Windows removed any way to make it honest. So the branch, the "not enforced on this platform"
+message and the three places it would have had to be said all go away with it.
 
-- in `store_mode_problems`, as an early return that produces a _statement_ rather than silence;
-- in `doctor`'s output, so a Windows user sees "not enforced on this platform" where a Linux user
-  sees a mode;
-- in **`plan-docs`'s own body**, because the sensitive tier's design rests on that protection and a
-  reader whose machine cannot provide it is entitled to know before they put client work there.
+What survives is the free half, and separating the two is the whole of this decision.
+`mkdir(mode=0o700)` costs nothing, needs no platform test, and is silently ignored on Windows — it
+is not "forcing" anything, so it stays. **Checking** the mode is what cries wolf, and it is gone:
+`store_mode_problems` and the `doctor` warning are deleted, and both skill bodies now say the mode
+is a free default rather than a protection to rely on.
+
+The general form, now in `skill-authoring`: a defensive default that no-ops on the platforms that
+lack it needs no branch; a _check_ for that default needs one, which is the argument for not writing
+the check.]
 
 **3. Scope is a declaration, and it belongs in the README's Scope column.** `session-bash-audit`
 audits Bash-tool habits against POSIX-shell idioms; that is not a portability defect to fix but a
@@ -111,8 +115,8 @@ detection both silently match nothing — a zero that reads as good news.]
 
 Smallest first, and the first one is the only urgent one:
 
-1. **Make the permission check platform-aware and honest** — no warning where the concept does not
-   exist, a stated "not enforced" instead, in the script, in `doctor` and in the skill body.
+1. ~~Make the permission check platform-aware~~ — **done 2026-09-04 by deleting it**, per the
+   decision above. This was the urgent item and it turned out to be a removal.
 2. **Give `materialize_ref` the stdlib `tarfile`** instead of shelling out to `tar`, which removes
    an external-binary assumption on every platform rather than branching on one.
 3. **Add the Windows arm to the location helpers**, honouring `$XDG_*` first.

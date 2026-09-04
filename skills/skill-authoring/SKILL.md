@@ -349,10 +349,14 @@ Four rules that follow, each cheap and each learned the hard way:
 - **Another tool's directory is read-only, always** — and when it is absent, report **unavailable**
   rather than zeros, or a machine that has never run that tool reads as a machine where nothing ever
   happened.
-- **Permissions are a property of the content, not of the path.** `0700` when it is private, at
-  creation. A umask can only narrow a mode passed to `mkdir`, never widen it, so it is safe to pass
-  unconditionally — and set it on the root, since `parents=True` does not apply it to intermediates
-  and a `0700` root blocks traversal to everything beneath.
+- **Set `0700` at creation when the content is private, and do not check it afterwards.** Passing
+  the mode is free: a umask can only narrow it, Windows ignores it, so there is no branch and no
+  capability test. Set it on the root, since `parents=True` does not apply it to intermediates and a
+  `0700` root blocks traversal to everything beneath. **Checking it is not free** — on Windows
+  `st_mode` is synthesised from file attributes, so a directory reads as world-accessible and the
+  warning fires on a concept that does not exist there, with a remedy the reader cannot run. A free
+  default is worth keeping; a warning nobody can act on is the thing this file spends most of its
+  words against.
 
 **Skills cannot depend on each other.** They install individually, are copied rather than symlinked,
 and a global install writes no lockfile — so importing a sibling means hard-coding the hub path this

@@ -147,15 +147,17 @@ Both are ordinary git repositories with **full history**, so retirement, `archiv
 commit-immediately rule work identically in either. Nothing about the plan format, the status
 vocabulary or the tags changes with the tier.
 
-**Both are created mode `0700`, and `doctor` warns if one is not.** The tier decides what may leave
-the machine; the mode decides who on the machine may read it, and they are separate questions that
-were answered separately. Until 2026-09-03 only the first had an answer: every store was created at
-the umask default, so on a `002` machine the sensitive tier — the one holding employer and client
-work, deliberately with no remote — stood at `775`, world-readable, under a `$HOME` at `755` that
-gated nothing. **This matters if you move a store, restore one from a backup, or make one by hand**,
-because those get whatever your umask hands them and nothing else will tell you. `doctor` reports a
-widened store and never repairs it: a `chmod` here would override a decision it cannot see the
-reason for.
+**Both are created mode `0700` — a free default, not a protection to rely on.** The tier decides
+what may leave the machine; the mode only narrows who on the machine can read it, and it is set
+because it costs nothing: a umask can only narrow a mode passed to `mkdir`, and Windows ignores the
+argument, so there is no branch and nothing to configure.
+
+Nothing checks it afterwards, and that is deliberate. **This corpus assumes a single-user machine**,
+where there is no second person for the mode to protect against — and a check would have fired on
+every Windows run, where the concept does not exist, telling the reader to run a command they do not
+have. A store you move, restore from a backup or create by hand keeps whatever mode it arrives with;
+if you are on a shared machine and that matters to you, `chmod 700` it yourself, because this skill
+will not notice either way.
 
 **You never pick a tier.** A root's tier follows from `shareable_roots` (which defaults to
 `public_roots`), and every command resolves it for you — `where` prints it, `new --for` prints it

@@ -96,6 +96,17 @@ def strip_heredoc(cmd: str) -> str:
     return cmd[: m.start()] if m else cmd
 
 
+QUOTED_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'[^\']*\'')
+
+
+def strip_quoted(cmd: str) -> str:
+    """Blank every quoted string, after the heredoc strip, so a `|` inside a regex alternation or a
+    message cannot read as a shell pipe. A shell pipe is never inside quotes; a `rg -n "head|tail"`
+    is a search for those words, not a truncation. Confirmed 2026-09-05: three of a session's four
+    `head/tail` hits were `rg` patterns naming the tags they were being counted as."""
+    return QUOTED_RE.sub('""', strip_heredoc(cmd))
+
+
 def split_chain(cmd: str) -> list[str]:
     """Split on the separators Claude Code's permission engine recognizes (&&, ||, ;, |, newline),
     outside quotes. Crude on purpose — this is a habit audit, not a shell parser."""
@@ -174,18 +185,24 @@ def _rx(pattern: str) -> Predicate:
     return lambda cmd: bool(compiled.search(strip_heredoc(cmd)))
 
 
+def _rx_pipe(pattern: str) -> Predicate:
+    """A predicate about a shell pipe: matched with quoted strings blanked, see `strip_quoted`."""
+    compiled = re.compile(pattern)
+    return lambda cmd: bool(compiled.search(strip_quoted(cmd)))
+
+
 # name -> (predicate, why it matters). Chain and cd tags are computed separately above.
 PATTERNS: dict[str, tuple[Predicate, str]] = {
     "head/tail": (
-        _rx(r"\|\s*(head|tail)\b"),
+        _rx_pipe(r"\|\s*(head|tail)\b"),
         "truncates tool output the harness would have kept whole; forces re-runs and hides failures",
     ),
     "exit-masked": (
-        _rx(r"2>&1\s*\|\s*(tail|head|grep|rg)\b"),
+        _rx_pipe(r"2>&1\s*\|\s*(tail|head|grep|rg)\b"),
         "$? after a pipe is the filter's, not the command's — a failing gate reads as clean",
     ),
     "redirect-then-filter": (
-        _rx(r">\s*\S+\s+2>&1\s*;.*\|\s*(rg|grep|head|tail)\b"),
+        _rx_pipe(r">\s*\S+\s+2>&1\s*;.*\|\s*(rg|grep|head|tail)\b"),
         "capture-to-log is fine; filtering the log in the same call is not — Grep/Read the log as a second call",
     ),
     "echo-exit": (
@@ -193,7 +210,7 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
         "reflexive `; echo EXIT=$?` — the Bash tool already reports a non-zero exit",
     ),
     "search|head": (
-        _rx(r"\b(rg|grep|fd|find)\b[^|]*\|\s*head\b"),
+        _rx_pipe(r"\b(rg|grep|fd|find)\b[^|]*\|\s*head\b"),
         "turns a completeness search into a sample without saying so (count first: rg -c / wc -l)",
     ),
     "sed-n": (_rx(r"\bsed\s+-n\b"), "file view via Bash; Read(offset/limit) does it with no Bash gate"),

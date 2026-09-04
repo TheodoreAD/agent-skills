@@ -599,3 +599,21 @@ The fix distinguishes the two cases, and the second half of it is the part worth
 patterns is wrong in an unknown direction.** Both `session-bash-audit`'s own history and the
 adherence samples filed for `power-user-linux-setup` contain such runs. Re-derive rather than
 compare, when an old score matters.
+
+## A `|` inside quotes counted as a pipe to `head`/`tail` (2026-09-05)
+
+`\|\s*(head|tail)\b` matched inside a quoted string, so `rg -n "^#|head|tail|pipe" <file>` — a
+search whose _pattern_ names the words — tagged as `head/tail`. Found by a session auditing itself
+at the end of a run about this very rule: 4% `head/tail` over 73 calls, three hits, every one an
+`rg` alternation naming the tags it was being counted as. The real rate was 0%.
+
+The fix is structural rather than a tighter regex: every pipe-shaped predicate (`head/tail`,
+`exit-masked`, `redirect-then-filter`, `search|head`) now matches with quoted strings blanked
+(`strip_quoted`, after the heredoc strip), because a shell pipe is never inside quotes. The other
+predicates keep the raw text — `label-echo` looks _for_ a quoted string. `tests/unit/test_audit.py`
+carries the cases, and is the first test file this script has had; the rule in `SKILL.md` about
+testing a regex against hand-written cases had been followed by hand and never kept.
+
+Small in the corpus — a session searching for the words `head` or `tail` is rare outside this repo —
+but this is the repo that measures the rule, so the sessions most likely to trip it are the ones
+whose numbers get quoted. Prior runs' figures are upper bounds by at most a few calls.

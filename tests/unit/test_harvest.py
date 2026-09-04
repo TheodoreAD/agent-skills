@@ -804,3 +804,31 @@ def test_no_checkout_asks_rather_than_guessing_at_a_path(tmp_path):
 def test_an_explicit_path_without_skills_is_rejected(tmp_path):
     with pytest.raises(harvest.HarvestError, match="no skills/ directory"):
         harvest.find_checkout(str(tmp_path))
+
+
+def test_a_worktree_checkout_is_named_as_one(tmp_path):
+    """Nothing else in this subcommand's output distinguishes a worktree: it is clean, it is ahead
+    by commits, and push-then-re-install succeeds at every step while installing nothing, because
+    `skills add <owner>/<repo>` takes the remote's default branch.
+
+    The marker is written by hand because this suite forbids shelling out. That the shape is what
+    git really produces is proved against a live `git worktree add` in `test_plan_store.py` —
+    `test_linked_worktree_of_names_the_checkout_it_belongs_to`, which covers the same parser.
+    """
+    repo = tmp_path / "my-skills"
+    (repo / ".git" / "worktrees" / "feat").mkdir(parents=True)
+    tree = tmp_path / "my-skills.worktrees" / "feat"  # VS Code's default layout
+    tree.mkdir(parents=True)
+    (tree / ".git").write_text(f"gitdir: {repo / '.git' / 'worktrees' / 'feat'}\n", encoding="utf-8")
+
+    assert harvest.worktree_main(tree) == repo
+    assert harvest.worktree_main(repo) is None  # `.git` is a directory here, not a file
+
+
+def test_a_submodule_is_not_mistaken_for_a_worktree(tmp_path):
+    """Both put a `.git` FILE where a checkout has a directory; only one names `worktrees`."""
+    fake = tmp_path / "vendor" / "sub"
+    fake.mkdir(parents=True)
+    (fake / ".git").write_text("gitdir: ../../.git/modules/vendor/sub\n", encoding="utf-8")
+
+    assert harvest.worktree_main(fake) is None

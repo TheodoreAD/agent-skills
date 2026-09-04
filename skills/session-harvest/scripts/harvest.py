@@ -811,6 +811,38 @@ def find_checkout(explicit: str | None, start: Path | None = None) -> Path:
     raise HarvestError("no skills checkout found — pass --checkout <path>")
 
 
+def worktree_main(checkout: Path) -> Path | None:
+    """The checkout this one is a linked worktree of, or None when it is an ordinary one.
+
+    Worth the one small read because it changes the remedy this subcommand offers, and changes it
+    silently. In a linked worktree `.git` is a plain file holding `gitdir: <main>/.git/worktrees/
+    <name>`; `find_checkout` resolves to the worktree, which is right — the source being edited is
+    the one to diff against. What is not right is the push-then-re-install remedy underneath it:
+    `skills add <owner>/<repo>` installs the remote's **default branch**, so from a worktree on a
+    feature branch the push succeeds and installs nothing, and the verify step then compares an
+    installed copy against a checkout that was never published.
+
+    A submodule's `.git` is a file too, naming `…/.git/modules/…`, so the `worktrees` segment is
+    what decides.
+    """
+    marker = checkout / ".git"
+    if not marker.is_file():
+        return None
+    try:
+        content = marker.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not content.startswith("gitdir:"):
+        return None
+    gitdir = Path(content.removeprefix("gitdir:").strip())
+    if not gitdir.is_absolute():
+        gitdir = (checkout / gitdir).resolve()
+    if gitdir.parent.name != "worktrees":
+        return None
+    common = gitdir.parent.parent
+    return common.parent if common.name == ".git" else common
+
+
 def _same_file(left: Path, right: Path) -> bool:
     if not left.is_file() or not right.is_file():
         return False
@@ -943,10 +975,20 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
         names = sorted(p.name for p in (checkout / "skills").iterdir() if p.is_dir())
     installed_root = Path(args.installed).expanduser() if args.installed else INSTALLED_SKILLS
     states = [skill_state(runner, name, checkout, installed_root, args.since) for name in names]
-    payload = {"checkout": str(checkout), "installed_root": str(installed_root), "skills": states}
+    main = worktree_main(checkout)
+    payload = {
+        "checkout": str(checkout),
+        "worktree_of": str(main) if main else None,
+        "installed_root": str(installed_root),
+        "skills": states,
+    }
     if args.json:
         return payload
     print(f"checkout: {checkout}\ninstalled: {installed_root}")
+    if main:
+        print(f"worktree: a linked worktree of {main}")
+        print("  the installer clones the remote's DEFAULT branch, so a push from here installs")
+        print("  nothing until this branch is merged — offer that, not a re-install")
     if not args.since:
         print("note: --since <session start> adds the moved-after-this-session-began check")
     for state in states:

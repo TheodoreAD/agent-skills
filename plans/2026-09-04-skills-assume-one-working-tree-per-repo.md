@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 updated: 2026-09-04
 ---
 
@@ -146,13 +146,15 @@ costs a git invocation per candidate.]
 
 Cheapest first, and the first two are worth doing whatever the open questions settle.
 
-1. **Gitignore the nested pattern in this repo** — `.claude/worktrees/` — which removes the `??`
-   entry from every `git status`, the false dirty line from every harvest, and the chance of
-   `git add -A` embedding a gitlink. One line, no design.
-2. **Make the `scan --mode tree` skip visible.** The `except OSError: continue` is right for
-   binaries and wrong for a directory that stands for a whole second checkout; count what was
-   skipped and say so in the footer. A scanner that says "0 hits" about a tree it did not read is
-   the failure this corpus cares most about.
+1. ~~**Gitignore the nested pattern in this repo**~~ — **done 2026-09-04**: `.claude/worktrees/`
+   added to `.gitignore`, which removes the `??` entry from every `git status`, the false dirty line
+   from every harvest, and the chance of `git add -A` embedding a gitlink.
+2. ~~**Make the `scan --mode tree` skip visible.**~~ — **done 2026-09-04**: `scan_targets` now
+   returns a `ScanPlan(targets, unread)`; `UnicodeDecodeError` still skips a binary silently, while
+   `IsADirectoryError` and every other `OSError` are collected and printed under the hit count by
+   `report_unread`, with the second scan to run. Exit status is still hits alone — an unread path is
+   a scan to run, not a leak to redact. `tests/unit/test_plan_store.py` covers both halves against a
+   real `git worktree add`, and `plan-docs`'s SKILL.md carries it as a fourth failure mode.
 3. **Decide the identity question, then key the store mirror off `--git-common-dir`** — resolving to
    the main checkout's `rel` for every worktree of that repo. `fitness.py`'s existing call is the
    shape to copy; it is three lines and no new dependency.

@@ -1002,6 +1002,11 @@ def processes(runner: Runner, table: dict[int, Process] | None = None) -> dict[s
     harness's own `zsh -c … eval` wrapper and reports it as a real process.
     """
     table = process_table(runner) if table is None else table
+    # An empty table means `ps` did not run — it cannot omit the process reading it. Reporting zero
+    # survivors there would be the "clean bill of health from a tool that never ran" this sweep
+    # exists to prevent; `ps -eo` is POSIX, so the machine that hits this is a Windows one.
+    if not table:
+        return {"available": False, "why": "no ps output — `ps -eo` is POSIX and did not run here"}
     mine = os.getpid()
     my_group = table[mine].pgid if mine in table else -1
     chain: list[int] = []
@@ -1036,6 +1041,7 @@ def processes(runner: Runner, table: dict[int, Process] | None = None) -> dict[s
         if (WATCHER_RE.search(proc.args) or SERVER_RE.search(proc.args)) and pid not in chain and proc.pgid != my_group
     ]
     return {
+        "available": True,
         "harness_pid": harness,
         "session_children": sorted(descendants, key=lambda d: -int(d["etimes"])),
         "watchers_and_servers": sorted(interesting, key=lambda d: -int(d["etimes"])),
@@ -1495,6 +1501,9 @@ def _print_processes(procs: dict[str, Any] | None) -> None:
     if procs is None:
         return
     print("\n== processes ==")
+    if not procs.get("available"):
+        print(f"  unavailable: {procs.get('why')}")
+        return
     children = procs["session_children"]
     print(f"  this session's surviving children: {len(children)}")
     for row in children[:15]:

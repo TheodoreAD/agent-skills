@@ -562,6 +562,16 @@ def test_the_sweeps_own_pipeline_is_not_a_surviving_process(monkeypatch):
     assert result["harness_pid"] == 10
 
 
+def test_a_machine_without_ps_reports_unavailable_rather_than_no_survivors():
+    """`ps -eo` is POSIX and does not exist on Windows. An empty table cannot mean "nothing is
+    running" — `ps` cannot omit the process reading it — so zero survivors there would be a clean
+    bill of health from a step that never ran, which is the failure this sweep exists to prevent.
+    The sockets step already answers this way; the processes step did not until 2026-09-04."""
+    result = harvest.processes(FakeRunner({"ps": (127, "", "ps: command not found")}))
+    assert result["available"] is False
+    assert "session_children" not in result, "an absent measurement must not read as a measured zero"
+
+
 def test_paths_written_into_files_that_do_not_exist_are_reported(tmp_path, monkeypatch):
     """A rule written into an always-loaded instructions file names a path on this machine.
 

@@ -48,6 +48,20 @@ finding the source repo.
    **clones from the remote**, so an edit that is committed but not pushed is invisible to the
    install. A local commit changes nothing about what any agent loads.
 
+   [PITFALL: **Pushing is necessary, not sufficient — `skills add <owner>/<repo>` takes the remote's
+   _default branch_.** From a feature branch the push succeeds, the re-install succeeds, and nothing
+   new is installed; step 7 then compares the installed copy against a checkout that was never
+   published, and every command in the sequence exits 0. Merge first, or install from the local path
+   while iterating (below).
+
+   **A linked worktree is where this bites without anyone choosing a branch**, because a worktree is
+   always on one — that is what it is for — and nothing in the working tree says so. Claude Code's
+   `EnterWorktree` puts one at `.claude/worktrees/<name>` inside the repo; VS Code's worktree
+   support puts one in a sibling `<repo>.worktrees/` by default, with no setting to change it.
+   `session-harvest`'s `skills-state` prints a `worktree:` line naming it, and
+   `git rev-parse --git-common-dir` pointing somewhere other than this checkout's `.git` is the
+   direct test.]
+
 6. **Re-install.** Nothing watches the source:
 
    ```shell

@@ -191,13 +191,20 @@ def test_this_repos_own_corpus_stays_within_its_baseline():
     """The audit run against the corpus that motivated it, which is where drift would show first.
 
     A rise here is a real finding, not a broken test: read
-    `tests/fixtures/derivable-2026-09-02.json`, decide whether the new
-    command lines are legitimate residue, and either fix the skill or re-save the baseline
-    deliberately.
+    `tests/fixtures/derivable-2026-09-04.json`, decide whether the new command lines are legitimate
+    residue, and either fix the skill or re-save the baseline deliberately.
+
+    The 2026-09-04 re-save is the worked example of the second, and of a tension worth knowing
+    about: **this measure and the portability measure pull opposite ways on a literal path.**
+    `mcp-server-shipping` carried `uv tool install -e ~/projects/<owner>/<repo>`, which counted as
+    `fixed` here — no placeholder, nothing to derive — while being unusable by anyone but its
+    author. Replacing it with `<path-to-your-checkout>` fixed the portability finding and raised
+    this count by one. The placeholder is right on both measures once that is understood, and it is
+    exactly the residue this skill names as legitimate: an external CLI's own documented one-liner.
     """
     skills = fitness.load_skills([REPO_ROOT / "skills"])
     rows = fitness.scan_derivable(skills)
-    baseline_path = REPO_ROOT / "tests" / "fixtures" / "derivable-2026-09-02.json"
+    baseline_path = REPO_ROOT / "tests" / "fixtures" / "derivable-2026-09-04.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))["skills"]
     risen = [
         f"{r['skill']}: {baseline[str(r['skill'])]['derivable']} -> {r['derivable']}"

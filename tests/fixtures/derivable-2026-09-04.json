@@ -1,5 +1,5 @@
 {
-  "saved": "2026-09-02",
+  "saved": "2026-09-04",
   "skills": {
     "plan-docs": {
       "derivable": 3,
@@ -8,6 +8,10 @@
     "skill-authoring": {
       "derivable": 3,
       "delegated": 4
+    },
+    "mcp-server-shipping": {
+      "derivable": 1,
+      "delegated": 0
     },
     "db-defaults": {
       "derivable": 0,
@@ -18,10 +22,6 @@
       "delegated": 0
     },
     "mcp-python-conventions": {
-      "derivable": 0,
-      "delegated": 0
-    },
-    "mcp-server-shipping": {
       "derivable": 0,
       "delegated": 0
     },
@@ -55,7 +55,7 @@
     },
     "skill-fitness": {
       "derivable": 0,
-      "delegated": 6
+      "delegated": 7
     }
   }
 }

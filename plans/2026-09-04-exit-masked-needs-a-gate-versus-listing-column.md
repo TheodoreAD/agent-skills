@@ -21,6 +21,19 @@ Three of its rows carry a high `exit-masked` rate and nothing else in common:
 | 6      |  27% | read-only listings | damage structurally impossible — no exit code carried anything                    |
 | 2      |  28% | the gate           | the session **pushed five times** on evidence it could not distinguish from false |
 | 7      |  22% | the gate           | seven green claims to the user; the unpiped re-run held, so all seven were true   |
+| 8      |  25% | **both**           | listings throughout, **one** masked gate run; five green claims, re-run held      |
+
+[DECISION: **sample 8 is a fourth kind and it breaks the two-column proposal, 2026-09-04.** Added
+from this repo's own session `c23aaf97`: 372 calls, 25% masked, and the masked set is overwhelmingly
+read-only — `plans.py list | head`, `fitness.py portability | head`, `sweep | head`, pytest runs
+through `| tail`. Sample 6's shape, and by its logic harmless. But **one** call in it was
+`inv quality.precommit 2>&1 | tail -30`, and five green claims were made across the session. The
+unpiped re-run exited 0, so all five held.
+
+A gate-versus-listing **column** cannot express that: the session is 99% column A and the 1% is what
+the reader needs. So the useful output is not a second rate but **the masked gate calls themselves,
+listed** — one line each, which is a short list by construction and empty for the sessions the
+proposal would have scored as clean. The rate stays as context; the list is the finding.]
 
 **The lowest of the three is the one with the most riding on it.** A reader ranking sessions by the
 headline number ranks them exactly backwards on consequence. Sample 6 is the cleanest possible case

@@ -113,6 +113,15 @@ repo found all four skills it leaned on moved after session start, all four by i
 still pays is the second half — checking whether anything already done ran under superseded wording
 — because a script committed mid-session does change what an earlier call returned.
 
+**And that half has its own carve-out, in the same case: a session working _in_ the skills repo
+usually called the checkout all along.** The `scripts/` line warns that an earlier call may have run
+the installed copy, which is true from anywhere else and near-impossible here — a repo-relative
+`skills/<name>/scripts/<file>` is what a session in that repo naturally types, and it is current by
+construction. Confirm it from the transcript rather than assuming either way; the question is only
+which path the calls used. Confirmed 2026-09-04 in this repo: three skills' `scripts/` all differed
+between install and checkout, all three were reported as possible stale execution, and every call in
+the session had gone to the checkout — the whole branch was moot.
+
 **The cheapest trigger for all of this is free and arrives unprompted: the available-skills listing
 changing mid-session.** A skill present that was not there before, or a description reworded, is
 direct evidence that the installer has run since the session began — which is exactly when the

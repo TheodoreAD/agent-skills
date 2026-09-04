@@ -282,6 +282,86 @@ interactive prompts (an agent's shell is non-interactive and a TTY prompt hangs 
 `--help` because that is how an agent learns the interface, structured output on stdout with
 diagnostics on stderr, documented exit codes, and bounded output because harnesses truncate.
 
+## A skill's output is for whoever ran it
+
+**Before your skill prints a finding, ask who can act on it.** If the answer is somebody else — the
+skill's author, another repo's session, a machine the runner does not own — the skill either routes
+the finding to where it can be acted on, or does not print it by default. A report of things the
+reader cannot change is not information; it is a cost they pay on every run, and what it teaches is
+to stop reading the output.
+
+The three shapes this takes, in the order they are worth checking:
+
+| the finding's remedy belongs to | what the skill does                                        |
+| ------------------------------- | ---------------------------------------------------------- |
+| the person who ran it           | print it                                                   |
+| a different repo or session     | **route** it — file it where it can be acted on            |
+| the skill's own author          | **opt-in** — behind a named subcommand, never in a default |
+
+[PITFALL: **your own machine cannot show this bug, which is why it needs checking rather than
+noticing.** On an author's machine the install hub and the source checkout hold the same names, so a
+report about "installed skills" is also a report about files that author can edit, and it looks
+correct. It is wrong on every machine where the two differ — that is, all of them but one. Confirmed
+2026-09-02: an audit run the way a stranger would type it returned **34 findings, none of which the
+reader could act on**, naming neither of their two real routes. Reproduce under a fake `HOME` before
+believing a report is reader-safe.]
+
+**Say which population a measurement describes.** A count is a statement about a specific set of
+files, and a tool can usually be pointed at several that disagree — a working tree, what is
+published, what is installed. Measured on one machine 2026-09-03, with a clean tree and nothing
+unusual happening, all three differed. Print the corpus in the header, and remember that a fix which
+is committed and not pushed is fixed for nobody.
+
+## Where a skill may put things, and what it may assume about the machine
+
+**No script hard-codes a local path, least of all one from the author's development environment.**
+Not even as a guarded last-resort fallback: those are the ones that survive review, because they
+only ever help one machine and are invisible everywhere else — right up until someone else's
+directory happens to match. Asking (`--checkout <path>`, an error naming the flag) is the honest
+failure.
+
+Six destinations, each with one meaning, keyed by the **skill's own `name`**:
+
+| destination                                   | what belongs there                                   |
+| --------------------------------------------- | ---------------------------------------------------- |
+| `$HOME/<name>`                                | the user's own material: browsable, often a git repo |
+| `$XDG_CONFIG_HOME` → `~/.config/<skill>/`     | configuration a human edits                          |
+| `$XDG_STATE_HOME` → `~/.local/state/<skill>/` | history, stats, baselines, last-run records          |
+| `$XDG_DATA_HOME` → `~/.local/share/<skill>/`  | data the tool needs and cannot regenerate            |
+| `$XDG_CACHE_HOME` → `~/.cache/<skill>/`       | regenerable, safe to delete at any moment            |
+| `tempfile.mkdtemp()`                          | transient work — never a fixed `/tmp/<name>`         |
+
+The axis is **the user's material or the tool's bookkeeping**. Material a human opens, greps and
+version-controls belongs in a visible `$HOME` directory — XDG's base directories are for what an
+_application_ manages, which is why the companion user-dirs spec exists at all; nobody puts
+`~/Documents` under `~/.local/share`. The concrete test: **would a human ever `cd` here?** If yes it
+is not bookkeeping, and a git working tree never goes under an XDG base directory.
+
+Four rules that follow, each cheap and each learned the hard way:
+
+- **Resolve in one order, everywhere**: explicit argument → the skill's own environment variable →
+  `$XDG_*` → default. And an XDG destination needs **no new variable** — it inherits one the user
+  already controls, so using it removes a setting rather than adding one.
+- **Never write inside your own installed directory.** It is the artefact a re-install replaces.
+  Confirmed 2026-09-03: a skill told readers to save their baseline into
+  `~/.agents/skills/<name>/references/baselines/`, so the one piece of genuinely per-machine state
+  it asked anyone to keep was kept in the one place designed to be overwritten.
+- **Another tool's directory is read-only, always** — and when it is absent, report **unavailable**
+  rather than zeros, or a machine that has never run that tool reads as a machine where nothing ever
+  happened.
+- **Permissions are a property of the content, not of the path.** `0700` when it is private, at
+  creation. A umask can only narrow a mode passed to `mkdir`, never widen it, so it is safe to pass
+  unconditionally — and set it on the root, since `parents=True` does not apply it to intermediates
+  and a `0700` root blocks traversal to everything beneath.
+
+**Skills cannot depend on each other.** They install individually, are copied rather than symlinked,
+and a global install writes no lockfile — so importing a sibling means hard-coding the hub path this
+section forbids, across an unversioned boundary, with behaviour that changes depending on what else
+the reader happens to have installed. Share a **location** as configuration both read (an
+environment variable, a config file); duplicate ten lines of resolver rather than depending on
+anything; and where one skill genuinely should invoke another, let the **agent** do it and say out
+loud when it skipped because the sibling was not installed.
+
 ## Convention skills should self-update on friction
 
 A skill that encodes a convention (rather than performing a one-shot task) should improve itself

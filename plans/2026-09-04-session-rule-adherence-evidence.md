@@ -127,6 +127,31 @@ entirely that the claims were unevidenced when made, not that they were wrong. T
 plainly, because a finding whose harm never materialises is one the next reader discounts — and the
 reason to keep counting it is that nothing about the method would have revealed a false one.
 
+### The correction introduced a second violation, measured an hour later
+
+Same session, re-audited at its second harvest boundary (`00:03`, n=212 against the earlier n=121).
+The first harvest told it to stop masking exit codes, and it complied — by switching from
+`inv quality.precommit 2>&1 | rg … | tail` to `inv quality.precommit > log 2>&1; echo "EXIT=$?"`.
+
+`~/AGENTS.md` forbids both. The second is the `echo-exit` pattern — "never append `; echo "EXIT=$?"`
+— it adds a chain for information the tool already reports" — and the audit saw it appear:
+
+| pattern          | at 23:30 (n=121) | at 00:03 (n=212)   |
+| ---------------- | ---------------- | ------------------ |
+| echo-exit        | 0% (OK)          | **4% (+3pp MISS)** |
+| exit-masked      | 32%              | 33%                |
+| head/tail        | 50%              | 51%                |
+| expectations met | 7/11             | **5/11**           |
+
+The correct form was neither: run the gate plain. The Bash tool already reports a non-zero exit, so
+the redirect and the `echo` both exist to recover something that was never lost — and the redirect
+then needs a second call to read the log, which is the chain the first rule was about.
+
+**This is the shape worth having in the corpus**: a session told about one Bash rule satisfied it by
+adopting a different banned pattern, within the same hour, with both rules in the same file it was
+already holding. It argues against "reword the rule" more strongly than another miss would, because
+compliance was not the problem — the session complied, and picked the wrong compliant-looking form.
+
 [NEEDS CLARIFICATION: **is the fix a rule at all?** Three sessions have now broken the `head`/`tail`
 rule while holding it in context, one of them while editing the skill that measures it. Rewording is
 the reflex and there is no evidence it works. The alternatives are a mechanism the corpus has

@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-04
+updated: 2026-09-05
 ---
 
 # Evidence from one repo-tasks session: three rules broken, two of them measurable
@@ -152,20 +152,24 @@ adopting a different banned pattern, within the same hour, with both rules in th
 already holding. It argues against "reword the rule" more strongly than another miss would, because
 compliance was not the problem — the session complied, and picked the wrong compliant-looking form.
 
-[NEEDS CLARIFICATION: **is the fix a rule at all?** Three sessions have now broken the `head`/`tail`
-rule while holding it in context, one of them while editing the skill that measures it. Rewording is
-the reflex and there is no evidence it works. The alternatives are a mechanism the corpus has
-already refused for good reasons (a hook that rewrites the command), or accepting the rate and
-relying on the audit plus the unpiped re-run to catch what it costs — which is what actually
-happened both times. Worth deciding deliberately rather than by another rewording.]
+[DECISION: **the fix is not a rule.** Settled 2026-09-05 after a week-wide measurement (60 sessions,
+14,611 calls): 58% of all 1,396 gate runs were piped, 466 of them asking for the last 3–8 lines of a
+~50-line output, and the four sessions after the 2026-09-04 rewording sat at 50%, 6%, 15% and 25% —
+inside the spread sessions already had. It beat "reword once more" because every prior rewording was
+measured null and this session's own sample complied by picking a second banned form; it beat
+"accept the rate" because the cost is not the rate but that a piped gate can lie and did once; and
+the hook stays refused. The design that replaces the rule — `pipefail` in the agent's shell so a
+`| tail` carries the real exit code, a quiet gate whose last line is the verdict, and SIGPIPE
+handling plus shorter output in this repo's scripts — is worked out with its probe results in
+`2026-09-05-a-piped-gate-that-cannot-lie.md`, which owns the remaining choices.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: does the propagation failure in §1 belong in the existing hand-editing plan or
-in its own? It is a different cause with a different fix, and folding it in risks the existing
-plan's "sessions ignore this rule" framing absorbing a case that contradicts it. Against a split:
-`plan-docs` prefers one plan per topic, and "the status gate is bypassed" is arguably one topic
-whatever the cause.]
+[DECISION: the propagation failure in §1 stays here, apart from the hand-editing plan. Settled
+2026-09-04 when `absorb` paired the two files: they share four rows of evidence and disagree about
+what those rows are evidence of — a rule unfollowed there, a rule invisible here — and merging would
+have destroyed that distinction rather than combined halves. The hand-editing plan records the same
+verdict from its side and re-arms its own trigger.]
 
 [NEEDS CLARIFICATION: is there any fix for a rule landing mid-session at all, short of the harvest
 catching it afterwards? `session-harvest`'s `skills-state --since` is the detector and it runs at

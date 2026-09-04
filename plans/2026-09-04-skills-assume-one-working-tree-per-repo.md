@@ -234,15 +234,25 @@ Cheapest first, and the first two are worth doing whatever the open questions se
    Note when settling it that a `mode = "repo"` worktree needs **no** change — the plan file travels
    with the branch it was committed on — so whatever this does must key off the store route, not off
    being in a worktree.
-5. **Add the worktree row to `session-harvest` step 0's table**, and teach `find_checkout` to say
-   which working tree it resolved. The existing table already has the vocabulary — a worktree on a
-   feature branch is "clean, ahead by commits" wearing a different hat.
-6. **Say it in `skill-authoring`**: a skill edited in a worktree is not installable until its branch
-   is what the remote's default branch holds, so the deploy sequence needs either a merge first or
-   the local-path install (`skills add ../my-skills`) it already documents for drafting.
-7. **Declare the limit in `session-bash-audit`** beside the Windows slug paragraph added the same
-   day, since it is the same defect with a different cause: an own-repo row that reads clean because
-   the comparison could not fire.
+5. ~~**Add the worktree row to `session-harvest` step 0's table**~~ — **done 2026-09-04**. The table
+   went from three causes to four, and `skills-state` prints a `worktree:` line naming the checkout
+   it belongs to. `find_checkout` itself was left alone deliberately: resolving to the worktree is
+   _correct_, because the source being edited is the one to diff against. What was wrong was the
+   remedy underneath it, so the fix is a named row and a printed line rather than a different
+   resolution.
+6. ~~**Say it in `skill-authoring`**~~ — **done 2026-09-04**, as a PITFALL under step 5 (Push).
+   Written as the general rule first — a push is necessary, not sufficient, because the installer
+   takes the remote's **default branch** — with the worktree as the case where it bites without
+   anyone choosing a branch. Names both directory layouts and gives `--git-common-dir` as the direct
+   test.
+7. ~~**Declare the limit in `session-bash-audit`**~~ — **done 2026-09-04**, beside the Windows slug
+   paragraph, and declared rather than fixed. Recorded there that the tags compare by exact
+   equality, so from a worktree a `git -C <main checkout>` call is tagged nothing at all and its
+   `cd` equivalent is tagged `cd-other` — the name for the recommended _cross-repo_ form. No fix is
+   possible from the data: the script reads transcripts offline and cannot ask git, and the slug
+   shape only betrays Claude Code's layout, so half a fix would make the other layouts read as
+   verified. Worth noting the claim about that slug is **derived, not observed** — none of the 211
+   project directories on this machine is a worktree, so no session here has ever run from one.
 
 Out of scope here and worth filing separately: `~/AGENTS.md` states that parallel sessions on this
 machine **share one working tree**, and several of its rules — undo by SHA rather than a relative

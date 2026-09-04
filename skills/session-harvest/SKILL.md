@@ -1,6 +1,6 @@
 ---
 name: session-harvest
-description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation for anything worth keeping and routes each item to a plain file every agent can read: plan-specific content to plans/*.md (per the plan-docs skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md. Never a harness's own memory store, for any project or any reason — that vendor-locks the work. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent and a safe-to-compact verdict. On-demand only — never installs hooks or runs automatically."
+description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation for anything worth keeping and routes each item to a plain file every agent can read: plan-specific content to plans/*.md (per the plan-docs skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md. Never a harness's own memory store, for any project or any reason — that vendor-locks the work. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent, a safe-to-compact verdict, and a next-session prompt. On-demand only — never installs hooks or runs automatically."
 ---
 
 # Session harvest
@@ -756,11 +756,27 @@ Then, least urgent first, because the final lines are what a skimmed report reta
   re-install, a destructive cleanup). Last, and specific.
 - Ends with a one-line verdict: "safe to compact" or "not yet — needs a decision on X."
 
+**The verdict is not the end of the run — step 9 is, and it runs every time.** The report is what
+this session leaves behind; the prompt is what the next one starts from, and a harvest that stops at
+the verdict has done the expensive half and withheld the cheap one.
+
 Fix what is cheap and unambiguous rather than only reporting it — kill the orphaned loops, write the
 lost measurement into the plan that owns it — and report it as done. Reserve the report's last zone
 for what genuinely needs the user. Anything outward-facing (a push) still gets asked.
 
-### 9. The next-session prompt, if one is asked for
+### 9. The next-session prompt
+
+**Print it on every harvest, asked for or not.** The heading said "if one is asked for" until
+2026-09-04, which was a leftover from when this step was only a list of what to leave out — and it
+worked exactly as written: harvests ended at step 8, and the user asked _"why doesn't
+session-harvest produce a prompt for the next session as the last item? i thought we did that"_. The
+feature had been built on 2026-09-01 precisely because they kept asking for it by hand.
+
+**It is never empty**, so there is no silent case to design. The subtraction below removes most
+candidates on a well-harvested session, but ordering — what to do first, and why this rather than
+that — is not something any opening command prints, and there is always something to do next. A
+prompt that comes out with nothing but its opening line means the subtraction was done badly, not
+that the session had nothing to carry.
 
 **It is the next session's first move, not a summary of this one.** Print it as a paste-ready block
 at the very end — never a file. The user pastes it into the next session within minutes, which is

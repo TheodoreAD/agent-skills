@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-04
 ---
 
@@ -74,6 +74,23 @@ The general form, now in `skill-authoring`: a defensive default that no-ops on t
 lack it needs no branch; a _check_ for that default needs one, which is the argument for not writing
 the check.]
 
+[DECISION: **each script gets a module-level `WINDOWS = os.name == "nt"`, and the branch reads that
+rather than `os.name` directly, 2026-09-04.** Not style — it is the only seam a test can use.
+`pathlib` reads `os.name` to decide whether `Path()` returns a `PosixPath` or a `WindowsPath`, so
+monkeypatching it to fake a platform makes the interpreter refuse to instantiate any path at all
+(`UnsupportedOperation: cannot instantiate 'WindowsPath' on your system`) — the Windows arm is never
+reached, and the failure looks like a broken test rather than an untestable design. Found by writing
+`tests/unit/test_locations.py` first. One line per script, and the branch becomes testable on the
+Linux machine that is the only one this corpus has.]
+
+[DECISION: **a step whose external tool is absent reports `available: False`, never zeros,
+2026-09-04.** `harvest.py`'s sockets step already did; its processes step did not, and an empty `ps`
+table there produced "0 surviving children" — a clean bill of health from a step that never ran, on
+exactly the sweep whose purpose is catching what a session left behind. `ps` cannot omit the process
+reading it, so an empty table is unambiguous. This is the same defect as the permission warning seen
+from the other side: one fires where it cannot be true, the other stays silent where it cannot
+know.]
+
 **3. Scope is a declaration, and it belongs in the README's Scope column.** `session-bash-audit`
 audits Bash-tool habits against POSIX-shell idioms; that is not a portability defect to fix but a
 premise to state. The corpus already has the column and the rule — "where a skill genuinely needs an
@@ -117,10 +134,19 @@ Smallest first, and the first one is the only urgent one:
 
 1. ~~Make the permission check platform-aware~~ — **done 2026-09-04 by deleting it**, per the
    decision above. This was the urgent item and it turned out to be a removal.
-2. **Give `materialize_ref` the stdlib `tarfile`** instead of shelling out to `tar`, which removes
-   an external-binary assumption on every platform rather than branching on one.
-3. **Add the Windows arm to the location helpers**, honouring `$XDG_*` first.
-4. **Declare scope** — README column for anything shell-shaped, and the Windows row in
+2. ~~Give `materialize_ref` the stdlib `tarfile`~~ — **done 2026-09-04.** `git archive` still
+   produces the stream; `tarfile` reads it from memory with the `data` filter (guarded by `hasattr`,
+   since the argument only exists from 3.11.4 and these scripts run under a bare `python3`). One
+   external-binary assumption gone on every platform rather than branched on one.
+3. ~~Add the Windows arm to the location helpers~~ — **done 2026-09-04**, in `audit.py`'s
+   `state_dir` and `plans.py`'s `config_path`, `$XDG_*` first in both.
+   `tests/unit/test_locations.py` pins the whole order for both copies, which is what the
+   duplication rule needs and did not have.
+4. ~~Declare scope~~ — **done 2026-09-04.** A Platform paragraph in the README (which is where it
+   reads better than a fourth Scope value), the POSIX-shell premise in `session-bash-audit`'s body,
+   the `ps`/`ss` steps in `session-harvest`'s sweep section, and the Windows column in
    `skill-authoring`'s destination table.
 5. Then decide the CI question, which is what converts the rest of this from reasoning into
-   measurement.
+   measurement. **This is now the only thing left in this plan**, and it is the one the two
+   `NEEDS CLARIFICATION` items about PowerShell transcripts and the project-slug normalisation both
+   wait on: neither can be settled from this machine.

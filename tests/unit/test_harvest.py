@@ -410,8 +410,38 @@ def test_an_unpushed_commit_touching_an_already_published_path_is_flagged():
             "git -C /repo log origin/main --since=": (0, "README.md\n", ""),
         }
     )
-    state = harvest.repo_state(runner, Path("/repo"), since="2026-09-02T08:00:00+03:00", do_fetch=False)
+    state = harvest.repo_state(
+        runner,
+        Path("/repo"),
+        since="2026-09-02T08:00:00+03:00",
+        do_fetch=False,
+        written=[Path("/repo/README.md"), Path("/repo/notes.md")],
+    )
     assert state.overlap == ["README.md"]
+
+
+def test_a_path_this_session_never_wrote_is_not_a_correction():
+    """`--since` on the upstream log means "authored recently", not "this session published it". On
+    a store several sessions commit to, all of their commits land in `published`, so any later
+    commit by anyone to the same file reads as this session correcting itself. Confirmed 2026-09-04:
+    a harvest pushed a 22-commit backlog it had not authored, and the next session's ordinary
+    follow-up to one of those files was reported as a correction."""
+    runner = FakeRunner(
+        {
+            "git -C /repo rev-parse --abbrev-ref @{u}": (0, "origin/main\n", ""),
+            "git -C /repo log origin/main..HEAD --format=%h": (0, AHEAD_LOG, ""),
+            "git -C /repo log origin/main..HEAD --name-only": (0, "README.md\nnotes.md\n", ""),
+            "git -C /repo log origin/main --since=": (0, "README.md\n", ""),
+        }
+    )
+    state = harvest.repo_state(
+        runner,
+        Path("/repo"),
+        since="2026-09-02T08:00:00+03:00",
+        do_fetch=False,
+        written=[Path("/repo/notes.md")],  # this session wrote notes.md, never README.md
+    )
+    assert state.overlap == []
 
 
 # --------------------------------------------------------------------------------------------

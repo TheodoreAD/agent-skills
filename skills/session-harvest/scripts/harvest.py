@@ -628,7 +628,9 @@ class RepoState:
     notes: list[str]
 
 
-def repo_state(runner: Runner, repo: Path, since: str | None, do_fetch: bool) -> RepoState:
+def repo_state(
+    runner: Runner, repo: Path, since: str | None, do_fetch: bool, written: Sequence[Path] = ()
+) -> RepoState:
     """Dirty tree, unpushed commits, and whether an unpushed one corrects something already pushed."""
     notes: list[str] = []
     branch = runner(["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"]).out.strip()
@@ -661,17 +663,27 @@ def repo_state(runner: Runner, repo: Path, since: str | None, do_fetch: bool) ->
             parts = line.split("\x1f")
             if len(parts) == 4:
                 ahead.append({"sha": parts[0], "author": parts[1], "when": parts[2], "subject": parts[3]})
-        overlap = _correction_overlap(runner, repo, upstream, since)
+        overlap = _correction_overlap(runner, repo, upstream, since, written)
     return RepoState(str(repo), branch, upstream, dirty, ahead, fetch_state, ref_age, overlap, notes)
 
 
-def _correction_overlap(runner: Runner, repo: Path, upstream: str, since: str | None) -> list[str]:
+def _correction_overlap(
+    runner: Runner, repo: Path, upstream: str, since: str | None, written: Sequence[Path] = ()
+) -> list[str]:
     """Paths that are both unpushed now and already published during this session.
 
     Not proof of a correction, but a short list to read and empty for most sessions. The case it
     catches: a session pushed a claim, learned it was false, committed the fix and never pushed — so
     the remote serves a justification known to be wrong while its correction sits in the ahead-count
     looking like ordinary tidying.
+
+    **`written` is what keeps that from firing on other sessions' work, and without it the check is
+    actively misleading on a shared repo.** `--since` on the upstream log means "authored recently",
+    not "this session published it": in a store several sessions commit to, every one of their
+    commits lands in `published`, so any later commit by anyone to the same file reads as this
+    session correcting itself. Confirmed 2026-09-04 — a harvest pushed a 22-commit backlog it had
+    not authored, and the next session's ordinary follow-up to one of those files was reported as a
+    correction. A correction is only this session's if this session wrote the path, so intersect.
     """
     if not since:
         return []
@@ -679,7 +691,13 @@ def _correction_overlap(runner: Runner, repo: Path, upstream: str, since: str | 
     published = set(
         runner(["git", "-C", str(repo), "log", upstream, f"--since={since}", "--name-only", "--format="]).lines
     )
-    return sorted(unpushed & published)
+    mine: set[str] = set()
+    for path in written:
+        try:
+            mine.add(Path(path).resolve().relative_to(repo.resolve()).as_posix())
+        except (ValueError, OSError):
+            continue  # written outside this repo: another section's finding, not this one's
+    return sorted(unpushed & published & mine)
 
 
 # --------------------------------------------------------------------------------------------
@@ -1443,6 +1461,7 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     since = args.since or (transcript.started if transcript else None)
     entries = transcript.entries if transcript else []
     repos = _touched_repos(runner, args.repo, entries)
+    written = written_paths(entries)
     sections = set(args.only or [])
 
     def wanted(*names: str) -> bool:
@@ -1451,7 +1470,7 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     # The two expensive inputs, shared by the sections that need them: one `ps` for processes and
     # sockets, one git pass for the repo report and CI.
     table = process_table(runner) if wanted("processes", "sockets") else {}
-    states = [repo_state(runner, p, since, not args.no_fetch) for p in repos] if wanted("repos", "ci") else []
+    states = [repo_state(runner, p, since, not args.no_fetch, written) for p in repos] if wanted("repos", "ci") else []
     producers: dict[str, Callable[[], dict[str, Any]]] = {
         "processes": lambda: {"processes": processes(runner, table)},
         "sockets": lambda: {"sockets": sockets(runner, table)},

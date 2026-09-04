@@ -2777,13 +2777,45 @@ def cmd_refs(args: argparse.Namespace, ws: Workspace) -> int:
                 if name in line:
                     found.append({"where": "store", "path": str(path), "line": number, "text": line.strip()})
 
+    unpushed = unpushed_summary(routing.repo_root) if routing.repo_root else None
     if args.json:
-        print(json.dumps({"file": name, "references": found}, indent=2))
+        print(json.dumps({"file": name, "references": found, "unpushed": unpushed}, indent=2))
         return 0
     for hit in found:
         print(f"{hit['where']:<6} {hit['path']}:{hit['line']}:{hit['text']}")
     print(f"\n{len(found)} reference(s) to {name}")
+    if unpushed:
+        print(f"\nWARNING: {unpushed}")
+        print("         Retirement deletes this plan. If the work it explains is not published,")
+        print("         the change is not in the product and the reason for it is gone.")
     return 0
+
+
+def unpushed_summary(repo: Path) -> str | None:
+    """Commits this repo has that its upstream does not — or None when there is nothing to say.
+
+    `set-status` gates `landed` on open tags and on nothing about whether the work is **published**,
+    while `landed` is the status that precedes deletion. So a plan can be landed and retired with
+    the change still sitting in an unpushed commit: the change is not in the product and the
+    explanation of why it was made has been deleted.
+
+    Reported at retirement rather than gated at `landed`, deliberately. A gate would be unpassable
+    for a repo with no remote — the sensitive plans store is deliberately one, permanently — so it
+    would teach people to force past it, which is worse than not having it. Deletion is the
+    irreversible step and therefore where the check earns its place.
+
+    A branch with no upstream is **not** a warning: that is the normal state of a store that must
+    never leave the machine, and crying wolf there is how the real case stops being read.
+    """
+    if not is_git_repo(repo):
+        return None
+    if git(["rev-parse", "--abbrev-ref", "@{upstream}"], repo) is None:
+        return None
+    count = git(["rev-list", "--count", "@{upstream}..HEAD"], repo)
+    if not count or count == "0":
+        return None
+    plural = "" if count == "1" else "s"
+    return f"{repo} has {count} unpushed commit{plural}"
 
 
 def cmd_archive(args: argparse.Namespace, ws: Workspace) -> int:

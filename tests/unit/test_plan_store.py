@@ -2110,3 +2110,70 @@ def test_a_group_readable_store_is_not_flagged(ws):
     store = next(s for s in plans.load_config().stores() if s.path == ws.store)
 
     assert plans.store_mode_problems(store) == []
+
+
+# --------------------------------------------------------------------------------------------
+# retirement warns about work that was never published
+
+
+def _commit_all(root: Path, message: str) -> None:
+    for argv in (["git", "add", "-A"], ["git", "commit", "-qm", message]):
+        subprocess.run(argv, cwd=root, check=True, capture_output=True)
+
+
+def _repo_with_upstream(ws) -> Path:
+    """A repo whose branch tracks a real bare remote, which is what `@{upstream}` needs to resolve.
+
+    `make_repo` already points `origin` at an unreachable example.com URL, which is right for every
+    other test here and useless for this one — nothing can be pushed to it, so no branch ever gets
+    an upstream. Repointed at a bare repo on disk.
+    """
+    repo, remote = ws.personal, ws.projects / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, capture_output=True)
+    (repo / "README.md").write_text("seed\n", encoding="utf-8")
+    _commit_all(repo, "seed")
+    subprocess.run(["git", "remote", "set-url", "origin", str(remote)], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "push", "-q", "-u", "origin", "HEAD"], cwd=repo, check=True, capture_output=True)
+    return repo
+
+
+def test_refs_warns_when_the_plans_repo_has_unpushed_commits(ws, capsys):
+    """`set-status` gates `landed` on open tags and on nothing about whether the work is published,
+    while `landed` is the status that precedes deletion — so a plan can be landed and retired with
+    the change still unpushed. The change is then not in the product and the reason for it is gone.
+    Checked at retirement rather than gated at `landed`, because deletion is the irreversible step."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    repo = _repo_with_upstream(ws)
+    plan(repo / "plans", "2026-01-01-done.md", "status: landed\nupdated: 2026-01-01")
+    _commit_all(repo, "the work this plan explains")
+
+    assert plans.main(["refs", "plans/2026-01-01-done.md", "--path", str(repo)]) == 0
+    out = capsys.readouterr().out
+
+    assert "1 unpushed commit" in out
+    assert "the reason for it is gone" in out
+
+
+def test_refs_is_quiet_once_the_work_is_pushed(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    repo = _repo_with_upstream(ws)
+    plan(repo / "plans", "2026-01-01-done.md", "status: landed\nupdated: 2026-01-01")
+    _commit_all(repo, "the work this plan explains")
+    subprocess.run(["git", "push", "-q"], cwd=repo, check=True, capture_output=True)
+
+    assert plans.main(["refs", "plans/2026-01-01-done.md", "--path", str(repo)]) == 0
+
+    assert "unpushed" not in capsys.readouterr().out
+
+
+def test_a_repo_with_no_upstream_is_not_warned_about(ws, capsys):
+    """The sensitive store is deliberately remote-less, permanently. Warning there would fire on
+    correct behaviour forever, which is how the real case stops being read."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    repo = ws.personal
+    plan(repo / "plans", "2026-01-01-done.md", "status: landed\nupdated: 2026-01-01")
+    _commit_all(repo, "seed")
+
+    assert plans.main(["refs", "plans/2026-01-01-done.md", "--path", str(repo)]) == 0
+
+    assert "unpushed" not in capsys.readouterr().out

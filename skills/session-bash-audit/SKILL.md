@@ -67,7 +67,12 @@ script measures a trend after the fact; this measures the run you are in.
 **Compare against a baseline you saved**, not the one shipped here. `$S/references/baselines/` holds
 one file measured on the author's machine under that machine's rules; it is a reference point, and
 `--compare`-ing a session against it reports how your session differs from somebody else's setup.
-Save your own on the first run (`--save-baseline`) and use that.
+Save your own on the first run (`--save-baseline`) and use that — **including from a run whose
+numbers are bad**, which is the case people hesitate over. A baseline is never read as a target:
+`EXPECTATIONS` is directional (`down` or `zero`), so the verdict is computed against the delta and a
+bad first baseline simply sets a bar the next run has to beat. Saving only from runs you are happy
+with is what would corrupt the series, by making the reference a selection rather than a
+measurement.
 
 [PITFALL: **run it unpiped — every mode, every time.** The output is a few dozen lines and the
 harness keeps it whole; `| head -N` on a report whose own subject is `head/tail` truncation is the

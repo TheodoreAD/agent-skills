@@ -840,6 +840,35 @@ def test_scan_history_finds_what_the_working_tree_no_longer_shows(ws, capsys):
     assert "client.com-bitbucket" in capsys.readouterr().out
 
 
+def test_scan_says_when_a_nested_checkout_was_not_read(ws, capsys):
+    # A linked worktree under `.claude/worktrees/` is ONE entry to `ls-files --others`, never its
+    # files. Measured 2026-09-04: reading it raises IsADirectoryError, an OSError, which the skip
+    # written for binaries discarded — so the scan printed `0 hit(s)` for a tree holding a second
+    # checkout it never opened. A clean count about an unread tree is the failure, not the skip.
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    commit(ws.personal, "notes.md", "nothing sensitive here\n")
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "wt", ".claude/worktrees/wt"], cwd=ws.personal, check=True)
+    (ws.personal / ".claude" / "worktrees" / "wt" / "leak.md").write_text(
+        "notes on client.com-bitbucket/team/api\n", encoding="utf-8"
+    )
+
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 0  # the worktree's leak is out of reach
+    out = capsys.readouterr().out
+    assert "1 path(s) enumerated but not read" in out
+    assert ".claude/worktrees/wt" in out
+    # And the same leak is found when the worktree is scanned as the checkout it is.
+    assert plans.main(["scan", "--path", str(ws.personal / ".claude" / "worktrees" / "wt")]) == 1
+
+
+def test_scan_still_skips_a_binary_without_reporting_it(ws, capsys):
+    # The skip is right for a file with nothing greppable in it; only a whole unread checkout is
+    # worth a line. Reporting both would make the report noise and get it ignored.
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    (ws.personal / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe\x00")
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 0
+    assert "not read" not in capsys.readouterr().out
+
+
 def test_scan_lists_its_terms_without_scanning(ws, capsys):
     write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
     assert plans.main(["scan", "--list-terms", "--path", str(ws.personal)]) == 0

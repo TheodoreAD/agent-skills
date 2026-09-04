@@ -1261,23 +1261,44 @@ class ScanTarget(NamedTuple):
     text: str
 
 
-def scan_targets(root: Path, mode: str) -> list[ScanTarget]:
+class ScanPlan(NamedTuple):
+    """What a scan read, and what it enumerated but could not read.
+
+    The second half exists because a scanner that reports `0 hits` about a tree it did not fully
+    read is worse than one that reports nothing: the number is the reason nobody looks again.
+    """
+
+    targets: list[ScanTarget]
+    unread: list[str]
+
+
+def scan_targets(root: Path, mode: str) -> ScanPlan:
     """What to scan: the tracked working tree, the staged diff, or all of history."""
     if mode == "staged":
-        return [ScanTarget("(staged diff)", git(["diff", "--cached"], root) or "")]
+        return ScanPlan([ScanTarget("(staged diff)", git(["diff", "--cached"], root) or "")], [])
     if mode == "history":
-        return [ScanTarget("(history)", git(["log", "--all", "-p"], root) or "")]
+        return ScanPlan([ScanTarget("(history)", git(["log", "--all", "-p"], root) or "")], [])
     # Tracked *and* untracked-not-ignored: a plan file written a moment ago is exactly the thing
     # being scanned for, and it is not tracked yet.
     listed = git(["ls-files", "--cached", "--others", "--exclude-standard"], root) or ""
-    pairs: list[ScanTarget] = []
+    targets: list[ScanTarget] = []
+    unread: list[str] = []
     for name in listed.splitlines():
         path = root / name
         try:
-            pairs.append(ScanTarget(name, path.read_text(encoding="utf-8")))
-        except (OSError, UnicodeDecodeError):
-            continue  # binary or unreadable: nothing greppable in it anyway
-    return pairs
+            targets.append(ScanTarget(name, path.read_text(encoding="utf-8")))
+        except UnicodeDecodeError:
+            continue  # binary: nothing greppable in it anyway
+        except IsADirectoryError:
+            # A nested checkout — a linked worktree under `.claude/worktrees/`, a submodule — is
+            # reported by `ls-files --others` as ONE directory entry with a trailing slash rather
+            # than as its files. Measured 2026-09-04: reading it raises IsADirectoryError, which is
+            # an OSError, which the binary skip below used to swallow whole, so a scan of a repo
+            # with a worktree in it printed `0 hit(s)` for a second checkout it never opened.
+            unread.append(f"{name} (a nested checkout, not scanned)")
+        except OSError as exc:
+            unread.append(f"{name} ({exc.strerror or 'unreadable'})")
+    return ScanPlan(targets, unread)
 
 
 # --------------------------------------------------------------------------------------------
@@ -2994,6 +3015,21 @@ def list_terms(cfg: Config, terms: list[str]) -> int:
     return 0
 
 
+def report_unread(unread: list[str], mode: str, samples: int) -> None:
+    """Name what the scan could not open, next to the count so the count is never read alone.
+
+    Not an error exit: everything the scan did read is still scanned, and each path below is a
+    second scan to run rather than a leak to redact.
+    """
+    if not unread:
+        return
+    print(f"\n{len(unread)} path(s) enumerated but not read — the count above excludes them:")
+    for name in unread[:samples]:
+        print(f"  {name}")
+    print("A nested checkout is one entry here, never its files. Scan it as its own repo:")
+    print(f"  plans.py scan --mode {mode} --path <that directory>")
+
+
 def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
     """Refuse to let a client's identity reach a repo that gets published."""
     cfg = ws.config
@@ -3010,7 +3046,8 @@ def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
 
     tally: Counter[str] = Counter()
     hits = 0
-    for target in scan_targets(root, args.mode):
+    plan = scan_targets(root, args.mode)
+    for target in plan.targets:
         for hit in scan_text(target.text, terms):
             if hits < args.samples:
                 print(f"{target.label}:{hit.line}: [{hit.term}] {hit.text[:160]}")
@@ -3021,6 +3058,7 @@ def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
     print(f"\n{hits} hit(s) over {args.mode}, against {len(terms)} private term(s) from {cfg.projects_root}")
     for term, count in tally.most_common(10):
         print(f"  {count:>5}  {term}")
+    report_unread(plan.unread, args.mode, args.samples)
     if hits:
         print("\nEach names work that is not yours to disclose. Redact before committing. A term that")
         print("is a generic English word rather than an identity belongs in the config's")

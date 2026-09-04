@@ -1094,6 +1094,43 @@ def test_a_linked_worktree_is_not_enrolled_as_a_second_repo(ws, shape, relative_
     assert "feat" not in plans.Workspace(ws.personal).private_terms, shape
 
 
+def test_a_worktree_shares_the_repositorys_store_mirror(ws):
+    """The store mirror is keyed on the repository, so every worktree of it shares one `absorb`
+    queue. Measured 2026-09-04 before the fix: `where` from a worktree returned `ok` into
+    `<store>/<rel>/.claude/worktrees/<name>`, which the main checkout's `list` and `absorb` never
+    look in — and a plan filed *for* the repo landed in the main mirror, which the worktree's
+    `absorb` never looks in. Both directions silent, and both are this one line."""
+    write_config(ws, 'default = "store"\npublic_roots = []\n')
+    commit(ws.personal, "notes.md", "x\n")
+    tree = worktree(ws.personal, "feat", ws.personal / ".claude" / "worktrees" / "wt")
+
+    assert route(tree).store_dir == route(ws.personal).store_dir
+    assert route(tree).rel == "github.com-personal/agent-skills"
+
+
+def test_a_worktrees_own_plans_directory_still_belongs_to_its_branch(ws):
+    """The asymmetry, stated so it is not read as a bug: `mode = "repo"` is NOT redirected. A plan
+    file committed in a worktree travels with the branch it was committed on, which is already the
+    right answer, so only the store mirror is keyed on the repository."""
+    write_config(ws, 'default = "repo"\n')
+    commit(ws.personal, "notes.md", "x\n")
+    tree = worktree(ws.personal, "feat", ws.personal / ".claude" / "worktrees" / "wt")
+
+    assert route(tree).write_dir == tree / "plans"  # here, not the main checkout's plans/
+    assert route(ws.personal).write_dir == ws.personal / "plans"
+
+
+def test_where_says_it_is_in_a_worktree_since_rel_names_another_directory(ws, capsys):
+    write_config(ws, 'default = "store"\n')
+    commit(ws.personal, "notes.md", "x\n")
+    tree = worktree(ws.personal, "feat", ws.personal / ".claude" / "worktrees" / "wt")
+
+    assert plans.main(["where", "--path", str(tree)]) == 0
+    out = capsys.readouterr().out
+    assert "linked worktree of" in out
+    assert str(ws.personal) in out
+
+
 def test_a_submodule_is_still_a_repo_though_its_git_is_a_file_too(ws):
     """The `.git`-is-a-file test alone would drop submodules, which are repos in their own right.
     Measured 2026-09-04: a worktree's file says `.git/worktrees/<name>`, a submodule's says

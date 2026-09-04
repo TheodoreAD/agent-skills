@@ -840,8 +840,20 @@ def resolve(start: Path, cfg: Config) -> Routing:
     if root is None:
         return Routing("needs-decision", f"{start} is not inside a git repository", None, None, None, "no rule", None)
 
+    # The store mirror is keyed on the REPOSITORY, never on this particular checkout, so every
+    # worktree of a repo shares one mirror and one `absorb` queue and a plan written on a feature
+    # branch is visible from main. `repo_root` below deliberately stays the checkout: `mode = "repo"`
+    # then still writes into the worktree's own `plans/`, where the file travels with the branch it
+    # was committed on — which is already the right answer there, and is why this is an asymmetry
+    # rather than a blanket "resolve every worktree to its main checkout".
+    #
+    # Measured 2026-09-04 before this line existed: `where` from a worktree returned `verdict: ok`
+    # into `<store>/<root>/<repo>/.claude/worktrees/<name>`, a directory the main checkout's `list`
+    # and `absorb` never look in — and a plan filed *for* that repo by another session landed in the
+    # main mirror, which the worktree session's `absorb` never looks in. Both directions silent.
+    identity = linked_worktree_of(root) or root
     try:
-        rel = root.resolve().relative_to(cfg.projects_root.resolve()).as_posix()
+        rel = identity.resolve().relative_to(cfg.projects_root.resolve()).as_posix()
     except (ValueError, OSError):
         rel = None
 
@@ -1733,6 +1745,7 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
             "verdict": routing.verdict,
             "reason": routing.reason,
             "repo_root": str(routing.repo_root) if routing.repo_root else None,
+            "worktree_of": str(main) if routing.repo_root and (main := linked_worktree_of(routing.repo_root)) else None,
             "rel": routing.rel,
             "rule": None if rule is None else {"read": list(rule.read), "write": rule.write},
             "source": routing.source,
@@ -1750,6 +1763,14 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
         print(f"reason:  {routing.reason}")
         print("choices: repo | store | both — ask the user, then record it in the config")
     print(f"repo:    {routing.repo_root or '(none)'}")
+    worktree_main = linked_worktree_of(routing.repo_root) if routing.repo_root else None
+    if worktree_main:
+        # Said here and in `doctor`, and nowhere else. The routing commands just do the right thing
+        # rather than printing a line on every call from a perfectly healthy worktree — but `rel`
+        # below names a directory this session is not standing in, and unexplained that reads as a
+        # bug rather than as the deliberate sharing it is.
+        print(f"worktree: this checkout is a linked worktree of {worktree_main}")
+        print("          store plans are shared with it; a `repo` plan stays here, on this branch")
     print(f"rel:     {routing.rel or '(not under projects_root)'}")
     if routing.rule:
         print(f"rule:    {routing.rule.describe()}  ({routing.source})")

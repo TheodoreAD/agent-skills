@@ -6,9 +6,9 @@ importing a sibling, because skills install individually and one cannot import a
 code is what drifts, so the order is pinned here for each copy rather than trusted to review.
 
 The Windows arms are reasoned from documented behaviour and exercised by pinning each script's own
-`WINDOWS` constant: nothing in this repo has ever run on Windows, which is the open question in
-`plans/2026-09-04-skills-on-windows.md`. That makes these tests the only thing standing between the
-Windows default and a silent regression.
+`WINDOWS` constant: nothing in this repo has ever run on Windows, and CI deliberately has no leg
+there (see the README's Platform paragraph). That makes these tests the only thing standing between
+the Windows default and a silent regression.
 
 The constant exists *because* of this file. Patching `os.name` — the obvious way to fake a platform
 — makes `pathlib` hand out `WindowsPath` objects that a Linux interpreter refuses to instantiate, so

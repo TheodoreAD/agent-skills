@@ -53,8 +53,9 @@ read-only, and it writes nothing itself. `plan-docs` also describes pushing the 
 its store to a remote you configure — behind a content scan, and never the half holding employer or
 client work.
 
-**Platform.** Everything here is written for a POSIX machine and none of it has been run on Windows.
-The scripts are stdlib-only Python and resolve their locations from `$XDG_*` first, falling back to
+**Platform.** Everything here is written for a POSIX machine and none of it has been run on Windows
+— CI is Linux-only by decision, so the Windows behaviour below is declared rather than measured. The
+scripts are stdlib-only Python and resolve their locations from `$XDG_*` first, falling back to
 `%APPDATA%` / `%LOCALAPPDATA%` there — but two skills assume more than a path. `session-bash-audit`
 measures POSIX-shell idioms (`&&`, `;`, `|`, `cd`, `sed -n`), so it describes a Git Bash or WSL
 session and says nothing useful about a PowerShell one; `session-harvest`'s sweep shells out to

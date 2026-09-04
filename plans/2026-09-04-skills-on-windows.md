@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-04
 ---
 
@@ -107,26 +107,35 @@ than assume it.
 Anything with a detectable outcome — a symlink, a long path — is better tried than predicted,
 because the platform name is a proxy and the capability is the thing.]
 
-## Open questions
+## The three open questions, all answered 2026-09-04
 
-[NEEDS CLARIFICATION: **whether CI should run on Windows at all.** Everything above is reasoned from
-documented behaviour, because this repo has never executed a line on Windows —
-`.github/workflows/ci.yml` is `runs-on: ubuntu-latest` and nothing else. A second matrix leg would
-turn every claim here into a measurement, which is this corpus's standing preference, and would have
-caught the permission warning the day it was written. Against: it doubles CI time for a platform the
-author does not use, and the suite would need the `HOME`-fixture work to pass there.]
+[DECISION: **no Windows leg in CI, and the honest position is "declared, not measured".** The case
+for one is real but thin: a runner would measure `tarfile` extraction, the location defaults against
+a true `%USERPROFILE%`, and the `git` subprocess tests under `autocrlf`. That is the whole list.
+Against it, three things. **It settles neither of the other two questions** — both need a real
+Claude Code session on Windows, and a GitHub runner generates no transcript, so the coupling this
+plan originally asserted between them does not exist. **The fixture work comes first and is the real
+cost**: `tests/unit/test_harvest.py:584` and `tests/unit/test_plan_store.py:76` fake the home
+directory with `monkeypatch.setenv("HOME", …)`, and Windows `expanduser` never reads `HOME` — read
+from `ntpath` source 2026-09-04, it takes `USERPROFILE`, else `HOMEDRIVE` + `HOMEPATH`. So the first
+red would be the fixture rather than a defect, and until it is fixed those tests write into the real
+profile. **And the platform has no user here.**
 
-[NEEDS CLARIFICATION: **whether `session-bash-audit` is Unix-only or Git-Bash-shaped.** A Windows
-user running Claude Code through Git Bash or WSL generates transcripts whose commands are POSIX, so
-the audit may be perfectly meaningful — while the same user in PowerShell generates commands none of
-its patterns match, and the report would read as "no problems found" rather than "wrong tool". That
-distinction decides whether the answer is a Scope note or an `unavailable` message, and it cannot be
-settled without one real transcript.]
+So the corpus does what it did with the permission check: says what it assumes instead of pretending
+to have verified it. Reopen when a real Windows user appears — which is the same event the two
+questions below wait on, so all three move together or not at all.]
 
-[NEEDS CLARIFICATION: **whether the project-slug normalisation holds.** `audit.py` maps a transcript
-directory back to a repo by replacing `/` and `.` with `-`. What Claude Code writes for a Windows
-path is unknown here; if it slugs backslashes differently, `--project` and the own-repo `cd`
-detection both silently match nothing — a zero that reads as good news.]
+**Whether `session-bash-audit` is Unix-only or Git-Bash-shaped: declared rather than decided.** It
+cannot be settled without one real transcript, so the skill's body now says so — a Git Bash or WSL
+session produces POSIX commands and the audit applies unchanged, a PowerShell one produces commands
+no pattern matches, and a suspiciously clean Windows run should be read as the second rather than
+the first.
+
+**Whether the project-slug normalisation holds: same answer, and it needed the louder warning.**
+`cd-own-repo`, `git-C-own-repo` and `--project` all compare against a slug made by replacing `/` and
+`.` with `-`, so if the harness writes Windows paths differently they match nothing and report zero
+— which reads as perfect adherence rather than as a broken comparison. That is now stated in the
+skill: a zero on those rows from a Windows transcript is unverified, not good news.
 
 ## Recommended direction
 
@@ -146,7 +155,27 @@ Smallest first, and the first one is the only urgent one:
    reads better than a fourth Scope value), the POSIX-shell premise in `session-bash-audit`'s body,
    the `ps`/`ss` steps in `session-harvest`'s sweep section, and the Windows column in
    `skill-authoring`'s destination table.
-5. Then decide the CI question, which is what converts the rest of this from reasoning into
-   measurement. **This is now the only thing left in this plan**, and it is the one the two
-   `NEEDS CLARIFICATION` items about PowerShell transcripts and the project-slug normalisation both
-   wait on: neither can be settled from this machine.
+5. ~~Then decide the CI question~~ — **decided 2026-09-04: no leg.** See the decision above; the
+   reasoning that it would convert this plan from reasoning into measurement turned out to be true
+   only of a three-item slice, and false of the two questions it was supposed to unblock.
+
+## Migrated to
+
+- `skills/skill-authoring/SKILL.md`, "Where a skill may put things" — the Windows column on the
+  destination table, the "variable everywhere, default per-platform" rule with its roaming axis, and
+  the `0700` bullet carrying the set-but-never-check reasoning. This is the corpus-level home for
+  every rule here that generalises.
+- `README.md`, the Platform paragraph — that the corpus is POSIX-written, never executed on Windows,
+  Linux-only in CI by decision, and which two skills assume more than a path.
+- `skills/session-bash-audit/SKILL.md` — the POSIX-shell premise, and the warning that a zero on
+  `cd-own-repo` / `git-C-own-repo` from a Windows transcript is unverified rather than good news.
+- `skills/session-harvest/SKILL.md` step 5 — that `ps` and `ss` are the two POSIX-assuming steps and
+  what an unavailable one means.
+- `tests/unit/test_locations.py` — the `WINDOWS`-constant seam and why `os.name` cannot be patched,
+  which is a design constraint rather than a note, so it lives in the file it constrains.
+- Code: `fitness.py` `materialize_ref` (stdlib `tarfile`), `audit.py` `state_dir` and `plans.py`
+  `config_path` (the Windows arms), `harvest.py` `processes` (`available: False`).
+
+Not migrated, deliberately: the "what is actually assumed" survey table, which described the state
+before this work and is now wrong in four of its six rows; and the `platformdirs` rejection, which
+the `skill-authoring` rule states as a conclusion without needing the argument rehearsed.

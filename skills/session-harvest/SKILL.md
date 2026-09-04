@@ -446,6 +446,16 @@ What the script cannot do is decide what a finding means. That is this list:
   old, orphaned by a one-shot command, whose gitignored `.env` answered 200. The run nearly stopped
   at "bound to loopback, safe". Both cases belong in the report side by side, so the next reader
   does not learn "check the bind address" as the whole rule.
+
+  **An orphan that comes back is a different finding, and killing it again is not the answer.**
+  Re-check the pid before reporting a kill as done: a fresh pid over the same port and directory
+  means something restarts it, so the kill closed one instance and nothing else, and a report saying
+  "killed" describes a state that no longer holds. Confirmed 2026-09-05: the same `http.server` over
+  the same repo root was killed at the user's request, and a sweep half an hour later found it back
+  under a new pid, sixteen minutes old, reparented to `systemd --user` exactly as before — orphaned
+  again rather than held by a live session, which is the check that tells the two apart. Say that
+  the kill did not hold and let the lifetime question own the fix; killing on a loop inside one
+  session is the shape this skill refuses everywhere else.
 - **Disk artifacts outside any repo.** Container images and build caches, throwaway interpreters,
   volumes — none of which `ps`, `git status` or either store can see. Report the sizes with a
   proposed removal line the user can approve; do not delete unasked, because the build cache is

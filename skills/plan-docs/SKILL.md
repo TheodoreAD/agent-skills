@@ -915,14 +915,23 @@ Code contracts and verification logs are usually the bulk of the deletable volum
    On an untagged legacy plan, grep prose instead
    (`deferred|not yet|follow-up|TODO|known
    limitation`) and read what it finds.
-3. **Find inbound references before starting, not after** — `python3 <path> refs <file>.md`. The
-   count decides whether this is one commit or several. It searches the **whole repo** (code
-   comments and docstrings cite plan paths too) plus the store, on the bare filename rather than the
-   full `plans/` path, since short-form references are the easy miss, and **including files you have
-   not committed yet** — the successor plan written during a retirement is untracked at the moment
-   `refs` runs, which is the normal shape of a retirement rather than an edge case. Confirmed
-   2026-09-02: before that, `refs` reported zero while two files written the same hour named the
-   plan.
+3. **Find inbound references before starting, not after** — `python3 <path> refs <file>.md`, which
+   also warns if the repo has **unpushed commits**. The count decides whether this is one commit or
+   several.
+
+   [PITFALL: **`landed` does not mean published, and retirement deletes the file.** `set-status`
+   gates `landed` on open tags and on nothing about whether the work reached the remote — so a plan
+   can be landed and retired while the change it explains sits in a local commit. The change is then
+   not in the product and the reason for it has been deleted. Push first, or keep the plan until you
+   have. This is reported at retirement rather than gated at `landed` on purpose: a gate would be
+   unpassable for a repo with no remote — the sensitive store is deliberately one, permanently — so
+   it would only teach people to force past it, and a repo with no upstream is therefore not warned
+   about at all.] It searches the **whole repo** (code comments and docstrings cite plan paths too)
+   plus the store, on the bare filename rather than the full `plans/` path, since short-form
+   references are the easy miss, and **including files you have not committed yet** — the successor
+   plan written during a retirement is untracked at the moment `refs` runs, which is the normal
+   shape of a retirement rather than an edge case. Confirmed 2026-09-02: before that, `refs`
+   reported zero while two files written the same hour named the plan.
 
    **Then grep for section-shaped citations, which `refs` cannot see** — `rg -n '§'` over `plans/`
    and whatever docs directories the repo has. A sentence citing "that plan's §9 decision" names no

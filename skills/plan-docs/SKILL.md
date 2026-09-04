@@ -377,7 +377,7 @@ from those, purged — and the scanner then found an employer's name in that rep
 from 2021, in four branches, because the hand-written pattern omitted one work root the derived list
 had all along.
 
-Two failure modes to handle correctly:
+Failure modes to handle correctly:
 
 - **A generic hit.** A work repo named `tools` or `settings` matches ordinary English. Put that one
   name in the config's `[private] ignore` list — never widen `public_roots`, which silences a whole
@@ -391,6 +391,12 @@ Two failure modes to handle correctly:
   not remove anything from a published repo; purging history means a force-push and a support
   request, and it is the user's call, not an edit to make quietly. Report it, name the commits,
   stop.
+- **A path the scan could not read.** `--mode tree` enumerates with `git ls-files`, and a nested
+  checkout — a linked worktree under `.claude/worktrees/`, a submodule — comes back as one directory
+  entry rather than as its files. Those paths are listed under the hit count and are **not** covered
+  by it; each is a repository of its own, scanned by pointing `--path` at it. `--mode staged` and
+  `--mode history` read git's own output and are unaffected, which is the reason the pre-commit rule
+  above calls staged rather than tree.
 
 Confirmed live 2026-08-28: this repo had already published a plan whose measurement table listed six
 employer/client root directory names, plus one client's internal `<project>/<repo>` path — written

@@ -6,9 +6,9 @@ description: "Use when working in one of the *-polite-mcp personal automation re
 # Polite-MCP family: agent collaboration conventions
 
 Behavioral conventions for this user's personal shopping/classifieds automation family — distinct
-from `mcp-skill-shipping` (dev-loop/distribution mechanics for the same repos) and from
-`~/AGENTS.md` (truly universal conventions). These are specific to the domain: automation against a
-user's own live, logged-in personal accounts.
+from `mcp-skill-shipping` (dev-loop/distribution mechanics for the same repos) and from whatever
+always-loaded instructions file the machine carries, which holds the truly universal conventions.
+These are specific to the domain: automation against a user's own live, logged-in personal accounts.
 
 ## Confirm before the first live mutating action
 

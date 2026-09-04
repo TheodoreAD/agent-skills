@@ -265,7 +265,8 @@ resolved before it runs is a script that does not work for whoever installed the
 1. **Stdlib only.** `python3 <skill>/scripts/foo.py` works on any machine with Python, with zero
    declaration and zero resolution. Two real tools in this repo are built this way —
    `plan-docs/scripts/plans.py` and `session-bash-audit/scripts/audit.py`, the latter parsing every
-   `~/.claude/projects/*.jsonl` on `argparse`/`json`/`re`/`dataclasses`/`pathlib` alone. Simple YAML
+   `~/.claude/projects/*.jsonl` — Claude Code's own transcript store, so that one reads nothing on
+   another harness — on `argparse`/`json`/`re`/`dataclasses`/`pathlib` alone. Simple YAML
    frontmatter does not justify PyYAML.
 2. **PEP 723 + `uv run`** if a dependency becomes genuinely necessary — a `# /// script` TOML block
    inline in the file, which keeps it single-file and portable. This is the documented convention

@@ -822,7 +822,7 @@ without. Omit it for the ordinary single-repo case.
 happened in another:
 
 ```yaml
-source_repo: repo-tasks # filled in for you, from where the session was
+source_repo: <the repo you were in> # filled in for you, from where the session was
 source_session: 8f3c….jsonl # the harness's transcript for that session
 source_moment: 2026-08-22T16:50:15Z # plus a distinctive quoted phrase in the body
 ```

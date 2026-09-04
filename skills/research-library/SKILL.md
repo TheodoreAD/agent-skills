@@ -103,8 +103,8 @@ permission is stripped from the manifest.
 ## Judging a candidate dependency
 
 Picking a library is the same activity as the rule above, one step earlier: the question is what the
-source says, not what the summary claims. `~/AGENTS.md` says to judge a package from its own PyPI
-file list rather than a search summary; this is what to look at once you are there.
+source says, not what the summary claims. **Judge a package from its own PyPI file list rather than
+from a search summary** — this is what to look at once you are there.
 
 **Judge each candidate against an absolute bar, on its own, before any head-to-head.** Popularity is
 a weak signal past a threshold and is never a tiebreaker — a less popular project that clears the

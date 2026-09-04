@@ -17,10 +17,10 @@ servers are in `mcp-python-conventions`. The split was measured before it was ma
 checked against real requests to confirm each wins its own and none steals from the others.
 
 **This is design guidance, not tool config.** Nothing here tells you which type checker or linter to
-install or how to configure it — that's `power-user-linux-setup`'s `contributing/quality-tooling.md`
-(basedpyright, ruff, shellcheck/shfmt, dprint, pytest config mechanics), with `repo-tasks`'
-`contributing/type-checking.md` for the tuned basedpyright profile. This skill is what to reference
-_while writing code_; those are what a repo's tooling enforces _once, at setup_.
+install, or how to configure one — that belongs to whatever your repo uses to enforce its own
+standards (basedpyright, ruff, shellcheck/shfmt, dprint and pytest config, in this author's case).
+This skill is what to reference _while writing code_; tooling config is what a repo enforces _once,
+at setup_.
 
 **Each topic below states whether it's overriding your own default instinct or just confirming
 one.** A capable model already gets a lot of this right without being told — early returns, EAFP for

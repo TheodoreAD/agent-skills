@@ -15,8 +15,8 @@ Not about shipping. Entry points, `uv tool install`, `claude mcp add` and scope 
 
 ## MCP-stdio logging discipline
 
-_Scope: stdio-transport MCP servers only (the `*-polite-mcp` family) — not applicable to
-`power-user-linux-setup` itself, which has no MCP server._
+_Scope: stdio-transport MCP servers only (the `*-polite-mcp` family) — not applicable to a repo that
+has no MCP server of its own._
 
 - Snippet: [`references/snippets/mcp-tool-boundary.py`](references/snippets/mcp-tool-boundary.py)
 - Default: never a bare `print()` in server package code. Route all logging through the stdlib

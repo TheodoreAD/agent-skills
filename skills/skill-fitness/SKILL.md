@@ -69,7 +69,7 @@ disagree: measured on one machine 2026-09-03, with a clean working tree and noth
 happening, the checkout, `origin` and the install differed from each other.
 
 ```text
-corpus: working tree — ~/projects/agent-skills/skills
+corpus: working tree — <your checkout>/skills
 corpus: installed — ~/.agents/skills
         deployed copies — not yours to edit; a fix belongs to the skill's author
 corpus: git ref — origin/main @ 66d73b6, fetched 3h ago

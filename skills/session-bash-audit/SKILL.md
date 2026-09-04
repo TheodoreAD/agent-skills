@@ -33,6 +33,25 @@ and what the harness writes for a Windows path has never been seen here. If it t
 differently, both tags and `--project` match nothing and report zero, which reads as perfect
 adherence. A zero on those two rows from a Windows transcript is unverified, not good news.
 
+**The same two rows go quietly wrong for a session run from a git worktree, on any platform, and
+that is the harder one because nothing about the transcript looks unusual.** Both tags compare the
+command's target against the project slug by **exact equality**, and a worktree session's slug is
+the worktree's path, not the repository's. So a `git -C <the main checkout>` call — the single most
+likely own-repo shape from a worktree, since the main checkout is where the branch is merged and
+where a sibling worktree's tooling still points — slugs to something else and is tagged nothing at
+all; the `cd` equivalent is tagged `cd-other`, which is the name for the recommended _cross-repo_
+form. The rule goes unmeasured for exactly the sessions most likely to break it, and reports zero.
+
+This is a **declared limitation, not a fix**, because the data cannot support one: the script reads
+transcripts offline, long after the directory may be gone, so it cannot ask git which checkout a
+slug was. The only signal is the slug's own shape, and it exists for one layout out of several —
+Claude Code's `<repo>/.claude/worktrees/<name>` leaves a `--claude-worktrees-` segment (derived from
+the `/`-and-`.`-to-`-` rule, not observed: none of the 211 project directories on this author's
+machine is a worktree), while VS Code's default `<repo>.worktrees/<name>` and the flat
+`<repo>-<branch>` beside a checkout are indistinguishable from an ordinary repo name. Half a fix
+across one layout would make the other layouts read as verified. Treat a zero on those two rows as
+unverified whenever the session may have run from a worktree, the same as for Windows.
+
 ## Four procedures — the skill runs them, the user only reads results
 
 Which one applies:

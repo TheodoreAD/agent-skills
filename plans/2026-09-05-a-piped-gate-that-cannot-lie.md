@@ -72,8 +72,9 @@ interactive shell (22 lines), which only adds options; nothing unsets. `PIPE_FAI
 today. A `setopt PIPE_FAIL` in `~/.zshenv`, guarded on the harness's own marker (`CLAUDECODE=1` is
 exported into every call), reaches every Bash call and no human shell.
 
-**Probed under `setopt PIPE_FAIL`, same machine, same day** (`pipefail-probe.zsh` in the session
-scratchpad; the shapes are the ones the dump shows agents typing):
+**Probed under `setopt PIPE_FAIL`, same machine, same day.** The probe is the table's first column
+run one line at a time in a `zsh` that has `setopt PIPE_FAIL`, each followed by `echo $?`; the
+shapes are the ones the dump shows agents typing:
 
 | pipeline                                      | exit under pipefail | today         |
 | --------------------------------------------- | ------------------- | ------------- |

@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-04
+status: landed
+updated: 2026-09-05
 source_repo: github.com-personal/ingesta
 source_session: c83364a4-8f1d-42f2-bb27-aba9b6feb970.jsonl
 source_moment: 2026-09-04T15:07:41+03:00
@@ -46,23 +46,19 @@ flag most" looks like once it has happened twice rather than once.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **Whether the fix is the script's or the wording's.** Two shapes, and they are
-not equivalent:
-
-- **The wording.** Say in the block that `transcript` prints an id to pass to every later call, and
-  show `--session <id>` on the three lines that need it. Cheapest, honest, and leaves the reader
-  doing the copying — which is fine, since they are reading the id off the previous output anyway.
-- **The script.** Have `transcript` write the resolved path to a small state file that later
-  subcommands read when no `--session`/`--expect` is given. Removes the re-type, and adds a piece of
-  cross-invocation state to a tool whose every subcommand is currently pure — including the failure
-  mode where a stale state file silently answers for a different session, which is the exact hazard
-  the background-job pitfall was written about.
-
-The skill's own rule says a correction a script can simply not make belongs in the script. That
-argues for the second and the hazard argues against it, which is why this is a question rather than
-a recommendation.]
+[DECISION: **the script's, and by a third shape neither option above had seen: the harness already
+tells every Bash call which session it is.** Landed 2026-09-05 after a third harvest hit the block
+identically (`4e6fc3cc`, this repo). Claude Code exports `CLAUDE_CODE_SESSION_ID` into every call,
+and it is the transcript's own filename stem — so `resolve_transcript` reads it after the job check
+and before `--expect`, and the bare `turns`/`sweep`/`claims` lines resolve with no state file and
+nothing typed. It beat the wording fix because the re-type was never necessary, and it beat the
+state file because it adds no cross-invocation state at all: the environment is per-call and
+per-session by construction, and a background job's `state.json` still wins, since a job's
+environment names the parent. `--session` stays for a harness that exports no id.
+`tests/unit/test_harvest.py::test_the_harness_session_id_resolves_a_bare_call` pins both the
+resolution and the precedence.]
 
 ## Recommended direction
 
-Whichever shape wins, the block at the top of the file is the artefact to fix — a reader who runs it
-verbatim is doing what the skill asked.
+Landed: `harvest.py` resolves from the environment, its docstring and the `SKILL.md` block say so,
+and the block now runs as written in Claude Code.

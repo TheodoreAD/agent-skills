@@ -441,9 +441,17 @@ What the script cannot do is decide what a finding means. That is this list:
   ```
 
   The baseline is one **you** saved with that skill's `--save-baseline`, which writes to
-  `~/.local/state/session-bash-audit/` by default; skip this step if you have never saved one, since
-  comparing against a baseline measured on somebody else's machine reports how your session differs
-  from their setup rather than from your rules.
+  `~/.local/state/session-bash-audit/` by default. **Without one, run the audit anyway and drop
+  `--compare`** — the rates and `exit-masked` stand on their own, and only the comparison needs a
+  baseline. Never compare against a baseline measured on somebody else's machine: that reports how
+  your session differs from their setup rather than from your rules.
+
+  [PITFALL: the first wording of this said "skip this step", which reads as skip the **audit** — and
+  the step is the audit. Filed by a session that took the narrow reading on 2026-09-04, ran it
+  anyway, and got its most useful number that way: **23% `exit-masked` across 189 calls**, with five
+  messages telling the user a gate was green, every one from a `| tail`-ed run. All five held on
+  re-run, which is what makes the wording easy to dismiss — the session could not have known that
+  without running the audit the skip would have cancelled.]
 
   **Get `<session-id>` from the transcript the script resolved**, not from a path you happen to have
   — in a background job the id in the task-output path names a different transcript, the audit runs

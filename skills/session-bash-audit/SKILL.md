@@ -26,6 +26,13 @@ match, and the report then reads as "no problems found" when it means "wrong too
 transcript". Until someone runs it against a real PowerShell transcript, read a suspiciously clean
 run on Windows as the second, not the first.
 
+**One number would go quietly wrong there rather than loudly**, and it is worth knowing before
+trusting a Windows run: `cd-own-repo` and `git-C-own-repo` decide "own repo" by slugging the
+command's target the way Claude Code slugs a project directory — replacing `/` and `.` with `-` —
+and what the harness writes for a Windows path has never been seen here. If it treats backslashes
+differently, both tags and `--project` match nothing and report zero, which reads as perfect
+adherence. A zero on those two rows from a Windows transcript is unverified, not good news.
+
 ## Four procedures — the skill runs them, the user only reads results
 
 Which one applies:

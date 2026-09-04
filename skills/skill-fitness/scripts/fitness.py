@@ -29,12 +29,14 @@ from __future__ import annotations
 
 import argparse
 import ast
+import io
 import json
 import os
 import re
 import shlex
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import warnings
@@ -1245,7 +1247,16 @@ def materialize_ref(ref: str, cwd: Path, into: Path) -> tuple[Path, str]:
     )
     if archive.returncode != 0:
         raise SystemExit(f"git archive {ref} skills failed: {archive.stderr.decode(errors='replace').strip()}")
-    subprocess.run(["tar", "-x", "-C", str(into)], input=archive.stdout, check=True)
+    # stdlib `tarfile` rather than shelling out to `tar`: git ships on every machine that could have
+    # a ref to read, `tar.exe` does not, and an external binary is an assumption on every platform
+    # rather than one. `data` is 3.14's default filter and refuses absolute paths and traversal;
+    # `git archive` emits neither, but the check is free. hasattr because the argument only exists
+    # from 3.11.4, and these scripts run under whatever bare `python3` the reader has.
+    with tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r|") as unpacked:
+        if hasattr(tarfile, "data_filter"):
+            unpacked.extractall(into, filter="data")
+        else:
+            unpacked.extractall(into)
     return into / "skills", f"{ref} @ {sha}, {_fetch_age(cwd)}"
 
 

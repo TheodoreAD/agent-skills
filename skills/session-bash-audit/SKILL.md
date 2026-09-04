@@ -109,11 +109,12 @@ change, save a new baseline for the next comparison — `--save-baseline --note 
 and keep the old file; the deltas are the point.
 
 **A baseline you save goes to `$XDG_STATE_HOME/session-bash-audit/`** (`~/.local/state/…` by
-default), which is what a bare `--save-baseline` now writes. Until 2026-09-03 this line named
-`$S/references/baselines/…` instead — **inside the installed skill**, which is the artefact a
-re-install replaces and which this corpus elsewhere calls drift to edit. The one piece of genuinely
-per-machine state the skill asks you to keep was being kept in the one place designed to be
-overwritten. Pass an explicit path if you want it somewhere else; anywhere but the install is fine.
+default, `%LOCALAPPDATA%\session-bash-audit\` on Windows), which is what a bare `--save-baseline`
+now writes. Until 2026-09-03 this line named `$S/references/baselines/…` instead — **inside the
+installed skill**, which is the artefact a re-install replaces and which this corpus elsewhere calls
+drift to edit. The one piece of genuinely per-machine state the skill asks you to keep was being
+kept in the one place designed to be overwritten. Pass an explicit path if you want it somewhere
+else; anywhere but the install is fine.
 
 **Probe** — live permission behaviour, which no transcript can show:
 

@@ -322,14 +322,22 @@ failure.
 
 Six destinations, each with one meaning, keyed by the **skill's own `name`**:
 
-| destination                                   | what belongs there                                   |
-| --------------------------------------------- | ---------------------------------------------------- |
-| `$HOME/<name>`                                | the user's own material: browsable, often a git repo |
-| `$XDG_CONFIG_HOME` → `~/.config/<skill>/`     | configuration a human edits                          |
-| `$XDG_STATE_HOME` → `~/.local/state/<skill>/` | history, stats, baselines, last-run records          |
-| `$XDG_DATA_HOME` → `~/.local/share/<skill>/`  | data the tool needs and cannot regenerate            |
-| `$XDG_CACHE_HOME` → `~/.cache/<skill>/`       | regenerable, safe to delete at any moment            |
-| `tempfile.mkdtemp()`                          | transient work — never a fixed `/tmp/<name>`         |
+| destination                                   | what belongs there                                   | Windows default                      |
+| --------------------------------------------- | ---------------------------------------------------- | ------------------------------------ |
+| `$HOME/<name>`                                | the user's own material: browsable, often a git repo | `%USERPROFILE%\<name>`               |
+| `$XDG_CONFIG_HOME` → `~/.config/<skill>/`     | configuration a human edits                          | `%APPDATA%\<skill>\`                 |
+| `$XDG_STATE_HOME` → `~/.local/state/<skill>/` | history, stats, baselines, last-run records          | `%LOCALAPPDATA%\<skill>\`            |
+| `$XDG_DATA_HOME` → `~/.local/share/<skill>/`  | data the tool needs and cannot regenerate            | `%LOCALAPPDATA%\<skill>\`            |
+| `$XDG_CACHE_HOME` → `~/.cache/<skill>/`       | regenerable, safe to delete at any moment            | `%LOCALAPPDATA%\<skill>\Cache\`      |
+| `tempfile.mkdtemp()`                          | transient work — never a fixed `/tmp/<name>`         | the same call — never a literal path |
+
+**The variable is honoured everywhere; only the default is per-platform.** A reader who exports
+`$XDG_STATE_HOME` on Windows means it, so the environment lookup comes first and the
+`os.name == "nt"` arm decides only what to do when nothing is set. Roaming is the axis that splits
+the two Windows bases: config is the half a user would want on their other machine, state and cache
+are records of _this_ one. Three lines per script, duplicated — `platformdirs` is the right library
+and cannot be taken, because these scripts run under a bare `python3` with nothing installed and a
+`--global` skill install runs no install step at all.
 
 The axis is **the user's material or the tool's bookkeeping**. Material a human opens, greps and
 version-controls belongs in a visible `$HOME` directory — XDG's base directories are for what an

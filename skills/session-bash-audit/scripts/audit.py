@@ -30,6 +30,11 @@ from pathlib import Path
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
+# A module constant rather than an `os.name` test inside the function, so a test can pin the platform
+# without patching `os` itself: `os.name` is what `pathlib` reads to decide whether `Path()` is a
+# PosixPath or a WindowsPath, and patching it globally makes every path in the process unusable.
+WINDOWS = os.name == "nt"
+
 
 def state_dir(skill: str = "session-bash-audit") -> Path:
     """Where this skill keeps a baseline it wrote — `$XDG_STATE_HOME/<skill>/`.
@@ -47,9 +52,20 @@ def state_dir(skill: str = "session-bash-audit") -> Path:
     Deliberately not a new environment variable: `$XDG_STATE_HOME` is one the user already controls,
     so using it *removes* a setting rather than adding one. Ten lines duplicated per skill rather
     than imported, because skills install individually and one cannot import another.
+
+    `$XDG_STATE_HOME` wins on every platform, including Windows: a user who sets it means it. Only
+    the *default* is per-platform, and on Windows it is `%LOCALAPPDATA%` — state is a record of what
+    happened on this machine, so it is the half that must not roam. Copying three lines here is the
+    same trade as the duplication above; `platformdirs` is the right library and cannot be taken,
+    because these scripts run under a bare `python3` with nothing installed.
     """
     base = os.environ.get("XDG_STATE_HOME")
-    return (Path(base).expanduser() if base else Path.home() / ".local" / "state") / skill
+    if base:
+        return Path(base).expanduser() / skill
+    if WINDOWS:
+        local = os.environ.get("LOCALAPPDATA")
+        return (Path(local) if local else Path.home() / "AppData" / "Local") / skill
+    return Path.home() / ".local" / "state" / skill
 
 
 HEREDOC_RE = re.compile(r"<<-?\s*['\"]?[A-Za-z_]+['\"]?")

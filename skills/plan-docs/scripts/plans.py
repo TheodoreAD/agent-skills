@@ -4,7 +4,8 @@
 `plan-docs` assumes a plan can be committed to the repo it describes. That holds for repos you own
 and fails for employer and client repos, which is what the store is for: each repo's path mirrored
 under `$PLANS_HOME`, outside every working tree. Which of the two a given repo uses is configuration,
-never a guess — `~/.config/plan-docs/config.toml`, written by `plans.py config init`.
+never a guess — `~/.config/plan-docs/config.toml` (`%APPDATA%/plan-docs/config.toml` on Windows),
+written by `plans.py config init`.
 
 On a contractor device the store is two git repositories, split by how sensitive their contents are;
 on a work device it is one, treated as sensitive (`device` in the config). The shareable tier
@@ -148,6 +149,11 @@ TERMINAL_STATUSES = ("landed", "abandoned", "superseded")
 # as of 2026-09-04 — there is no other human for it to protect against anyway. A free default is
 # worth keeping; a warning nobody can act on is not.
 STORE_MODE = 0o700
+
+# A module constant rather than an `os.name` test inside `config_path`, so a test can pin the
+# platform without patching `os` itself: `os.name` is what `pathlib` reads to decide whether `Path()`
+# is a PosixPath or a WindowsPath, and patching it globally makes every path in the process unusable.
+WINDOWS = os.name == "nt"
 
 # Step 4 of the retirement procedure. `archive` matches it a line at a time; `read_plan` searches a
 # whole file for it, because its presence is what tells a stalled retirement — the expensive half
@@ -462,11 +468,24 @@ class Config:
 
 
 def config_path() -> Path:
+    """Explicit variable, then `$XDG_CONFIG_HOME`, then the platform default.
+
+    `$XDG_CONFIG_HOME` is honoured on every platform — a user who sets it means it, and only the
+    default below is per-platform. On Windows that default is `%APPDATA%`, the roaming half: this
+    file is configuration a human edits and would want on their other machine, unlike a baseline or
+    a cache. `~/.config` on Windows would be a directory nothing else on the machine looks in.
+    """
     override = os.environ.get("PLAN_DOCS_CONFIG")
     if override:
         return Path(override).expanduser()
     xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg).expanduser() if xdg else Path.home() / ".config"
+    if xdg:
+        base = Path(xdg).expanduser()
+    elif WINDOWS:
+        roaming = os.environ.get("APPDATA")
+        base = Path(roaming) if roaming else Path.home() / "AppData" / "Roaming"
+    else:
+        base = Path.home() / ".config"
     return base / "plan-docs" / "config.toml"
 
 

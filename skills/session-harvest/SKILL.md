@@ -32,10 +32,19 @@ H=~/.agents/skills/session-harvest/scripts/harvest.py   # or <checkout>/skills/s
 python3 $H boundary                                     # step 0, first command of the run
 python3 $H transcript --expect '<a command this session ran>'
 python3 $H turns                                        # step 4
-python3 $H skills-state --since <session start>         # step 0
+python3 $H skills-state --since <session start>         # step 0 — needs a checkout, see below
 python3 $H sweep --boundary <instant>                   # step 5
 python3 $H claims --until <instant>                     # step 5, the exit-masked rule
 ```
+
+**`skills-state` is the one subcommand `$H` from the install cannot answer**, because it compares
+the install _against a checkout_ and an installed copy has no repo above it: run from there it exits
+1 with `no skills checkout found — pass --checkout <path>`. That is the correct answer and it reads
+like a broken install, which is the wrong impression to form during the step about install state.
+Point it at the checkout — the checkout's own copy of this script, or `--checkout <path>` — and if
+you have no checkout at all, say the comparison was unavailable rather than that nothing had moved.
+Confirmed 2026-09-04 by a harvest that ran the block above verbatim and got the error on its first
+step-0 command. Every other subcommand works from either copy; `sweep` degrades quietly by design.
 
 Every subcommand is read-only and takes `--json`. Two things are deliberately **not** in it: the
 gate re-run (that is the repo's own command, and hard-coding one would be wrong in every repo that

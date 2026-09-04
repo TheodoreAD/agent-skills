@@ -76,7 +76,8 @@ Do not treat a rename as a string substitution:
 - **Check headings.** A task name in a Markdown heading changes that page's anchor, and a strict
   docs build fails on the dangling link. Grep for inbound `<page>.md#` links before editing.
 - **Deployed copies need redeploying.** If a renamed task is cited in a file that gets installed
-  somewhere (`~/AGENTS.md`, `~/.agents/skills/*`), editing the repo source is half the change.
+  somewhere — your always-loaded instructions file, an installed skill — editing the repo source is
+  half the change.
 
 Rename outright rather than keeping the old name alive via `@task(aliases=[...])`. An alias
 permanently doubles the CLI surface and gives every task a second name in every future search; the

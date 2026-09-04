@@ -12,10 +12,12 @@ belongs. The first run (2026-08-24, 3,956 calls over four days) is written up in
 sections before interpreting a new run; most of the reasoning transfers and doesn't need
 re-deriving.
 
-Reads `~/.claude/projects/*.jsonl`, Claude Code's own transcript store, so it works on any machine
-running Claude Code and needs nothing installed. The measured numbers and baselines shipped here are
-one author's machine under one set of rules — treat them as a reference point to compare against,
-not as your own baseline; save your own on the first run.
+Reads `~/.claude/` — the transcript store at `~/.claude/projects/*.jsonl` and, for the permission
+replay, `~/.claude/settings.json`. Both are Claude Code's own, read-only and never written, so this
+works on any machine running Claude Code and needs nothing installed. On any other harness there is
+nothing to read and the script says so rather than reporting zeros. The measured numbers and
+baselines shipped here are one author's machine under one set of rules — treat them as a reference
+point to compare against, not as your own baseline; save your own on the first run.
 
 ## Four procedures — the skill runs them, the user only reads results
 
@@ -36,7 +38,7 @@ The first three use `scripts/audit.py`, the fourth `scripts/prompts.py`;
 
 ```shell
 python3 $S/scripts/audit.py --days 4 --samples 5
-python3 $S/scripts/audit.py --days 7 --project repo-tasks --json "$CLAUDE_JOB_DIR/tmp/calls.json"
+python3 $S/scripts/audit.py --days 7 --project <repo> --json <scratch-dir>/calls.json
 ```
 
 Read-only, stdlib only, ~10 s for a week of transcripts. `--samples 0` for just the tables. The
@@ -122,16 +124,17 @@ python3 $S/scripts/audit.py --probe
 Prints six commands with the outcome each should have (prompt / no prompt) under `acceptEdits` with
 this machine's rules. Run each as its **own Bash tool call** — running them from a script would
 bypass the harness's permission check, which is the thing being tested — with `<scratch>` =
-`$CLAUDE_JOB_DIR/tmp` or the session scratchpad. The agent cannot observe prompts: after the run,
-list which steps were expected to prompt and ask the user whether that matched what they saw. A
-mismatch is a real finding (a rule shadowing a mode grant, a prefix rule not matching) — record it
-in `references/research.md` "Harness facts" with the date, and route the fix.
+`$CLAUDE_JOB_DIR/tmp` if your harness sets one, or any scratch directory outside the repo. The agent
+cannot observe prompts: after the run, list which steps were expected to prompt and ask the user
+whether that matched what they saw. A mismatch is a real finding (a rule shadowing a mode grant, a
+prefix rule not matching) — record it in `references/research.md` "Harness facts" with the date, and
+route the fix.
 
 **Prompts** — which calls prompted, and why, when the user reports "too many confirmations":
 
 ```shell
 python3 $S/scripts/prompts.py --days 2
-python3 $S/scripts/prompts.py --since 2026-08-24T19:13:00Z --project repo-tasks
+python3 $S/scripts/prompts.py --since 2026-08-24T19:13:00Z --project <repo>
 ```
 
 An approved prompt leaves no trace in a transcript, so this replays the harness's matching (split on

@@ -112,6 +112,15 @@ The store mirrors each repo's path at whatever depth it sits, so a `<root>/<proj
 gets `<store>/<root>/<project>/<repo>` — no slug, no collision between two clients' `api`. The path
 is computed from the repo root, not from the working directory.
 
+**From a git worktree the mirror is the repository's, not that checkout's** — every worktree of a
+repo shares one mirror and one `absorb` queue, so a plan written on a feature branch is visible from
+main. A `repo`-routed plan is deliberately **not** redirected: that file travels with the branch it
+was committed on, which is already the right answer, so it stays in the worktree's own `plans/`.
+`where` prints a `worktree:` line when it applies, because `rel` then names a directory you are not
+standing in and unexplained that reads as a bug. Before this, both directions lost plans in silence:
+one written from a worktree landed where the main checkout never looks, and one filed _for_ the repo
+landed where the worktree never looks.
+
 ### First: which kind of machine is this?
 
 `device` in the config, and it decides whether the store splits at all:
@@ -305,6 +314,13 @@ beneath it.
   while `where` refuses it. Plan in the repo at its real path.
 - **A bare repository is neither a repo nor a collection**, and is reported as such rather than
   walked into.
+- **A linked worktree is not a second repo.** It is enrolled nowhere and `doctor` names the checkout
+  it belongs to. Without that, one repo was listed as three, routed to three separate store mirrors,
+  and its **branch name** entered the private term list — and branch names are ordinary words
+  (`feat`, `main`, `docs`), which is how a scan becomes noisy enough to switch off. Both sibling
+  layouts do this: VS Code's default `<repo>.worktrees/<name>` and the flat `<repo>-<branch>`. A
+  submodule looks the same from outside — both put a `.git` _file_ where a checkout has a directory
+  — and stays a repo, because only a worktree's names `worktrees` in it.
 - A directory holding no repos is simply ignored — `doctor` counts them and `--strict` lists them.
 - **A repo cloned straight into `projects_root` is routed with `[repos]`, never `[roots]`.** A
   `[roots]` key is a path _prefix_, and a repo at depth 1 has no prefix, so an entry naming it is

@@ -1075,14 +1075,48 @@ def looks_bare(path: Path) -> bool:
     return all((path / name).exists() for name in ("HEAD", "objects", "refs"))
 
 
+def linked_worktree_of(path: Path) -> Path | None:
+    """The repository this directory is a linked worktree of, or None if it is not one.
+
+    In a linked worktree `.git` is a plain **file** whose whole content is
+    `gitdir: <repo>/.git/worktrees/<name>`, so the question is answered by one small read at the
+    path the walk already stats — no `git worktree list` subprocess per candidate. Measured
+    2026-09-04 across all three layouts in the wild: VS Code's default `<repo>.worktrees/<name>`,
+    the flat `<repo>-<branch>` beside the checkout, and Claude Code's nested `.claude/worktrees/`.
+
+    A submodule puts a `.git` file there too — `gitdir: ../../.git/modules/<path>`, relative where a
+    worktree's is absolute — and is a repository in its own right, so the `worktrees` segment is
+    what decides rather than the file's mere existence.
+    """
+    marker = path / ".git"
+    if not marker.is_file():  # a directory (the main checkout), or absent
+        return None
+    try:
+        content = marker.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not content.startswith("gitdir:"):
+        return None
+    gitdir = Path(content.removeprefix("gitdir:").strip())
+    if not gitdir.is_absolute():
+        gitdir = (path / gitdir).resolve()
+    if gitdir.parent.name != "worktrees":
+        return None  # a submodule's `.git/modules/<path>`, or something else entirely
+    common = gitdir.parent.parent  # the git directory: `<repo>/.git`, or a bare repo
+    return common.parent if common.name == ".git" else common
+
+
 def is_repository(path: Path) -> bool:
     """Whether a directory is itself a repository rather than a directory holding them.
 
     Ordinary or bare. Same shape test the walk uses, so "collection" means the same thing to
     discovery and to the confidentiality derivation — they disagreed at depth 1, which is what let a
     repo's own name be split as though it were an organisation.
+
+    A linked worktree is not one. It is a second working tree of a repo already enrolled under its
+    own path, and counting it again is what made one repo read as three.
     """
-    return (path / ".git").exists() or looks_bare(path)
+    return ((path / ".git").exists() and linked_worktree_of(path) is None) or looks_bare(path)
 
 
 class ProjectsWalk(NamedTuple):
@@ -1152,7 +1186,11 @@ class _Walk:
     def hides_a_repo(self, path: Path) -> bool:
         """Whether anything one level below the depth limit is a repo. One listing, no recursion."""
         try:
-            return any((child / ".git").exists() for child in path.iterdir() if child.is_dir())
+            return any(
+                (child / ".git").exists() and linked_worktree_of(child) is None
+                for child in path.iterdir()
+                if child.is_dir()
+            )
         except OSError:
             return False
 
@@ -1172,6 +1210,14 @@ class _Walk:
     def visit(self, path: Path, depth: int) -> bool:
         """Returns whether any repo was found at or beneath this path."""
         if (path / ".git").exists():
+            main = linked_worktree_of(path)
+            if main is not None:
+                # Noted rather than silently dropped, on the symlink precedent above: a directory
+                # that looks enrollable and deliberately is not needs to say so, or the next reader
+                # files it as a discovery bug. Enrolling it instead gave one repo three rows, three
+                # store mirrors and put its branch name in the private term list.
+                self.note(path, "worktree", f"a linked worktree of {main}; plan in that checkout instead")
+                return False
             self.found.append(path.relative_to(self.cfg.projects_root).as_posix())
             return True
         children = self.children_of(path, depth)

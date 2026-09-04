@@ -1061,6 +1061,69 @@ def test_a_bare_repo_is_neither_a_repo_nor_a_collection(ws):
     assert any(p.kind == "bare repo" and p.where == "mirror.git" for p in problems)
 
 
+def worktree(repo: Path, branch: str, where: Path) -> Path:
+    subprocess.run(["git", "worktree", "add", "-q", "-b", branch, str(where)], cwd=repo, check=True)
+    return where
+
+
+@pytest.mark.parametrize(
+    ("shape", "relative_path"),
+    [
+        # VS Code's built-in worktree support creates this one by DEFAULT, with no setting to
+        # change it (microsoft/vscode#293884 still open) — so it arrives without anyone choosing it.
+        ("vscode grouped sibling", "agent-skills.worktrees/feat"),
+        # What a human types, and what the best-practice guides recommend.
+        ("flat sibling", "agent-skills-hotfix"),
+    ],
+)
+def test_a_linked_worktree_is_not_enrolled_as_a_second_repo(ws, shape, relative_path):
+    """A worktree is a second working tree of a repo already enrolled under its own path.
+
+    Measured 2026-09-04 before the fix: one repo was listed as three, routed to three separate store
+    mirrors, and put its BRANCH name into the confidentiality term list — and branch names are
+    ordinary words (feat, main, docs, test), which is how a scan gets noisy enough to be switched
+    off. Both sibling shapes are covered because they are produced by different tools; the nested
+    `.claude/worktrees/` one escapes the walk anyway, on the dotted-directory rule.
+    """
+    write_config(ws, 'default = "store"\npublic_roots = []\n')
+    worktree(ws.personal, "feat", ws.projects / "github.com-personal" / relative_path)
+
+    repos, problems = plans.walk_projects(plans.load_config())
+    assert repos == ["client.com-bitbucket/team/api", "github.com-personal/agent-skills"], shape
+    assert any(p.kind == "worktree" for p in problems), shape
+    assert "feat" not in plans.Workspace(ws.personal).private_terms, shape
+
+
+def test_a_submodule_is_still_a_repo_though_its_git_is_a_file_too(ws):
+    """The `.git`-is-a-file test alone would drop submodules, which are repos in their own right.
+    Measured 2026-09-04: a worktree's file says `.git/worktrees/<name>`, a submodule's says
+    `.git/modules/<path>` — and relative, where the worktree's was absolute."""
+    write_config(ws, 'default = "store"\n')
+    commit(ws.personal, "notes.md", "x\n")
+    donor = make_repo(ws.projects / "github.com-personal" / "donor")
+    commit(donor, "s.md", "s\n")
+    subprocess.run(
+        ["git", "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(donor), "vendor/sub"],
+        cwd=ws.personal,
+        check=True,
+        capture_output=True,
+    )
+    assert (ws.personal / "vendor" / "sub" / ".git").is_file()  # the shape that must not be misread
+
+    assert plans.linked_worktree_of(ws.personal / "vendor" / "sub") is None
+    assert plans.is_repository(ws.personal / "vendor" / "sub")
+
+
+def test_linked_worktree_of_names_the_checkout_it_belongs_to(ws):
+    """`doctor` reports the worktree by naming where to plan instead, so the path has to be right."""
+    write_config(ws, 'default = "store"\n')
+    commit(ws.personal, "notes.md", "x\n")
+    tree = worktree(ws.personal, "feat", ws.projects / "github.com-personal" / "agent-skills.worktrees" / "feat")
+
+    assert plans.linked_worktree_of(tree) == ws.personal
+    assert plans.linked_worktree_of(ws.personal) is None  # the main checkout is not a worktree
+
+
 def test_the_depth_limit_is_reported_only_when_it_actually_hides_a_repo(ws):
     """Every ordinary src/ and docs/ sits at the limit too; reporting all of them buried the real
     findings on this author's machine."""

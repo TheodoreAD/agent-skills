@@ -211,15 +211,29 @@ Cheapest first, and the first two are worth doing whatever the open questions se
    `report_unread`, with the second scan to run. Exit status is still hits alone — an unread path is
    a scan to run, not a leak to redact. `tests/unit/test_plan_store.py` covers both halves against a
    real `git worktree add`, and `plan-docs`'s SKILL.md carries it as a fourth failure mode.
-3. **Teach `walk_projects` that a linked worktree is not a repo.** Promoted above the identity
-   question because it needs no decision from it and is the biggest measured damage: `.git` as a
-   file whose `gitdir:` names `…/.git/worktrees/…` is the whole test, no subprocess, at the one
-   `(path / ".git").exists()` call the walk already makes. Fixes `repos` counting one repo as three
-   and keeps branch names out of the private term list. Guard the submodule case
-   (`…/.git/modules/…`), which is `.git`-as-a-file too.
+3. ~~**Teach `walk_projects` that a linked worktree is not a repo.**~~ — **done 2026-09-04**, by the
+   skip route rather than the fold. `linked_worktree_of` reads `.git`-as-a-file, requires a
+   `worktrees` segment in its `gitdir:` line (so a submodule's `…/.git/modules/…` stays a repo), and
+   returns the checkout it belongs to; `is_repository`, `visit` and `hides_a_repo` all consult it.
+   Verified end to end against a root holding both sibling shapes: `repos` went from three rows to
+   one, and the derived term list from `abc-hotfix, abc.worktrees, feat, root` to `root` — the
+   branch name is out. `visit` **notes** the worktree rather than dropping it silently, on the
+   symlink precedent, so `doctor` prints "a linked worktree of `<checkout>`; plan in that checkout
+   instead" without `--strict`. Both sibling layouts are parametrized in the tests, and the
+   submodule guard is its own test.
 4. **Decide the identity question, then key the store mirror off `--git-common-dir`** — resolving to
    the main checkout's `rel` for every worktree of that repo. `fitness.py`'s existing call is the
    shape to copy; it is three lines and no new dependency.
+
+   Step 3 **sharpened this one rather than covering it**, and that is worth knowing before reading
+   the code: `resolve` was deliberately left alone, so `repos` and `doctor` now say a worktree is
+   not a repo while `where` run from inside one still returns `verdict: ok` into a store mirror
+   named after the worktree path. Before step 3 the two agreed and were both wrong; now they
+   disagree, which is louder but still not a fix. The silent-plan-loss case is entirely here.
+
+   Note when settling it that a `mode = "repo"` worktree needs **no** change — the plan file travels
+   with the branch it was committed on — so whatever this does must key off the store route, not off
+   being in a worktree.
 5. **Add the worktree row to `session-harvest` step 0's table**, and teach `find_checkout` to say
    which working tree it resolved. The existing table already has the vocabulary — a worktree on a
    feature branch is "clean, ahead by commits" wearing a different hat.

@@ -1319,6 +1319,21 @@ class ScanTarget(NamedTuple):
     text: str
 
 
+class UnreadPath(NamedTuple):
+    """One path the scan enumerated and could not read, and whether it stands for a whole checkout.
+
+    `nested` is carried rather than inferred from `why`, because the two cases want different
+    advice: a nested checkout is a second scan to run, while a vanished or unreadable file is
+    usually nothing to do. Confirmed 2026-09-04 by this scanner's own output — a staged deletion
+    (still in `ls-files --cached`, gone from disk) was reported under "a nested checkout is one
+    entry here", which is a true sentence about the wrong path.
+    """
+
+    name: str
+    why: str
+    nested: bool
+
+
 class ScanPlan(NamedTuple):
     """What a scan read, and what it enumerated but could not read.
 
@@ -1327,7 +1342,7 @@ class ScanPlan(NamedTuple):
     """
 
     targets: list[ScanTarget]
-    unread: list[str]
+    unread: list[UnreadPath]
 
 
 def scan_targets(root: Path, mode: str) -> ScanPlan:
@@ -1340,7 +1355,7 @@ def scan_targets(root: Path, mode: str) -> ScanPlan:
     # being scanned for, and it is not tracked yet.
     listed = git(["ls-files", "--cached", "--others", "--exclude-standard"], root) or ""
     targets: list[ScanTarget] = []
-    unread: list[str] = []
+    unread: list[UnreadPath] = []
     for name in listed.splitlines():
         path = root / name
         try:
@@ -1353,9 +1368,9 @@ def scan_targets(root: Path, mode: str) -> ScanPlan:
             # than as its files. Measured 2026-09-04: reading it raises IsADirectoryError, which is
             # an OSError, which the binary skip below used to swallow whole, so a scan of a repo
             # with a worktree in it printed `0 hit(s)` for a second checkout it never opened.
-            unread.append(f"{name} (a nested checkout, not scanned)")
+            unread.append(UnreadPath(name, "a nested checkout, not scanned", nested=True))
         except OSError as exc:
-            unread.append(f"{name} ({exc.strerror or 'unreadable'})")
+            unread.append(UnreadPath(name, exc.strerror or "unreadable", nested=False))
     return ScanPlan(targets, unread)
 
 
@@ -3082,19 +3097,22 @@ def list_terms(cfg: Config, terms: list[str]) -> int:
     return 0
 
 
-def report_unread(unread: list[str], mode: str, samples: int) -> None:
+def report_unread(unread: list[UnreadPath], mode: str, samples: int) -> None:
     """Name what the scan could not open, next to the count so the count is never read alone.
 
-    Not an error exit: everything the scan did read is still scanned, and each path below is a
-    second scan to run rather than a leak to redact.
+    Not an error exit: everything the scan did read is still scanned, and a path below is a second
+    scan to run or nothing to do — never a leak to redact.
     """
     if not unread:
         return
     print(f"\n{len(unread)} path(s) enumerated but not read — the count above excludes them:")
-    for name in unread[:samples]:
-        print(f"  {name}")
-    print("A nested checkout is one entry here, never its files. Scan it as its own repo:")
-    print(f"  plans.py scan --mode {mode} --path <that directory>")
+    for entry in unread[:samples]:
+        print(f"  {entry.name} ({entry.why})")
+    if any(entry.nested for entry in unread):
+        # Only when one actually is. The advice is wrong for a staged deletion or an unreadable
+        # file, and a footer that names the wrong cause is how a reader learns to skip the footer.
+        print("A nested checkout is one entry here, never its files. Scan it as its own repo:")
+        print(f"  plans.py scan --mode {mode} --path <that directory>")
 
 
 def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:

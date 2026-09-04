@@ -860,6 +860,22 @@ def test_scan_says_when_a_nested_checkout_was_not_read(ws, capsys):
     assert plans.main(["scan", "--path", str(ws.personal / ".claude" / "worktrees" / "wt")]) == 1
 
 
+def test_scan_offers_the_nested_checkout_advice_only_when_one_applies(ws, capsys):
+    """A staged deletion is still in `ls-files --cached` and gone from disk, so it lands in the
+    unread list too. Confirmed 2026-09-04 by this scanner's own output: it was reported under "a
+    nested checkout is one entry here", a true sentence about the wrong path, and a footer naming
+    the wrong cause is how a reader learns to skip the footer."""
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    gone = commit(ws.personal, "gone.md", "nothing sensitive\n")
+    gone.unlink()
+
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "1 path(s) enumerated but not read" in out
+    assert "gone.md (No such file or directory)" in out
+    assert "nested checkout" not in out  # no worktree here, so no advice about one
+
+
 def test_scan_still_skips_a_binary_without_reporting_it(ws, capsys):
     # The skip is right for a file with nothing greppable in it; only a whole unread checkout is
     # worth a line. Reporting both would make the report noise and get it ignored.

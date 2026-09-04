@@ -19,6 +19,13 @@ nothing to read and the script says so rather than reporting zeros. The measured
 baselines shipped here are one author's machine under one set of rules — treat them as a reference
 point to compare against, not as your own baseline; save your own on the first run.
 
+**Every pattern here is a POSIX-shell idiom** — `&&`, `;`, `|`, `cd`, `sed -n`, a heredoc — so the
+audit describes a session whose Bash tool runs a POSIX shell. On Windows that is a Git Bash or WSL
+session, where it applies unchanged; a PowerShell session generates commands none of these patterns
+match, and the report then reads as "no problems found" when it means "wrong tool for this
+transcript". Until someone runs it against a real PowerShell transcript, read a suspiciously clean
+run on Windows as the second, not the first.
+
 ## Four procedures — the skill runs them, the user only reads results
 
 Which one applies:

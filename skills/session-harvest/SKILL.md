@@ -401,6 +401,11 @@ both stores, the absorb queue, `depends_on` plans, files written outside every r
 named in edits that do not exist. Add `--repo <path>` for a repo the transcript cannot show. Run it
 even when the session felt tidy, because every one of these has been wrong at least once.
 
+**Two of those steps assume a POSIX machine**: processes come from `ps -eo` and listeners from
+`ss -ltnp`, which is Linux-only — on macOS or Windows the socket step reports itself unavailable
+with the reason, which is the honest answer and not a clean bill of health. Everything else in the
+sweep is `git`, the harness's own files, and Python, and works anywhere.
+
 What the script cannot do is decide what a finding means. That is this list:
 
 - **Processes and what they serve.** A backgrounded poll outlives the turn that spawned it —

@@ -107,6 +107,31 @@ are never lines you type", followed by the four-hand-edit measurement and the `[
 bypass leaving no trace. **Promoting a plan** keeps one clause pointing at it, so a reader who
 arrives there is sent to the measurement rather than given a second copy of the rule.
 
+## The trigger fired on 2026-09-04, and it is not a fair test
+
+The `[DEFERRED:]` above names its own trigger — "a fifth occurrence after 2026-09-02". Four more
+arrived on 2026-09-04, in a `repo-tasks` session, recorded in
+`2026-09-04-session-rule-adherence-evidence.md` §1: two `idea -> in-progress` bumps and two bare
+`updated:` restamps, two through the file-editing tool and two through a `python3 - <<'PY'` string
+replacement. On the count alone the condition is met twice over.
+
+**It does not fire the revisit, and the reason is the whole point of recording it.** That session
+could not have known the rule: the wording — "`status:` and `updated:` are `set-status`' output.
+They are never lines you type" — was committed to `plan-docs` **after** the session loaded the
+skill, and `skills-state --since` put `SKILL.md` 39 commits ahead of it, none of them the session's
+own. The 2026-09-02 decision was that wording is tried first and a detector's hit rate is otherwise
+"measured against a rule nobody was told" — and this is precisely a session nobody told.
+
+So the deferred question stays deferred, with its trigger **re-armed rather than spent**: the next
+occurrence that counts is one by a session that held the current wording from the start. What these
+four do establish is a different defect, which is not this plan's: nothing in a running session
+re-reads a skill it already holds, so a rule can be correct, deployed and invisible at once. That
+belongs with the propagation question in the evidence plan, and it is why the two files stay apart
+rather than merging — they share four rows of evidence and disagree about what those rows are
+evidence _of_.
+
+Kept separate deliberately, 2026-09-04, when `absorb` paired them.
+
 ## Recommended direction
 
 Rough, and deliberately not settled here.

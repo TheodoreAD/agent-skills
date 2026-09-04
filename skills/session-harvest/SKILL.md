@@ -69,14 +69,23 @@ than no harvest, because its report reads identical. Added 2026-08-29 after the 
 harvest "with the latest versions" — behaviour the skill did not have, and could not have confirmed
 if asked.
 
-**A difference has three causes, and only one of them is the stale install this step assumes.** The
+**A difference has four causes, and only one of them is the stale install this step assumes.** The
 subcommand prints the verdict; what matters is that you act on the right one:
 
-| the checkout is              | what it means        | what to offer                      |
-| ---------------------------- | -------------------- | ---------------------------------- |
-| clean, level with the remote | the install is stale | a re-install — the assumed case    |
-| clean, ahead by commits      | unpushed skill work  | see the push-state paragraph below |
-| **dirty**                    | work in progress     | nothing; report it and move on     |
+| the checkout is              | what it means        | what to offer                       |
+| ---------------------------- | -------------------- | ----------------------------------- |
+| clean, level with the remote | the install is stale | a re-install — the assumed case     |
+| clean, ahead by commits      | unpushed skill work  | see the push-state paragraph below  |
+| **dirty**                    | work in progress     | nothing; report it and move on      |
+| **a linked worktree**        | edits on a branch    | a merge first; a push installs none |
+
+The last row is the one that reads as the first. `skills-state` prints a `worktree:` line naming the
+checkout it belongs to, because nothing else in its output distinguishes them: the checkout is
+clean, it is ahead by commits, and the natural remedy — push, then re-install — succeeds at every
+step and installs nothing. `skills add <owner>/<repo>` takes the remote's **default branch**, so
+until the worktree's branch is merged there is nothing new to install, and the verify step compares
+the installed copy against a checkout that was never published. Offer the merge, or the local-path
+install `skills add <path>` that `skill-authoring` documents for drafting.
 
 **Say plainly that a re-install cannot fix either of the last two**, because the natural mental
 model — "re-installing syncs them" — is wrong in both: the installer's source is the remote, not the

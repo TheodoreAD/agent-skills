@@ -21,10 +21,10 @@ having been generalised:**
 
 - `~/AGENTS.md` bans writing into another repo outright and routes the work to a filed plan instead
   — the same asymmetry, one level up, solved by moving the finding rather than by printing it.
-- `2026-09-02-status-drift-invisible-at-repo-scope.md` (landed today) is the same bug inside
-  `plan-docs`: the session that could _see_ a drifted status was in a repo that could not fix it,
-  and the session that could fix it was never shown it. The fix was to compute the finding where it
-  can be acted on.
+- The status-drift fix in `plan-docs`, landed 2026-09-02, is the same bug one level down: the
+  session that could _see_ a drifted status was in a repo that could not fix it, and the session
+  that could fix it was never shown it. The fix was to compute the finding where it can be acted on.
+  (That plan has since been retired; `archive --search "status drift"` reads it back.)
 - The third face is the one with no rule yet: a **published** skill reporting on things the reader
   cannot author. Nothing in `skill-authoring` says an audit has to ask who can act before it prints.
 

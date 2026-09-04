@@ -8,3 +8,6 @@ dist/
 .env
 site/
 .cache/
+# Where Claude Code's EnterWorktree puts a linked worktree. Untracked rather than ignored, it shows
+# as `?? .claude/worktrees/` in every status and `git add -A` embeds it as a gitlink, exit 0.
+.claude/worktrees/

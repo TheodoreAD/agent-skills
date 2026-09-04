@@ -100,8 +100,8 @@ fixture and parametrize shapes described here.
 ## Editing this skill
 
 This file is _copied_ into `~/.agents/skills/python-testing-conventions` at install time, never
-symlinked. Edit the source in the [`agent-skills`](https://github.com/TheodoreAD/agent-skills) repo,
-push, then re-run the install
-(`npx skills add TheodoreAD/agent-skills --global --skill python-testing-conventions`) to refresh
-every project's copy. Editing the deployed copy in place is local drift and reaches no other
-machine.
+symlinked, so **editing the deployed copy is local drift** and reaches no other machine. Edit the
+source in the repo this was installed from, push, and re-run
+`skills add <that source> --global --skill python-testing-conventions` to refresh every project's
+copy. If you installed it from someone else's repo rather than your own fork, the source is theirs:
+open an issue or a pull request there instead.

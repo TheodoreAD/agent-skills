@@ -75,15 +75,20 @@ nobody runs unless they are already thinking about plans.
 Assigned by counting each skill's name in each plan, which is a starting point and **not** the
 answer — see the batches below.
 
-| destination rationale file                         | plans | plan lines | file lines |
-| -------------------------------------------------- | ----: | ---------: | ---------: |
-| `skills/session-bash-audit/references/research.md` |     4 |       ~570 |        679 |
-| `skills/plan-docs/references/design-rationale.md`  |     4 |       ~550 |      1,050 |
-| `skills/skill-authoring/references/rationale.md`   |     1 |       ~170 |        215 |
+**5 left of the original 16**, 719 lines, and **no `DEFERRED` or `UNVERIFIED` among them**, so
+nothing left in the backlog blocks its own deletion:
 
-**9 left of the original 16**, 1,341 lines. 21 `DECISION` and 6 `PITFALL` tags to migrate or verify
-as already-covered, and **2 `DEFERRED` across 2 plans, which block deletion** — both in the
-`session-bash-audit` batch, so that batch clears them first.
+| plan                                                    | lines | tags                      |
+| ------------------------------------------------------- | ----: | ------------------------- |
+| `2026-09-04-skills-assume-one-working-tree-per-repo.md` |   260 | none                      |
+| `2026-09-03-skills-disclose-what-they-write.md`         |   170 | 4 `DECISION`              |
+| `2026-09-03-which-version-a-measurement-describes.md`   |   128 | 4 `DECISION`, 1 `PITFALL` |
+| `2026-09-03-harvest-writes-only-to-the-session-repo-…`  |    96 | 4 `DECISION`              |
+| `2026-09-03-stale-install-scripts-can-skip-a-check-…`   |    65 | 1 `DECISION`              |
+
+The destination table is dropped here rather than updated. With five plans left it no longer batches
+anything — and after three batches the more useful statement is the correction below it, which is
+that the table was a hint and never the answer.
 
 ## Batch 1, 2026-09-06: the two on-disk-location plans
 
@@ -140,6 +145,32 @@ Two things worth carrying:
   looking. `2026-09-06-two-sessions-share-one-working-tree.md` carries it with that evidence. The
   first tag was checked the same way and found landed, so it was recorded as not carried rather than
   copied forward.
+
+## Batch 3, 2026-09-06: the four assigned to `session-bash-audit`
+
+Three of the four were, and the fourth —
+`2026-09-02-skill-output-must-be-actionable-by-its-runner.md` — was `skill-fitness`'s and
+`skill-authoring`'s, a **third** mis-assignment by the name count and the one where the count was a
+literal tie. Three for three across the batches, which settles it: the count says what a plan
+discusses, and a plan discusses the tool it found the problem in while concluding about the tool
+that has to change.
+
+Two things this batch adds that the first two did not:
+
+- **One plan needed no migration at all.** `2026-09-05-rg-replace-counter-matches-its-own-prose.md`
+  had been written into `research.md` at landing time, in full — the argument, both measured
+  instances, the before/after table and the `PITFALL`. Retirement was purely the checking, and it
+  took minutes. **That is what a retirement costs when the landing session did the migration**,
+  which is the case the same-day decision above is trying to make normal.
+- **A `DEFERRED` can be merged rather than rehomed.** Its per-bundle-breakdown tag went to
+  `2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md`, which turns out to be the same
+  question with a different row in front of it: one rate covering outcomes that are not comparable,
+  where the fix is a short list rather than a second column. Appending to the plan that owns the
+  concern beat a new file, and the pairing was only visible because both were read in one pass.
+
+The other `DEFERRED`, on making `--note` mandatory, was **not** carried: it reads as deferred work
+and argues itself down in its own text. A tag that concludes against itself is a settled no, and
+recording it as one is the honest handling — not a new plan nobody will act on.
 
 ## Decisions, 2026-09-06
 

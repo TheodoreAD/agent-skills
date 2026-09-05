@@ -54,7 +54,8 @@ measuring the past and could never fail on the change under review. `tests/unit/
 is correct exactly as it is, and the same will hold for a portability gate.
 
 **2. The authoring loop runs against the working tree.** You audit what you can edit; that is the
-whole point of the opt-in decision in `2026-09-02-skill-output-must-be-actionable-by-its-runner.md`.
+whole point of the opt-in decision behind `fitness.py`'s author-side sections, since retired and
+written up in `skill-fitness`'s `references/measurements.md`.
 
 **3. Any claim about readers must name `origin` explicitly, and must never get it by default.** A
 default that changes meaning depending on whether the author has pushed is worse than having no
@@ -116,8 +117,9 @@ reporting a drift rather than gating on it.]
 working tree` / `corpus: origin/main @ <sha>, fetched <age>` /
 `corpus: installed (~/.agents/skills) — deployed copies, not yours to edit`. Once, because a
 per-section repeat is noise for a value that cannot change within a run. This also closes the
-residual "authorable" question in `2026-09-02-skill-output-must-be-actionable-by-its-runner.md`: an
-explicit run against the hub needs to say what it is looking at, and that is the same line.]
+residual "authorable" question left by the actionability plan (retired; see `skill-fitness`'s
+`references/measurements.md`): an explicit run against the hub needs to say what it is looking at,
+and that is the same line.]
 
 ## Recommended direction
 

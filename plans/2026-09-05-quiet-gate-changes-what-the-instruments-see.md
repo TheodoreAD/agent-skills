@@ -45,10 +45,10 @@ rows are the entire subject of the layers-1-through-3 measurement. A `--compare`
 attributes a pattern-definition change to the gate change, in the direction that flatters the gate —
 and the JSON gives a reader no way to notice.
 
-This is **not** the defect in `2026-09-05-save-baseline-overwrites-silently.md`, which owns the
-silent overwrite and the UTC-vs-local naming of `saved`. Same file, adjacent concern: that one is
-about which baseline survives, this one about whether two surviving baselines are comparable at all.
-Worth deciding together; they touch the same writer.
+This is **not** the defect the now-retired `2026-09-05-save-baseline-overwrites-silently.md` owned —
+the silent overwrite and the UTC-vs-local naming of `saved`, both landed, with the reasoning in
+`session-bash-audit`'s `references/research.md`. Same file, adjacent concern: that one was about
+which baseline survives, this one about whether two surviving baselines are comparable at all.
 
 [DECISION: record, do not refuse. Landed in `c01973d`, folded into the writer this section shares
 with `save-baseline-overwrites-silently` per the user's decision 2026-09-05. `save_baseline` now
@@ -141,15 +141,16 @@ Before layer 2 this would have been a rare accident. After it, it is structural 
 ways. The verdict line now exists at all, it is designed to be the one line worth quoting, and
 `PASS` beside a test count is exactly the string the matcher looks for — so **every session that
 demonstrates the gate's output inflates its own green-claim count**, in every repo that consumes
-`repo-tasks`. The bias has the same direction and the same readership problem as
-`2026-09-05-rg-replace-counter-matches-its-own-prose.md`: the number rises when someone works on the
-thing the number measures, which is when it is read.
+`repo-tasks`. The bias has the same direction and the same readership problem as the two `audit.py`
+rows that matched their own prose — retired, and written up in `session-bash-audit`'s
+`references/research.md` under "The counters matched their own prose": the number rises when someone
+works on the thing the number measures, which is when it is read.
 
-That plan is the pair, and this is a third instance of its shape in a **second script** — its own
-open question asks whether to anchor one pattern or all of them, and two rows in `audit.py` plus one
-in `harvest.py` is a different answer from two rows in one file. Merge them if they read as one
-topic on absorption; they were filed apart only because this one has a cause the other does not (a
-downstream tool started emitting the matched string).
+That is the pair, and this is a third instance of its shape in a **second script** — the question of
+whether to anchor one pattern or all of them was settled there for `audit.py` by anchoring all of
+them, and two rows in `audit.py` plus one in `harvest.py` is a different answer from two rows in one
+file. Merge them if they read as one topic on absorption; they were filed apart only because this
+one has a cause the other does not (a downstream tool started emitting the matched string).
 
 [NEEDS CLARIFICATION: can `claims` tell a quotation from an assertion at all? A fenced code block is
 the obvious signal and this instance sits inside one. It is not general — a verdict pasted inline

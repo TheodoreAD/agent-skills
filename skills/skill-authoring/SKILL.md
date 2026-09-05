@@ -451,6 +451,35 @@ declared rather than assumed:
 The rule is about file writes and commits. Non-file side effects — killing an orphaned process,
 pruning a cache — are governed by the skill that proposes them, and are proposed, not done.
 
+## Auditing a corpus before it ships, and after a run of edits
+
+The loop that took this corpus from thirty-four reader-unactionable findings to zero, 2026-09-02 to
+2026-09-05, generalises. Run it on the working tree before publishing, and again after any run of
+edits to a `SKILL.md`; every step is a `skill-fitness` command, so nothing here is re-derived:
+
+1. **`portability`** — every bare reference is one of four things, and the fix is chosen per
+   finding, never by rewording in bulk: **declare** it ("on this author's machine", naming the
+   harness that owns a location, a dated measurement quoting what a machine had); **generalise** it
+   (the repo's own gate, `<owner>/<repo>`, a detected path instead of a named one); **make it an
+   example** ("the worked examples name the author's servers — substitute your own"); or **delete**
+   it, which is the only fix for a script hit, since code cannot declare. A description cannot carry
+   a declaration, so it inherits one from the body — write the sentence there.
+2. **Reproduce as a reader before believing it.** Your own machine cannot show reader-facing bugs,
+   because the hub and the checkout hold the same names there. A fake `HOME` with two of your skills
+   installed is the test, and this repo's `tests/unit/test_audience.py` is what it looks like as a
+   permanent gate.
+3. **`derivable --compare <baseline>`** — a rise in a skill's derivable count is the finding; read
+   the samples, since the legitimate residue (an external CLI's own one-liner, the consuming repo's
+   own gate) prints alongside the drift.
+4. **`--ref origin/main`** before saying anything is fixed for readers. A fix that is committed and
+   not pushed is fixed for nobody, and the header line says which population a number describes.
+5. **Retire the plan** that drove the edits with its `## Migrated to` naming the sections above, so
+   the next audit starts from the rules and not from the story.
+
+What stays judgement, and is not in the loop because a script would get it wrong: which of the four
+fixes a finding wants, whether a description's trigger vocabulary may be trimmed (measure with
+`trigger.py` first), and whether a disclosure is true.
+
 ## Convention skills should self-update on friction
 
 A skill that encodes a convention (rather than performing a one-shot task) should improve itself

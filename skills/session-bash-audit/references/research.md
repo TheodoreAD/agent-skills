@@ -540,27 +540,33 @@ that aggregates a compliant and a non-compliant form under one tag reports a num
 neither question**, and it looked like coverage.
 
 Two rows now split it, plus `find-exempt` so the judgement baked into `find-not-fd`'s regex stays
-visible rather than hidden inside it. Baseline over **23,000 calls, 30 days**:
+visible rather than hidden inside it. Re-measured over **29,390 calls, 30 days to 2026-09-05**, on
+the anchored patterns — see "The counters matched their own prose" below for what changed and why
+these figures replace the ones first published here:
 
-| shape                                    | calls |  share of its pair |
-| ---------------------------------------- | ----: | -----------------: |
-| `rg`                                     |  3633 |                  — |
-| `grep -r` / `-R` / `--recursive`         |   394 |            **10%** |
-| `fd`                                     |   262 |                  — |
-| `find`, plain lookup                     |   293 |            **53%** |
-| `find` with `-exec`/`-delete`/`-mtime`/… |    16 | exempt, not a miss |
+| shape                                            | calls |  share of its pair |
+| ------------------------------------------------ | ----: | -----------------: |
+| `rg`                                             |  5133 |                  — |
+| `grep -r` / `-R` / `--recursive`                 |   396 |             **7%** |
+| `fd`                                             |   299 |                  — |
+| `find`, plain lookup                             |   297 |            **50%** |
+| `find` with `-exec`/`-delete`/`-printf`/`-mtime` |    19 | exempt, not a miss |
 
 **The impression that "agents ignore the clause" is half right, and the halves point opposite
-ways.** `rg` adherence is good at 90% and is not where effort belongs — `grep-r-not-rg` is
+ways.** `rg` adherence is good at 93% and is not where effort belongs — `grep-r-not-rg` is
 deliberately left out of `EXPECTATIONS` for that reason, since the useful direction is "not up" and
-the table can only say "down" or "zero". `fd` adherence is poor and got worse than the 2026-08-29
-hand measurement found (43%), so `find-not-fd` carries a `down` expectation.
+the table can only say "down" or "zero". `fd` adherence is poor, so `find-not-fd` carries a `down`
+expectation; at 50% it is a little better than the 2026-09-02 reading of 53% and still worse than
+the 2026-08-29 hand measurement's 43%.
 
 Consistent with the hand measurement on a corpus half this size (8% and 43%), which is the useful
-part: two independent methods, a week apart, agree on the direction and on which half matters.
+part: two independent methods agree on the direction and on which half matters, and have gone on
+agreeing across a pattern rewrite that moved every count.
 
 **Two regex bugs were found by testing the patterns before trusting their counts**, and both were in
-the direction that flatters the number:
+the direction that flatters the number. Their before/after figures are on the pre-2026-09-05 scale
+and are kept as written, because they record what one change did rather than what the rows now
+count:
 
 - `.*` in the exempt lookahead stops at a newline, so a `find … \` continued onto the next line with
   `-delete` was tagged as a miss. `[\s\S]*` fixes it; on this corpus it moved almost nothing, which
@@ -610,10 +616,64 @@ at the end of a run about this very rule: 4% `head/tail` over 73 calls, three hi
 The fix is structural rather than a tighter regex: every pipe-shaped predicate (`head/tail`,
 `exit-masked`, `redirect-then-filter`, `search|head`) now matches with quoted strings blanked
 (`strip_quoted`, after the heredoc strip), because a shell pipe is never inside quotes. The other
-predicates keep the raw text — `label-echo` looks _for_ a quoted string. `tests/unit/test_audit.py`
+predicates kept the raw text — `label-echo` looks _for_ a quoted string — until the tool-name rows
+joined them later the same day, for the reason the next section gives. `tests/unit/test_audit.py`
 carries the cases, and is the first test file this script has had; the rule in `SKILL.md` about
 testing a regex against hand-written cases had been followed by hand and never kept.
 
 Small in the corpus — a session searching for the words `head` or `tail` is rare outside this repo —
 but this is the repo that measures the rule, so the sessions most likely to trip it are the ones
 whose numbers get quoted. Prior runs' figures are upper bounds by at most a few calls.
+
+## The counters matched their own prose, and every published figure moved (2026-09-05)
+
+The section above fixed the pipe rows and left the rows keyed on a **bare tool name** raw, which is
+where the same defect does the most damage. `\brg\b` and `find\b` match inside a commit message, a
+plan filename and a quoted `rg` alternation, so **the corpus that documents an anti-pattern inflated
+its own count of it** — the number rose exactly when someone was working on the problem, writing
+about it, or grepping the report for the row names, which is exactly when the number was being read.
+One-directional, and aimed at the reader least able to discount it.
+
+Two instances were measured over the seven days to 2026-09-05 before the fix: `rg-replace` tagged 39
+calls of which 3 were not `rg` invocations, and `find-not-fd` tagged 41 of which 4 were not `find`
+invocations — one commit message and **three of the form
+`audit.py --days 30 --samples 0 | rg 'find-not-fd|grep-r-not-rg|find-exempt'`**, where the `|`
+inside the quoted alternation read as a command-segment boundary and `find-exempt` after it read as
+a `find`. A session reading the audit's own output was counted as violating the rule the row
+measures.
+
+**So every tool-name row now matches with quotes blanked, and `rg-replace` is anchored at a segment
+boundary like its neighbours already were.** That also settles what to do about the blessed
+`cd <path> && rg …` form: `&&` is one of the boundaries, so it matches with no special case and
+nothing has to re-implement `split_chain`. `-printf` joined both `find` rows' flag lists in the same
+pass — it is precisely the find-only capability `find-exempt` exists to recognise, and
+`find tests -name '*.py' -printf '%f\n'` had been tagged a violation and never as exempt, which
+moves the ratio between the two rows twice.
+
+Old and new patterns run over one identical corpus, 29,389 calls in the 30 days to 2026-09-05:
+
+| row             | before | after | dropped                                      | gained |
+| --------------- | -----: | ----: | -------------------------------------------- | -----: |
+| `rg-replace`    |     84 |    81 | 10, every one prose                          |      7 |
+| `find-not-fd`   |    310 |   297 | 8 prose, 2 now `find-exempt`, 3 in a wrapper |      0 |
+| `find-exempt`   |     16 |    19 | —                                            |      3 |
+| `grep-r-not-rg` |    397 |   396 | 1, in a wrapper                              |      0 |
+| `grep/find`     |   8203 |  8179 | 9 prose, 15 in a wrapper                     |      0 |
+
+**`rg-replace`'s seven gains are the part worth reading.** The old pattern scanned forward from `rg`
+with `[^|;&\n]*?`, so a `|` inside the search pattern stopped it before it reached the flag: every
+`rg -n "a|b" -r '' path` — a real, deliberate `--replace` — was invisible. Blanking the quotes
+removes the blocker. So the row's count barely moved while its contents changed by a fifth: 10 false
+out, 7 true in. A count that holds steady across a fix is not evidence the fix was unnecessary.
+
+[PITFALL: **blanking quotes also hides a real invocation inside `bash -c '…'`**, and 19 of the 24
+dropped calls above are that shape — mostly `docker run … bash -c '… find /root/.local/bin …'`.
+Accepted rather than worked around: those calls already carry the `bash-c` tag, which has its own
+cost, and `~/AGENTS.md` exempts `find` "running somewhere `fd` is not installed — inside a
+container, say", so counting them as misses was itself wrong. Recovering them would mean the pattern
+layer re-implementing `split_chain`, which it deliberately does not use.]
+
+The tool-preference table above was re-measured on the new patterns rather than left on two scales,
+which is why its `grep -r` share reads 7% against the 10% first published and `find` 50% against
+53%. The `\n`-separator entry's 242 -> 292 figures are deliberately **not** restated: they record
+what one earlier change did, not what the rows count today.

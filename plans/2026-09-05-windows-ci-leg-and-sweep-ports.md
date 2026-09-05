@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-05
 ---
 
@@ -64,12 +64,22 @@ have predicted, and the encoding findings were in the scripts, not the tests. Th
 for the leg in one sentence: the failures a platform produces are not the ones a reviewer on the
 other platform imagines.]
 
-[UNVERIFIED: **the two Windows commands have never executed.** The parsers are pinned to the
-documented column layouts by fixture text; the PowerShell script inside one `argv` element, the tab
-separators surviving PowerShell's output encoding, and `netstat` needing no elevation for `-o` are
-all reasoned, not seen. The workflow now pipes a live `sweep --only processes --only sockets --json`
-into `tests/ci/assert_sweep_available.py` after the suite, so the next push is the measurement; this
-tag comes off when that step is green.]
+**The two Windows commands executed for real on the fourth run, 2026-09-05.** The workflow pipes a
+live `sweep --only processes --only sockets --json` into `tests/ci/assert_sweep_available.py` after
+the suite, and the first run printed:
+
+```text
+processes: harness pid None, 0 children, 0 watchers/servers; sockets: 45 listeners, 45 exposed
+```
+
+So the PowerShell script survives being one `argv` element, the tab separators survive PowerShell's
+output encoding, `netstat -ano` needs no elevation there, and both parsers read live output rather
+than the fixture text. `harness pid None` is right — no `claude` runs on a runner — and 45 listeners
+all bound to every interface is what a GitHub runner looks like, not a finding.
+
+What that run does not prove: the descendant walk with a real harness above the script, and the
+served-directory resolution through `--directory`, since nothing on the runner serves anything. Both
+are the same code as the Linux arm past the parser, and the Linux arm is measured daily.
 
 ## Still declared, not measured, and what would settle each
 
@@ -82,6 +92,6 @@ tag comes off when that step is green.]
 ## Recommended direction
 
 1. ~~Push, read the first Windows run, fix what it names~~ — done, three rounds, green.
-2. ~~Add a smoke step~~ — added; its first run is what the remaining `UNVERIFIED` waits on.
+2. ~~Add a smoke step~~ — added, and green on its first run, which closed the last `UNVERIFIED`.
 3. Leave the two transcript questions open until a Windows user appears; they cannot move from here,
    and saying so is the honest state.

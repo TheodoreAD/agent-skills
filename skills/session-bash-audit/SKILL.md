@@ -49,10 +49,10 @@ transcripts offline, long after the directory may be gone, so it cannot ask git 
 slug was. The only signal is the slug's own shape, and it exists for one layout out of several —
 Claude Code's `<repo>/.claude/worktrees/<name>` leaves a `--claude-worktrees-` segment (derived from
 the harness's slug rule, not observed: none of the 211 project directories on this author's machine
-is a worktree), while VS Code's default `<repo>.worktrees/<name>` and the flat
-`<repo>-<branch>` beside a checkout are indistinguishable from an ordinary repo name. Half a fix
-across one layout would make the other layouts read as verified. Treat a zero on those two rows as
-unverified whenever the session may have run from a worktree, the same as for Windows.
+is a worktree), while VS Code's default `<repo>.worktrees/<name>` and the flat `<repo>-<branch>`
+beside a checkout are indistinguishable from an ordinary repo name. Half a fix across one layout
+would make the other layouts read as verified. Treat a zero on those two rows as unverified whenever
+the session may have run from a worktree, the same as for Windows.
 
 ## Four procedures — the skill runs them, the user only reads results
 

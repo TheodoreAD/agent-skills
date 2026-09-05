@@ -100,14 +100,15 @@ What makes this worth a rationale entry is _how_ the previous framing failed, be
 mode generalises to any rule this skill writes.
 
 The session had been asked to file a next-session handoff "somewhere durable". It considered the
-plans store and the repo's `plans/`, rejected both on the design grounds recorded in `agent-skills`'
-`plans/2026-08-29-next-session-prompt.md` (a handoff is ordering and immediacy, and a plan file
-would give it a status field and a retirement it should never need), and chose the memory directory
-because it is the one destination loaded automatically at session start. It then read the governing
-rule — `~/AGENTS.md` saying that directory "is a staging area only, never a durable store — it's
-siloed per project directory" — and reasoned: the objection is about durable _knowledge_ being
-siloed; this content is deliberately perishable and deliberately per-project; therefore a staging
-area is exactly right. It even wrote the tension into its own report before proceeding.
+plans store and the repo's `plans/`, rejected both on the design grounds recorded in the now-retired
+`agent-skills` plan `2026-08-29-next-session-prompt.md` (a handoff is ordering and immediacy, and a
+plan file would give it a status field and a retirement it should never need — the reasoning is in
+the next section), and chose the memory directory because it is the one destination loaded
+automatically at session start. It then read the governing rule — `~/AGENTS.md` saying that
+directory "is a staging area only, never a durable store — it's siloed per project directory" — and
+reasoned: the objection is about durable _knowledge_ being siloed; this content is deliberately
+perishable and deliberately per-project; therefore a staging area is exactly right. It even wrote
+the tension into its own report before proceeding.
 
 Every step of that is defensible against the rule as written, and the outcome was still wrong. The
 defect was that the rule explained a **mechanism** rather than stating a **prohibition** — and a
@@ -124,6 +125,72 @@ One practical finding, against the fear that a flat ban loses something: it did 
 re-filed as an ordinary plan at `status: in-progress`, which `plans.py list` already sorts above
 everything else, and the only thing genuinely lost was automatic loading at session start — which is
 worth nothing anyway if only one vendor's sessions get it.
+
+## Why the next-session prompt is printed and never stored (2026-09-01)
+
+Step 9 is short and reads as obvious. It was asked for three times across three days and built twice
+wrongly first, and the two failed attempts are why each of its constraints is absolute rather than a
+preference.
+
+**The design constraint is staleness, and on this machine it is not hypothetical.** Measured inside
+the single hour that produced the second request, every row an assertion a handoff would have
+carried:
+
+| assertion, when written                   | how it went stale                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------------- |
+| "`absorb`: silent, nothing waiting"       | a parallel session filed a plan for this repo minutes later                |
+| "the plans store is clean"                | went dirty, then clean, then dirty again — twice                           |
+| "6 plans await retirement"                | became 9, partly by this session's own subsequent status fix               |
+| the store "has no remote, deliberately"   | a two-tier split landed mid-session; the shareable tier may have one       |
+| "nothing is filed for `agent-skills` yet" | trusted from a 10-minute-old check; a duplicate plan was filed as a result |
+
+The last row is the one that matters: a stale assertion did not merely mislead, it **caused
+duplicated work**. A prompt asserting yesterday's state to a session that trusts it is that same
+failure with a longer fuse.
+
+[PITFALL: **the natural implementation — write the report's last zone into a file — produces exactly
+the artefact that fails this way, and it fails silently.** A confidently-worded stale prompt and an
+accurate one read identically, which is the same silent-by-construction shape the CI-poll and
+stale-fetch bullets are about. That is why "printed, never a file" is stated as a constraint and not
+as a default, and why each item pairs the command that re-derives its state with the action if it
+still holds — the split made structural rather than hedged in a sentence.]
+
+**Both earlier attempts were built and both were argued down by what they became.** The first
+re-filed the handoff as an ordinary plan, and it worked: a session opened on it the next day, ran
+each item's check, found every item either done or grown, and the plan retired itself through the
+normal procedure — which a "prompt" would have had no way to do. That is the finding, not a failure:
+**most of a handoff falls on the `plans/` side of the boundary**, and what is left is the part
+`plans/` cannot express. The second attempt was the memory-directory filing the section above
+records.
+
+**What finally specified it was the user saying why it kept disappointing** — 2026-09-01: _"I keep
+asking for this manually and I don't give all the details."_ Step 9 already existed and said only
+what to leave out, so every prompt was improvised from whatever the session happened to remember,
+which is precisely how it fills with marginal detail. **The feature was never a store; it was a rule
+for what earns a slot** — which is why the design that shipped is a subtraction rule rather than a
+format.
+
+Three constraints, each closing one of the questions the two attempts raised:
+
+- **Printed, never written.** The user pastes it into the next session within minutes, which is the
+  only reason it may assert anything at all. This dissolves append-versus-replace, the storage
+  lifecycle and most of the staleness objection in one move. An append-only file would have been a
+  second lifecycle store with no retirement mechanism — the objection this skill already makes to
+  parking plan content in memory — and replacing loses the trail.
+- **Built by subtraction.** The next session's own opening moves — `absorb`, `list`, `git status`
+  plus the ahead-count — already print the incoming plans, the open work and the dirty state, so run
+  them and include only the delta. That is the mechanical test for "marginal", and it is stronger
+  than the prose definition it replaced: the boundary against `plans/` is **subtraction, not a
+  definition**. What survives is three kinds — ordering (nothing on the machine says what to do
+  first), perishable state with a short fuse, and a decision not yet in any file, the last being a
+  self-check rather than a category, since a non-empty one means the routing step failed.
+- **Capped at five.** The cap is what keeps the prompt from becoming a plan with no status field.
+
+The cross-repo line is a **test rather than a ban**: another repo earns a line only when the item is
+high-risk or irreversible **and** would change what the next session in this repo does. An unpushed
+commit or an open plan elsewhere fails the second half, because that repo's own session is handed
+those by `absorb` — which is also why a per-machine prompt was rejected outright: it has nowhere
+natural to live and reaches sessions it is irrelevant to.
 
 ## Why plan lifecycle decisions defer to `plan-docs` instead of a session-harvest judgment call
 

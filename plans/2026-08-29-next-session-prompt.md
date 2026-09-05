@@ -270,6 +270,40 @@ loading at session start is worth nothing if only one vendor's sessions get it. 
 becomes has to be a plain file any agent can read, reachable by a documented command rather than by
 a harness feature.
 
+## Migrated to
+
+Retired 2026-09-05. Two parts, two destinations, and most of Part 2 turned out to need neither.
+
+- **Part 1's history** — the five-row staleness table measured inside one hour, the `[PITFALL:]`
+  about a written prompt failing silently, both failed attempts and what each proved, the user's _"I
+  keep asking for this manually and I don't give all the details"_ that finally specified it, and
+  the three constraints with the questions each closes — to
+  `skills/session-harvest/references/rationale.md`, as "Why the next-session prompt is printed and
+  never stored", placed immediately after the no-memory-tier section, which is where the second
+  failed attempt is already recorded.
+- **Part 2's decisions** — dropped, verified present. `plan-docs`' **"The retirement prompt `absorb`
+  also carries"** already states all four: the two groups and the stalled one raised at any age, the
+  three-surfaces-three-triggers split, age-as-throttle with the "it needs no state" argument and the
+  Friday-landing reason for three days rather than one, the row cap, and the one-question rule with
+  "not now" as a real answer. It also carries the nine-plans-across-five-repos measurement and the
+  known limit about trusting the status field. Migrating any of it would have shipped a second,
+  diverging copy.
+- **The `[DEFERRED:]` backlog** — to `plans/2026-09-05-retire-the-terminal-plan-backlog.md`, which
+  is the live work this plan correctly refused to fold into itself. Three of the backlog were
+  retired the day that file was created, and four more landed the same day, so it opens with the
+  count going the wrong way.
+- **Part 1's other `[DEFERRED:]`** — dropped, because this plan answers it itself: "That is the
+  answer to the DEFERRED below, and it arrived as evidence rather than as a count." The cheaper
+  partial fix was priced and the residue turned out to be the specification rather than a set of
+  items.
+- **The status-gate `[PITFALL:]`** — dropped. It is in `plan-docs`' `SKILL.md` as the rule and its
+  measurement, and its reasoning is in that skill's design rationale, both migrated there earlier
+  the same day from the plan that owned it.
+- **The no-harness-memory-store ruling** — dropped. It has its own rationale section, its own
+  `~/AGENTS.md` clause and its own sentence in the skill's `description`.
+- **The two backlog tables** — dropped. Both were true on one day, and the current count is in the
+  backlog plan.
+
 ## What landed, 2026-09-02
 
 Part 2 shipped, in `plans.py` and `SKILL.md`, with tests. Both halves of this plan are now built, so

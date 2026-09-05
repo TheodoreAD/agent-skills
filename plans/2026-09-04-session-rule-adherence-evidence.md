@@ -163,6 +163,37 @@ the hook stays refused. The design that replaces the rule — `pipefail` in the 
 handling plus shorter output in this repo's scripts — is worked out with its probe results in
 `2026-09-05-a-piped-gate-that-cannot-lie.md`, which owns the remaining choices.]
 
+## A third sample, 2026-09-05, in the skills repo with `pipefail` live
+
+The session that shipped the non-author and Windows work, audited at its harvest boundary against
+the `2026-09-05-pipefail-live` baseline (n=248):
+
+| pattern     | this session | vs baseline |
+| ----------- | ------------ | ----------- |
+| chain       | 31%          | +25pp MISS  |
+| head/tail   | 19%          | +16pp MISS  |
+| exit-masked | 2%           | —           |
+| sed-n       | 2%           | +1pp MISS   |
+| cd-own-repo | 1%           | +1pp OK     |
+
+Three things this sample adds. **`exit-masked` fell to four calls, all `pytest … | tail -N` on
+single test files while iterating, and every green claim made to the user came after an unpiped
+`inv quality.precommit`** — so the claims hold without a re-run, and with `pipefail` live the four
+masked calls would have carried a failing status anyway. That is the design in
+`2026-09-05-a-piped-gate-that-cannot-lie.md` doing what it was built to do. **`head/tail` at 19% is
+the same habit as before in a different place**: 48 calls, nearly all `rg … | head -N` surveys of a
+codebase, none of them a gate. The rule's own remedy — count first with `rg -c` — was not once used.
+**Two of the `chain` hits were the documented recovery** (`cd <repo> && inv quality.precommit` after
+a scratchpad `cd` moved the working directory), and both are tagged `cd-own-repo`, which the audit
+counts as a miss even though the always-loaded file prescribes exactly that shape after a cross-repo
+chain.
+
+[NEEDS CLARIFICATION: the `cd-own-repo` row cannot tell the prescribed recovery from the habit it
+exists to catch, because both are `cd <session repo> && <command>`. The transcript can — the
+recovery follows a call whose cwd was elsewhere — but the audit reads calls one at a time. Worth a
+`cd-recovery` split only if the row keeps being read as a miss on sessions that did the right thing;
+two calls in 248 is not that yet.]
+
 ## Open questions
 
 [DECISION: the propagation failure in §1 stays here, apart from the hand-editing plan. Settled

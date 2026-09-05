@@ -210,6 +210,48 @@ store leaves a deletion commit behind exactly like a retired one. `archive` cros
 against the plans that exist now and marks those rows `still live`, because handing back a stale
 copy of a file that is live elsewhere is worse than returning nothing.
 
+### Why the landing session retires its own plan (2026-09-06)
+
+The rule was settled against the one backlog this convention has produced, and the backlog is the
+argument. Sixteen terminal plans stood in one repo; **fifteen of them reached `landed` on a single
+day**, verified from git rather than from the `updated:` stamps by finding the first commit in which
+each file's frontmatter carried a terminal status.
+
+**That distribution is what exposed the throttle's real meaning.** `absorb`'s aged prompt fires at
+`updated + 3 days`, so on the morning after that day it printed nothing at all: the entire backlog
+was invisible to the one mechanism built to raise it, and would have arrived three days later as
+fifteen rows in a prompt that shows five. The first substantive run of the prompt would have been
+its worst — precisely the outcome the prompt's own scope note had tried to avoid by declining to
+fold an existing backlog into the change that added it.
+
+So the throttle is about **nagging**, not readiness. It answers "when should this be put in front of
+somebody who did not write it", and a session holding the context is not that somebody. Reading it
+as a readiness bar is what produced the pile: every productive session left its landings for later,
+and later was three days away and belonged to nobody.
+
+The competing argument — that a plan is easier to retire once its change has survived a few days —
+did not survive contact with the work. **The expensive half of a retirement is establishing what the
+destination already covers**, and that is exactly what the landing session has just done. Nothing
+about a few days' soak makes it cheaper; it only makes the reading happen twice.
+
+Four batches drained the sixteen in one session, and three findings from that pass are worth keeping
+because they are the shape of the work rather than its outcome:
+
+- **The conclusions had almost all shipped; the rejected alternatives had not.** Rules were in skill
+  bodies, frequently better worded than the plan that produced them, and code contracts were in
+  comments and tests. What was homeless every single time was the option not taken and the
+  measurement that killed it. One plan even recorded the objection that would have blocked its own
+  fix, together with the measurement retiring it — an objection stated in a plan is a claim, and
+  claims in plans are measurable.
+- **Batching by destination beats batching by age**, and the destination has to be confirmed by
+  reading. A count of which skill each plan mentions mis-assigned a plan in three of the four
+  batches, always the same way: a plan discusses the tool it found the problem in while concluding
+  about the tool that has to change.
+- **The best rationale section usually existed in no single plan.** Four of the sixteen turned out
+  to be one finding wearing four faces, visible only because they were read as a set — which is the
+  reason the retirement procedure says to organise a rationale home by the question a reader arrives
+  with rather than one file per retired plan.
+
 ### Why the sibling-repo check is a step and not a nicety
 
 Confirmed 2026-08-26, retiring a scaffolding plan: its tuned basedpyright profile had since moved to

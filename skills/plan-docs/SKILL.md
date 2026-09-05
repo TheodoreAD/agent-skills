@@ -644,7 +644,9 @@ Three settled choices, each of which was an open question:
 - **The throttle is age, and age is chosen because it needs no state.** A marker file recording what
   was asked and when would be a second lifecycle store with no retirement of its own — the objection
   this convention already makes to parking anything outside `plans/`. Three days rather than one so
-  a plan landed on a Friday does not nag on the Saturday.
+  a plan landed on a Friday does not nag on the Saturday. **The throttle is about nagging, not
+  readiness** — it governs when a plan is raised for _somebody else_ to pick up, and says nothing
+  about the session that landed it, which retires it the same day per the rule above.
 - **Three surfaces, three distinct triggers, no split ownership.** `absorb` speaks for the _aged_
   backlog at the top of a session. `session-harvest` already reports plans _this session_ made
   terminal, under "decisions waiting" — and it has to, because `absorb` runs before this session has
@@ -911,6 +913,31 @@ takes it off the working set, not out of the repository: the drafting commits, i
 the `## Migrated to` commit all stay reachable through git, and `python3 <path> archive` is how they
 are read back — see "Getting a retired plan back" below. That is what makes the deletion cheap, and
 it is why a plan is only ever kept in version control.
+
+**The session that lands a plan retires it, in the same session, once the change is pushed.** Not
+after a wait, and not left for whoever comes next: that session has already read the code and the
+destination doc, which are the two expensive halves of a retirement, and a session three days later
+re-derives both from nothing. **The gate is `pushed`, not `landed`** — retirement deletes the file,
+so retiring an unpushed change deletes the reason for something that is not in the product (see the
+`PITFALL` at step 3 below). Everything `absorb`'s prompt does is therefore an exception handler for
+plans that slipped past this rule, rather than the normal path.
+
+Settled 2026-09-06 against a measured backlog: sixteen terminal plans had accumulated in
+`agent-skills`, fifteen of them landed on one day, and draining them took four batches in one
+session. What that pass established, and what makes the same-day rule worth stating as a rule:
+
+- **A plan whose rules already shipped still owes its rejected alternatives.** Almost every
+  conclusion had already become a sentence in a `SKILL.md`, often better worded than the plan. What
+  had no home was uniformly the option _not_ taken and the measurement that killed it. So retirement
+  is mostly a search for what was decided against, and the landing session is the one that still
+  remembers.
+- **Batch by destination, not by age**, when a backlog does form: the expensive half is establishing
+  what the destination file already covers, and one read serves four to six plans. Confirm the
+  destination by reading rather than by what the plan talks about — a plan discusses the tool it
+  found the problem in while concluding about the tool that has to change.
+- **The most valuable rationale section is usually the one that existed in no single plan.** Four
+  plans retired together turned out to be one finding wearing four faces, which is only visible when
+  they are read as a set.
 
 **A repo that keeps its own plans retires them in its own history — absorb first, then retire.**
 `set-status` refuses a terminal status on a plan still sitting in the store mirror of a repo-routed

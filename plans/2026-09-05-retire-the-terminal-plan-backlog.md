@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-06
 ---
 
@@ -227,3 +227,36 @@ destination read.
 
 Retire this plan when the backlog it tracks is drained, not when the last batch is done: a standing
 pile that regrows is a plan with a status, which is the whole argument for it being a file.
+
+## Migrated to
+
+Retired 2026-09-06, on the condition this plan set for itself: the backlog is drained, 16 to 0, and
+`absorb` runs silent.
+
+- **`skills/plan-docs/SKILL.md`, "Retiring a plan"** — the rule this plan existed to settle: the
+  session that lands a plan retires it, in the same session, once the change is **pushed**; and the
+  three findings from the drain that make it worth stating as a rule rather than a preference. Also
+  the clause added to the `absorb` prompt's throttle bullet, that three days is about **nagging**
+  rather than readiness.
+- **`skills/plan-docs/references/design-rationale.md`, "Why the landing session retires its own
+  plan"** — the measurement that decided it (fifteen of sixteen landing on one day, verified from
+  git rather than from the stamps, leaving the backlog invisible to the very prompt built to raise
+  it), why the competing "let it soak" argument did not survive contact with the work, and the three
+  findings from the four batches: the conclusions had shipped while the rejected alternatives had
+  not, batching by destination needs the destination confirmed by reading, and the best rationale
+  section usually existed in no single plan.
+
+Deliberately not migrated:
+
+- **The per-batch narratives.** Four batches of "what this one cost and what it got wrong" is a
+  worked example of one pass, and the general form of every finding in them is now in the rationale
+  section. Keeping the narratives would be preserving the scaffolding along with the building.
+- **The `DEFERRED`, which events resolved.** It recorded that the one terminal plan in another repo
+  was not this repo's to retire. Checked at retirement: that plan is gone, retired by a session
+  working there, which is exactly the mechanism the tag predicted. Two other repos have since
+  accumulated one each, and the same reasoning covers them without a tag — "writing to another repo
+  is out" is already a rule here and in `~/AGENTS.md`, and `absorb` raises them where they can be
+  acted on.
+- **The 2026-09-05 "where it stands" table and the three-retirement cost estimate.** Both are
+  superseded by the four-batch measurement, and an estimate that has been replaced by an actual is
+  the clearest case of something a plan should not carry forward.

@@ -59,7 +59,29 @@ adherence line for that session reported `11/11 expectations met` and every rate
 a rule is not evidence of following it; here, measuring a rule was not evidence of measuring it
 either.]
 
-## Open questions
+## A third display property, found by nearly filing it as a defect
+
+**`0%` in a session view does not mean zero.** Rates print as `:.0%`, so on a session-sized
+denominator a single instance rounds away: this run piped exactly one command to `head -40`, and the
+line read `head/tail=0%` at n=215, because 1/215 is 0.47%.
+
+Recorded because the near-miss is the useful part. That zero was read as a missed tag, the predicate
+was tested directly against the exact command — it returns `True` and tags `head/tail`,
+`search|head` and `grep/find` — and only then did the arithmetic explain it. **The instrument was
+right and the display was lossy**, which is a different fault from the two above and would have been
+filed as the same one.
+
+The consequence for a reader is small but real, and it lands on this corpus's own procedure: a
+harvest that reads `head/tail=0%` and reports "zero" is over-claiming by up to one or two calls, in
+the section where a session's own adherence is stated. At corpus scale (tens of thousands of calls)
+the rounding is invisible; at session scale it is the difference between none and a couple.
+
+[NEEDS CLARIFICATION: **print counts beside rates in the session view, or one decimal place?** A
+count is unambiguous and is what a session-sized denominator actually wants — `head/tail=1 (0.5%)` —
+but it widens an already-long line. One decimal place is narrower and still reads as a rate, which
+is the thing that misleads. A third option is to print rates only above some n and counts below it,
+which trades a clear rule for a threshold nobody can defend — the same objection this corpus already
+made to a staleness threshold.]
 
 [NEEDS CLARIFICATION: **fix the early return, or move the flag handling into both paths?** Moving
 `--json` above the `if args.session` branch is one line and covers it, but `report_session` builds a

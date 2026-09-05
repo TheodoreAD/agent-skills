@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-03
+status: landed
+updated: 2026-09-05
 source_repo: github.com-personal/ingesta
 source_session: 7dab6dae-7c67-454f-bba1-981fe3845089.jsonl
 source_moment: 2026-09-03T13:47:32+03:00
@@ -58,9 +58,7 @@ The confirming instance is worth carrying because it is the benign one: the re-r
 An example where nothing was wrong is what stops the rule reading as alarmism, and it is the same
 argument the `exit-masked` paragraph already makes for reporting a count whose claims all held.
 
-[NEEDS CLARIFICATION: whether this belongs in `skills-state` itself rather than in prose. The
-subcommand already has both copies of the script in hand and could classify the diff — "output only"
-versus "touches a check" is not decidable in general, but "the diff adds a call to a function whose
-name starts with `_print_`" would have caught this exact case. Probably too clever; the prose
-version costs one sentence and one `diff` and generalises to changes no heuristic would classify.
-Recorded so the cheap-and-general option is chosen deliberately rather than by default.]
+[DECISION: **prose, not a classifier** — landed 2026-09-05 as the sentence step 0 now carries: read
+the diff before deciding a note is enough, a reworked output is a note, a widened check is a re-run
+from the checkout. The `_print_` heuristic would have caught this one case and reported its own
+silence on every other, and a `diff -u` on one script is cheaper than the false confidence.]

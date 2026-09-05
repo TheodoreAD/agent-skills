@@ -197,10 +197,17 @@ the checkout, so the diff said "same" for everything and would have prompted not
 The three subdirectories fail differently, which is why the subcommand reports `SKILL.md` and the
 rest apart. Only `SKILL.md` is held in this session's context, so only it can go stale there.
 `scripts/` is shelled out to, so the next call already runs the new code — but a call made _earlier_
-in the session ran the old one, which is worth its own one-line note. `references/` is read on
-demand and is inert. Confirmed 2026-08-30: a directory-scoped query fired the re-read-and-audit
-branch on a commit that touched only a `references/` page, and the audit was empty because the held
-wording had never changed.
+in the session ran the old one. **Read the diff before deciding a note is enough.** A change that
+reworks output is a one-line note; a change that _adds or widens a check_ means the earlier call
+answered a question the current code would have answered differently, and the remedy is to re-run
+that command from the checkout. `diff -u` on the one script is cheap, and it is the difference
+between "this result is stale" and "this result was never computed". Confirmed 2026-09-03: a session
+had run `plans.py list` several times against an installed copy in which the status-drift check ran
+at family scope only, while the checkout ran it at every scope; the re-run came back clean, which is
+what a benign instance looks like, and a note alone would have left that unknown. `references/` is
+read on demand and is inert. Confirmed 2026-08-30: a directory-scoped query fired the
+re-read-and-audit branch on a commit that touched only a `references/` page, and the audit was empty
+because the held wording had never changed.
 
 **When the checkout is ahead, its push state decides what may be offered as the remedy.** The
 installer clones from the remote, so a re-install cannot deliver a commit that has not been pushed —

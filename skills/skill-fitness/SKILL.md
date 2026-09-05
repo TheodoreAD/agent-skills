@@ -329,6 +329,13 @@ Say so rather than reporting a smaller number as if it were the whole one.
   the API for the run's conclusion and read `status`" — asks for exactly the same re-derivation and
   is invisible to it. So a zero is not a certificate; it means nothing is fenced. The fenced form is
   the common one and the one that grows, which is why the measure is worth having anyway.
+- **`portability` reads `SKILL.md` prose and the string literals in `scripts/*.py`, and nothing in
+  between.** In prose an assumption can be owned by its block ("on this author's machine", a dated
+  measurement, naming the harness a location belongs to); in code it cannot, so every script hit is
+  bare — a literal path two or more segments under the reader's home, or a fixed `/tmp/<name>`. A
+  path assembled at run time from a variable, a docstring quoting one as history, and a regex about
+  paths are all deliberately not findings. What it cannot see is a `references/` page pointing the
+  reader at a document only the author has.
 
 ## Trigger cases, when the static pass is not enough
 

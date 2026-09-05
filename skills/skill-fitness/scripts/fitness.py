@@ -756,6 +756,9 @@ PORTABLE_HOME = (
     "~/.local/share",
     "~/.cache",
     "~/Documents",
+    # The cross-tool instructions file, read by every harness at that path; a convention, not one
+    # machine's dotfile.
+    "~/AGENTS.md",
 )
 # A path is followed by prose punctuation as often as not, and `~/AGENTS.md.` reported as a distinct
 # token from `~/AGENTS.md` is one finding printed twice.
@@ -786,7 +789,13 @@ DECLARED = re.compile(
     r"the repo'?s (?:own )?equivalent|your own|substitute|if you have|if your|"
     r"where no such|where a repo has one|assumes|unavailable|not available|"
     r"only if|set (?:it|this|that) to|defaults? to|\(default|by default|overrides?\b|export |"
-    r"points at|if (?:it|one) (?:is|exists)|where you keep|cannot know|if it exports",
+    r"points at|if (?:it|one) (?:is|exists)|where you keep|cannot know|if it exports|"
+    # A harness-specific location or variable owned by naming the harness: "Claude Code's own",
+    # "which Claude Code exports", "reads nothing on another harness". Missed until 2026-09-05,
+    # when three of the corpus's seven remaining findings turned out to be declared this way.
+    r"on another harness|which \w+(?: \w+)? exports|exports into|'s own transcript|"
+    # A dated measurement quotes what a machine had, rather than instructing the reader to have it.
+    r"(?:confirmed|measured|found)(?: live| on \w+)? 20\d\d-",
     re.IGNORECASE,
 )
 
@@ -892,6 +901,117 @@ def _is_owned(key: tuple[str, str], owned: set[tuple[str, str]]) -> bool:
     return any(k == kind and token.startswith(f"{t}/") for k, t in owned)
 
 
+# --------------------------------------------------------------------------------------------
+# portability, the scripts half: a literal path in code that only one machine has
+
+# A `SKILL.md` can own an assumption in prose; a script cannot, so every hit here is bare. The rule
+# is deliberately narrow — decided 2026-09-03 after `harvest.py` shipped the author's own checkout
+# path as a guarded last-resort fallback, the shape that survives review precisely because it helps
+# one machine and is invisible everywhere else. A literal path under the reader's home **two or more
+# segments deep** catches `~/projects/<owner>/<repo>` and leaves `~/plans` (a documented default)
+# and `~/.claude/projects` (another tool's directory, first segment a dotfile) alone; a fixed
+# `/tmp/<name>` is the same finding one directory over, since `tempfile` is the portable spelling.
+# Read from the AST so a docstring or comment quoting a path — evidence, or the history of a fix —
+# is not a finding; only a string the code can actually use is. No severity tier and no carve-out
+# for a guarded fallback: the remedy is the same either way, and a tier invites every instance to be
+# argued down into the lower bucket.
+SCRIPT_PORTABLE_FIRST = frozenset({"AppData"})  # the Windows platform default, beside the XDG ones
+SCRIPT_HOME_LITERAL = re.compile(r"^(?:~|\$HOME)/(.+)$")
+SCRIPT_TMP_LITERAL = re.compile(r"^/tmp/\S+")
+# A regex source is a string too, and this file's own `HOME_PATH` pattern begins with `~/`. Anything
+# carrying a metacharacter is a pattern about paths, not a path.
+REGEX_METACHARS = frozenset("[]()\\*+?|{}")
+
+
+def _docstring_nodes(tree: ast.AST) -> set[int]:
+    """The ids of every docstring constant, so quoting a path in one is not a finding."""
+    ids: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        body = node.body
+        first = body[0].value if body and isinstance(body[0], ast.Expr) else None
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            ids.add(id(first))
+    return ids
+
+
+def _home_chain(node: ast.AST) -> list[str] | None:
+    """`Path.home() / "a" / "b"` -> `["a", "b"]`; None unless every segment is a literal and the
+    chain starts at `Path.home()`. A variable segment means the path is computed, not assumed."""
+    parts: list[str] = []
+    while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        if not (isinstance(node.right, ast.Constant) and isinstance(node.right.value, str)):
+            return None
+        parts.insert(0, node.right.value)
+        node = node.left
+    is_home = (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "home"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "Path"
+    )
+    return parts if is_home else None
+
+
+def _is_script_finding(segments: list[str]) -> bool:
+    """Two or more segments under home, the first neither a dotfile nor a platform default."""
+    if len(segments) < 2 or not segments[0]:
+        return False
+    return not segments[0].startswith(".") and segments[0] not in SCRIPT_PORTABLE_FIRST
+
+
+def _literal_finding(value: str) -> tuple[str, str] | None:
+    """(kind, token) for a string literal that names one machine's path, else None."""
+    if REGEX_METACHARS & set(value):
+        return None
+    home = SCRIPT_HOME_LITERAL.match(value)
+    if home and _is_script_finding(home.group(1).split("/")):
+        return "home-path", value
+    if SCRIPT_TMP_LITERAL.match(value):
+        return "tmp-path", value
+    absolute = ABS_HOME.match(value)
+    if absolute and absolute.group(0).count("/") >= 3:
+        return "abs-path", absolute.group(0)
+    return None
+
+
+def scan_script(path: Path) -> list[dict[str, Any]]:
+    """Every literal machine-specific path a script's code could actually use."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+    docstrings = _docstring_nodes(tree)
+    lines = text.splitlines()
+    # The left operand of a `/` chain is itself a chain; report the outermost only.
+    inner = {id(n.left) for n in ast.walk(tree) if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div)}
+    found: list[tuple[str, str, int]] = []
+    for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
+            finding = _literal_finding(node.value)
+            if finding:
+                found.append((*finding, line))
+        elif isinstance(node, ast.BinOp) and id(node) not in inner:
+            chain = _home_chain(node)
+            if chain and _is_script_finding(chain):
+                found.append(("home-path", "~/" + "/".join(chain), line))
+    return [
+        {
+            "kind": kind,
+            "token": token,
+            "line": line,
+            "where": "script",
+            "declared": False,
+            "text": f"{path.name}: {lines[line - 1].strip()[:140]}" if 0 < line <= len(lines) else path.name,
+        }
+        for kind, token, line in found
+    ]
+
+
 def scan_portability(skills: list[Skill], extra_repos: list[str] | None = None) -> dict[str, Any]:
     """What a `SKILL.md` assumes its reader's machine already has, and whether it admits to it.
 
@@ -949,12 +1069,18 @@ def scan_portability(skills: list[Skill], extra_repos: list[str] | None = None) 
                 continue
             seen.add(key)
             refs.append({**hit, "status": "declared" if _is_owned(key, owned) else "bare"})
+        # A script's literal paths are never declared: prose can own an assumption, code cannot.
+        # They are also never deduplicated against the body — a path the body declares and the
+        # script hard-codes is still hard-coded.
+        scripts = sorted((skill.path / "scripts").glob("*.py")) if skill.has_scripts else []
+        refs.extend({**h, "status": "bare"} for script in scripts for h in scan_script(script))
         bare = [r for r in refs if r["status"] == "bare"]
         rows.append({
             "skill": skill.name,
             "refs": len(refs),
             "bare": len(bare),
             "in_fence": sum(1 for r in bare if r["where"] == "fence"),
+            "in_script": sum(1 for r in bare if r["where"] == "script"),
             "declared": len(refs) - len(bare),
             "kinds": dict(Counter(r["kind"] for r in bare).most_common()),
             "samples": bare,
@@ -1567,7 +1693,7 @@ def _render_derivable(out: dict[str, Any], top: int) -> None:
 
 def _render_portability(out: dict[str, Any], top: int) -> None:
     data = out["portability"]
-    print("\n## portability — what a SKILL.md assumes about the machine reading it")
+    print("\n## portability — what a skill assumes about the machine reading it")
     print('  bare = stated as fact. declared = the block owns it ("on this author\'s machine", ...).')
     print("  Naming the author's repo as *evidence* is fine and portable; naming it as a place the")
     print("  reader should go and read something is a dead end. The status column is that difference.")
@@ -1575,9 +1701,11 @@ def _render_portability(out: dict[str, Any], top: int) -> None:
         print(f"\n  author repos, derived from the corpus's own links: {', '.join(data['author_repos'])}")
     else:
         print("\n  no `skills add <owner>/<repo>` line in this corpus — author-repo references unmeasured")
-    _print_table(data["skills"], ["skill", "refs", "bare", "in_fence", "declared"])
+    _print_table(data["skills"], ["skill", "refs", "bare", "in_fence", "in_script", "declared"])
     print("\n  in_fence is the sharper half: a bare assumption inside a fenced block is a command the")
     print("  reader is being told to run. The same token in prose may be a quotation of evidence.")
+    print("  in_script is a literal path in scripts/*.py two or more segments under the reader's home,")
+    print("  or a fixed /tmp/<name> — code cannot declare an assumption, so the remedy is to delete it.")
     for row in data["skills"][:top]:
         if not row["bare"]:
             continue

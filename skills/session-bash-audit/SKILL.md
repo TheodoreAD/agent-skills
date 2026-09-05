@@ -108,6 +108,12 @@ python3 $S/scripts/audit.py --session <session-id> --compare ~/.local/state/sess
 The id is the transcript's filename stem, and a unique prefix is enough. Everything else in this
 script measures a trend after the fact; this measures the run you are in.
 
+`--json <path>` works in this mode too, and dumps the same `--until`-filtered set the printed report
+is about. Until 2026-09-06 the `--session` path returned before the flag was read, so the dump was
+unavailable in precisely the mode `session-harvest` always uses, with no error and no file.
+`--save-baseline` is refused here rather than skipped — one session's rates are not a corpus
+baseline, and a flag that silently does nothing is worse than one that says so.
+
 **Compare against a baseline you saved**, not the one shipped here. `$S/references/baselines/` holds
 one file measured on the author's machine under that machine's rules; it is a reference point, and
 `--compare`-ing a session against it reports how your session differs from somebody else's setup.

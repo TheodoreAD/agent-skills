@@ -78,6 +78,60 @@ def test_strip_quoted_keeps_the_shell_shape():
 
 
 # --------------------------------------------------------------------------------------------
+# a counter keyed on a bare tool name must not match its own prose
+
+
+@pytest.mark.parametrize(
+    ("cmd", "row"),
+    [
+        ('git commit -m "audit: rg -rn ate the bundle and rewrote every match"', "rg-replace"),
+        ("python3 plans.py commit -m '2026-09-02-rg-replace-flag-used-twice.md'", "rg-replace"),
+        ('git commit -m "prefer fd; find . -name x needs -not -path excludes"', "find-not-fd"),
+        ("audit.py --days 30 --samples 0 | rg 'find-not-fd|grep-r-not-rg|find-exempt'", "find-not-fd"),
+        ("audit.py --days 30 | rg 'grep-r-not-rg|grep/find'", "grep-r-not-rg"),
+    ],
+)
+def test_a_tool_name_inside_quotes_is_not_an_invocation(cmd, row):
+    """The bias is one-directional and lands where it hurts: the count rises exactly when someone is
+    working on the audit, writing about the anti-pattern, or reading the report — which is exactly
+    when the number is read. Measured over the seven days to 2026-09-05: `rg-replace` 39 tagged / 32
+    real (~8% over), `find-not-fd` 41 / 37 (~10% over), every false positive from prose. The last
+    two rows are the sharpest case, a session grepping the audit's own output for these row names
+    and being counted as violating the rule the row measures — the `|` inside the quoted alternation
+    read as a segment boundary, and `find-exempt` after it read as a `find`.
+    """
+    assert row not in tags_of(cmd)
+
+
+@pytest.mark.parametrize(
+    ("cmd", "expected"),
+    [
+        ("rg -rn pattern src/", {"rg-replace"}),
+        ("rg -ril needle .", {"rg-replace"}),
+        ("cd ../other-repo && rg -rn pattern .", {"rg-replace"}),
+        ("git log --oneline | rg -rn pattern", {"rg-replace"}),
+        ("rg --replace X pattern src/", {"rg-replace"}),
+        ("find . -name '*.py'", {"find-not-fd"}),
+        ("grep -rn needle src/", {"grep-r-not-rg"}),
+    ],
+)
+def test_a_real_invocation_still_counts(cmd, expected):
+    """Anchoring must not cost the finding. `cd <path> && rg` is the one chain shape ~/AGENTS.md
+    blesses and did occur in the corpus; it needs no special case, because `&&` is already one of
+    the segment boundaries."""
+    assert expected <= tags_of(cmd)
+
+
+def test_printf_is_the_find_only_capability_the_exempt_row_exists_for():
+    """`-printf` was missing from both rows' flag lists, so a call using find's own formatter was
+    tagged a violation and never as exempt. The two rows are read as a ratio, so one call in the
+    wrong row moves the number twice."""
+    tags = tags_of("find tests -name 'test_*.py' -printf '%f\\n'")
+    assert "find-exempt" in tags
+    assert "find-not-fd" not in tags
+
+
+# --------------------------------------------------------------------------------------------
 # the own-repo tags compare against the slug the harness actually writes
 
 

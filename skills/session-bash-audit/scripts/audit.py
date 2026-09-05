@@ -216,8 +216,21 @@ def _rx(pattern: str) -> Predicate:
     return lambda cmd: bool(compiled.search(strip_heredoc(cmd)))
 
 
-def _rx_pipe(pattern: str) -> Predicate:
-    """A predicate about a shell pipe: matched with quoted strings blanked, see `strip_quoted`."""
+def _rx_unquoted(pattern: str) -> Predicate:
+    """A predicate about shell *structure* — a pipe, or a command name at a segment boundary —
+    matched with quoted strings blanked, see `strip_quoted`.
+
+    Every row keyed on a bare tool name belongs here, not in `_rx`. A counter whose subject is a
+    string agents type into prose inflates itself exactly when someone is working on the problem,
+    which is exactly when the number is read, and the bias is one-directional. Measured over the
+    seven days to 2026-09-05: `rg-replace` tagged 39 calls of which 3 were not `rg` invocations
+    (two commit messages quoting the trap, one `plans.py commit -m` naming the plan file), and
+    `find-not-fd` tagged 41 of which 4 were not `find` invocations — one commit message and three
+    of the form `audit.py … | rg 'find-not-fd|grep-r-not-rg|find-exempt'`, where the `|` inside the
+    quoted alternation read as a segment boundary and `find-exempt` after it read as a `find`. A
+    session grepping the audit's own output for these row names was counted as violating the rule
+    the row measures.
+    """
     compiled = re.compile(pattern)
     return lambda cmd: bool(compiled.search(strip_quoted(cmd)))
 
@@ -225,15 +238,15 @@ def _rx_pipe(pattern: str) -> Predicate:
 # name -> (predicate, why it matters). Chain and cd tags are computed separately above.
 PATTERNS: dict[str, tuple[Predicate, str]] = {
     "head/tail": (
-        _rx_pipe(r"\|\s*(head|tail)\b"),
+        _rx_unquoted(r"\|\s*(head|tail)\b"),
         "truncates tool output the harness would have kept whole; forces re-runs and hides failures",
     ),
     "exit-masked": (
-        _rx_pipe(r"2>&1\s*\|\s*(tail|head|grep|rg)\b"),
+        _rx_unquoted(r"2>&1\s*\|\s*(tail|head|grep|rg)\b"),
         "$? after a pipe is the filter's, not the command's — a failing gate reads as clean",
     ),
     "redirect-then-filter": (
-        _rx_pipe(r">\s*\S+\s+2>&1\s*;.*\|\s*(rg|grep|head|tail)\b"),
+        _rx_unquoted(r">\s*\S+\s+2>&1\s*;.*\|\s*(rg|grep|head|tail)\b"),
         "capture-to-log is fine; filtering the log in the same call is not — Grep/Read the log as a second call",
     ),
     "echo-exit": (
@@ -241,7 +254,7 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
         "reflexive `; echo EXIT=$?` — the Bash tool already reports a non-zero exit",
     ),
     "search|head": (
-        _rx_pipe(r"\b(rg|grep|fd|find)\b[^|]*\|\s*head\b"),
+        _rx_unquoted(r"\b(rg|grep|fd|find)\b[^|]*\|\s*head\b"),
         "turns a completeness search into a sample without saying so (count first: rg -c / wc -l)",
     ),
     "sed-n": (_rx(r"\bsed\s+-n\b"), "file view via Bash; Read(offset/limit) does it with no Bash gate"),
@@ -254,22 +267,33 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
     # Measured 2026-08-29 over 15,171 calls: aggregating them is what hid the finding, because a
     # compliant `rg` and a non-compliant `grep -r` both fired this row identically.
     "grep/find": (
-        _rx(r"(?:^|&&|;|\||\n)\s*(grep|rg|find|fd)\b"),
+        _rx_unquoted(r"(?:^|&&|;|\||\n)\s*(grep|rg|find|fd)\b"),
         "searching via Bash at all; Grep/Glob have their own gate and keep the whole result",
     ),
     "grep-r-not-rg": (
-        _rx(r"(?:^|&&|;|\||\n)\s*grep\s+(-\w*[rR]\w*|--recursive)\b"),
+        _rx_unquoted(r"(?:^|&&|;|\||\n)\s*grep\s+(-\w*[rR]\w*|--recursive)\b"),
         "recursive text search with grep; rg is faster and .gitignore-aware (plain grep stays fine)",
     ),
     # `[\s\S]*` rather than `.*`: a find continued across lines with a trailing backslash is common,
     # and `.` stops at the newline, so `.*` made the negative lookahead succeed and tagged an exempt
     # command as a miss. Caught 2026-09-02 by testing the pattern before trusting its count.
+    #
+    # `printf` joined the exempt list 2026-09-05: `-printf` is precisely the find-only capability
+    # this pair exists to recognise, and `find tests -name '*.py' -printf '%f\n'` was tagged a
+    # violation. The two rows are read as a ratio, so a call landing in the wrong one moves the
+    # number twice — the exempt row was undercounting while the violation row overcounted.
     "find-not-fd": (
-        _rx(r"(?:^|&&|;|\||\n)\s*find\b(?![\s\S]*\s-(exec|execdir|delete|print0|newer|mtime|size|perm|user|group)\b)"),
+        _rx_unquoted(
+            r"(?:^|&&|;|\||\n)\s*find\b"
+            r"(?![\s\S]*\s-(exec|execdir|delete|print0|printf|newer|mtime|size|perm|user|group)\b)"
+        ),
         "plain file lookup with find; fd is faster, .gitignore-aware, and needs no -not -path excludes",
     ),
     "find-exempt": (
-        _rx(r"(?:^|&&|;|\||\n)\s*find\b(?=[\s\S]*\s-(exec|execdir|delete|print0|newer|mtime|size|perm|user|group)\b)"),
+        _rx_unquoted(
+            r"(?:^|&&|;|\||\n)\s*find\b"
+            r"(?=[\s\S]*\s-(exec|execdir|delete|print0|printf|newer|mtime|size|perm|user|group)\b)"
+        ),
         "find doing what fd does not: acting on matches, or selecting by time/size/perm — not a miss",
     ),
     "env-prefix": (_rx(r"^\s*[A-Z_][A-Z0-9_]*=\S+\s+\S"), "leading VAR=x defeats allow-rule prefix matching"),
@@ -296,8 +320,11 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
         "shell-level backgrounding can be killed before the command runs, and the next call then "
         "reads state as though it had: use the Bash tool's own run_in_background",
     ),
+    # Anchored at a command-segment boundary like its neighbours, which also settles the `cd <path>
+    # && rg …` form the cross-repo rule blesses: `&&` is one of the boundaries, so that shape
+    # matches with no special case and nothing has to re-implement `split_chain`.
     "rg-replace": (
-        _rx(r"\brg\b[^|;&\n]*?\s-[A-Za-z]*r[A-Za-z]*(?=[\s=])|\brg\b[^|;&\n]*?\s--replace\b"),
+        _rx_unquoted(r"(?:^|&&|;|\||\n)\s*rg\b[^|;&\n]*?\s(?:-[A-Za-z]*r[A-Za-z]*(?=[\s=])|--replace\b)"),
         "rg's -r is --replace, not --recursive (rg is recursive by default): `rg -rn pat path` "
         "prints every match with the matched text rewritten — plausible output that is not what the "
         "file says. Deliberate --replace exists, so read the sample before counting it a defect",

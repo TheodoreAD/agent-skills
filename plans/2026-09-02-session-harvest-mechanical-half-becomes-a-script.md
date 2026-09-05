@@ -134,6 +134,28 @@ of a dozen unrelated commands is worth having either way.]
 848: every command spelling is gone, and what is left is judgement and dated confirmations that the
 plan's own scope note says must stay. The per-section numbers are in "What landed" below.]
 
+## Migrated to
+
+Retired 2026-09-05. Where each part went, and what was checked before being dropped:
+
+- **Why the script exists at all** — the 24,429-call census, the six prose corrections that each
+  recurred after their warning was written, the user's `date -Is` prompt complaint, what
+  deliberately stayed in prose, the two things kept out of the script, the missed line-count target
+  as a `[PITFALL:]`, and the three surprises the build found — to
+  `skills/session-harvest/references/rationale.md`, as "Why the mechanical half is a script and the
+  judgement half is not", placed immediately after "Why the sweep's checks name a command rather
+  than the mistake", which is the same argument's last prose-only iteration.
+- **`sweep`'s write-paths-only rule** — dropped, because it is already in the code: the reasoning,
+  including "the difference between a sweep reporting six repos and reporting the two that matter",
+  is `written_paths`' own docstring, verbatim.
+- **The testability decision** — dropped for the same reason. `tests/unit/test_harvest.py`'s module
+  docstring states the seam and the autouse fixture asserts it, so the plan was describing a
+  contract the tests enforce.
+- **The subcommand listing and the "what landed" inventory** — dropped as code contract. The six
+  subcommands are `harvest.py --help`, and the count of tests is a number that rots.
+- **The three transcript-reader failures and the sizes table** — dropped. Their fixes are in the
+  code with dated docstrings, and the sizes were true on one day.
+
 ## Evidence
 
 - The measurement table above: `24,429` Bash calls, `1,134` transcripts, 2026-09-02.

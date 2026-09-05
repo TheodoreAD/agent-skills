@@ -253,6 +253,76 @@ quiet. A mechanism inferred from an observed symptom is not a measured one, and 
 would have aimed the fix at git's ref resolution rather than at the pipeline — which is the part
 that also breaks the two neighbouring checks.
 
+## Why the mechanical half is a script and the judgement half is not (2026-09-02)
+
+The section above is the argument's last prose-only iteration: name the exact command, because prose
+describing the mistake was executed wrongly with the wording in front of it. `harvest.py` is what
+happens when that argument is followed to its end — **a correction a script can simply not make does
+not belong in prose at all.**
+
+The evidence is a census of what every run had been re-deriving. Measured 2026-09-02 across this
+machine's whole transcript store, **24,429 Bash calls in 1,134 transcripts**:
+
+| hand-rolled shape                         | calls | distinct sessions |
+| ----------------------------------------- | ----: | ----------------: |
+| plans-store status/log                    |   568 |                39 |
+| `git log origin/<branch>..HEAD`           |   498 |                78 |
+| `gh run list`/`view`/`watch`              |   378 |                55 |
+| python heredoc over a `.jsonl` transcript |   164 |                46 |
+| `plans.py absorb`                         |   126 |                36 |
+| installed-vs-checkout `diff -q`           |    94 |                34 |
+| `ps -o` for live processes                |    93 |                46 |
+| anchored `depends_on` grep                |    91 |                44 |
+| `git rev-parse --abbrev-ref @{u}`         |    51 |                22 |
+| `audit.py --session`                      |    42 |                12 |
+| `docker system df` / `docker images`      |    34 |                 8 |
+| `ss -ltnp`                                |    20 |                14 |
+| `state.json` / `linkScanPath` resolution  |    12 |                 4 |
+| `date -Is`                                |     9 |                 6 |
+
+**The transcript reader was the worst of them** — 164 heredocs across 46 sessions, no two alike, for
+a job that has to filter user entries, extract text blocks, find `AskUserQuestion` results in
+tool-result blocks and resolve a background job's real transcript. Each of those had already failed
+in a documented way and each failure had been fixed **in prose**, so the next run's heredoc
+reintroduced it. Six such corrections existed, every one of them recurring at least once after its
+warning was written. That is the signal that the fix is not wording.
+
+The second cost was the user's own framing, 2026-09-02: _"the harvest skill uses `date` directly,
+and that creates a security prompt"_. `date -Is` is step 0's first instruction and matches no
+allowlist rule, so the first thing every harvest did was interrupt the user. One
+`python3 <skill>/scripts/harvest.py …` prefix is one shape to approve instead of a dozen — though no
+allowlist rule is assumed here, deliberately: that belongs to the machine's own repo, and the
+script's value does not depend on it.
+
+**What deliberately stayed in prose is most of the file**: the significance test, the routing
+filters, "there is no memory tier", the report's four groups and their ordering, the next-session
+prompt's subtraction rule. Two things stayed out of the script for their own reasons — **the gate
+re-run**, because that is the repo's command and hard-coding `inv quality.precommit` would be wrong
+in every repo that does not use it; and **anything that writes**, because a script that both
+measures and writes is one an agent will run without reading.
+
+[PITFALL: **the line-count target was the thing that was wrong, and is reported as missed rather
+than met by deleting evidence.** The plan aimed at under 700 lines and the skill went 967 -> 848.
+Every command spelling is gone — step 5 fell 270 -> 218 and step 0 127 -> 109, while step 2's 129
+lines of routing filters never had a command in them to remove. Cutting the remaining 150 would mean
+deleting the dated confirmations that make the rules survive review, which the same plan's own scope
+note forbids. A size target set before the split is a target set in ignorance of which half is
+which.]
+
+Three things the build found that reasoning had not, all from running it against this machine:
+
+- **The `AskUserQuestion` filter needed no third string-matching fix at all.**
+  `tool_result.tool_use_id` links back to a `tool_use` block whose `name` is the tool, which asks
+  the transcript what the tool _was_ rather than what its output looks like — immune to every
+  failure that rule has had. Measured: 7 answers by id against 8 by anchored preamble, the extra
+  being a grep's own output. The preamble count is still printed beside it as a self-check.
+- **Comparing `scripts/` directories raw reported three skills as differing at once**, because the
+  checkout accumulates a `__pycache__` the moment a script is imported and the installed copy does
+  not — a false "the install is behind" on the exact comparison step 0 exists to get right.
+- **A listening process's `/proc/<pid>/cwd` is not what it serves.** Reading it that way turned a
+  browser started from a repository into a finding about that repository, so the served directory is
+  now inferred only for something that looks like a file server or names `--directory` outright.
+
 ## Why "the invocation asked for something the skill lacks" is a self-update trigger (2026-08-28)
 
 The original two triggers both assumed the skill did something and it went wrong — an ambiguous

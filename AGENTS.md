@@ -41,14 +41,26 @@ description more carefully.
   the next editor who disagrees with it.
 - When a rule is observed being missed in practice, strengthen its language rather than lengthen its
   explanation.
-- **A skill's frontmatter declares `name` and `description`, and nothing else.** Those are what the
-  format defines and what every agent reads; anything further is a local invention some consumer has
-  to be told about. `metadata: family:` was one and was dropped 2026-09-04 — five of the fourteen
-  skills carried it, no code or test read it, the reference corpus defines no such key, and `family`
-  already means something else here (`plans.py --scope family`). **A half-covered taxonomy is worse
-  than none**, because it implies a scheme that was never finished.
-  `test_only_known_frontmatter_keys` gates it, so the next key is added by decision rather than by
-  habit.
+- **A skill's frontmatter uses the specification's keys and no others**: `name`, `description`,
+  `license`, `compatibility`, `metadata`, `allowed-tools`. Re-read from the spec 2026-09-05, which
+  reversed a 2026-09-04 gate that allowed only the first two on the claim that "the reference corpus
+  defines no such key" — the spec defines all six, and the reference corpus uses `license` almost
+  everywhere. What that gate was right about is the **sub-key**: `metadata: family:` was a local
+  invention five of fourteen skills carried, nothing read, and `family` already meant something else
+  here. **A half-covered taxonomy is worse than none**, so a key under `metadata:` is still a
+  decision recorded here and in `KNOWN_METADATA_KEYS` first; `test_only_known_frontmatter_keys` and
+  `test_metadata_keys_are_decided_not_added` gate both halves.
+- **`compatibility:` is the spec's field for environment requirements, and every skill that ships a
+  script or instructs a write outside the session's repo declares one** — the product it is meant
+  for, the tools it shells out to, whether it reaches the network. A pure convention skill carries
+  none; the spec's own note is that most skills do not need it.
+- **Every skill that touches the machine discloses what it reads, runs and writes**, under the fixed
+  heading `## What this skill reads, runs and writes`, with a `**Writes**` line even when the answer
+  is nothing. Asked for by the user 2026-09-03 as total transparency; the heading is fixed so a
+  reader or a scanner finds it in the same place in every skill, and
+  `test_a_skill_that_touches_the_machine_discloses_it` gates its presence. The gate cannot check
+  that a disclosure is true — it is a statement for a reader checking the skill by hand against its
+  code, never a manifest anything enforces, and `skill-authoring` says how to scrutinise one.
 - A skill directory may hold `references/`, `scripts/` and `evals/`, and nothing else. `evals/` was
   added 2026-08-31 for trigger cases — JSON files of prompts with the skill each should select, run
   by `skills/skill-fitness/scripts/trigger.py`. Write them for a **pair** the fitness analyzer

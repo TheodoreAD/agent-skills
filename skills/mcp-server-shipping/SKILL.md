@@ -1,6 +1,7 @@
 ---
 name: mcp-server-shipping
 description: "Use when building, installing or registering a personal MCP server — adding its `[project.scripts]` entry point, installing it with `uv tool install` from a local checkout or straight from git instead of publishing to PyPI, registering it with `claude mcp add` and choosing local/project/user scope, switching between an editable dev install and a released one without re-registering, and the per-repo dev loop (`inv dev-env.setup`, `inv quality.precommit`, why automation needs `uv run inv`) for the repos that produce these servers."
+compatibility: uv and the claude CLI. The dev-loop section names the author's own task runner as a worked example, not a requirement.
 ---
 
 # Shipping a personal MCP server
@@ -13,6 +14,18 @@ than a placeholder; substitute your own everywhere.
 
 Shipping an **Agent Skill** is a different job with a different mechanism — see the
 `skill-authoring` skill, which also covers getting an edit to an existing skill deployed.
+
+## What this skill reads, runs and writes
+
+This skill ships no scripts; what it touches, it touches through the commands it tells you to run.
+
+- **Runs**: `uv tool install`, `claude mcp add`, `claude mcp list`.
+- **Writes**: `uv tool install` puts a tool environment under uv's tool directory and a shim on
+  `PATH` (`~/.local/bin/` by default); `claude mcp add --scope user` writes the server registration
+  into Claude Code's user-level config, `--scope project` into the repo's `.mcp.json`. Both are
+  reversible with the same tools' `uninstall`/`remove`. Nothing else, and nothing in the repo the
+  server lives in beyond the `[project.scripts]` entry you add by hand.
+- **Network**: `uv tool install git+…` clones the repo you name.
 
 ## Per-repo dev loop
 

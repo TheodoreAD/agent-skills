@@ -1,6 +1,7 @@
 ---
 name: session-harvest
 description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation for anything worth keeping and routes each item to a plain file every agent can read: plan-specific content to plans/*.md (per the plan-docs skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md. Never a harness's own memory store, for any project or any reason — that vendor-locks the work. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent, a safe-to-compact verdict, and a next-session prompt. On-demand only — never installs hooks or runs automatically."
+compatibility: Python 3.11+ (stdlib only) and git. Reads Claude Code's transcript store; on another harness the transcript half is unavailable. Processes and sockets need ps and ss on Linux, PowerShell and netstat on Windows. gh and docker are used when present. Network access only for git fetch to each repo's own upstream (--no-fetch to skip) and gh for CI.
 ---
 
 # Session harvest
@@ -15,6 +16,25 @@ art (see `references/rationale.md`).
 On-demand only. Installing hooks, wiring `settings.json`, or running on any schedule is explicitly
 out of scope — that's a different, heavier tool (see `references/rationale.md` for the prior art
 considered and rejected).
+
+## What this skill reads, runs and writes
+
+- **Reads**: Claude Code's transcripts and background-job state under `~/.claude` (read-only,
+  another harness has nothing there); git state of every repo the session touched; CI runs through
+  `gh`; the process and listening-socket tables; docker images; both plans stores; the installed
+  skills hub and the source checkout `skills-state` resolves. The socket step checks whether
+  credential-named files (`.env`, `.netrc`, …) **exist** under a directory a listener serves — names
+  only, never contents.
+- **Runs**: `git` (including `fetch` to each touched repo's own upstream unless `--no-fetch`), `gh`
+  and `docker` when installed, `ps`/`ss` on Linux or PowerShell/`netstat` on Windows, and
+  `plans.py absorb` read-only. Nothing through a shell.
+- **Writes**: **the script writes nothing.** The procedure writes, through the agent, only inside
+  the set stated at the top of it — the session repo, its `plans/`, and the plans store through
+  `plan-docs`. Never a deployed instructions file, never an installed skill copy, never another
+  repo's tree. Killing an orphaned process the sweep found is the one non-file side effect, and it
+  is proposed, not done.
+- **Network**: `git fetch` and `gh` only, to the repos' own remotes. Nothing is sent anywhere; every
+  report goes to stdout.
 
 ## The script
 

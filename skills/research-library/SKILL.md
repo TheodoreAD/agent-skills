@@ -1,6 +1,7 @@
 ---
 name: research-library
 description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library. Also owns judging a named third-party package or repo before depending on it: whether it is still maintained, who is actually committing to it, how often it releases on its stable line, whether it ships py.typed, how much test suite is behind it, whether a version cap it carries will hold you back — read from PyPI, the GitHub API and the project's own source rather than from a search summary."
+compatibility: Python 3.11+ (stdlib only), git, and network access - clones from the URL you give, and package health from PyPI's JSON API and the GitHub API through gh, so your own token and rate limit apply. A library directory ($RESEARCH_HOME, default ~/research) that you create.
 ---
 
 # Research library
@@ -15,6 +16,16 @@ same reference material into its own gitignored folder.
 but the conventions below depends on the layout. If `$RESEARCH_HOME` is unset and `~/research` does
 not exist, say so and offer to create it rather than silently falling back to fetching from the web;
 setting `RESEARCH_HOME` in a shell profile is the only setup step.
+
+## What this skill reads, runs and writes
+
+- **Reads**: `$RESEARCH_HOME` and the entries in it; a repo's own `AGENTS.md` for pointers.
+- **Runs**: `git clone`/`fetch` for entries, `gh api` for package health.
+- **Writes**: only inside `$RESEARCH_HOME` — `library.py add` clones and writes a provenance file,
+  `provenance` writes that file, `update` refreshes clones; `name` and `check` write nothing, and
+  `--dry-run` prints what `add` would do. Never a symlink or a copy into a project repo.
+- **Network**: the clone URL you give; PyPI and GitHub for `package_health.py`, GitHub through your
+  own `gh` login. Nothing is uploaded.
 
 ## Before fetching anything from the web
 

@@ -1,6 +1,7 @@
 ---
 name: session-bash-audit
 description: "Use when asked to audit, measure, or re-check how agent sessions are using the Bash tool — command chaining (&&, ;, |), cd into the session's own repo, head/tail truncation, sed -n/cat/heredoc instead of Read/Edit, git commit/push inside chains or behind git -C — or when deciding whether a permission prompt, an allowlist rule, a ~/AGENTS.md Bash rule, or the permission mode (acceptEdits vs auto) needs changing and wants evidence from real transcripts rather than a hunch. Runs a stdlib script over ~/.claude/projects/*.jsonl, prints per-model and per-session rates plus samples, and carries the dated research that explains why each pattern happens and where the fix belongs. Also the place to record a newly noticed Bash anti-pattern so the next audit measures it."
+compatibility: Python 3.11+ (stdlib only). Reads Claude Code's transcript store and settings under ~/.claude; nothing to read on another harness. The patterns are POSIX-shell idioms, so a Git Bash or WSL session on Windows measures and a PowerShell one does not. No network access.
 ---
 
 # Session Bash audit
@@ -53,6 +54,18 @@ is a worktree), while VS Code's default `<repo>.worktrees/<name>` and the flat `
 beside a checkout are indistinguishable from an ordinary repo name. Half a fix across one layout
 would make the other layouts read as verified. Treat a zero on those two rows as unverified whenever
 the session may have run from a worktree, the same as for Windows.
+
+## What this skill reads, runs and writes
+
+- **Reads**: `~/.claude/projects/*.jsonl` and `~/.claude/settings.json`, Claude Code's own files,
+  read-only.
+- **Runs**: nothing. `prompts.py` replays the permission rules in-process; the Probe procedure
+  prints commands for you to run and read.
+- **Writes**: a baseline, only when asked with `--save-baseline`, under
+  `$XDG_STATE_HOME/session-bash-audit/` (`%LOCALAPPDATA%\session-bash-audit\` on Windows); a dump
+  wherever `--json <path>` says. Never a transcript, never a setting, never its own installed
+  directory.
+- **Network**: none.
 
 ## Four procedures — the skill runs them, the user only reads results
 

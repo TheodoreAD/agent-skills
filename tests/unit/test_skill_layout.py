@@ -42,14 +42,33 @@ BLOCK_SCALARS = frozenset({">", "|", ">-", "|-", ">+", "|+"})
 # decision that should be made deliberately, in AGENTS.md, before it ships.
 ALLOWED_ENTRIES = {"SKILL.md", "references", "scripts", "evals"}
 
-# Every frontmatter key a skill may declare. `name` and `description` are what the format defines
-# and what every agent reads; anything else is a local invention that some consumer has to be told
-# about. `metadata: family:` was one, dropped 2026-09-04: five of fourteen skills carried it, no
-# code or test read it, the reference corpus defines no such key, and `family` already means
-# something else here (`plans.py --scope family`). A half-covered taxonomy is worse than none,
-# because it implies a scheme that was never finished — so the gate is here to keep the next one
-# from being added by habit rather than by decision.
-ALLOWED_FRONTMATTER = {"name", "description"}
+# Every frontmatter key a skill may declare: exactly the specification's six. Re-read from
+# agentskills.io/specification on 2026-09-05, which corrected the 2026-09-04 gate that allowed only
+# `name` and `description` on the reasoning that "the reference corpus defines no such key" — the
+# spec does define `license`, `compatibility` (environment requirements, 500 chars), `metadata` (a
+# string-to-string map for what the spec does not define) and the experimental `allowed-tools`, and
+# the reference corpus uses `license` on nearly every skill. What that gate was right about is the
+# *sub-key*: `metadata: family:` was a local invention five of fourteen skills carried and nothing
+# read, and a half-covered taxonomy is worse than none. So the spec's keys are open, and a key
+# under `metadata:` is still a decision recorded in AGENTS.md first — see KNOWN_METADATA_KEYS.
+ALLOWED_FRONTMATTER = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
+
+# The spec's cap on `compatibility`, and the field's job: environment requirements — the product it
+# is meant for, system packages, network access. This corpus uses it for exactly that on every skill
+# that ships a script or instructs a write outside the session's repo.
+MAX_COMPATIBILITY_CHARS = 500
+
+# `metadata:` sub-keys this corpus has decided on. Empty: the field is the spec's, the keys would be
+# ours, and none has earned a reader yet.
+KNOWN_METADATA_KEYS: frozenset[str] = frozenset()
+
+# The disclosure every skill that touches the machine carries — what it reads, what it runs, and
+# above all what it writes and where. Decided 2026-09-05 from the user's 2026-09-03 request for
+# total transparency; the heading is fixed so a reader (or a scanner) finds it in every skill at
+# the same place, and the `Writes` line is the one that must exist, since it is the one a reader
+# deciding whether to trust the skill is looking for.
+DISCLOSURE_HEADING = "## What this skill reads, runs and writes"
+DISCLOSURE_REQUIRED_LINE = "**Writes"
 
 # Skills knowingly over the cap, each with the plan that owns the fix. An entry here is a debt on
 # the record, not an exemption: `test_no_stale_cap_debt` fails once the skill comes back under the
@@ -275,8 +294,54 @@ def test_only_known_frontmatter_keys(skill: Path):
     fields = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8"))
     unexpected = sorted(set(fields) - ALLOWED_FRONTMATTER)
     assert not unexpected, (
-        f"{skill.name}/SKILL.md declares {unexpected}; allowed: {sorted(ALLOWED_FRONTMATTER)}. "
-        "A new key is a decision to record in AGENTS.md first, not a field to add in passing."
+        f"{skill.name}/SKILL.md declares {unexpected}; the specification defines {sorted(ALLOWED_FRONTMATTER)} "
+        "and nothing else. A local key goes under `metadata:`, and is a decision to record in AGENTS.md first."
+    )
+
+
+@each_skill
+def test_metadata_keys_are_decided_not_added(skill: Path):
+    """`metadata:` is the spec's escape hatch for what it does not define, which makes every key
+    under it ours to explain. `family:` was added in passing and read by nothing."""
+    fields = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8"))
+    declared = set(re.findall(r"(?:^|\s)([A-Za-z_][\w-]*):", fields.get("metadata", "")))
+    unexpected = sorted(declared - KNOWN_METADATA_KEYS)
+    assert not unexpected, (
+        f"{skill.name}/SKILL.md declares metadata keys {unexpected}; a key nothing reads is a taxonomy "
+        "nobody finished. Record it in AGENTS.md and KNOWN_METADATA_KEYS first."
+    )
+
+
+@each_skill
+def test_compatibility_is_within_the_spec_cap(skill: Path):
+    value = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8")).get("compatibility", "")
+    assert len(value) <= MAX_COMPATIBILITY_CHARS, (
+        f"{skill.name}/SKILL.md compatibility is {len(value)} chars, over the spec's {MAX_COMPATIBILITY_CHARS}"
+    )
+
+
+@each_skill
+def test_a_skill_that_touches_the_machine_discloses_it(skill: Path):
+    """Every skill that ships a script, or instructs a write outside the session's repo, says what
+    it reads, runs and writes under one fixed heading, and declares its environment requirements
+    in `compatibility`. A read-only convention skill carries neither — noise in twelve skills is
+    how a section stops being read.
+
+    The gate checks that the disclosure exists and has its load-bearing line; it cannot check that
+    it is true. That is deliberate and worth stating: the disclosure is for a reader checking the
+    skill by hand against its code, not a manifest anything enforces.
+    """
+    text = (skill / "SKILL.md").read_text(encoding="utf-8")
+    fields = parse_frontmatter(text)
+    touches = (skill / "scripts").is_dir() or DISCLOSURE_HEADING in text
+    if not touches:
+        return
+    assert DISCLOSURE_HEADING in text, f"{skill.name} ships scripts but has no {DISCLOSURE_HEADING!r} section"
+    section = text.split(DISCLOSURE_HEADING, 1)[1].split("\n## ", 1)[0]
+    assert DISCLOSURE_REQUIRED_LINE in section, f"{skill.name}'s disclosure has no {DISCLOSURE_REQUIRED_LINE} line"
+    assert fields.get("compatibility"), (
+        f"{skill.name} discloses what it touches but declares no `compatibility:` — the spec's field for "
+        "environment requirements, which is where a reader looks first"
     )
 
 

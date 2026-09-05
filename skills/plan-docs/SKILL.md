@@ -1,6 +1,7 @@
 ---
 name: plan-docs
 description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, choosing or advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, migrating a repo's legacy monolithic plan file (PLAN.md, DESIGN.md, ...) onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME), routed per repo by config; an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
+compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard; any other harness exports PLAN_DOCS_SESSION_REPO instead. No network access.
 ---
 
 # Structured, stateful plan files
@@ -14,6 +15,25 @@ Rationale, prior art, and worked examples:
 have been adopted instead — the markdown task trackers, git-bug, beads, and why cross-repo is the
 case none of them solves cheaply — is
 [`references/prior-art-task-trackers.md`](references/prior-art-task-trackers.md).
+
+## What this skill reads, runs and writes
+
+- **Reads**: the session repo's `plans/`, both plans stores (`$PLANS_HOME`, default `~/plans`, and
+  its sensitive sibling), its own config (`$PLAN_DOCS_CONFIG`, else
+  `~/.config/plan-docs/config.toml`, else `%APPDATA%\plan-docs\` on Windows), the directory names
+  under `projects_root` (to derive the private terms `scan` gates on — names only, never contents),
+  git history of the session repo and the stores, and, on Claude Code, the transcript path named by
+  `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
+- **Runs**: `git` — read commands everywhere; `git commit` only on the store, through `commit`. The
+  history-purge sequence in "Never let a client's identity reach a repo you publish" is printed for
+  you to run; the script never runs it.
+- **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
+  files in the session repo's `plans/` and in both stores — `new`, `set-status`, `move`,
+  `absorb --apply`, `graduate`, and the retirement you perform by hand. The store directories and
+  their READMEs, created `0700`. Commits to the **store** through `commit`; never a commit in the
+  session repo, and never a file in any other repo's working tree — `new` refuses and names `--for`.
+  `archive`, `list`, `tags`, `refs`, `doctor`, `scan` and `where` write nothing.
+- **Network**: none. Pushing a store is your command, behind the scan.
 
 ## Run the script, don't re-derive it
 

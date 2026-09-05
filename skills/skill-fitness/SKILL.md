@@ -10,6 +10,10 @@ description: >-
   once, should be broken up or split into separate skills. Measures an installed set from
   frontmatter and from the session transcript store; it does not teach how to write or deploy a
   skill.
+compatibility: >-
+  Python 3.11+ (stdlib only). Usage and the listings actually sent read Claude Code's transcript
+  store and ~/.claude.json and are unavailable on another harness; --ref needs git; trigger.py
+  needs the claude CLI and spends tokens. No network access from fitness.py.
 ---
 
 # Skill fitness
@@ -24,6 +28,19 @@ trigger ledger, the listing budget read from the binary, and the ledger of five 
 failed; [`references/research.md`](references/research.md) for published work and other people's
 tools — SkillsBench, the quality rubric, `skill-creator`, and what the scanners in this space do and
 do not detect.
+
+## What this skill reads, runs and writes
+
+- **Reads**: skills directories — `./skills` in a checkout, `~/.agents/skills`, `~/.claude/skills`,
+  or whatever `--root` names; Claude Code's `~/.claude/projects/*.jsonl` and `~/.claude.json` for
+  usage and the listings actually sent; a git ref through `git archive` for `--ref`.
+- **Runs**: `git archive` for `--ref`. `trigger.py` runs `claude -p` in a temporary directory — the
+  only thing in this skill that spends tokens, and it is refused for a suite whose skills you do not
+  have.
+- **Writes**: a derivable baseline, only where `derivable --save-baseline <path>` says. `trigger.py`
+  writes a candidate command file into a temporary directory it deletes on exit. Nothing into any
+  skill, any repo, or the install hub.
+- **Network**: none from `fitness.py`; `trigger.py` reaches the model through the `claude` CLI.
 
 ## The one rule that shapes everything here
 

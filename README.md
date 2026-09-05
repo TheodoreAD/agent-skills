@@ -44,14 +44,17 @@ read the file directly.
 **Scope** says how much of the skill is a convention anyone can adopt versus a personal preference:
 _general_ is portable as written, _opinionated but general_ picks one defensible convention out of
 several and commits to it, and _personal_ depends on how one particular machine or repo family is
-set up. No skill here sends anything off the machine on its own. Four do read or write outside the
-repo you are working in, and each declares it: `research-library` (`$RESEARCH_HOME`), `plan-docs`
-(`$PLANS_HOME` and `$PLANS_SENSITIVE_HOME`, for work repos that can't hold their own plans),
-`session-bash-audit` (Claude Code's own transcripts) and `session-harvest`, whose sweep reads those
-transcripts plus the machine's processes, listening sockets, container images and both stores —
-read-only, and it writes nothing itself. `plan-docs` also describes pushing the shareable half of
-its store to a remote you configure — behind a content scan, and never the half holding employer or
-client work.
+set up. No skill here sends anything off the machine on its own. **Every skill that ships a script
+or instructs a write outside your repo says what it reads, runs and writes**, under the same heading
+in its `SKILL.md` — `## What this skill reads, runs and writes` — and declares its environment
+requirements in the `compatibility` frontmatter field. In short: `research-library` writes only
+inside `$RESEARCH_HOME`; `plan-docs` writes plan files in your repo and in its stores (`$PLANS_HOME`
+and the sensitive sibling, for work repos that can't hold their own plans) and commits only to the
+store; `session-bash-audit` reads Claude Code's own transcripts and writes only a baseline you ask
+for; `session-harvest`'s script writes nothing and its sweep reads transcripts, processes, listening
+sockets, container images and both stores; `skill-fitness` writes nothing but a baseline you name.
+`plan-docs` also describes pushing the shareable half of its store to a remote you configure —
+behind a content scan, and never the half holding employer or client work.
 
 **Platform.** Everything here was written on a POSIX machine. The scripts are stdlib-only Python,
 resolve their locations from `$XDG_*` first and fall back to `%APPDATA%` / `%LOCALAPPDATA%` on

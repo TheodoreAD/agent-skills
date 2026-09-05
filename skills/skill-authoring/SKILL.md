@@ -1,17 +1,40 @@
 ---
 name: skill-authoring
 description: "Use when writing a new Agent Skill, editing an existing SKILL.md, or getting a skill change actually deployed — where the source lives versus the installed copy, why editing the installed copy silently does nothing, the edit → gate → commit → push → re-install → verify sequence, how to publish a skill repo so `skills add` finds it, how to word a `description` so it triggers on real requests without stealing another skill's, and when something should be an instructions-file rule instead of a skill at all."
+compatibility: Node (npx) for the skills CLI install commands; the skill-fitness skill's scripts for the measurements it asks for. Nothing else.
 ---
 
 # Authoring and updating Agent Skills
 
-A skill is a directory with a `SKILL.md` at its root: YAML frontmatter (`name`, `description`) and
-markdown instructions. `references/` holds anything read on demand, `scripts/` anything the skill
-runs. That is the whole format, and it is read by every agent that speaks the Agent Skills
-convention.
+A skill is a directory with a `SKILL.md` at its root: YAML frontmatter and markdown instructions.
+`references/` holds anything read on demand, `scripts/` anything the skill runs. That is the whole
+format, and it is read by every agent that speaks the Agent Skills convention.
+
+The frontmatter is the specification's six keys and no others: `name` and `description`, which every
+agent matches on; `license`; `compatibility`, up to 500 characters of **environment requirements** —
+the product a skill is meant for, the system packages it needs, whether it reaches the network;
+`metadata`, a string-to-string map for what the spec does not define; and the experimental
+`allowed-tools`. Use `compatibility` on any skill that ships a script or instructs a write outside
+the session's repo, and leave it off a pure convention skill — the spec's own note is that most
+skills do not need it. A key under `metadata` is yours to explain, so it is a decision recorded in
+the repo's instructions first; `metadata: family:` was added in passing here, read by nothing, and
+removed.
 
 This skill covers writing one and — the part that actually goes wrong — getting a change to one to
 take effect.
+
+## What this skill reads, runs and writes
+
+This skill ships no scripts; what it touches, it touches through the commands it tells you to run.
+
+- **Runs**: `npx skills add`, `skills ls`, `skills remove`; `skill-fitness`'s scripts for the
+  measurements below.
+- **Writes**: `skills add --global` copies skills into `~/.agents/skills/` and links each detected
+  agent's own skills directory at it; without `--global`, and standing in a repo, it writes
+  `.agents/skills/`, a `.claude/skills` symlink and `skills-lock.json` into that working tree —
+  which is why the flag is not optional here. The `ln -s ~/.agents/skills ~/.claude/skills` it
+  suggests when the installer skipped the link writes one symlink. Nothing else.
+- **Network**: `skills add <owner>/<repo>` clones the repo you name.
 
 ## Updating a skill and redeploying it
 
@@ -387,6 +410,46 @@ the reader happens to have installed. Share a **location** as configuration both
 environment variable, a config file); duplicate ten lines of resolver rather than depending on
 anything; and where one skill genuinely should invoke another, let the **agent** do it and say out
 loud when it skipped because the sibling was not installed.
+
+## Say what the skill reads, runs and writes — and scrutinise every write
+
+**A skill that ships a script, or tells its reader to run a command that writes outside the
+session's repo, carries a section headed `## What this skill reads, runs and writes`**, with four
+lines: **Reads**, **Runs**, **Writes**, **Network** — the last two even when the answer is
+"nothing", because "writes nothing" is the most useful line in the file for a reader deciding
+whether to trust it. Name what it mutates by **kind** (the session repo's `plans/`, a store, a
+config it owns), not by a path list that drifts, and say which subcommands write and which do not.
+Put the environment half — the product, the tools it shells out to, network access — in the
+`compatibility` frontmatter field, which is where a reader looks first. A pure convention skill
+carries neither.
+
+**It is a disclosure, not a permission manifest, and the word matters.** Nothing checks that it is
+true and nothing can; a statement a skill makes about itself is not a control. MCP's own annotations
+carry the caveat that clients must treat them as untrusted, and it applies here unchanged. The
+disclosure's value is that it is checkable by hand against the code — a sceptical reader can confirm
+"no network client" with one grep — and a layout test can gate that it exists and has its `Writes`
+line, which is all a test can honestly gate.
+
+**Scrutinise each write by what recovers it, not by whether it is allowed.** Nobody is granting
+permission, so "allowed" is the wrong question; recoverability is the one that separates "dangerous
+even without bad intentions" from routine. A write inside a git repo has a diff, a revert and a
+history. A write to an unversioned file outside every repository has none, and that is the one to
+justify in the disclosure or drop. Four writes are routine under that test, and every one is
+declared rather than assumed:
+
+1. **Its own config, through its own command** (`plan-docs`' `config set` over
+   `~/.config/plan-docs/config.toml`) — never a hand edit the skill tells the reader to make.
+2. **The destination its declared purpose names** (`research-library` cloning into `$RESEARCH_HOME`,
+   a scaffolder stamping a new repo) — stated as a criterion rather than a list, because the second
+   instance was found by looking.
+3. **The plans stores**, both tiers, through `plan-docs` — with that skill's own condition, that a
+   dirty store gets a new file rather than an edit to one another session may be holding.
+4. **The session's own repo.** Everything else — another repo's tree, a deployed instructions file,
+   an installed skill copy — is out, and `session-harvest` states the set once at the top of its
+   procedure as the worked example.
+
+The rule is about file writes and commits. Non-file side effects — killing an orphaned process,
+pruning a cache — are governed by the skill that proposes them, and are proposed, not done.
 
 ## Convention skills should self-update on friction
 

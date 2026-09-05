@@ -1,6 +1,7 @@
 ---
 name: python-refactor-audit
 description: "Use when an existing Python module has grown and the question is how to restructure it safely, not what to write — auditing a file nobody has reviewed as a whole, planning the change as a sequence of small commits each verified on its own, deciding which tests may be edited to follow a rename and which must not change at a character, proving an edited test still fails when the production change is reverted, finding a second oracle when the suite cannot see the change (a field's type changing under a name every caller already uses), measuring the shape you are trying to remove before and after so a large diff that moves nothing is caught, and deciding when not to restructure at all. For what a given piece of Python should look like — data modeling, dates, settings, modularity and singleton defaults — see the Python conventions skill; for what a test should cover, the Python testing skill."
+compatibility: Python 3.11+ (stdlib only) for the two measurement scripts. No network access.
 ---
 
 # Auditing and restructuring a Python module that grew
@@ -20,6 +21,13 @@ The worked example every rule here comes from is in [`references/pilot.md`](refe
 counts, the two counts that did not reproduce, and the things that went wrong.
 [`references/prior-art.md`](references/prior-art.md) is what was surveyed and what was deliberately
 not taken.
+
+## What this skill reads, runs and writes
+
+- **Reads**: the module you point `scripts/count_shapes.py` and `scripts/find_mutations.py` at.
+- **Runs**: nothing.
+- **Writes**: nothing. The commits the loop below produces are yours, in your repo, one at a time.
+- **Network**: none.
 
 ## First decide whether to restructure at all
 

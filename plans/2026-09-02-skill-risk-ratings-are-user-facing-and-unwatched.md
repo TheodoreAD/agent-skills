@@ -193,10 +193,10 @@ no line to walk, because nothing is being minimised.]
 can look into doing less intrusive things if it helps, unless the skill needs them."_ That is a
 genuine test rather than a preference, and it has an answer per component. Of the three things
 Socket named: writing to always-loaded instruction files and autonomous local commits **are not
-needed** and are removed by the write-scope rule
-(`plans/2026-09-03-harvest-writes-only-to-the-session-repo-and-plans.md`); transcript mining and
-multi-repo inspection **are** the skill, and stay. The `SECRET_NAMES` existence check also stays: it
-produced a real finding, it never opens the files, and Socket explicitly did not object to it.]
+needed** and are removed by the write-scope rule, which landed and has since been retired into
+`session-harvest`'s `SKILL.md` and its rationale; transcript mining and multi-repo inspection
+**are** the skill, and stay. The `SECRET_NAMES` existence check also stays: it produced a real
+finding, it never opens the files, and Socket explicitly did not object to it.]
 
 The two decisions pull in the same direction and it is worth saying why, because "be transparent"
 and "be less intrusive" can conflict. They do not here: the footprint that survives the second
@@ -458,9 +458,10 @@ Transcripts expire after 30 days by default, so this one is readable until rough
 ## The disclosure shipped 2026-09-05, so step 1 is partly done
 
 Every skill that ships a script now carries `## What this skill reads, runs and writes` and a
-`compatibility` field (`2026-09-03-skills-disclose-what-they-write.md`, landed). For
-`session-harvest` that is the stated-purpose widening step 1 asks for, in the body rather than the
-description — the description is the listing budget, and the section is what a reader opens.
+`compatibility` field — landed, and the plan behind it since retired into `skill-authoring`'s
+`SKILL.md` and rationale. For `session-harvest` that is the stated-purpose widening step 1 asks for,
+in the body rather than the description — the description is the listing budget, and the section is
+what a reader opens.
 
 [UNVERIFIED: **whether the scanners read the disclosure as a wider declared footprint or as
 reassurance.** Re-query the audit endpoint for `session-harvest` after the push that publishes it

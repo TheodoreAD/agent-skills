@@ -75,20 +75,13 @@ nobody runs unless they are already thinking about plans.
 Assigned by counting each skill's name in each plan, which is a starting point and **not** the
 answer — see the batches below.
 
-**5 left of the original 16**, 719 lines, and **no `DEFERRED` or `UNVERIFIED` among them**, so
-nothing left in the backlog blocks its own deletion:
+**The backlog is drained: 16 to 0, in four batches on 2026-09-06.** 2,331 lines of plan, 61
+`DECISION` and 14 `PITFALL` tags, all either migrated to a rationale file or verified already
+present in the code, the tests or a skill body.
 
-| plan                                                    | lines | tags                      |
-| ------------------------------------------------------- | ----: | ------------------------- |
-| `2026-09-04-skills-assume-one-working-tree-per-repo.md` |   260 | none                      |
-| `2026-09-03-skills-disclose-what-they-write.md`         |   170 | 4 `DECISION`              |
-| `2026-09-03-which-version-a-measurement-describes.md`   |   128 | 4 `DECISION`, 1 `PITFALL` |
-| `2026-09-03-harvest-writes-only-to-the-session-repo-…`  |    96 | 4 `DECISION`              |
-| `2026-09-03-stale-install-scripts-can-skip-a-check-…`   |    65 | 1 `DECISION`              |
-
-The destination table is dropped here rather than updated. With five plans left it no longer batches
-anything — and after three batches the more useful statement is the correction below it, which is
-that the table was a hint and never the answer.
+The destination table that used to sit here is dropped rather than updated. It was built by counting
+each skill's name in each plan, and it mis-assigned a plan in **three of the four batches** — the
+correction outlived the table, and it is below.
 
 ## Batch 1, 2026-09-06: the two on-disk-location plans
 
@@ -171,6 +164,26 @@ Two things this batch adds that the first two did not:
 The other `DEFERRED`, on making `--note` mandatory, was **not** carried: it reads as deferred work
 and argues itself down in its own text. A tag that concludes against itself is a settled no, and
 recording it as one is the honest handling — not a new plan nobody will act on.
+
+## Batch 4, 2026-09-06: the last five, and the first honest spread
+
+Five plans into **four** different skills' rationale files — the first batch where the spread is
+real rather than an artefact of the name count. It is also the batch that shows what the count was
+measuring: these five each concluded about the skill they were mostly _about_, which is why the
+assignment happened to work here and failed three times before.
+
+The two findings worth carrying:
+
+- **A plan can be entirely already-migrated and still owe its rejected alternatives.** Every rule in
+  all five was in a skill body, and in two cases better worded than the plan. What was missing every
+  time was the same shape: the option not taken, and the measurement that killed it — skip versus
+  fold for worktrees, manifest versus disclosure, fetch versus don't. Four batches in, this is the
+  single most reliable statement about what a retirement is actually for.
+- **The objection that kills a fix is often retired by measuring it.** The worktree fix was argued
+  against on the grounds that detecting a worktree costs a `git` call per candidate. It costs none —
+  `.git` is a file whose `gitdir:` line names the main checkout, and the walker already stats that
+  path. The plan that recorded the objection also recorded its own refutation, which is the pattern
+  worth noticing: an objection stated in a plan is a claim, and claims in plans are measurable.
 
 ## Decisions, 2026-09-06
 

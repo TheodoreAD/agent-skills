@@ -5,10 +5,12 @@ description: "Use when working in one of the *-polite-mcp personal automation re
 
 # Polite-MCP family: agent collaboration conventions
 
-Behavioral conventions for this user's personal shopping/classifieds automation family — distinct
-from `mcp-skill-shipping` (dev-loop/distribution mechanics for the same repos) and from whatever
+Behavioral conventions for this author's own shopping/classifieds automation family —
+`olx-polite-mcp` and its siblings, which exist on this author's machine and nowhere else — distinct
+from `mcp-server-shipping` (dev-loop/distribution mechanics for the same repos) and from whatever
 always-loaded instructions file the machine carries, which holds the truly universal conventions.
 These are specific to the domain: automation against a user's own live, logged-in personal accounts.
+Installed elsewhere, the conventions still read; the repo names are the author's.
 
 ## Confirm before the first live mutating action
 

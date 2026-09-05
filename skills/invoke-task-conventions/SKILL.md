@@ -15,6 +15,11 @@ This is the mainstream CLI shape, not a local invention — `gh pr create`, `doc
 [`references/rationale.md`](references/rationale.md) for the prior art and the evidence behind each
 rule below.
 
+The examples and measurements are from this author's own repo family — `power-user-linux-setup`,
+`repo-tasks`, `scaffoldapy`-generated projects — because that is where the rules were tried. The
+rules are `invoke`'s and hold in any `tasks.py`; substitute your own repos wherever one of those is
+named.
+
 ## The three rules
 
 **1. Task names lead with a verb.** Name the action, not the thing produced — `apt.install-base`,

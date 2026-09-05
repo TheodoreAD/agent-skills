@@ -71,5 +71,6 @@ the change is additive.]
 ## Recommended direction
 
 One resolver call in `skills-state`, the flag kept as an override, and step 0's command block loses
-the placeholder. Worth doing alongside `2026-09-05-skills-state-skill-flag-replaces-defaults.md`,
-which is the other change to the same subcommand's argument handling — same function, same review.
+the placeholder. The other change to the same subcommand's argument handling — making `--skill`
+additive rather than replacing the defaults — has since landed and been retired, so this is now the
+last of the pair rather than half of a shared review.

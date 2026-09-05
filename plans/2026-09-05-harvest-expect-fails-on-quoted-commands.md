@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-05
 ---
 
@@ -44,17 +44,25 @@ user's side is to pass a quote-free substring or `--session <id>`. But `--expect
 recommended robust selector for exactly the case where no id is to hand, and it breaks on the most
 natural input to it, so the recommendation and the behaviour disagree.
 
-## Recommended direction
+## What landed
 
-[UNVERIFIED: the shape of the fix, not yet tried.] Match against the parsed command rather than the
-raw line: `_by_content` already reads the file, and the loader nearby (`json.loads(line)`) is the
-tool. Search the decoded `tool_use` input / command text so the needle is compared against the same
-unescaped string the user sees, instead of against JSON-escaped bytes. A cheaper stopgap is to try
-both the raw needle and its `json.dumps`-encoded inner form, but decoding is the honest version.
+`b804ede`. A `_contains(expect, text)` helper compares the raw needle **and** its JSON-escaped inner
+form, in both encoders — `json.dumps(..., ensure_ascii=False)` and the ASCII-escaping default —
+because this script does not write the transcript and `JSON.stringify` leaves non-ASCII alone where
+Python escapes it to `\uXXXX`. `_by_content` and the self-check on an explicitly-passed `--session`
+both go through it; the self-check had the same defect and would have reported `NOT FOUND` for a
+command the transcript holds.
 
-Whatever the fix, add a test with a fixture transcript whose stored command contains `"` and assert
-`--expect` on the unescaped command resolves it — a matcher that can only be tested on quote-free
-commands is one that passes while broken, which is how this shipped.
+**The stopgap was taken over decoding, and the reason is the cost rather than the effort.**
+`_by_content` scans every transcript in the project and those run to megabytes each, so decoding
+turns a substring scan into a JSON parse of the whole pool. Comparing escaped forms is exact for
+this failure — any string inside a decoded JSON value appears in escaped form in the raw line — and
+costs nothing.
 
-Belongs in `agent-skills`, so filed here rather than edited from the `power-user-linux-setup`
+Both tests the plan asked for, and the second is the one that matters: a matcher that had become a
+matcher for anything would satisfy a positive case alone, so one test asserts the escaped form is
+what is actually on disk before asserting the match, and the other keeps a genuinely absent quoted
+needle missing.
+
+Belonged in `agent-skills`, so filed here rather than edited from the `power-user-linux-setup`
 session that found it.

@@ -45,15 +45,24 @@ silent overwrite and the UTC-vs-local naming of `saved`. Same file, adjacent con
 about which baseline survives, this one about whether two surviving baselines are comparable at all.
 Worth deciding together; they touch the same writer.
 
-[NEEDS CLARIFICATION: record the script's own commit in the baseline, or refuse a `--compare` across
-a differing one? Recording is cheap and always right — `git -C <checkout> rev-parse --short HEAD`
-when the script sits in a checkout, and nothing to record when it does not, which is itself the
-useful answer. Refusing is stronger and would have to be overridable, since most pattern commits do
-not touch most rows.]
+[DECISION: record, do not refuse. Landed in `c01973d`, folded into the writer this section shares
+with `save-baseline-overwrites-silently` per the user's decision 2026-09-05. `save_baseline` now
+writes an `instrument` field — the script's own short SHA, `-dirty` when its checkout has
+uncommitted changes to `audit.py`, `None` when it did not run from a checkout at all. Refusing was
+rejected for the reason this question already names: most pattern commits do not touch most rows, so
+it would only have to be overridable.]
+
+**§1 is done; §2 below is not, which is why this plan stays open.** The instrument question landed
+the same day it was filed, and it landed larger than it was written: the patterns themselves were
+anchored hours later (`2536d38`), so **every baseline written from now on is on a different
+instrument than the two already on disk** — which is precisely the confusion this section describes,
+now with a field that says so.
 
 [NEEDS CLARIFICATION: whether a baseline written by the installed copy can be identified after the
-fact at all. If not, the honest fix for the two files already on this machine is a hand-written
-`note` saying which they are, before the week-later run reads them as equivalent.]
+fact at all. Still open, and now the only thing standing between the two existing files and the
+week-later run. The recorded field is prospective; it says nothing about a file written before it
+existed. The honest fix for those two remains a hand-written `note` — and both now also predate the
+pattern anchoring, so the note has two things to say, not one.]
 
 ## 2. `claims` counts the gate's own verdict as a claim, and layer 2 makes that structural
 

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-05
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 156d723c-4e21-41ef-aac9-bfd6c05b681c.jsonl
@@ -50,23 +50,38 @@ when these sessions actually run:
 
 ## Open questions
 
-[NEEDS CLARIFICATION: refuse, or auto-suffix? Refusing unless `--force` is passed matches how this
-corpus treats every other one-way write, and a refusal is readable. Auto-suffixing (`-2`) never
-loses anything but quietly accumulates files nobody named, and the whole point of the default path
-is that nobody names it.]
+[DECISION: refuse, not auto-suffix. It matches how this corpus treats every other one-way write, and
+the refusal is readable in a way an accumulating `-2` is not — the whole point of the default path
+is that nobody names it, so nobody would notice a second file appearing under a name they never
+chose either.]
 
-[NEEDS CLARIFICATION: whether the default should be local-dated instead of UTC. It would make the
-name match the corpus and the plans, but it changes the name of an existing artefact, and a baseline
-saved under one scheme compared against one saved under the other is only confusing in its filename,
-not in its content. Possibly the honest fix is to keep UTC and put the local timestamp in `saved`.]
+[DECISION: keep the UTC filename and put the local timestamp in `saved`, the plan's own "possibly
+the honest fix", chosen by the user 2026-09-05 over local-dating the file. An artefact already on
+disk keeps its scheme, and the collision the local name would have avoided is now a refusal rather
+than a loss — so the naming was never the half that cost anything.]
 
-[NEEDS CLARIFICATION: whether `--note` should be mandatory for the default path. Both files here
-carry a good note only because the caller happened to pass one; a nameless baseline with no note is
-almost unusable a week later.]
+[DEFERRED: `--note` stays optional. It is worth less now than when this was written: `saved` carries
+a local timestamp with its offset and `instrument` names the script that wrote the file, so a
+note-less baseline is identifiable even if it is not self-explaining. Making it mandatory would also
+make the ordinary case — a quick baseline before a change — prompt for prose nobody has yet.]
+
+## What landed
+
+`c01973d`. `save_baseline` raises rather than writes when the path exists, naming the existing
+file's `saved`, `days`, `note` and `instrument` so the caller sees what they were about to destroy;
+`--force` is the deliberate destroy. `saved` is now `datetime.now().astimezone().isoformat()`.
+
+**Defect 1 from the neighbouring plan is folded in**, per the user's decision 2026-09-05, because it
+is the same writer: the payload records `instrument`, the script's own short SHA with `-dirty` when
+its checkout has uncommitted changes to it, and `None` when it did not run from a checkout — which
+is the useful answer rather than a SHA borrowed from whatever repo the installed copy happens to sit
+under. That is three read-only `git` calls in a script whose disclosure said it ran nothing, so
+`SKILL.md`'s "What this skill reads, runs and writes" says so and scopes them to the write path.
+
+Four tests: the refusal (asserting it names the note it would have destroyed, and that the file is
+still the old one afterwards), `--force`, the recorded instrument, and `saved` parsing with a
+tzinfo. A fifth covers `instrument_commit` outside a checkout returning `None`.
 
 ## Recommended direction
 
-Refuse to overwrite an existing baseline unless `--force`, and name the existing file's `saved` and
-`note` in the refusal so the caller can see what they were about to destroy. That alone would have
-turned this incident into a one-line prompt. The UTC/local question is worth settling in the same
-pass but is cosmetic next to it.
+Done, in the shape recommended: refuse unless `--force`, naming the existing file's fields.

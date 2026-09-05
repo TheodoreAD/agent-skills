@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-05
 source_repo: github.com-personal/repo-tasks
 source_session: bb66cbe5-7369-4f49-a8e7-7949db5ff99a.jsonl
@@ -26,12 +26,18 @@ start and had two unpushed commits — the finding step 0 exists for.
   `--skill session-harvest
   --skill session-bash-audit`.
 
-## Open questions
+## Resolved: additive
 
-[NEEDS CLARIFICATION: make `--skill` additive to the defaults, or reword the SKILL.md sentence to
-say "replaces"? Additive matches the prose and the intent — the harvest's own skill should never be
-the one skipped — and `--all` already exists for the replace-everything case.]
+[DECISION: `--skill` extends the defaults; the SKILL.md sentence was not reworded. The prose was
+already right, so the code moved to it — and the argument that settles it is which way the two
+mistakes cost. Naming a skill and silently losing `session-harvest` skips the check step 0 exists
+for, and the run reports clean; naming a skill and getting three extra rows costs three rows.
+`--all` was already the replace-everything case, so nothing was lost by taking `--skill`'s
+replacement behaviour away.]
 
-## Recommended direction
+## What landed
 
-Make `--skill` extend the default set, with a test that `--skill x` still reports session-harvest.
+`0eb42ac`. `list(DEFAULT_SKILLS) + [s for s in (args.skill or []) if s not in DEFAULT_SKILLS]`, plus
+the help text saying so, and two tests: the additive case, and a dedupe case for
+`--skill session-harvest` — the exact call that ended the incident, which a naive concatenation
+would report twice while passing the first test.

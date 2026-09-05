@@ -73,18 +73,17 @@ nobody runs unless they are already thinking about plans.
 ## What the backlog actually is
 
 Assigned by counting each skill's name in each plan, which is a starting point and **not** the
-answer — see the first batch below.
+answer — see the batches below.
 
 | destination rationale file                         | plans | plan lines | file lines |
 | -------------------------------------------------- | ----: | ---------: | ---------: |
-| `skills/session-harvest/references/rationale.md`   |     5 |       ~575 |        450 |
-| `skills/plan-docs/references/design-rationale.md`  |     4 |       ~655 |        957 |
-| `skills/session-bash-audit/references/research.md` |     4 |       ~620 |        679 |
+| `skills/session-bash-audit/references/research.md` |     4 |       ~570 |        679 |
+| `skills/plan-docs/references/design-rationale.md`  |     4 |       ~550 |      1,050 |
 | `skills/skill-authoring/references/rationale.md`   |     1 |       ~170 |        215 |
 
-**14 left of the original 16**, 1,955 lines, still around a third of everything in `plans/`. 47
-`DECISION` and 12 `PITFALL` tags to migrate or verify as already-covered, and **4 `DEFERRED` across
-3 plans, which block deletion** until they move to a plan that stays.
+**9 left of the original 16**, 1,341 lines. 21 `DECISION` and 6 `PITFALL` tags to migrate or verify
+as already-covered, and **2 `DEFERRED` across 2 plans, which block deletion** — both in the
+`session-bash-audit` batch, so that batch clears them first.
 
 ## Batch 1, 2026-09-06: the two on-disk-location plans
 
@@ -112,6 +111,35 @@ rejected git-URL keying, the severity-tier argument, and the record of a check t
 deliberately deleted the next day. That last one is the case for doing this at all: nothing else on
 disk explains why the mode is set and never checked, so the next reader to notice the asymmetry
 would have re-added the warning.
+
+## Batch 2, 2026-09-06: the five assigned to `session-harvest`
+
+Four of them genuinely were, and they turned out to be **one finding in four files**: every one was
+a step 0 instrument that failed in the way step 0 exists to catch. Two reported clean while wrong,
+two failed loudly but named the wrong cause. The rationale section that resulted existed in no
+single plan — which is the outcome `plan-docs` predicts for a rationale home organised by the
+question a reader arrives with, confirmed here rather than assumed. Everything else in the four was
+code contract, verified present in `harvest.py`'s comments and tests rather than dropped on faith;
+that verification was the whole of the work and it went quickly.
+
+**The fifth, `2026-08-29-external-contributions.md`, was a `plan-docs` plan** — the second
+mis-assignment, and by the same mechanism as batch 1's: it discusses `session-harvest` while
+concluding about cross-repo filing. Retired anyway, into `plan-docs`' rationale, since the batch had
+already paid for reading it.
+
+Two things worth carrying:
+
+- **A 334-line plan with 17 decisions is not 17 times the work**, because almost every decision had
+  already become a rule in `SKILL.md`. What was missing was uniformly the _rejected_ half — the
+  same-day `origin:` reversal, the two ways a cwd-based guard fails, why a dirty store means add
+  rather than wait. **Retirement is mostly a search for what was decided against**, since the
+  conclusions are what shipped.
+- **A `DEFERRED` whose condition is met becomes a plan, and this one's condition was met by the
+  session doing the retiring.** Its second tag said "worth its own plan if the same-tree pain
+  persists after cross-repo commits stop" — and this session hit four instances of it without
+  looking. `2026-09-06-two-sessions-share-one-working-tree.md` carries it with that evidence. The
+  first tag was checked the same way and found landed, so it was recorded as not carried rather than
+  copied forward.
 
 ## Decisions, 2026-09-06
 

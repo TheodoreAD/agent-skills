@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-06
 ---
 
@@ -26,8 +26,9 @@ if args.json:
 
 ## The two findings, both reproduced
 
-**1. `--json` is silently ignored in session mode.** `argparse` accepts it (`type=Path`), the run
-prints its normal text report, and no file is written and nothing says so. Reproduced this session:
+**1. `--json` is silently ignored in session mode.** _Fixed 2026-09-06; the description below is
+what it did._ `argparse` accepts it (`type=Path`), the run prints its normal text report, and no
+file is written and nothing says so. Reproduced this session:
 `audit.py --session <id> --until <boundary> --json <path>` exited 0, printed the report, and the
 path did not exist afterwards. `--save-baseline` is skipped by the same early return; that one is
 arguably right on the merits — a single session is not a corpus baseline — but it is equally silent.
@@ -37,6 +38,14 @@ run**, so the machine-readable form is unavailable in precisely the mode the har
 caller who wants the tags has to re-derive them by hand. It also breaks the corpus's own uniformity
 rule, which `plan-docs` states as a rule earned by measurement: a flag available on some invocations
 and not others costs a retry every time an agent assumes uniformity.
+
+[DECISION: **both, one per flag — hoist `--json`, refuse `--save-baseline`.** Landed 2026-09-06. The
+dump moved into a `dump_json(calls, path)` helper and `report_session` now returns the calls it
+reported on, so the session path dumps its own `--until`-filtered set rather than `load_calls`'; a
+JSON disagreeing with the rates printed beside it would have been worse than none. `--save-baseline`
+takes the other half of the option, because one session's rates genuinely are not a corpus baseline
+— it is `ap.error` now, exit 2, rather than a silent skip. Two tests, both confirmed failing against
+the pre-change script: it exited 0 and wrote no file in either case.]
 
 **2. `rg-replace` is computed and appears in no session-facing output.** It is a defined pattern
 (`audit.py` line ~327) and it is in **none** of the three places that decide what a reader sees:
@@ -83,15 +92,6 @@ is the thing that misleads. A third option is to print rates only above some n a
 which trades a clear rule for a threshold nobody can defend — the same objection this corpus already
 made to a staleness threshold.]
 
-[NEEDS CLARIFICATION: **fix the early return, or move the flag handling into both paths?** Moving
-`--json` above the `if args.session` branch is one line and covers it, but `report_session` builds a
-different call set (one transcript, `--until`-filtered), so the dump would need that set rather than
-`load_calls`'. The honest options are: hoist the tag-dump into a helper both paths call, or have
-session mode reject the flags it cannot honour with a message. **Rejecting is worth taking
-seriously** — this corpus's own position is that a flag that silently does nothing is worse than one
-that errors, and `--save-baseline` in session mode should probably refuse rather than be quietly
-skipped.]
-
 [NEEDS CLARIFICATION: **which rows belong in the session view at all?** `RATE_COLUMNS` was built for
 the per-model corpus table, and a session view has inherited it without the question being asked.
 `rg-replace` is the instance that surfaced it, but `find-not-fd`, `grep-r-not-rg` and `find-exempt`
@@ -106,11 +106,18 @@ nobody can satisfy, and the deliberate absences of `grep-r-not-rg` and `find-exe
 for leaving a well-followed rule unjudged. Decide it with the row's own numbers in hand: zero bare
 `-r` in the last measured corpus, against 32 real bundle instances.]
 
-## Recommended direction
+## What is done, and what is left
 
-Take the `--json` half first: it is the smaller change, it has no design question worth arguing, and
-it is the one blocking a caller that exists today. The row question is genuinely open and is better
-decided alongside `2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md`, which already owns
-what a row's reporting should look like and now carries the `rg-replace` per-bundle breakdown —
-**that plan asks how the row should report, this one asks whether it reports at all**, and answering
-them in the wrong order would design a breakdown for a row no session view prints.
+**Done 2026-09-06 — the flags half.** `skills/session-bash-audit/scripts/audit.py`: `dump_json` is a
+helper both paths call, `report_session` returns its calls, `--save-baseline` errors under
+`--session` instead of being skipped. Two tests in `tests/unit/test_audit.py`, and the SKILL.md
+`--session` section now states both behaviours. It was the smaller change, it had no design question
+worth arguing, and it unblocked a caller that exists today: the harvest's adherence step.
+
+**Left — the rows half**, which is the three `NEEDS CLARIFICATION` above: whether a session view
+wants `RATE_COLUMNS` at all, whether `rg-replace` joins `EXPECTATIONS` and in which direction, and
+whether session-scale rates print counts or a decimal place. All three want deciding alongside
+`2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md`, which already owns what a row's
+reporting should look like and now carries the `rg-replace` per-bundle breakdown — **that plan asks
+how the row should report, this one asks whether it reports at all**, and answering them in the
+wrong order would design a breakdown for a row no session view prints.

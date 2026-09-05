@@ -1081,6 +1081,33 @@ def test_a_path_past_the_slug_cap_searches_machine_wide(tmp_path, monkeypatch):
     assert harvest._by_content("the marker", deep) == [projects / "-deep" / "a.jsonl"]
 
 
+def test_expect_selects_a_command_containing_double_quotes(tmp_path, monkeypatch):
+    """The transcript stores a command as a JSON string, so `"` is `\\"` on disk and a raw substring
+    search misses the exact command a caller is most likely to paste. Confirmed 2026-09-05:
+    `--expect 'git tag -l "SINGLE-LINE-TEST"'` reported `no transcript resolved` against a
+    transcript holding that command three times, while the vaguer `git tag -l` resolved it — the
+    more specific needle being the one that fails.
+    """
+    projects = tmp_path / "projects"
+    own = projects / "-home-u-projects-my-repo"
+    own.mkdir(parents=True)
+    command = 'git tag -l "SINGLE-LINE-TEST"'
+    write_transcript(own / "a.jsonl", [user_entry(f"ran {command} here")])
+    monkeypatch.setattr(harvest, "PROJECTS_DIR", projects)
+
+    raw = (own / "a.jsonl").read_text(encoding="utf-8")
+    assert command not in raw, "the escaping this test is about"
+    assert harvest._by_content(command, Path("/home/u/projects/my-repo")) == [own / "a.jsonl"]
+
+
+def test_expect_still_says_not_found_for_a_quoted_command_that_is_absent():
+    """The matcher must not become a matcher for anything: a quote-carrying needle that is genuinely
+    absent still has to miss, or the self-check note becomes decoration."""
+    stored = json.dumps({"cmd": 'git tag -l "PRESENT"'})
+    assert harvest._contains('git tag -l "PRESENT"', stored)
+    assert not harvest._contains('git tag -l "ABSENT"', stored)
+
+
 # --------------------------------------------------------------------------------------------
 # the sweep's Windows arms, against the documented output shapes
 #

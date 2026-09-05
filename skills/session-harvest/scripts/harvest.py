@@ -330,6 +330,28 @@ def _search_projects(needle: str) -> list[Path]:
     )
 
 
+def _contains(expect: str, text: str) -> bool:
+    """`expect` as the caller typed it, searched for in raw JSONL.
+
+    A transcript stores a Bash command as a JSON *string*, so its double quotes and backslashes are
+    escaped on disk: the file holds `git tag -l \\"X\\"` where the caller typed `git tag -l "X"`. A
+    raw substring search therefore misses exactly the specific quoted command a caller is most
+    likely to paste, while the vaguer unquoted prefix matches — and the failure surfaces as
+    `no transcript resolved`, which reads as "wrong command" rather than "the matcher cannot see
+    this shape". Confirmed 2026-09-05: `--expect 'git tag -l "SINGLE-LINE-TEST"'` resolved nothing
+    in a session whose transcript held that command three times, while `--expect 'git tag -l'`
+    resolved it. Single quotes are not escaped inside a JSON string, so some quoted commands
+    matched and some did not, with nothing saying which.
+
+    Comparing escaped forms rather than decoding every line keeps this a substring scan over files
+    that run to megabytes each. Both encoders are tried because this script does not write the file:
+    `JSON.stringify` leaves non-ASCII alone, `json.dumps` escapes it to `\\uXXXX`, and they agree on
+    everything else.
+    """
+    forms = (expect, json.dumps(expect, ensure_ascii=False)[1:-1], json.dumps(expect)[1:-1])
+    return any(form in text for form in dict.fromkeys(forms))
+
+
 def _by_content(expect: str, cwd: Path) -> list[Path]:
     """Transcripts containing `expect`, newest first — the "grep it for something you know you ran"
     check, used here to *select* rather than only to confirm.
@@ -340,7 +362,7 @@ def _by_content(expect: str, cwd: Path) -> list[Path]:
     slug = project_slug(cwd)
     scoped = PROJECTS_DIR / slug if slug else None
     pool = sorted(scoped.glob("*.jsonl")) if scoped and scoped.is_dir() else list(PROJECTS_DIR.rglob("*.jsonl"))
-    hits = [p for p in pool if expect in p.read_text(encoding="utf-8", errors="replace")]
+    hits = [p for p in pool if _contains(expect, p.read_text(encoding="utf-8", errors="replace"))]
     return sorted(hits, key=lambda p: -p.stat().st_mtime)
 
 
@@ -405,7 +427,7 @@ def resolve_transcript(session: str | None, job: str | None, expect: str | None,
     path, how = found
     entries = read_entries(path)
     if expect and not how.startswith("newest transcript"):
-        found = expect in path.read_text(encoding="utf-8", errors="replace")
+        found = _contains(expect, path.read_text(encoding="utf-8", errors="replace"))
         notes.append(f"self-check: {expect!r} {'found' if found else 'NOT FOUND'} in this transcript")
         if not found:
             notes.append("a transcript missing a command you know you ran is somebody else's session")

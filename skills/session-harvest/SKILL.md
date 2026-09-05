@@ -45,14 +45,18 @@ nothing — `transcript --expect` printed the right path and the next line exite
 `no transcript resolved` — and three harvests in two days re-typed `--session` by hand before the
 script was taught to read the variable that had been in its environment all along.
 
-**`skills-state` is the one subcommand `$H` from the install cannot answer**, because it compares
-the install _against a checkout_ and an installed copy has no repo above it: run from there it exits
-1 with `no skills checkout found — pass --checkout <path>`. That is the correct answer and it reads
-like a broken install, which is the wrong impression to form during the step about install state.
-Point it at the checkout — the checkout's own copy of this script, or `--checkout <path>` — and if
-you have no checkout at all, say the comparison was unavailable rather than that nothing had moved.
-Confirmed 2026-09-04 by a harvest that ran the block above verbatim and got the error on its first
-step-0 command. Every other subcommand works from either copy; `sweep` degrades quietly by design.
+**`skills-state` compares the install against a checkout, and finds the checkout itself.** In order:
+`--checkout <path>`, `$SESSION_HARVEST_CHECKOUT`, the repo above the script it is running from, and
+then the one git checkout under `plan-docs`' configured `projects_root` (default `~/projects`,
+walked three levels deep, symlinks never followed) that holds `skills/session-harvest/SKILL.md`. So
+the installed copy answers step 0 on any machine that has the source somewhere, whatever the repo
+layout; a fork counts, and two candidates make it ask rather than pick. It also prints the command
+step 6 files a skill fix with, checkout path included, so no skill body has to name where any author
+keeps repos. **With no checkout on the machine it exits 1 saying so** — the reader's normal case, an
+installed copy with no source repo — and the right report line is that the comparison was
+unavailable, not that nothing had moved. Until 2026-09-05 the install-side copy could never answer
+this without `--checkout`, confirmed by a harvest that ran the block above verbatim and got the
+error on its first step-0 command.
 
 Every subcommand is read-only and takes `--json`. Two things are deliberately **not** in it: the
 gate re-run (that is the repo's own command, and hard-coding one would be wrong in every repo that
@@ -60,6 +64,19 @@ spells it differently) and anything that writes — a script that both measures 
 agent runs without reading. The judgement below is the rest of the skill, and none of it moves.
 
 ## Procedure
+
+**What a harvest may write, stated once.** Three places and nothing else: the repo the session is
+running in (ordinary edits and commits), that repo's `plans/` through `plan-docs`, and the plans
+store through `plan-docs` — including plans filed `--for` another repo. Outside it: a deployed
+instructions file, an installed skill copy, any other repo's working tree, and the sources of a
+generated `~/AGENTS.md` when they live in a repo the session is not in. A candidate for any of those
+is filed as a plan for the repo that owns it. Being _in_ the owning repo is what makes an edit
+ordinary work, so the skills repo and the instructions-fragment repo are not exceptions to this
+rule; they are the rule applied to a session that happens to be there. Stated by the user
+2026-09-03: _"harvest should exclusively edit things in the repo where the session is happening and,
+via plan docs, to the plans in the current session's and the plans in the central store repo"_ — and
+"instructions" there means the deployed file, not its fragment sources from inside their own repo.
+Killing an orphaned process the sweep found is a side effect, not a write, and step 8 governs it.
 
 ### 0. Check the copy you are running is the current one
 
@@ -238,25 +255,27 @@ For what survives the significance test:
 - **Cross-repo/personal preference (not tied to one project) → `~/AGENTS.md`, never memory either.**
   Same logic as the repo-specific split above, one level up — version-controlled via its real
   source. If `~/AGENTS.md` is generated (assembled from fragments, deployed by a dotfile manager,
-  symlinked out of a repo), find and edit that source; a deployed file is silently overwritten on
-  the next run, so an edit there is lost and reaches no other machine. On this author's machine it
-  is assembled from fragments under `power-user-linux-setup/config/agents-md/`, whose `README.md`
-  says which fragment owns what. **Read the canonical source before drafting an addition — the
-  deployed copy loaded into a session's context can be structurally stale against it.** Confirmed
-  2026-08-24: a session held a ~20 flat-section `~/AGENTS.md` while the source had been restructured
-  to 7 clustered ones, so an addition drafted against the section names in context would have
-  targeted headings that no longer existed. `grep -n '^## ' <source>` first. **A candidate that's a
-  _variant_ of a rule already there extends that rule's existing section — it doesn't get a new
-  one.** "Already covered → skip" (below) is for an exact duplicate; this is the near-miss case,
-  where the principle is written down but this particular shape of it isn't. Default to appending a
-  short paragraph to the section that already frames it, because that file is loaded into every
-  session in every repo, so a new heading costs context everywhere and a reader who sees three
-  instances under one principle generalizes better than one holding three unrelated rules. Reach for
-  a new section only when the trigger and the detection signal are both genuinely different from
-  anything already there. Resolved 2026-08-23: "don't characterize a multi-file diff from one
-  sampled file" was folded into "Verify what actually happened, not what output looks like" — which
-  already covered clean-stdout-vs-exit-code and test-suite-vs-throwaway-script, both the same "the
-  convenient surface signal isn't the real signal" shape.
+  symlinked out of a repo), the source is what changes, never the deployed file — that copy is
+  silently overwritten on the next run, so an edit there is lost and reaches no other machine. And
+  the source changes **only from a session in the repo that holds it**; from anywhere else the
+  candidate is filed for that repo with `plans.py new --for`, per the write set at the top of the
+  procedure. On this author's machine the source is a fragments directory in a separate setup repo,
+  whose own `README.md` says which fragment owns what. **Read the canonical source before drafting
+  an addition — the deployed copy loaded into a session's context can be structurally stale against
+  it.** Confirmed 2026-08-24: a session held a ~20 flat-section `~/AGENTS.md` while the source had
+  been restructured to 7 clustered ones, so an addition drafted against the section names in context
+  would have targeted headings that no longer existed. `grep -n '^## ' <source>` first. **A
+  candidate that's a _variant_ of a rule already there extends that rule's existing section — it
+  doesn't get a new one.** "Already covered → skip" (below) is for an exact duplicate; this is the
+  near-miss case, where the principle is written down but this particular shape of it isn't. Default
+  to appending a short paragraph to the section that already frames it, because that file is loaded
+  into every session in every repo, so a new heading costs context everywhere and a reader who sees
+  three instances under one principle generalizes better than one holding three unrelated rules.
+  Reach for a new section only when the trigger and the detection signal are both genuinely
+  different from anything already there. Resolved 2026-08-23: "don't characterize a multi-file diff
+  from one sampled file" was folded into "Verify what actually happened, not what output looks like"
+  — which already covered clean-stdout-vs-exit-code and test-suite-vs-throwaway-script, both the
+  same "the convenient surface signal isn't the real signal" shape.
 - **A skill that already owns the topic beats a new always-loaded rule.** `~/AGENTS.md` is not the
   default home for every cross-repo finding. Whatever document states that file's admission criteria
   is the gate (on this author's machine, `power-user-linux-setup/contributing/global-agents-md.md`'s
@@ -695,13 +714,20 @@ happened.
 **Where the session is decides whether "act on it now" means an edit or a filing**, and this is not
 a preference:
 
-- **In the skills repo** (`agent-skills`, wherever this skill's source lives): edit the source and
-  commit it locally without asking — it is reversible, reviewable as a diff, and pausing for
-  approval mid-run is what makes the fix get dropped.
-- **Anywhere else**, which is nearly every harvest: **do not edit and do not commit.** File it —
-  `plans.py new <topic> --for github.com-personal/agent-skills` — commit the plan in the store, and
-  name the filename in the report. Filing is the immediate action, not the deferral, so the "do it
-  now" pressure is unchanged.
+- **In the repo that holds the skill's source** — the checkout `skills-state` named in step 0: edit
+  the source and commit it locally without asking — it is reversible, reviewable as a diff, and
+  pausing for approval mid-run is what makes the fix get dropped.
+- **Anywhere else**, which is nearly every harvest: **do not edit and do not commit.** File it with
+  the command `skills-state` printed —
+  `file a fix from another repo: python3 <plans.py> new <topic>
+  --for <checkout>` — commit the
+  plan in the store, and name the filename in the report. Filing is the immediate action, not the
+  deferral, so the "do it now" pressure is unchanged.
+- **When `skills-state` found no checkout** — an installed copy with no source repo on this machine,
+  which is every reader who is not the author — there is nowhere to file, and a plan its reader
+  cannot land is a plan that rots. Put the friction in the report under its own heading, one line
+  per item, and file nothing. Reporting it back to the skill's author is a separate mechanism this
+  skill does not have yet; do not improvise one.
 
 [DECISION: the global rule wins over this skill's own instruction, and it is not close.
 `~/AGENTS.md` says writing to another repo is out entirely, "however much a skill's own instructions
@@ -896,13 +922,15 @@ the current session:
   machine anyway. Never edit it directly.
 - The canonical source is the repo these skills were installed from — for this author,
   [`agent-skills`](https://github.com/TheodoreAD/agent-skills); for you, your own checkout or fork.
-  `harvest.py` finds it by walking up from its own location and asks with `--checkout <path>` rather
-  than guessing when it cannot.
+  `skills-state` resolves it (`--checkout`, `$SESSION_HARVEST_CHECKOUT`, the repo above the script,
+  else the one checkout under `plan-docs`' `projects_root` holding this skill's source) and asks
+  when two qualify. Nothing about where any author keeps repos is written into the skill.
 - **Only a session already working in that repo edits it.** From anywhere else the fold-back is a
-  filing, per step 6 — `plans.py new <topic> --for github.com-personal/agent-skills`, committed in
-  the store. Do not locate the checkout in order to write to it: an edit there is a commit in
-  another session's working tree, which is what the global rule forbids outright. The filing is not
-  a weaker outcome; `absorb` hands it to the next session that works there.
+  filing, per step 6 — the `--for <checkout>` command `skills-state` prints, committed in the store.
+  Do not locate the checkout in order to write to it: an edit there is a commit in another session's
+  working tree, which is what the global rule forbids outright. The filing is not a weaker outcome;
+  `absorb` hands it to the next session that works there. With no checkout on the machine there is
+  no filing either — the friction goes in the report, per step 6.
 - When you _are_ in that repo, edit `skills/session-harvest/SKILL.md` (or `scripts/harvest.py`, and
   its tests in `tests/unit/test_harvest.py`): a small, additive change. Rationale for _why_ a
   resolution was made a particular way goes in `references/rationale.md` instead.
@@ -928,11 +956,11 @@ the current session:
   three is outstanding rather than reporting "re-installed" as though the loop were closed.
 - **Say plainly that a committed edit still reaches nothing.** The installer clones from the remote,
   so the change takes effect only once it is pushed _and_ re-installed
-  (`npx skills add TheodoreAD/agent-skills --global --skill session-harvest`) — including for other
-  projects on the same machine, whose `~/.agents/skills/` copy is now stale against the source. **If
-  the user declines the re-install, that is not a licence to state what the machine is now running**
-  — on a machine with parallel sessions the installer may already have been run by one of them, so
-  the install state is shared and has to be measured before it is reported. Diff it (that is what
+  (`npx skills add <owner>/<repo> --global --skill session-harvest`) — including for other projects
+  on the same machine, whose `~/.agents/skills/` copy is now stale against the source. **If the user
+  declines the re-install, that is not a licence to state what the machine is now running** — on a
+  machine with parallel sessions the installer may already have been run by one of them, so the
+  install state is shared and has to be measured before it is reported. Diff it (that is what
   `skills-state` is for). Confirmed 2026-08-30: a harvest closed with "this one keeps running the
   old copy", the user asked, and the installed copy already carried the fix, re-installed by another
   session twenty minutes earlier — a confident, specific, wrong sentence in the zone of the report

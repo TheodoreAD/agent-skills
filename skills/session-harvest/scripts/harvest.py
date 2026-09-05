@@ -49,6 +49,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -850,29 +851,109 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 # --------------------------------------------------------------------------------------------
 
 
-def find_checkout(explicit: str | None, start: Path | None = None) -> Path:
-    """The skills checkout: what was passed, else this script's own repo.
+def plan_docs_config() -> dict[str, Any]:
+    """`plan-docs`' config, read as a contract rather than through `plans.py`.
 
-    There is deliberately no third resolution. This carried a hard-coded
-    `~/projects/<owner>/<repo>` fallback until 2026-09-03 — the author's own checkout path, in code
-    shipped to strangers. It was guarded and so harmed nobody, which is exactly why it survived
-    review: a path that only ever helps one machine is invisible everywhere else, right up until
-    someone else's directory happens to match it. Asking is the honest failure.
+    Two independently installed skills share a location by both reading the same configuration —
+    the environment variables and `~/.config/plan-docs/config.toml` — never by one importing the
+    other, which would hard-code the install hub and break whenever one is installed without the
+    other. Resolution copies `plans.py`'s three lines: `$PLAN_DOCS_CONFIG`, then `$XDG_CONFIG_HOME`,
+    then the platform default. An absent or unreadable file is an empty mapping, so every default
+    below still applies.
+    """
+    override = os.environ.get("PLAN_DOCS_CONFIG")
+    if override:
+        path = Path(override).expanduser()
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME")
+        if xdg:
+            base = Path(xdg).expanduser()
+        elif WINDOWS:
+            roaming = os.environ.get("APPDATA")
+            base = Path(roaming) if roaming else Path.home() / "AppData" / "Roaming"
+        else:
+            base = Path.home() / ".config"
+        path = base / "plan-docs" / "config.toml"
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
 
-    An installed copy under `~/.agents/skills/` reaches no checkout by design — its parent has a
-    `skills/` directory but no `.git`, so the walk finds nothing and the sweep's skills section
-    reports nothing rather than describing a repo the reader does not have.
+
+def projects_root() -> Path:
+    """Where this machine keeps its repos, from `plan-docs`' config, else that skill's own default."""
+    raw = plan_docs_config().get("projects_root")
+    return Path(str(raw) if raw else "~/projects").expanduser()
+
+
+def skills_checkouts(name: str, root: Path, depth: int = 3) -> list[Path]:
+    """Every git checkout under the projects root that holds `skills/<name>/SKILL.md`.
+
+    A walk rather than a path: the author keeps repos as `<root>/<host>/<repo>` on one machine and
+    would keep them flat as `<root>/<repo>` on another, and a reader's layout is anybody's guess.
+    Symlinks are never followed and the walk stops at each `.git`, the same shape `plans.py` uses.
+    """
+    found: list[Path] = []
+
+    def walk(directory: Path, remaining: int) -> None:
+        try:
+            children = sorted(p for p in directory.iterdir() if p.is_dir() and not p.is_symlink())
+        except OSError:
+            return
+        for child in children:
+            if child.name.startswith("."):
+                continue
+            if (child / ".git").exists():
+                if (child / "skills" / name / "SKILL.md").is_file():
+                    found.append(child)
+                continue
+            if remaining > 1:
+                walk(child, remaining - 1)
+
+    if root.is_dir():
+        walk(root, depth)
+    return found
+
+
+def find_checkout(explicit: str | None, start: Path | None = None, name: str = "session-harvest") -> Path:
+    """The skills checkout: what was passed, else `$SESSION_HARVEST_CHECKOUT`, else this script's
+    own repo, else the one checkout under the projects root that holds this skill's source.
+
+    The last tier is detection, not a guess: it walks the projects root `plan-docs` is configured
+    with, so it finds the source wherever the repos are laid out and names nothing about any one
+    machine. Until 2026-09-03 this carried a hard-coded `~/projects/<owner>/<repo>` fallback — the
+    author's own checkout path, in code shipped to strangers — and until 2026-09-05 it then had no
+    third tier at all, so the installed copy could never answer step 0 without `--checkout`.
+
+    Two checkouts holding the skill (a fork beside its upstream) is a question, not a pick: the
+    error lists them and asks for `--checkout`. None is the reader's normal case — the installed
+    copy has no repo above it — and the error says what that means for a skill fix: it goes in the
+    report, and nothing is filed anywhere.
     """
     if explicit:
         path = Path(explicit).expanduser()
         if not (path / "skills").is_dir():
             raise HarvestError(f"{path} has no skills/ directory")
         return path
+    configured = os.environ.get("SESSION_HARVEST_CHECKOUT")
+    if configured:
+        return find_checkout(configured)
     here = (start or Path(__file__)).resolve()
     for parent in here.parents:
         if (parent / "skills").is_dir() and (parent / ".git").exists():
             return parent
-    raise HarvestError("no skills checkout found — pass --checkout <path>")
+    root = projects_root()
+    detected = skills_checkouts(name, root)
+    if len(detected) == 1:
+        return detected[0]
+    if detected:
+        listed = ", ".join(str(p) for p in detected)
+        raise HarvestError(f"several checkouts hold skills/{name} under {root}: {listed} — pass --checkout <path>")
+    raise HarvestError(
+        f"no skills checkout found: not above this script, and none under {root} holds skills/{name} — "
+        "pass --checkout <path> if one exists elsewhere. Otherwise this machine has no source to file "
+        "a skill fix against: report skill friction in the harvest report and file nothing."
+    )
 
 
 def worktree_main(checkout: Path) -> Path | None:
@@ -1040,22 +1121,33 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
     installed_root = Path(args.installed).expanduser() if args.installed else INSTALLED_SKILLS
     states = [skill_state(runner, name, checkout, installed_root, args.since) for name in names]
     main = worktree_main(checkout)
+    plans_py = find_plans_py(checkout)
+    # The command step 6 runs to file a skill fix from any other repo. Printed here, with the
+    # detected checkout in it, so no skill body has to name where the author keeps the source.
+    filing = f"python3 {plans_py} new <topic> --for {main or checkout}" if plans_py else None
     payload = {
         "checkout": str(checkout),
         "worktree_of": str(main) if main else None,
         "installed_root": str(installed_root),
+        "file_a_fix": filing,
         "skills": states,
     }
-    if args.json:
-        return payload
-    print(f"checkout: {checkout}\ninstalled: {installed_root}")
-    if main:
-        print(f"worktree: a linked worktree of {main}")
+    if not args.json:
+        _print_skills_state(payload, bool(args.since))
+    return payload
+
+
+def _print_skills_state(payload: dict[str, Any], since_given: bool) -> None:
+    print(f"checkout: {payload['checkout']}\ninstalled: {payload['installed_root']}")
+    if payload["worktree_of"]:
+        print(f"worktree: a linked worktree of {payload['worktree_of']}")
         print("  the installer clones the remote's DEFAULT branch, so a push from here installs")
         print("  nothing until this branch is merged — offer that, not a re-install")
-    if not args.since:
+    if payload["file_a_fix"]:
+        print(f"file a fix from another repo: {payload['file_a_fix']}")
+    if not since_given:
         print("note: --since <session start> adds the moved-after-this-session-began check")
-    for state in states:
+    for state in payload["skills"]:
         print(f"\n== {state['skill']} ==")
         print(f"  {state['verdict']}")
         for sub in state.get("subdirs_differing", []):
@@ -1066,7 +1158,6 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
             print(f"  unpushed: {line}")
         for line in state.get("moves_since_session_start", []):
             print(f"  moved since start: {line}")
-    return payload
 
 
 # --------------------------------------------------------------------------------------------
@@ -1547,10 +1638,16 @@ def _touched_repos(runner: Runner, extra: Sequence[str], entries: Sequence[dict[
 
 
 def _stores() -> list[tuple[str, Path]]:
+    """The two plans stores as `plan-docs` resolves them — variable, then its config, then its
+    default — and the research library. Two readers of one source of truth, not two defaults."""
+    cfg = plan_docs_config()
+    store = Path(os.environ.get("PLANS_HOME") or str(cfg.get("store") or "~/plans")).expanduser()
+    sensitive_default = store.parent / f"{store.name}-sensitive"
+    sensitive = Path(os.environ.get("PLANS_SENSITIVE_HOME") or str(cfg.get("sensitive_store") or sensitive_default))
     return [
-        ("plans", Path(os.environ.get("PLANS_HOME", str(Path.home() / "plans")))),
-        ("plans-sensitive", Path(os.environ.get("PLANS_SENSITIVE_HOME", str(Path.home() / "plans-sensitive")))),
-        ("research", Path(os.environ.get("RESEARCH_HOME", str(Path.home() / "research")))),
+        ("plans", store),
+        ("plans-sensitive", sensitive.expanduser()),
+        ("research", Path(os.environ.get("RESEARCH_HOME", str(Path.home() / "research"))).expanduser()),
     ]
 
 

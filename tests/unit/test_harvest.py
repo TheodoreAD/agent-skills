@@ -37,6 +37,8 @@ def _load():
 
 
 harvest = _load()
+# Captured before the autouse fixture below replaces it, for the one test that checks the real one.
+REAL_PROJECTS_ROOT = harvest.projects_root
 
 
 @pytest.fixture(autouse=True)
@@ -47,6 +49,16 @@ def _no_subprocess(monkeypatch):
         raise AssertionError(f"a test shelled out: {args!r} {kwargs!r}")
 
     monkeypatch.setattr(harvest.subprocess, "run", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_machine(tmp_path, monkeypatch):
+    """The checkout detection walks the projects root `plan-docs` is configured with, and on the
+    author's machine that root holds this very repo — so without this every "no checkout" test
+    would find one. An empty root and no configured checkout is the reader's machine."""
+    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(tmp_path / "no-config.toml"))
+    monkeypatch.delenv("SESSION_HARVEST_CHECKOUT", raising=False)
+    monkeypatch.setattr(harvest, "projects_root", lambda: tmp_path / "no-projects")
 
 
 class FakeRunner:
@@ -863,6 +875,121 @@ def test_no_checkout_asks_rather_than_guessing_at_a_path(tmp_path):
 def test_an_explicit_path_without_skills_is_rejected(tmp_path):
     with pytest.raises(harvest.HarvestError, match="no skills/ directory"):
         harvest.find_checkout(str(tmp_path))
+
+
+def _source_repo(root: Path, *parts: str, skill: str = "session-harvest") -> Path:
+    repo = root.joinpath(*parts)
+    (repo / ".git").mkdir(parents=True)
+    (repo / "skills" / skill).mkdir(parents=True)
+    (repo / "skills" / skill / "SKILL.md").write_text("---\nname: x\ndescription: y\n---\n", encoding="utf-8")
+    return repo
+
+
+def _stranded_script(tmp_path: Path) -> Path:
+    stranded = tmp_path / "installed" / "session-harvest" / "scripts" / "harvest.py"
+    stranded.parent.mkdir(parents=True)
+    stranded.write_text("", encoding="utf-8")
+    return stranded
+
+
+@pytest.mark.parametrize("layout", [("github.com-someone", "my-skills"), ("my-skills",)])
+def test_the_checkout_is_detected_under_the_projects_root_whatever_its_layout(tmp_path, monkeypatch, layout):
+    """The installed copy has no repo above it, so until 2026-09-05 the author's own machine could
+    not answer step 0 from the install without `--checkout`. Detection walks the projects root
+    `plan-docs` is configured with, so a `<root>/<host>/<repo>` tree and a flat `<root>/<repo>` one
+    both resolve, and no script names either layout."""
+    projects = tmp_path / "projects"
+    repo = _source_repo(projects, *layout)
+    _source_repo(projects, "other", "unrelated", skill="something-else")
+    monkeypatch.setattr(harvest, "projects_root", lambda: projects)
+
+    assert harvest.find_checkout(None, start=_stranded_script(tmp_path)) == repo
+
+
+def test_two_checkouts_holding_the_skill_ask_rather_than_pick(tmp_path, monkeypatch):
+    """A fork beside its upstream is a decision, and picking one silently would file fixes into a
+    repo the user did not mean."""
+    projects = tmp_path / "projects"
+    _source_repo(projects, "upstream", "my-skills")
+    _source_repo(projects, "fork", "my-skills")
+    monkeypatch.setattr(harvest, "projects_root", lambda: projects)
+
+    with pytest.raises(harvest.HarvestError, match=r"several checkouts.*pass --checkout"):
+        harvest.find_checkout(None, start=_stranded_script(tmp_path))
+
+
+def test_a_configured_checkout_beats_detection(tmp_path, monkeypatch):
+    """Explicit argument, then the skill's own variable, then detection — the order every script
+    in this corpus resolves a location in."""
+    projects = tmp_path / "projects"
+    _source_repo(projects, "detected")
+    configured = _source_repo(tmp_path, "elsewhere")
+    monkeypatch.setattr(harvest, "projects_root", lambda: projects)
+    monkeypatch.setenv("SESSION_HARVEST_CHECKOUT", str(configured))
+
+    assert harvest.find_checkout(None, start=_stranded_script(tmp_path)) == configured
+
+
+def test_a_symlinked_repo_is_not_followed_by_detection(tmp_path, monkeypatch):
+    projects = tmp_path / "projects"
+    real = _source_repo(tmp_path, "outside", "my-skills")
+    projects.mkdir()
+    try:
+        (projects / "linked").symlink_to(real)
+    except OSError as exc:
+        pytest.skip(f"this runner cannot create a symlink: {exc}")
+    monkeypatch.setattr(harvest, "projects_root", lambda: projects)
+
+    with pytest.raises(harvest.HarvestError, match="no skills checkout found"):
+        harvest.find_checkout(None, start=_stranded_script(tmp_path))
+
+
+def test_the_no_checkout_error_says_what_a_reader_does_with_skill_friction(tmp_path):
+    with pytest.raises(harvest.HarvestError, match=r"report skill friction.*file nothing"):
+        harvest.find_checkout(None, start=_stranded_script(tmp_path))
+
+
+# --------------------------------------------------------------------------------------------
+# plan-docs' locations are read as configuration, never re-derived
+
+
+def test_the_stores_and_projects_root_come_from_plan_docs_config(tmp_path, monkeypatch):
+    """`harvest.py` used to carry its own `~/plans` and `~/plans-sensitive` defaults beside the ones
+    in `plans.py` — two copies of a default that had to agree, with nothing keeping them in step.
+    The contract is the config file and the variables, which both skills read."""
+    config = tmp_path / "plan-docs.toml"
+    config.write_text(f'projects_root = "{tmp_path / "code"}"\nstore = "{tmp_path / "ideas"}"\n', encoding="utf-8")
+    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
+    monkeypatch.delenv("PLANS_HOME", raising=False)
+    monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
+
+    stores = dict(harvest._stores())
+
+    assert REAL_PROJECTS_ROOT() == tmp_path / "code"
+    assert stores["plans"] == tmp_path / "ideas"
+    assert stores["plans-sensitive"] == tmp_path / "ideas-sensitive", "the sensitive tier derives from the store"
+
+
+def test_the_variable_beats_the_config_for_a_store(tmp_path, monkeypatch):
+    config = tmp_path / "plan-docs.toml"
+    config.write_text(f'store = "{tmp_path / "ideas"}"\n', encoding="utf-8")
+    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
+    monkeypatch.setenv("PLANS_HOME", str(tmp_path / "pinned"))
+    monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
+
+    assert dict(harvest._stores())["plans"] == tmp_path / "pinned"
+
+
+def test_a_missing_or_broken_config_falls_back_to_the_documented_defaults(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(tmp_path / "nowhere.toml"))
+    monkeypatch.delenv("PLANS_HOME", raising=False)
+    monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
+    assert dict(harvest._stores())["plans"] == Path.home() / "plans"
+
+    broken = tmp_path / "broken.toml"
+    broken.write_text("store = [unclosed\n", encoding="utf-8")
+    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(broken))
+    assert harvest.plan_docs_config() == {}
 
 
 def test_a_worktree_checkout_is_named_as_one(tmp_path):

@@ -327,6 +327,57 @@ already ships as `scripts/audit.py`. Two more of the same shape:
 installed" probe with no home), and a `tomllib` validation one-liner for a setup file (19 calls, 7
 sessions) that belongs in that repo's task runner.
 
+## Four populations, and why `--ref` never fetches (2026-09-03)
+
+The question asked was whether the audits should compare against the source or against what is
+pushed. It is not a choice between two: there are **four** populations, they disagree routinely, and
+only some are askable at all.
+
+| population            | the question it answers                         | askable before `--ref`  |
+| --------------------- | ----------------------------------------------- | ----------------------- |
+| the working tree      | is the change I am making right?                | yes — `--root skills`   |
+| `HEAD`, local commits | almost nothing; it is a staging artefact        | no                      |
+| **`origin/main`**     | **what does a reader actually get?**            | **no**                  |
+| `~/.agents/skills`    | what is this machine's agent loading right now? | yes — the default roots |
+
+`skills add <owner>/<repo>` clones the remote, so **`origin/main` is the product** — and nothing in
+the corpus could measure it, which means no number this corpus had ever produced was a statement
+about what readers have. Measured mid-session 2026-09-03, with a clean working tree and nothing
+unusual happening: `HEAD` was two commits ahead of `origin/main`, and `origin/main` differed from
+the installed hub in four files. Three of the four populations disagreed at once, and that is the
+ordinary state rather than a bad moment. The session that found it produced the failure it describes
+— a portability audit reporting 34 findings while eleven commits sat unpushed, true of the working
+tree and true of nothing a reader could install.
+
+Three rules follow, and the third is the one with a trap in it:
+
+- **A gate runs against the working tree, always.** A CI check measuring `origin` would be measuring
+  the past and could never fail on the change under review.
+- **The authoring loop runs against the working tree** — you audit what you can edit.
+- **Any claim about readers names `origin` explicitly and never gets it by default.** A default that
+  changes meaning depending on whether the author has pushed is worse than no default: a number
+  sometimes about the product and sometimes about a draft, with nothing in the output distinguishing
+  them.
+
+[DECISION: **`--ref` never fetches.** Every script here is documented read-only, stdlib and
+network-free, and a silent fetch breaks that property for a convenience. It prints the sha and the
+fetch age — `origin/main @ abc1234, fetched 3h ago` — and refuses only when there is no
+remote-tracking ref at all, leaving the reader to judge. **No staleness threshold either: a
+threshold is a number nobody can defend, and it turns a clear fact into a policy argument.** Same
+shape as reporting a drift rather than gating on it.]
+
+[PITFALL: **`origin/main` is a remote-tracking ref, so reading it without fetching measures the last
+fetch rather than the remote.** The rule is already carried elsewhere for branch state and applies
+here unchanged — a plain `git fetch` never prunes, and a stale `origin/<branch>` answers
+confidently. Any measurement claiming to describe the product has to fetch first or say that it did
+not, which is why the age is printed beside the sha rather than left implicit.]
+
+The implementation was nearly free, which is why it became a flag rather than prose: `--root`
+already existed to score a corpus that is not installed, so
+`git archive origin/main skills | tar -x` into a temp directory and point `--root` at it. By this
+corpus's own rule that anything derivable belongs in a script, asking an agent to compose that
+pipeline correctly on every run was the wrong half to keep.
+
 ## Why the author-side sections are opt-in (2026-09-02, built 2026-09-05)
 
 This tool is the concentration of a corpus-wide problem — `skill-authoring`'s "a skill's output is

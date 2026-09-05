@@ -82,6 +82,61 @@ The same asymmetry is why the redeploy sequence spells out the push step rather 
 The installer clones from the remote, so "committed" and "deployed" are separated by a step that
 produces no symptom when skipped except the change quietly not existing.
 
+## Why it is a disclosure and not a permission manifest (2026-09-03)
+
+The ecosystem has moved on this and the prior art is what settled the wording. **OWASP's Agentic
+Skills Top 10** carries it as AST03, Over-Privileged Skills, naming this exact case — never request
+write access to an always-loaded instructions file unless the skill's core function requires it, and
+document why — and proposes a declared minimal permission manifest with strictly-listed scopes and
+risk tiers. **MCP** already ships the idea as tool annotations (`readOnlyHint`, `destructiveHint`,
+`idempotentHint`, `openWorldHint`) and carries the caveat that decides the shape: clients must treat
+annotations as **untrusted** unless they come from a trusted server.
+
+So the word is deliberate. **A statement a skill writes about itself is not a control** — nothing
+checks it and nothing can. Calling it a manifest or a permission invites a reader, a reviewer or a
+future scanner to treat it as enforcement, which is precisely what MCP's caveat is written against.
+The request was phrased as "what mutations they are _allowed_ to make"; the honest form is what this
+skill writes, and where. Real enforcement is the harness allowlist, which exists, is separate, and
+is not self-declared.
+
+The same limit is written into the gate rather than left to be discovered: a test can assert the
+disclosure **exists** and is well-formed, and cannot assert it is **true**. Its value is that it is
+checkable by hand against the code.
+
+**The scrutiny axis is recoverability, not permission.** "Heavily scrutinise every write" needs
+something to scrutinise against, and permission is the wrong question because nobody is granting it.
+What separates a routine mutation from a dangerous one — dangerous without any bad intent — is what
+**recovers** it: a write inside a git repo has a diff, a revert and a history; a write to an
+unversioned file outside every repository has none. That is already the class `session-harvest`'s
+sweep flags as files no repository and no store covers, arrived at from the other end. So the
+authoring question per mutation is _what recovers this_, and a mutation with no answer is the one to
+justify explicitly or drop. This lets a skill mutate freely inside a repo, which is safe and common,
+while putting real weight on a single write to `~/.config` — the proportionality a blanket
+restriction cannot give.
+
+Four carve-outs the disclosure and the scrutiny both assume: the rule is about **file writes and
+commits**, so non-file side effects like killing an orphaned process are governed where they are
+proposed; a skill may write **its own config through its own command**; a skill's **declared
+purpose** may name another destination (stamping a new repo, cloning into a research library) —
+stated as a criterion rather than a named exception, because a second instance was found by looking;
+and both plans stores, with `plan-docs`' own dirty-store condition surviving.
+
+[PITFALL: **the frontmatter half of this was ruled on wrongly first.** A 2026-09-04 gate allowed
+only `name` and `description`, on the claim that the reference corpus defines no other key.
+Re-reading the specification on 2026-09-05 reversed it: `license`, `compatibility`, `metadata` and
+`allowed-tools` are all defined, and `compatibility` is the spec's own field for environment
+requirements — exactly the half of a disclosure a machine-readable field should carry. The prompt
+for the re-read was a question rather than a correction: _"why is frontmatter illegal? it could be
+reasonable to use that to declare things that are needed across all skills."_ What the wrong ruling
+was right about is the **sub-key**, which was a local invention nothing read. The two halves say
+different things and are deliberately not kept in sync: environment requirements are a field, what a
+skill mutates is prose about kinds of thing.]
+
+The section is required only of skills that ship a script or instruct a write outside the session's
+repo — eight of fourteen when it landed. A pure convention skill carries neither it nor
+`compatibility`, because the spec's own note is that most skills do not need the field, and **noise
+in six skills is how a section stops being read**.
+
 ## Why a skill's directories are keyed by its bare `name` (2026-09-03)
 
 The question asked was whether to derive a per-skill config directory from the unique parts of a git

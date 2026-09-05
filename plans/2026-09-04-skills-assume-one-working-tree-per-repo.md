@@ -257,3 +257,29 @@ ref, "nothing of theirs to reset", the caution about checking out an old commit 
 that. Worktrees make it false. That belongs to `power-user-linux-setup`, whose store mirror now
 holds `2026-09-04-worktrees-break-the-one-working-tree-assumption.md`; a session working there is
 offered it by `absorb`. Nothing in this repo waits on it.
+
+## Migrated to
+
+- **`skills/plan-docs/SKILL.md`** — that the mirror is the repository's and not the checkout's, why
+  a `repo`-routed plan is deliberately not redirected, the `worktree:` line `where` prints, the
+  measured one-repo-as-three failure with the branch name in the term list, the submodule
+  discriminator, and `scan --mode tree`'s unread-path reporting as a fourth failure mode.
+- **`skills/plan-docs/references/design-rationale.md`, "Why a linked worktree is skipped rather than
+  folded, and why detecting one is free"** — the skip-versus-fold call and what it cost, the
+  objection that detection needs a `git` call per candidate and why it is retired, the submodule
+  `PITFALL`, and why the store-mirror asymmetry needed no second code path.
+- **`skills/skill-authoring/SKILL.md`**, the `PITFALL` under Push — that a push is necessary and not
+  sufficient because the installer takes the remote's **default branch**, written as the general
+  rule with the worktree as the case where it bites without anyone choosing a branch.
+- **`skills/session-harvest/SKILL.md`** — the fourth row in step 0's cause table and the `worktree:`
+  line `skills-state` prints. `find_checkout` was deliberately left resolving to the worktree, since
+  the source being edited is the one to diff against; what was wrong was the remedy underneath.
+- **`skills/session-bash-audit/SKILL.md`** — the limitation, declared rather than fixed, beside the
+  Windows slug paragraph, including that the claim about the slug shape is derived rather than
+  observed.
+- **`.gitignore`, `plans.py`'s `linked_worktree_of` and `tests/unit/test_plan_store.py`** — the
+  detection, both sibling layouts parametrized, and the submodule guard as its own test.
+
+Deliberately not migrated: the git-command comparison table and the throwaway-repo transcripts. They
+are how the mechanism was established, and the mechanism is now three lines of code with tests
+against a real `git worktree add`.

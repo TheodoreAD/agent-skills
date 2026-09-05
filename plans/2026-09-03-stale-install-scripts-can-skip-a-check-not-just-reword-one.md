@@ -62,3 +62,14 @@ argument the `exit-masked` paragraph already makes for reporting a count whose c
 the diff before deciding a note is enough, a reworked output is a note, a widened check is a re-run
 from the checkout. The `_print_` heuristic would have caught this one case and reported its own
 silence on every other, and a `diff -u` on one script is cheaper than the false confidence.]
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`**, step 0's subdirectory paragraph — the sentence itself.
+- **`skills/session-harvest/references/rationale.md`, "A stale `scripts/` can skip a check, not only
+  reword an output"** — the incident and the distinction it turns on (an answer never computed
+  rather than a stale one), why the neighbouring self-update passage did not already cover it, the
+  prose-not-a-classifier decision, and why the confirming instance being benign is what keeps the
+  rule from reading as alarmism.
+
+Nothing else survives: the branch worked, and this was one sentence added to it.

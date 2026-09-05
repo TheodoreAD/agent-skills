@@ -445,6 +445,67 @@ a state file is a second thing that can be stale. `--session` stays for a harnes
 id, and the job check stays ahead of it, because a background job's environment names the parent
 session while only its `state.json` knows the job's own transcript.
 
+## Why the write set is stated positively, and why narrowing it cost nothing (2026-09-03/05)
+
+The user's specification, close to verbatim: harvest _"should exclusively edit things in the repo
+where the session is happening and, via plan docs, to the plans in the current session's and the
+plans in the central store repo."_ Three destinations, and everything else out.
+
+Two things the previous text still permitted are what the rule removes. Step 6's carve-out for the
+skills repo now derives from **the session's own repo** rather than naming that repo as a special
+case, so it reads the same from everywhere and stops looking like a licence. And step 2's routing of
+cross-repo preferences to the always-loaded instructions file is out from any session not in the
+repo that holds its fragment sources — the candidate is filed as a plan instead. The deployed copies
+are what the rule is about; a session in the owning repo edits the sources as ordinary work, which
+is what makes an edit ordinary rather than an exception.
+
+**The narrowing cost nothing, which is the part worth keeping.** Harvest never needed to write
+outside the session's repo: `plans.py new --for <repo>` plus `absorb` gives a filed change a real
+trigger in the session that can act on it, which is strictly better than a commit in a tree nobody
+asked it to touch. The test applied was the user's — _"we can look into doing less intrusive things
+if it helps, unless the skill needs them"_ — and this is capability reduction the skill does not
+need.
+
+It converges with an outside reading, which is why it is recorded rather than assumed. A third-party
+risk rating of this skill named three components of its concern: writes to always-loaded instruction
+files, some autonomous local commits, and transcript mining with multi-repo inspection. **The first
+two are exactly what this rule removes**; the third is what the skill is for and stays. The two
+findings arrived independently, hours apart, and the narrowing is worth doing on its own merits —
+the rating is a second reason, not the reason.
+
+The rule is about **file writes and commits**. Killing an orphaned process the sweep found is
+plainly wanted and is not an edit, so the write-set statement says so explicitly rather than leaving
+the carve-out to be inferred.
+
+## A stale `scripts/` can skip a check, not only reword an output (2026-09-03)
+
+Step 0's stale-install branch worked — it caught the staleness and correctly did not fire the
+re-read branch, because the commit predated session start. The prescribed remedy for the `scripts/`
+half was one step short of what the case needed.
+
+The session had run `plans.py list` several times against the **installed** copy. Diffing the two
+scripts showed the change was a status-drift check moving from family scope only to **every** scope.
+So every `list` that session ran had silently omitted a check the current code performs — **not a
+reworded line, an answer never computed.** Re-running from the checkout returned no drift, so
+nothing was actually missed; the point is that a note would have left that unknown.
+
+Hence the sentence step 0 now carries: **read the diff before deciding a note is enough.** A change
+that reworks output is a note; a change that adds or widens a check means the earlier call answered
+a question the current code would answer differently, and the remedy is to re-run that command from
+the checkout. A `diff -u` on one script is cheap, and the harvest is already positioned to run it.
+
+The distinction matters because the neighbouring "self-update mechanics" passage already said the
+stronger thing — call the checkout's copy for the rest of the run, or note which results predate the
+re-install — but it is scoped to **this session having edited the script itself**, and its
+confirming example is a renamed output string. Step 0's branch covers _someone else's_ commit, which
+is the one a harvest actually reaches on a machine running parallel sessions.
+
+[DECISION: **prose, not a classifier.** A heuristic looking for added `_print_`-shaped checks would
+have caught this one case and reported its own silence on every other, and a `diff -u` on one script
+is cheaper than the false confidence. The confirming instance is deliberately the benign one — the
+re-run came back clean — because an example where nothing was wrong is what stops the rule reading
+as alarmism.]
+
 ## Why "the invocation asked for something the skill lacks" is a self-update trigger (2026-08-28)
 
 The original two triggers both assumed the skill did something and it went wrong — an ambiguous

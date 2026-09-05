@@ -167,3 +167,31 @@ stopped moving on the second skill written:
    is, which is a more reliable trigger than an always-loaded sentence; the always-loaded file is at
    39 rules against reference points of ≤15 and its own leanness pass closed by concluding the
    intake gate is the only lever left. Unchanged, and still right.
+
+## Migrated to
+
+- **`skills/skill-authoring/SKILL.md`, "Say what the skill reads, runs and writes"** — the fixed
+  heading and its four lines, the recoverability test, and the four writes that pass it.
+- **`skills/skill-authoring/references/rationale.md`, "Why it is a disclosure and not a permission
+  manifest"** — the OWASP AST03 and MCP-annotation prior art, why the word matters (a self-statement
+  is not a control, and naming it a manifest invites a reader to treat it as enforcement), the
+  recoverability axis stated as the scrutiny question, the four carve-outs, the enforcement limit
+  written down rather than discovered, the frontmatter reversal with the question that prompted the
+  re-read, and why only skills that touch the machine carry it.
+- **`CLAUDE.md`** — the frontmatter key list, the `metadata:` sub-key rule, and the fixed disclosure
+  heading with what its gate can and cannot check.
+- **`tests/unit/test_skill_layout.py`** — `test_a_skill_that_touches_the_machine_discloses_it`, the
+  frontmatter gate reopened to the spec's six keys, and the docstring saying what it cannot gate.
+- **`skills/session-harvest/SKILL.md`** — the first disclosure written, which is where the shape
+  stopped moving.
+
+Deliberately not migrated:
+
+- **The sequencing note against the locations plan.** That dependency was real — a disclosure names
+  locations, so its format could not be settled before they were — and both plans have since landed,
+  so it describes an ordering that no longer constrains anything.
+- **The two facts it flagged as unsettled** (a duplicated `PLANS_HOME` default, a hard-coded
+  dev-environment fallback). Both were that plan's to fix and both are fixed.
+- **The scanner measurement.** Owed by
+  `2026-09-02-skill-risk-ratings-are-user-facing-and-unwatched.md`, which is open and carries the
+  `[UNVERIFIED:]` for it — so it has a home already and is not carried twice.

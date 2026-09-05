@@ -93,3 +93,19 @@ All three done 2026-09-05:
    instructions-file candidate from any repo but the one holding the fragments.
 3. ~~State the allowed write set positively, once~~ — the first paragraph under `## Procedure`, and
    the skill's new disclosure section repeats it as its **Writes** line.
+
+## Migrated to
+
+- **`skills/session-harvest/SKILL.md`** — the write set stated positively once at the top of the
+  procedure, repeated as the **Writes** line of the disclosure; step 6 deriving the skills-repo case
+  from the session's own repo rather than naming that repo; and step 2 filing an instructions-file
+  candidate from any repo but the one holding the fragments.
+- **`skills/session-harvest/references/rationale.md`, "Why the write set is stated positively, and
+  why narrowing it cost nothing"** — the specification in the user's own words, what the two removed
+  permissions were, the capability-reduction test that justified it independently, the convergence
+  with an outside risk rating and why that is a second reason rather than the reason, and the
+  side-effect carve-out.
+
+Deliberately not migrated: the reporting-group question. `--for` is a delivery, so a filed candidate
+appears in the existing "to a plan in another repo" group and needed no new wording — a decision
+that changed nothing, which is exactly the kind that does not survive its plan.

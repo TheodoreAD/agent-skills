@@ -651,6 +651,41 @@ session never writes to the target at all, which is the point of the design, so 
 contention can actually happen — and it makes the check one cheap call regardless of how many repos
 a harvest files for.
 
+### Why a linked worktree is skipped rather than folded, and why detecting one is free
+
+The walk enrolls a directory as a repo on `(path / ".git").exists()`, and a linked worktree's `.git`
+is a plain **file**, so it passed. Measured 2026-09-04 against a throwaway root holding one repo
+plus both sibling layouts: `repos` listed **three repos where there was one**, `where` returned `ok`
+from all three with **three different store mirrors**, and the derived private-term list came back
+`abc-hotfix, abc.worktrees, feat, root` — a **branch name** in the confidentiality gate, and branch
+names are ordinary words.
+
+**The question was skip or fold**, and skipping won on cost rather than on behaviour: folding a
+worktree onto its main checkout is the nicer behaviour, since routing from inside it would still
+work, but it depends on the identity question and is strictly more code, while skipping is already
+correct for `repos`, `doctor` and the term list. The worktree is then unreachable as a plan
+destination, which is exactly what `doctor`'s note says — "a linked worktree of `<checkout>`; plan
+in that checkout instead". Skipping silently was rejected on the symlink precedent: a directory that
+vanishes from a listing with no explanation reads as a bug.
+
+**The objection this retired was that detection costs a `git` call per candidate.** It does not. In
+a linked worktree `.git` is a file whose whole content is `gitdir: <main>/.git/worktrees/<name>`,
+and the walker already stats that exact path — so reading it when it is not a directory is one small
+read and no subprocess, and the line hands back the main checkout directly. `--git-common-dir`
+agrees and remains the right call anywhere a subprocess is already being spent.
+
+[PITFALL: **a submodule is also `.git`-as-a-file, so "file means worktree" is wrong.** The
+discriminator is inside the line — `…/.git/worktrees/<name>` for a worktree, `…/.git/modules/<path>`
+for a submodule, which is also relative where a worktree's is absolute. A skip rule without that
+check would drop every submodule from the walk.]
+
+The store mirror keying off the **repository** while `mode = "repo"` keeps writing into the
+worktree's own `plans/` needed no second code path: `rel` is derived from the identity while
+`repo_root` stays the checkout, and `repo_dir` was always `repo_root / "plans"`, so the asymmetry
+falls out of one line. That asymmetry is deliberate rather than incidental — a committed plan
+travels with the branch it was written on, which is already the right answer, while a store mirror
+per worktree would split one repo's queue.
+
 ### Why the confidentiality gate derives its terms instead of listing them
 
 The rule is easy to state — a published repo must not name a client — and useless without a check,

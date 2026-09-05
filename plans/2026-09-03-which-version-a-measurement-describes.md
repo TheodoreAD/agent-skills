@@ -127,3 +127,23 @@ Add `--ref` to `fitness.py`, print the population in the report header, and leav
 the working tree. Then, separately, make retirement — not `landed` — report whether the plan's repo
 has unpushed commits, because deleting the explanation of a change that never shipped is the
 expensive version of this mistake.
+
+## Migrated to
+
+- **`skills/skill-fitness/references/measurements.md`, "Four populations, and why `--ref` never
+  fetches"** — the table with what each population answers, the mid-session measurement in which
+  three of the four disagreed at once, the three rules, the no-fetch and no-threshold decision, and
+  the remote-tracking-ref `PITFALL`.
+- **`skills/skill-authoring/SKILL.md`** — "say which population a measurement describes", with the
+  all-three-differed measurement and the reminder that a fix committed and not pushed is fixed for
+  nobody.
+- **`skills/plan-docs/SKILL.md`**, the `PITFALL` at retirement step 3 — that `landed` does not mean
+  published, that `refs` warns about unpushed commits, and why this is reported at retirement rather
+  than gated at `landed`: a gate would be unpassable for a repo with no remote, the sensitive store
+  being permanently one, so it would only teach people to force past it.
+- **`fitness.py`** — `--ref`, the sha-and-fetch-age line, and the corpus header printed once per
+  report rather than per section.
+
+Deliberately not migrated: the `git archive | tar -x` pipeline. It was the proof the implementation
+was nearly free, and it became `--ref` — which is this repo's own rule about anything derivable
+belonging in a script, applied to the plan that proposed it.

@@ -10,9 +10,10 @@ source_moment: 2026-09-03T10:16:02+03:00
 
 ## Context
 
-`SKILL.md`'s command block, and the design plan that specified the script
-(`plans/2026-09-02-session-harvest-mechanical-half-becomes-a-script.md`, lines 79–80), both show the
-subcommands invoked bare after a one-off `transcript` call:
+`SKILL.md`'s command block, and the now-retired design plan that specified the script
+(`plans.py archive --show 2026-09-02-session-harvest-mechanical-half-becomes-a-script.md`, in its
+proposed subcommand listing), both show the subcommands invoked bare after a one-off `transcript`
+call:
 
 ```shell
 python3 $H transcript --expect '<a command this session ran>'

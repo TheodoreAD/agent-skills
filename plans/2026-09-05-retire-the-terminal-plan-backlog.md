@@ -1,6 +1,6 @@
 ---
 status: in-progress
-updated: 2026-09-05
+updated: 2026-09-06
 ---
 
 # The terminal-plan backlog, and retiring it deliberately
@@ -56,18 +56,56 @@ wide:
 
 Roughly: three retirements filled most of a session that was also doing other work.
 
-## Open questions
+## The backlog is currently invisible to the thing meant to raise it
 
-[NEEDS CLARIFICATION: is the right unit a scheduled session, or two or three per session that has
-other business? The three done on 2026-09-05 were the second kind and worked, but they were also the
-three `absorb` had flagged as aged — the ones with the most obvious case for going. A dedicated
-session may be the only thing that clears the ones nobody would pick.]
+Measured 2026-09-06, and it is the finding that decides both questions below. **`absorb` printed no
+retirement prompt at all.** The aged half fires at `updated + RETIREMENT_PROMPT_AFTER_DAYS` (3), and
+15 of the 16 reached `landed` on 2026-09-05, one on 2026-09-04 — verified against git rather than
+read off the stamps, by finding the first commit in which each file's frontmatter carried a terminal
+status. Stamp and landing agree in all 16, so nothing is drifting; the plans are simply all new.
 
-[NEEDS CLARIFICATION: whether a plan landed **today** should be retired in the same session that
-landed it. `plan-docs` says `plans/` is a working set that empties out, which argues yes, and the
-three-day throttle exists so a Friday landing does not nag on the Saturday — which argues the
-throttle is about nagging, not about readiness. Four plans landed on 2026-09-05 and were
-deliberately left, because a plan is easier to retire once its change has survived a few days.]
+So the prompt is silent until **2026-09-08**, when 15 arrive in one run — and it shows five rows
+before collapsing the rest to a count. Left alone, the first substantive run of the prompt is its
+worst-case run, which is the exact outcome the inherited `DEFERRED` wanted scheduling to prevent.
+Only `list`'s passive footer reports the pile in the meantime, and it is a footer on a command
+nobody runs unless they are already thinking about plans.
+
+## What the 16 actually are
+
+| destination rationale file                         | plans | plan lines | file lines |
+| -------------------------------------------------- | ----: | ---------: | ---------: |
+| `skills/plan-docs/references/design-rationale.md`  |     6 |     ~1,030 |        880 |
+| `skills/session-harvest/references/rationale.md`   |     5 |       ~575 |        450 |
+| `skills/session-bash-audit/references/research.md` |     4 |       ~620 |        679 |
+| `skills/skill-authoring/references/rationale.md`   |     1 |       ~170 |         83 |
+
+2,331 lines, 35% of everything in `plans/`. 61 `DECISION` and 14 `PITFALL` tags to migrate or verify
+as already-covered, and **5 `DEFERRED` across 4 plans, which block deletion** until they move to a
+plan that stays.
+
+## Decisions, 2026-09-06
+
+[DECISION: **the unit is a batch per destination rationale file, not per age.** Oldest-first was the
+inherited recommendation and it has nothing to sort on — 15 of the 16 landed on one day, so the age
+spread is a day and any order is arbitrary. The measured cost says what to sort on instead: the
+expensive half of a retirement is establishing what the destination already covers, which is a read
+of an 83-to-880-line rationale file, and a batch pays that read once for four to six plans rather
+than once each. It also surfaces the duplicate-content case that a per-plan order hides — six plans
+migrating into one file are exactly the ones likely to be saying the same thing twice.]
+
+[DECISION: **a plan is retired by the session that landed it, once the change is pushed** — not
+after a wait. The session that landed it has already read the code and the destination doc, which
+are the two expensive parts; a session three days later re-derives both from nothing. This settles
+the tension the question named: the three-day throttle is about **nagging**, not readiness, so it
+governs when `absorb` raises a plan for _someone else_ to pick up and says nothing about the session
+holding the context. The gate is `pushed`, not `landed` — `plan-docs` warns that `landed` does not
+mean published, and retirement deletes the file, so retiring an unpushed change deletes the reason
+for something that is not in the product.]
+
+**The two compose: the second decision is what stops this backlog re-forming, and the first is only
+needed because it was not in force when these 16 landed.** Once landing sessions retire their own,
+`absorb`'s aged prompt goes back to being an exception handler for plans that slipped through, which
+is what it was designed as.
 
 [DEFERRED: the one terminal plan in `power-user-linux-setup` is not this repo's to retire — writing
 into another repo is out. It belongs to a session working there, and `absorb` will raise it in one.
@@ -75,9 +113,15 @@ Recorded here only so the machine-wide count is not read as an `agent-skills` nu
 
 ## Recommended direction
 
-Take them oldest-first in small batches, as `absorb` reports them, and prefer the ones it marks
-`STALLED mid-retirement` whatever their age — those are minutes rather than a session, and a
-half-retired plan is indistinguishable from a whole one in every listing.
+Take one destination batch at a time, in the order of the table above, and prefer anything `absorb`
+marks `STALLED mid-retirement` whatever its age and whatever batch it belongs to — those are minutes
+rather than a session, and a half-retired plan is indistinguishable from a whole one in every
+listing. None of the 16 is stalled: all carry no `## Migrated to`, so every one is a full
+retirement.
+
+Clear the 4 `DEFERRED`-carrying plans' tags into open plans first within each batch, since those are
+the ones that cannot be deleted at the end of the pass and finding that out last wastes the batch's
+destination read.
 
 Retire this plan when the backlog it tracks is drained, not when the last batch is done: a standing
 pile that regrows is a plan with a status, which is the whole argument for it being a file.

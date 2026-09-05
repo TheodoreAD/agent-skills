@@ -545,6 +545,19 @@ What the script cannot do is decide what a finding means. That is this list:
   baseline. Never compare against a baseline measured on somebody else's machine: that reports how
   your session differs from their setup rather than from your rules.
 
+  **And check whether the comparison straddles a change to the instrument itself**, which is the
+  same error one level down: a baseline written by a different `audit.py` attributes a
+  pattern-definition change to your session's behaviour, in whichever direction happens to flatter
+  it. A baseline records the script's own commit in its `instrument` field; a `null` there, or its
+  absence in a file written before the field existed, means the answer has to come from elsewhere —
+  the writing session's transcript and the mtime of the script it called. **A straddling comparison
+  is not automatically void**, and deciding that needs the diff rather than the commit: read which
+  rows the intervening commits actually moved, and say so. Confirmed 2026-09-05, in the session that
+  both anchored the patterns and then compared against a baseline saved thirty-six minutes earlier —
+  the verdict was a clean 11/11 and stayed readable, because none of the eleven judged rows was one
+  the anchoring touched. That sentence is the honest form of the result, and nothing in the JSON
+  could have produced it.
+
   [PITFALL: the first wording of this said "skip this step", which reads as skip the **audit** — and
   the step is the audit. Filed by a session that took the narrow reading on 2026-09-04, ran it
   anyway, and got its most useful number that way: **23% `exit-masked` across 189 calls**, with five

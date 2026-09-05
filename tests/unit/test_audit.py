@@ -250,3 +250,71 @@ def test_no_checkout_means_no_instrument_rather_than_a_wrong_one(monkeypatch, tm
 
     monkeypatch.setattr(audit.subprocess, "run", untracked)
     assert audit.instrument_commit() is None
+
+
+# --------------------------------------------------------------------------------------------
+# `--session` is the mode a harvest runs, so a flag it accepts has to work there or refuse
+
+
+def _transcript(tmp_path: Path, calls: list[tuple[str, str]]) -> Path:
+    """A minimal transcript: one assistant message per (timestamp, command)."""
+    path = tmp_path / "0f0e0d0c-1111-2222-3333-444455556666.jsonl"
+    lines = [
+        json.dumps(
+            {
+                "timestamp": stamp,
+                "message": {
+                    "model": "claude-opus-5",
+                    "content": [{"type": "tool_use", "id": f"t{i}", "name": "Bash", "input": {"command": cmd}}],
+                },
+            }
+        )
+        for i, (stamp, cmd) in enumerate(calls)
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _run(monkeypatch, argv: list[str]) -> None:
+    monkeypatch.setattr(sys, "argv", ["audit.py", *argv])
+    audit.main()
+
+
+def test_session_mode_honours_the_json_dump_it_used_to_swallow(monkeypatch, tmp_path):
+    """`--session` returned before the tail of `main()`, so `argparse` accepted `--json`, the report
+    printed, no file was written and nothing said so. Found 2026-09-06 by a harvest, whose adherence
+    step is always a `--session` run — the machine-readable form was unavailable in exactly the mode
+    that wanted it, and a caller after the tags had to re-derive them by hand.
+
+    The dump is the `--until`-filtered set the report was about, not the whole transcript: a run
+    measuring itself excludes its own sweep, and a JSON disagreeing with the rates beside it would
+    be worse than none.
+    """
+    transcript = _transcript(
+        tmp_path,
+        [
+            ("2026-09-06T10:00:00+03:00", "rg -n pattern src && git status"),
+            ("2026-09-06T12:00:00+03:00", "python3 audit.py --session x"),
+        ],
+    )
+    out = tmp_path / "calls.json"
+
+    _run(monkeypatch, ["--session", str(transcript), "--until", "2026-09-06T11:00:00+03:00", "--json", str(out)])
+
+    dumped = json.loads(out.read_text(encoding="utf-8"))
+    assert [c["cmd"] for c in dumped] == ["rg -n pattern src && git status"]
+    assert "chain2" in dumped[0]["tags"], "the tags are the reason a caller asks for the dump"
+
+
+def test_save_baseline_in_session_mode_refuses_rather_than_being_skipped(monkeypatch, tmp_path, capsys):
+    """The same early return also swallowed `--save-baseline`. Skipping it is right on the merits —
+    one session's rates are not a corpus baseline — but silence made a flag that does nothing look
+    like a flag that worked, which this corpus holds to be worse than an error."""
+    transcript = _transcript(tmp_path, [("2026-09-06T10:00:00+03:00", "ls")])
+
+    with pytest.raises(SystemExit) as refusal:
+        _run(monkeypatch, ["--session", str(transcript), "--save-baseline", str(tmp_path / "b.json")])
+
+    assert refusal.value.code == 2
+    assert "not a baseline" in capsys.readouterr().err
+    assert not (tmp_path / "b.json").exists()

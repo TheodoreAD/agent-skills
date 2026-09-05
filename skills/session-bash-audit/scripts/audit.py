@@ -606,6 +606,18 @@ def save_baseline(calls: list[Call], path: Path, days: float, note: str, force: 
     print(f"\nbaseline written to {path}")
 
 
+def dump_json(calls: list[Call], path: Path) -> None:
+    """Every call with its tags, for a caller that wants the tags rather than the printed rates.
+
+    A helper rather than a tail of `main()`, because the tail is exactly what the `--session` early
+    return skipped: `argparse` accepted `--json`, the run printed its report, and no file appeared
+    and nothing said so. Found 2026-09-06 by a harvest, whose adherence step is *always* a
+    `--session` run — the machine-readable form was missing in precisely the mode that wanted it.
+    """
+    path.write_text(json.dumps([{**c.__dict__, "tags": sorted(c.tags)} for c in calls], indent=1, default=str))
+    print(f"\nwrote {path}")
+
+
 def compare(calls: list[Call], baseline_path: Path) -> None:
     """Per model present in both runs: delta in percentage points against the baseline, with a
     verdict for every tag EXPECTATIONS names. A model with under 50 calls in either run is shown
@@ -816,18 +828,22 @@ def _before(calls: list[Call], until: str) -> list[Call]:
     return kept
 
 
-def report_session(args: argparse.Namespace) -> None:
-    """One session measured against the baseline — the shape a run checking itself uses."""
+def report_session(args: argparse.Namespace) -> list[Call]:
+    """One session measured against the baseline — the shape a run checking itself uses.
+
+    Returns the calls it reported on, filtered by `--until`, so the caller can dump the same set
+    `--json` asks for rather than re-deriving it from `load_calls`.
+    """
     calls = load_session(args.session)
     if not calls:
         print(f"no Bash calls found for session {args.session!r}")
-        return
+        return []
     whole = len(calls)
     if args.until:
         calls = _before(calls, args.until)
         if not calls:
             print(f"no Bash calls before {args.until} for session {args.session!r}")
-            return
+            return []
     print(f"# this session: {len(calls)} Bash calls")
     if args.until:
         print(f"#   excluding {whole - len(calls)} at or after {args.until} — the run's own sweep")
@@ -846,6 +862,7 @@ def report_session(args: argparse.Namespace) -> None:
         print("and authoring a rule is not evidence of following it.")
     if args.samples:
         _print_samples(calls, args.samples)
+    return calls
 
 
 def main() -> None:
@@ -883,7 +900,14 @@ def main() -> None:
         return
 
     if args.session:
-        report_session(args)
+        # Refused rather than skipped: a single session is not a corpus, so there is no baseline to
+        # write — but the early return used to swallow the flag as silently as it swallowed --json,
+        # and this corpus's own position is that a flag doing nothing is worse than one that errors.
+        if args.save_baseline is not False:
+            ap.error("--save-baseline needs a corpus: one session's rates are not a baseline")
+        session_calls = report_session(args)
+        if args.json and session_calls:
+            dump_json(session_calls, args.json)
         return
 
     calls = load_calls(args.days, args.project)
@@ -897,8 +921,7 @@ def main() -> None:
         default = state_dir() / f"{time.strftime('%Y-%m-%d', time.gmtime())}.json"
         save_baseline(calls, args.save_baseline or default, args.days, args.note, args.force)
     if args.json:
-        args.json.write_text(json.dumps([{**c.__dict__, "tags": sorted(c.tags)} for c in calls], indent=1, default=str))
-        print(f"\nwrote {args.json}")
+        dump_json(calls, args.json)
 
 
 if __name__ == "__main__":

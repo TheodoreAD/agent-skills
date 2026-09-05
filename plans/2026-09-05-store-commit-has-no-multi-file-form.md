@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-05
+updated: 2026-09-06
 ---
 
 # `plans.py commit` takes one file, so a bulk absorption is N commits or a rule reasoned around
@@ -38,6 +38,30 @@ as written.
   parallel session's staged file can then neither ride along nor be disturbed." So the agent was
   choosing between two documents that both address index safety and only one of which knows about
   the store's command.
+
+## Two more occurrences, and they fall on opposite sides of the rule
+
+Merged from `2026-09-05-three-confirmations-from-a-harvest-in-another-repo.md`, which reproduced the
+signature verbatim in a different repo on the same day, from a session that had not read this plan:
+
+```
+plans.py commit <a>.md <b>.md <c>.md -m "power-user-linux-setup: absorbed, three plans leave the store"
+plans.py: error: unrecognized arguments: <b>.md <c>.md
+```
+
+Recovered as three commits, one per file, with three messages each describing one third of one
+logical change. It adds nothing to the diagnosis and everything to its weight: **a second occurrence
+in a different repo on a different day is what separates an awkwardness from a shape.**
+
+A third, 2026-09-06, from the session absorbing two plans into `agent-skills`: it **paid the cost
+rather than arguing with the rule** — two `plans.py commit` calls for one absorption, two messages
+for one logical change. Worth recording because the first session's deviation could be read as a
+lapse; a session that complies and still produces a split history shows the cost is structural. That
+run also answers the whole-directory question below from the pessimistic side: at the moment of
+those commits the store simultaneously held **three unrelated deletions in another repo's mirror**,
+staged by a parallel session mid-absorption. A `<mirror dir>` argument would have been correct here
+because the two absorptions touched different mirrors — but the margin was one directory level, and
+nothing in the command would have said so.
 
 ## Open questions
 

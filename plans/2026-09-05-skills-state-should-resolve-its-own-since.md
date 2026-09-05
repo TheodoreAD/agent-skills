@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-05
+updated: 2026-09-06
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 156d723c-4e21-41ef-aac9-bfd6c05b681c.jsonl
 source_moment: 2026-09-05T19:40:00+03:00
@@ -42,6 +42,23 @@ point worth adding: the friction is not that the value comes out wrong, it is th
 prescribed order cannot be followed as written. A session either substitutes something (the first
 instance, which inflated a count) or silently re-orders the block (this one). Both are the operator
 standing in for a resolver that is already in the process.
+
+## A third instance, and the first where the wrong value pointed the other way
+
+Merged from `2026-09-05-three-confirmations-from-a-harvest-in-another-repo.md`, filed by a
+`power-user-linux-setup` harvest the same evening. It substituted **14:00 local** — again the only
+bound to hand at step 0 — and reported **10** moved commits for `session-harvest`, **3** for
+`plan-docs`, **6** for `session-bash-audit`. Re-run with the real start (`2026-09-05T16:36:54.394Z`,
+from `transcript`): **5**, **0** and **3**. The largest over-count on record.
+
+**The `plan-docs` row is the one that changes the argument, because 3 became 0 rather than merely
+shrinking.** An inflated count makes the staleness branch look more urgent than it is; a count that
+should have been zero routes a skill that had not moved at all into "re-read `SKILL.md` from
+whichever side is ahead" — step 0's most expensive branch — and the commits it named were real and
+all predated the session, so nothing downstream would have revealed the mistake. So the flag's cost
+is not only a number reading high: **a clean skill can be routed into the staleness branch, and the
+routing is silent.** Consistent with the decision above; it raises what that decision is worth, not
+what it should be.
 
 ## Open questions
 

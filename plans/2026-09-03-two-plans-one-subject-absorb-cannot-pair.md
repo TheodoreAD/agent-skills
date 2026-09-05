@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-03
+updated: 2026-09-06
 source_repo: github.com-personal/power-user-linux-setup
 source_session: cd4f9f9e-379a-4bb2-986c-1a99e0f84ac0.jsonl
 source_moment: 2026-09-03T23:04:44+03:00
@@ -77,6 +77,24 @@ become the answer.
 
 Cheapest fix: one clause in step 0 saying the verdict is a reading rather than a fact, and that a
 second harvest re-runs it rather than quoting the first. Rule count unchanged.
+
+**Thirteen hours is not what makes it possible — ninety seconds is enough.** Merged from
+`2026-09-05-three-confirmations-from-a-harvest-in-another-repo.md`: the same flip happened inside a
+single step 0, 2026-09-05, on `session-harvest` rather than `plan-docs`.
+
+- 23:43:5x —
+  `checkout DIRTY (SKILL.md itself is uncommitted) — work in progress; a re-install cannot
+  deliver it, so report and move on`.
+- 23:45:2x — same repo, same skill —
+  `unpushed skill work (1 commit(s)) — the push belongs to whoever
+  authored them`.
+
+A parallel session committed `4345dce` at 23:44:21, in the gap. Two different rows of step 0's
+four-row table, two different actions, ninety seconds apart, with nothing in either output hinting
+the other reading existed. The clause above covers this unchanged; what the instance adds is that
+**"re-read it at report time" is not a long-interval precaution** — a harvest that runs
+`skills-state` at the top and reports it at the bottom is exposed on a fast run too, which is
+exactly the run where nobody would think to re-check.
 
 ## Recommended direction
 

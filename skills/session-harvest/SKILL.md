@@ -427,10 +427,13 @@ both stores, the absorb queue, `depends_on` plans, files written outside every r
 named in edits that do not exist. Add `--repo <path>` for a repo the transcript cannot show. Run it
 even when the session felt tidy, because every one of these has been wrong at least once.
 
-**Two of those steps assume a POSIX machine**: processes come from `ps -eo` and listeners from
-`ss -ltnp`, which is Linux-only — on macOS or Windows the socket step reports itself unavailable
-with the reason, which is the honest answer and not a clean bill of health. Everything else in the
-sweep is `git`, the harness's own files, and Python, and works anywhere.
+**Two of those steps shell out to the platform's own tools**: processes come from `ps -eo` and
+listeners from `ss -ltnp` on Linux, and from `Get-CimInstance Win32_Process` and `netstat -ano` on
+Windows. The Linux pair is what every measurement in this skill was made with; the Windows pair is
+reasoned from documented output and tested against fixture text only, so read a first Windows sweep
+as a claim to verify rather than a result. On macOS, or wherever a listing does not run, the step
+reports itself unavailable with the reason — the honest answer and not a clean bill of health.
+Everything else in the sweep is `git`, the harness's own files, and Python, and works anywhere.
 
 What the script cannot do is decide what a finding means. That is this list:
 

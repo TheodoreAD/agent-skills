@@ -640,6 +640,7 @@ def test_paths_written_into_files_that_do_not_exist_are_reported(tmp_path, monke
     # A fake HOME, because the paths this scans for are home-rooted ones — the shape an instructions
     # file actually names — and a test that wrote into the real home would leave a file per run.
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # what `expanduser` reads on Windows
     (tmp_path / "here.py").write_text("x = 1\n")
     entries = [
         blocks_entry(
@@ -926,3 +927,80 @@ def test_a_path_past_the_slug_cap_searches_machine_wide(tmp_path, monkeypatch):
 
     assert harvest.project_slug(deep) == ""
     assert harvest._by_content("the marker", deep) == [projects / "-deep" / "a.jsonl"]
+
+
+# --------------------------------------------------------------------------------------------
+# the sweep's Windows arms, against the documented output shapes
+#
+# Nothing in this repo has run on Windows; these pin the parsers to the column layouts the tools
+# document, and the Windows CI leg is what turns them from reasoned into measured.
+
+
+def test_windows_process_table_keeps_the_sweeps_own_pipeline_out(monkeypatch):
+    """`Win32_Process` has no process groups, and `processes()` uses the group to leave this
+    call's own pipeline out of the survivors. So the table gives every process its own group
+    except this script's direct children, which join its group — the PowerShell reading the table
+    is one of them, and reporting it would be the sweep measuring itself."""
+    monkeypatch.setattr(harvest, "WINDOWS", True)
+    monkeypatch.setattr(harvest.os, "getpid", lambda: 500)
+    listing = (
+        "10\t1\t9999\tC:\\Users\\u\\claude.exe --session\n"
+        "500\t10\t0\tpython harvest.py sweep\n"
+        "501\t500\t0\tpowershell -NoProfile -Command ...\n"
+        "600\t10\t36000\tcmd /c until gh run view\n"
+        "700\t1\t12\t\n"  # a process with no command line, which CIM does report
+        "garbage line\n"
+    )
+    runner = FakeRunner({"powershell": (0, listing, "")})
+
+    table = harvest.process_table(runner)
+    result = harvest.processes(runner, table)
+
+    assert runner.calls[0][:2] == ["powershell", "-NoProfile"], "the POSIX ps must not be tried"
+    assert table[501].pgid == 500
+    assert table[600].pgid == 600
+    assert table[700].args == ""
+    assert result["harness_pid"] == 10
+    assert [row["pid"] for row in result["session_children"]] == [600]
+
+
+def test_windows_netstat_listeners_use_the_same_shape_as_ss(tmp_path, monkeypatch):
+    """`netstat -ano` prints the pid alone, so the name comes from the process table; only TCP rows
+    in LISTENING state are listeners, and a UDP row has no state column at all. The served
+    directory still resolves through `--directory`, which is the only route on Windows since there
+    is no `/proc` to read a cwd from."""
+    monkeypatch.setattr(harvest, "WINDOWS", True)
+    served = tmp_path / "repo"
+    (served / ".git").mkdir(parents=True)
+    (served / ".env").write_text("SECRET=1\n")
+    listing = (
+        "\nActive Connections\n\n"
+        "  Proto  Local Address          Foreign Address        State           PID\n"
+        "  TCP    0.0.0.0:8765           0.0.0.0:0              LISTENING       42\n"
+        "  TCP    [::1]:9000             [::]:0                 LISTENING       43\n"
+        "  TCP    127.0.0.1:52000        127.0.0.1:443          ESTABLISHED     42\n"
+        "  UDP    0.0.0.0:5353           *:*                                    44\n"
+    )
+    runner = FakeRunner({"netstat -ano": (0, listing, "")})
+    table = {
+        42: harvest.Process(1, 42, "", 100, f"C:\\Python\\python.exe -m http.server 8765 --directory {served}"),
+        43: harvest.Process(1, 43, "", 50, "node.exe server.js"),
+    }
+
+    result = harvest.sockets(runner, table)
+
+    assert [x["local"] for x in result["listeners"]] == ["0.0.0.0:8765", "[::1]:9000"]
+    exposed, loopback = result["listeners"]
+    assert exposed["exposed"] is True
+    assert loopback["exposed"] is False
+    assert exposed["processes"][0]["name"] == "python.exe"
+    assert exposed["processes"][0]["readable_secrets"] == [".env"]
+    assert loopback["processes"] == [{"name": "node.exe", "pid": 43}]
+    assert result["over_a_repo"] == [exposed]
+
+
+def test_a_windows_machine_without_powershell_output_reports_unavailable(monkeypatch):
+    monkeypatch.setattr(harvest, "WINDOWS", True)
+    result = harvest.processes(FakeRunner({"powershell": (1, "", "not recognized")}))
+    assert result["available"] is False
+    assert "Win32_Process" in result["why"]

@@ -53,14 +53,16 @@ read-only, and it writes nothing itself. `plan-docs` also describes pushing the 
 its store to a remote you configure — behind a content scan, and never the half holding employer or
 client work.
 
-**Platform.** Everything here is written for a POSIX machine and none of it has been run on Windows
-— CI is Linux-only by decision, so the Windows behaviour below is declared rather than measured. The
-scripts are stdlib-only Python and resolve their locations from `$XDG_*` first, falling back to
-`%APPDATA%` / `%LOCALAPPDATA%` there — but two skills assume more than a path. `session-bash-audit`
-measures POSIX-shell idioms (`&&`, `;`, `|`, `cd`, `sed -n`), so it describes a Git Bash or WSL
-session and says nothing useful about a PowerShell one; `session-harvest`'s sweep shells out to
-POSIX tools to read processes, sockets and images. Both say so in their own bodies. A `0700` mode
-set at creation is accepted and ignored on Windows, so no skill here treats one as protection.
+**Platform.** Everything here was written on a POSIX machine. The scripts are stdlib-only Python,
+resolve their locations from `$XDG_*` first and fall back to `%APPDATA%` / `%LOCALAPPDATA%` on
+Windows, and the unit suite runs on a Windows CI leg as well as a Linux one — so what the tests
+cover is measured on both, and what they cannot cover is declared. Two skills assume more than a
+path. `session-bash-audit` measures POSIX-shell idioms (`&&`, `;`, `|`, `cd`, `sed -n`), so it
+describes a Git Bash or WSL session and says nothing useful about a PowerShell one;
+`session-harvest`'s sweep reads processes and sockets through `ps`/`ss` on Linux and PowerShell's
+`Win32_Process`/`netstat` on Windows, where the parsers are tested against documented output and
+have never seen a live machine. Both say so in their own bodies. A `0700` mode set at creation is
+accepted and ignored on Windows, so no skill here treats one as protection.
 
 ## Layout
 

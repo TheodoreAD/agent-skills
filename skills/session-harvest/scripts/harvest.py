@@ -52,12 +52,34 @@ import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Protocol
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 JOBS_DIR = Path.home() / ".claude" / "jobs"
 INSTALLED_SKILLS = Path.home() / ".agents" / "skills"
+
+# A module constant rather than an `os.name` test at the call site, so a test can pin the platform
+# without patching `os` itself: `os.name` is what `pathlib` reads to decide whether `Path()` is a
+# PosixPath or a WindowsPath, and patching it globally makes every path in the process unusable.
+WINDOWS = os.name == "nt"
+
+# The two commands the sweep's process and socket steps run, per platform. The POSIX pair is what
+# every measurement in this skill was made with; the Windows pair is reasoned from documented output
+# and exercised only against fixture text in the tests, since nothing here has run on Windows.
+PS_ARGV = ("ps", "-eo", "pid=,ppid=,pgid=,stat=,etimes=,args=")
+PS_WINDOWS_ARGV = (
+    "powershell",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    # One tab-separated line per process: pid, parent pid, age in seconds, command line.
+    "$now = Get-Date; Get-CimInstance Win32_Process | ForEach-Object { "
+    "$age = if ($_.CreationDate) { [int]($now - $_.CreationDate).TotalSeconds } else { 0 }; "
+    '"$($_.ProcessId)`t$($_.ParentProcessId)`t$age`t$($_.CommandLine)" }',
+)
+SS_ARGV = ("ss", "-ltnp")
+NETSTAT_WINDOWS_ARGV = ("netstat", "-ano")
 
 # Skills a harvest leans on by default, so `skills-state` with no arguments still answers step 0's
 # question. Anything else this run used is added with --skill.
@@ -1062,7 +1084,11 @@ class Process:
 
 
 def process_table(runner: Runner) -> dict[int, Process]:
-    ran = runner(["ps", "-eo", "pid=,ppid=,pgid=,stat=,etimes=,args="])
+    return _windows_process_table(runner, os.getpid()) if WINDOWS else _posix_process_table(runner)
+
+
+def _posix_process_table(runner: Runner) -> dict[int, Process]:
+    ran = runner(list(PS_ARGV))
     table: dict[int, Process] = {}
     for line in ran.lines:
         parts = line.split(None, 5)
@@ -1070,6 +1096,26 @@ def process_table(runner: Runner) -> dict[int, Process]:
             continue
         pid, ppid, pgid, stat, etimes, args = parts
         table[int(pid)] = Process(int(ppid), int(pgid), stat, int(etimes) if etimes.isdigit() else 0, args)
+    return table
+
+
+def _windows_process_table(runner: Runner, mine: int) -> dict[int, Process]:
+    """The same table from `Get-CimInstance Win32_Process`, which has no process groups.
+
+    `pgid` is what `processes()` uses to leave this sweep's own pipeline out of the survivors, so
+    here every process is its own group except this script's direct children, which join its group
+    — the PowerShell reading the table is one of them, and reporting it would be the sweep
+    measuring itself. `stat` has no Windows equivalent and is left empty.
+    """
+    ran = runner(list(PS_WINDOWS_ARGV))
+    table: dict[int, Process] = {}
+    for line in ran.lines:
+        parts = line.split("\t", 3)
+        if len(parts) < 3 or not parts[0].isdigit() or not parts[1].isdigit():
+            continue
+        pid, ppid, age = int(parts[0]), int(parts[1]), parts[2]
+        args = parts[3] if len(parts) == 4 else ""
+        table[pid] = Process(ppid, mine if ppid == mine else pid, "", int(age) if age.isdigit() else 0, args)
     return table
 
 
@@ -1086,11 +1132,12 @@ def processes(runner: Runner, table: dict[int, Process] | None = None) -> dict[s
     harness's own `zsh -c … eval` wrapper and reports it as a real process.
     """
     table = process_table(runner) if table is None else table
-    # An empty table means `ps` did not run — it cannot omit the process reading it. Reporting zero
-    # survivors there would be the "clean bill of health from a tool that never ran" this sweep
-    # exists to prevent; `ps -eo` is POSIX, so the machine that hits this is a Windows one.
+    # An empty table means the listing did not run — it cannot omit the process reading it.
+    # Reporting zero survivors there would be the "clean bill of health from a tool that never ran"
+    # this sweep exists to prevent.
     if not table:
-        return {"available": False, "why": "no ps output — `ps -eo` is POSIX and did not run here"}
+        what = "Get-CimInstance Win32_Process" if WINDOWS else "`ps -eo`"
+        return {"available": False, "why": f"no process listing — {what} produced nothing here"}
     mine = os.getpid()
     my_group = table[mine].pgid if mine in table else -1
     chain: list[int] = []
@@ -1154,6 +1201,38 @@ def _served_directory(pid: int, args: str) -> Path | None:
         return None
 
 
+def _ss_listeners(lines: list[str]) -> list[tuple[str, list[tuple[str, int]]]]:
+    """`ss -ltnp` rows as (local address, [(process name, pid), ...]), header dropped."""
+    out: list[tuple[str, list[tuple[str, int]]]] = []
+    for line in lines[1:]:
+        fields = line.split()
+        if len(fields) < 4:
+            continue
+        who = [(name, int(pid)) for name, pid in re.findall(r'\("([^"]+)",pid=(\d+)', line)]
+        out.append((fields[3], who))
+    return out
+
+
+def _netstat_listeners(lines: list[str], table: dict[int, Process]) -> list[tuple[str, list[tuple[str, int]]]]:
+    """`netstat -ano` rows in the same shape: only TCP rows in LISTENING state carry a listener,
+    and the process name comes from the table since netstat prints the pid alone. Reasoned from
+    the documented column layout (`Proto  Local Address  Foreign Address  State  PID`), not from a
+    Windows run."""
+    out: list[tuple[str, list[tuple[str, int]]]] = []
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 5 or fields[0].upper() != "TCP" or fields[3].upper() != "LISTENING":
+            continue
+        if not fields[4].isdigit():
+            continue
+        pid = int(fields[4])
+        proc = table.get(pid)
+        # `PureWindowsPath` so the basename is right whatever platform the tests run the parser on.
+        name = PureWindowsPath(proc.args.split()[0]).name if proc and proc.args.split() else f"pid {pid}"
+        out.append((fields[1], [(name, pid)]))
+    return out
+
+
 def sockets(runner: Runner, table: dict[int, Process] | None = None) -> dict[str, Any]:
     """What the survivors *expose*, which `ps` cannot see and liveness never flags.
 
@@ -1172,21 +1251,16 @@ def sockets(runner: Runner, table: dict[int, Process] | None = None) -> dict[str
     directory is resolved here and reported whatever the bind, which turns "serves the repo root"
     from an inference into a measurement.
     """
-    ran = runner(["ss", "-ltnp"])
+    argv = list(NETSTAT_WINDOWS_ARGV if WINDOWS else SS_ARGV)
+    ran = runner(argv)
     if not ran.ok:
-        return {"available": False, "why": ran.err.strip() or f"ss exited {ran.code}"}
+        return {"available": False, "why": ran.err.strip() or f"{argv[0]} exited {ran.code}"}
     table = process_table(runner) if table is None else table
     listeners: list[dict[str, Any]] = []
-    for line in ran.lines[1:]:
-        fields = line.split()
-        if len(fields) < 4:
-            continue
-        local = fields[3]
+    for local, who in _netstat_listeners(ran.lines, table) if WINDOWS else _ss_listeners(ran.lines):
         host = local.rsplit(":", 1)[0]
-        who = re.findall(r'\("([^"]+)",pid=(\d+)', line)
         served: list[dict[str, Any]] = []
-        for name, raw_pid in who:
-            pid = int(raw_pid)
+        for name, pid in who:
             proc = table.get(pid)
             directory = _served_directory(pid, proc.args if proc else "")
             if directory is None:

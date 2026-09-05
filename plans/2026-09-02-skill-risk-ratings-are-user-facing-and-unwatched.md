@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-02
+updated: 2026-09-06
 source_repo: github.com-personal/power-user-linux-setup
 source_session: cd4f9f9e-379a-4bb2-986c-1a99e0f84ac0.jsonl
 source_moment: 2026-09-02T20:05:00+03:00
@@ -467,3 +467,39 @@ what a reader opens.
 reassurance.** Re-query the audit endpoint for `session-harvest` after the push that publishes it
 and diff against the verdict table above. One measurement, taken once; nothing in the disclosure's
 design should move on the answer.]
+
+## Re-queried 2026-09-06: the critical is gone, and the tag above is still open
+
+Taken incidentally, from a `skills add` run re-installing the corpus, then confirmed against the
+audit endpoint directly so it is comparable with the table above:
+
+All four of the non-safe verdicts, and what each did:
+
+| skill                | then (2026-09-02)                         | now (analyzed 2026-09-04)                  |
+| -------------------- | ----------------------------------------- | ------------------------------------------ |
+| `session-harvest`    | ath medium, **socket critical (1 alert)** | ath safe, socket safe (0 alerts, score 90) |
+| `session-bash-audit` | ath medium                                | ath safe                                   |
+| `skill-fitness`      | snyk medium                               | snyk **low**                               |
+| `research-library`   | snyk medium                               | snyk **medium — the one that never moved** |
+
+**4 of 14 non-safe has become 1 of 14**, and the survivor is `research-library`'s Snyk `medium`.
+
+**It does not answer the `[UNVERIFIED:]` above, and the timestamps are why.** Every verdict carries
+`analyzedAt` of **2026-09-04T10:24–10:26Z** — a day _before_ the disclosure shipped on 2026-09-05.
+So the ratings improved for some other reason and the disclosure's effect is still unmeasured; the
+tag stays open, and answering it needs a re-query after a scan dated later than 2026-09-05. Reading
+this delta as the disclosure working would have been the easy mistake, and the only thing preventing
+it is that the endpoint returns the analysis time beside the verdict.
+
+[PITFALL: **"scans follow pushes" is too strong, and this re-query is the counter-evidence.** That
+inference came from `analyzedAt` clustering into two groups that matched two pushes. Here **six
+skills with different push histories all carry timestamps inside a two-minute window**, which reads
+as a bulk re-analysis — a re-scan wave the authors did not trigger and cannot see coming. It matters
+for the watch this plan proposes: a checker that only re-queries after its own pushes would miss
+exactly the event that changed these four verdicts.]
+
+A second, quieter consequence: the published ratings describe the repo **as of 2026-09-04**, so they
+are already two days stale against a corpus that has since had substantial pushes. A reader
+installing today is shown a verdict about a version they are not getting. That is the same
+population-versus-measurement gap `skill-fitness` now prints a corpus header for, arriving from
+outside this repo and with no way to fix it from here — only to know it.

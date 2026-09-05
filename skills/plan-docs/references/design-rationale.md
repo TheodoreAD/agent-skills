@@ -576,6 +576,81 @@ extra file and says nothing at all. So the finding is "the loud case is store-on
 case does not happen" — and the silent case is exactly the one `git log -- <path>` was needed to
 find the first time.]
 
+### Why filing carries no provenance and no `kind:` field
+
+The external-contributions design (2026-08-29) began from lived pain — _"I need to stop sessions and
+always worry about who committed what when and who is about to commit cross-repo"_ — and the obvious
+first move was frontmatter: an `origin:` marking a plan as raised elsewhere and needing triage, and
+a `kind:` separating a bug from a feature request. Both were refused, and `origin:` was settled one
+way and reversed a few hours later on the same evidence.
+
+**`origin:` was designed for a multi-contributor future rather than the single-user present.** On
+this machine one person files every plan, there is no external tracker and no mirroring, so every
+plan is validated by construction; the field would be written by convention and read by nothing —
+the "half-tagged is worse than untagged" failure this convention already warns about, imported
+straight into frontmatter. It is deferred rather than rejected: when mirroring or a tracker arrives,
+the real question comes back with an actual inbound shape in hand.
+
+**`kind:` fails a simpler test — it changes nothing anyone does.** A bug and a feature request have
+the same lifecycle, the same gates and the same retirement. The distinction stays evident from the
+title and `## Context`, where it costs nothing to maintain.
+
+The general lesson from the same-day reversal, and the reason it is worth recording rather than
+quietly correcting: **a field is a contract every future plan pays for, so the bar is a reader that
+exists now, not a reader that might.**
+
+What makes the refusal free is that **route plus location already says everything the marker would
+have.** A plan in `<store>/<repo>/` where that repo is routed `repo` is in transit by definition —
+that repo's own route says its plans belong in its tree. The identical file under a store-routed
+repo is at its permanent home. Two facts that already exist, cannot drift, and need no migration.
+
+### Why the cross-repo guard is anchored to the session's start, not to cwd
+
+The guard was built against cwd and challenged by the user the same day, correctly. Whether cwd
+survives between an agent's Bash calls is unreliable **in both directions** — a reset and a
+persisted `cd` were both observed inside the one session that built it — and that produces two
+failures, not one:
+
+- **Blind.** With no `--path`, the target repo and "this session's repo" are both derived from cwd.
+  They drift together, compare equal, and the guard cannot fire — the plan lands in whatever repo
+  cwd wandered into. This is the case that matters most, and it is the one a cwd-versus-cwd
+  comparison can never catch: both sides move together, so the comparison has only one independent
+  side.
+- **Misfires.** With an explicit `--path` naming the session's real repo while cwd has drifted, a
+  correct action is refused, and the suggested `--for` would file to the store rather than the repo.
+
+**The first answer to "can a session be tied to the repo it started in" was that no such signal
+exists, and it was wrong** — reached by checking only for `CLAUDE_PROJECT_DIR`.
+`CLAUDE_CODE_SESSION_ID` is exported, and Claude Code writes each session's transcript to
+`<config>/projects/<encoded project path>/<session id>.jsonl`, so the directory holding this
+session's file names the repo the session belongs to, fixed when the session began and unaffected by
+any later `cd`. The encoding is lossy, so candidates are encoded and compared rather than the
+directory name being decoded, with cwd's repo tried first so the projects-root walk happens only in
+the drifted case.
+
+The tiering that followed came from the user asking whether a non-Claude harness had a fallback. It
+did — cwd — but that is precisely the tier that cannot detect drift, so "works" and "works as well"
+were not the same claim. `$PLAN_DOCS_SESSION_REPO` closes it for any harness. Two details are
+deliberate: an explicit value beats an inferred one, so the variable wins over the transcript; and a
+variable pointing outside a git repository **raises** rather than falling back, because silently
+degrading a guard somebody just tried to strengthen is the worst of the three outcomes. `doctor`
+reports the tier in use and lists the cwd fallback as a problem, on the same argument as the store's
+git-identity check — a condition that silently disables a safety property has to be visible from the
+command whose job is saying what is broken.
+
+### Why a dirty store means "add a file", not "wait" or "lock"
+
+The rule trades a tidy tree for a safe one. **Two sessions writing distinct new files to one git
+repository do not contend in any way that matters** — the cost is duplication, and duplication is
+recoverable later by a pass with both halves in front of it. Editing a file another session is
+holding is the loss that is not recoverable. So the fallback is deliberately the wasteful-looking
+option, and absorption buys the tidiness back.
+
+That is also why the check is against **the store's** tree rather than the target repo's: a filing
+session never writes to the target at all, which is the point of the design, so the store is where
+contention can actually happen — and it makes the check one cheap call regardless of how many repos
+a harvest files for.
+
 ### Why the confidentiality gate derives its terms instead of listing them
 
 The rule is easy to state — a published repo must not name a client — and useless without a check,

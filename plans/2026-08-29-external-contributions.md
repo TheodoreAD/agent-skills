@@ -331,3 +331,40 @@ whatever this becomes.]
 tree on this machine and is the harder half of "who committed what when". Filing conventions cannot
 fix concurrent edits to the same tree. Worth its own plan if the pain persists after cross-repo
 commits stop.]
+
+## Migrated to
+
+- **`skills/plan-docs/SKILL.md`, "Something that belongs to a repo you are not in"** — `new --for`,
+  the three anchor tiers and their table, the dirty-store add-a-file rule, commit-the-moment-it-is-
+  written, the store being the tree that is checked, and the two habits (read the `repo:` line,
+  never `cd` without asking).
+- **`skills/plan-docs/SKILL.md`, "Absorbing what was filed for this repo"** — `absorb` reporting and
+  performing, the once-per-session trigger and the silence when nothing waits, one question for the
+  set, committing to both repositories and why that is not the forbidden cross-repo commit, a name
+  collision being a merge, and the one-shot nature of the pairing prompt.
+- **`skills/plan-docs/SKILL.md`, "Retiring a plan"** — absorb-before-retire, with the one-plan-one-
+  history reason.
+- **`skills/plan-docs/references/design-rationale.md`, "Why filing carries no provenance and no
+  `kind:` field"** — both refusals, the same-day `origin:` reversal and the lesson it carries, and
+  why route-plus-location makes the refusal free.
+- **`skills/plan-docs/references/design-rationale.md`, "Why the cross-repo guard is anchored to the
+  session's start, not to cwd"** — the blind and misfiring failure modes, the wrong first answer
+  about whether a signal existed, the transcript-directory mechanism, and why the explicit variable
+  raises rather than degrading.
+- **`skills/plan-docs/references/design-rationale.md`, "Why a dirty store means 'add a file', not
+  'wait' or 'lock'"** — the asymmetry that makes duplication the cheap failure.
+- **`plans/2026-09-06-two-sessions-share-one-working-tree.md`** — the second `DEFERRED` below, whose
+  condition is now met: cross-repo commits have stopped and the same-tree pain has not.
+- **`plans.py` and its tests** — `new --for`, `absorb`, the `list` footer, the guard's
+  refuse-versus- warn split, and the `locate`-obeyed-the-route bug are all code with tests,
+  including the test that first passed for the wrong reason.
+
+Deliberately not migrated:
+
+- **The first `DEFERRED`, on asking before `cd`-ing into another repo.** It landed: `plan-docs`'
+  `SKILL.md` states it, and `~/AGENTS.md` has since gone further and prohibits _writing_ to another
+  repo outright, which is the stronger form of the same concern. Its store note for
+  `power-user-linux-setup` has been absorbed there.
+- **"What already works, which is more than expected" and "What is actually missing"** — an
+  inventory of a gap that has since been closed, item by item, by the work this plan describes.
+- **The staged plan of work.** Both stages landed; the commits are the record.

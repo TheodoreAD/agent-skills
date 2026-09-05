@@ -44,11 +44,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import re
-import select
+import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from collections import Counter
@@ -145,7 +147,9 @@ def run_query(prompt: str, cwd: Path, timeout: int, model: str | None) -> str | 
     because the finished message only arrives after the tool has run — and the whole point is to
     stop before that.
     """
-    cmd = ["claude", "-p", prompt, *STREAM_ARGS]
+    # `shutil.which` so the launcher resolves on Windows too, where the CLI is `claude.cmd` or
+    # `claude.exe` and a bare name handed to Popen without a shell finds nothing.
+    cmd = [shutil.which("claude") or "claude", "-p", prompt, *STREAM_ARGS]
     if model:
         cmd += ["--model", model]
 
@@ -155,28 +159,31 @@ def run_query(prompt: str, cwd: Path, timeout: int, model: str | None) -> str | 
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=str(cwd), env=env)
     state = _StreamState()
-    buffer = ""
     deadline = time.time() + timeout
 
-    try:
-        assert proc.stdout is not None
-        while time.time() < deadline:
-            if proc.poll() is not None:
-                buffer += proc.stdout.read().decode("utf-8", errors="replace")
-                break
-            ready, _, _ = select.select([proc.stdout], [], [], 1.0)
-            if not ready:
-                continue
-            chunk = os.read(proc.stdout.fileno(), 8192)
-            if not chunk:
-                break
-            buffer += chunk.decode("utf-8", errors="replace")
+    # A reader thread rather than `select()`: on Windows `select` takes sockets only, so polling a
+    # pipe with it raises before the first line arrives. A thread pushing lines onto a queue is the
+    # portable shape, and the deadline is still honoured by the `get` timeout.
+    lines: queue.Queue[str | None] = queue.Queue()
 
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                verdict = state.feed(line)
-                if verdict is not _UNDECIDED:
-                    return verdict
+    def pump() -> None:
+        assert proc.stdout is not None
+        for raw in iter(proc.stdout.readline, b""):
+            lines.put(raw.decode("utf-8", errors="replace"))
+        lines.put(None)
+
+    threading.Thread(target=pump, daemon=True).start()
+    try:
+        while time.time() < deadline:
+            try:
+                line = lines.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            if line is None:
+                break
+            verdict = state.feed(line.rstrip("\n"))
+            if verdict is not _UNDECIDED:
+                return verdict
     finally:
         if proc.poll() is None:
             proc.kill()

@@ -1,0 +1,34 @@
+name: Tests (Windows)
+
+# The unit suite on the one platform none of these scripts had ever run on. Added 2026-09-05,
+# reversing the 2026-09-04 decision against a Windows leg: without one run there, every Windows
+# claim in the corpus stays "declared, not measured", and the suite is the only thing that can
+# measure the location defaults, the tarfile extraction, the git subprocesses under autocrlf and
+# the Windows arms of the sweep's parsers. A separate workflow rather than a second job in ci.yml,
+# so that file stays byte-identical to the family template it is pulled from.
+#
+# Only pytest, deliberately: the quality gate's tools are pinned as Linux wheels in the dev group,
+# and `--no-project` keeps this leg from resolving any of them. The scripts under test are stdlib.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v9.0.0
+      # The tests write files and commit them in scratch repos, then read the content back through
+      # git; the runner's default of converting line endings on checkout would change what comes
+      # back. Long paths because the plan store mirrors deep project trees under a temp directory.
+      - run: git config --global core.autocrlf false
+      - run: git config --global core.longpaths true
+      - run: uv run --no-project --python 3.13 --with pytest pytest

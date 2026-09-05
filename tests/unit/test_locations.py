@@ -47,6 +47,7 @@ audit = _load("audit_locations", REPO_ROOT / "skills" / "session-bash-audit" / "
 def bare_env(tmp_path, monkeypatch):
     """A machine with nothing set: no XDG variables, no Windows bases, a fake home."""
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # what `expanduser` reads on Windows
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     for var in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "PLAN_DOCS_CONFIG", "APPDATA", "LOCALAPPDATA"):
         monkeypatch.delenv(var, raising=False)

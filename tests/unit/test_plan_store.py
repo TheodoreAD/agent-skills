@@ -13,6 +13,7 @@ against a fake `$HOME` and a fake projects root: the real config, the real store
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -73,7 +74,11 @@ def ws(tmp_path, monkeypatch):
     home = tmp_path / "home"
     projects = home / "projects"
     (home / ".config").mkdir(parents=True)
+    # Both variables, because `expanduser` reads `HOME` on POSIX and `USERPROFILE` on Windows —
+    # read from `ntpath` 2026-09-04. Setting only the first leaves a Windows run writing the
+    # config and both stores into the real profile, once per test.
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.delenv("PLANS_HOME", raising=False)
     monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
@@ -1057,7 +1062,10 @@ def test_a_symlinked_repo_is_not_followed(ws, capsys):
     """Git resolves symlinks, so following one enrolls the same repo twice under two paths —
     measured on a real tree, one plan file listed as two plans in two locations."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
-    (ws.projects / "github.com-personal" / "linked").symlink_to(ws.personal)
+    try:
+        (ws.projects / "github.com-personal" / "linked").symlink_to(ws.personal)
+    except OSError as exc:  # Windows without developer mode refuses to create one at all
+        pytest.skip(f"this runner cannot create a symlink: {exc}")
     plan(ws.personal / "plans", "2026-01-01-one.md", "status: idea\nupdated: 2026-01-01")
 
     repos, problems = plans.walk_projects(plans.load_config())
@@ -2214,6 +2222,7 @@ def test_commit_still_refuses_a_name_that_never_existed(ws, capsys):
 # store permissions
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a POSIX mode is accepted and ignored on Windows, by design")
 def test_install_creates_stores_unreadable_by_other_accounts(ws, capsys):
     """A free default, not a protection anything relies on.
 

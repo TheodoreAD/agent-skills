@@ -29,8 +29,13 @@ compares against. Its fields are `saved`, `days`, `note` and `models` — **noth
 run, two commits changed the script's pattern layer:
 
 - `0165577` "a pipe inside quotes is not a pipe" — 01:51 local, **22 minutes before** the baseline
-  was saved. Whether the baseline has it depends entirely on whether that run used the checkout or
-  the installed copy, and nothing on disk records which.
+  was saved. **Settled 2026-09-05: the run used the installed copy, so the baseline does _not_ have
+  it.** The session that wrote the file said so from its own transcript — the command was
+  `python3 ~/.agents/skills/session-bash-audit/scripts/audit.py --samples 0 --save-baseline …` at
+  02:14 local, the installed path — and `stat` on that installed `audit.py` gives an mtime of
+  18:44:57 local the same day, so the re-install carrying `0165577` landed sixteen hours **after**
+  the baseline was written. Nothing on disk recorded it, which was this section's point; a
+  transcript plus one `stat` did.
 - `88bfd42` "slug a project path the way the harness does" — 13:20 local, **after** it. Affects
   `cd-own-repo` and `git-C-own-repo`, both at 0% on either side here, so no practical effect on this
   particular comparison.
@@ -52,17 +57,54 @@ uncommitted changes to `audit.py`, `None` when it did not run from a checkout at
 rejected for the reason this question already names: most pattern commits do not touch most rows, so
 it would only have to be overridable.]
 
-**§1 is done; §2 below is not, which is why this plan stays open.** The instrument question landed
-the same day it was filed, and it landed larger than it was written: the patterns themselves were
-anchored hours later (`2536d38`), so **every baseline written from now on is on a different
-instrument than the two already on disk** — which is precisely the confusion this section describes,
-now with a field that says so.
+**§1's mechanism is built and §1's bookkeeping is not; §2 below is untouched.** The instrument
+question landed the same day it was filed, and it landed larger than it was written: the patterns
+themselves were anchored hours later (`2536d38`), so **every baseline written from now on is on a
+different instrument than the three already on disk** — which is precisely the confusion this
+section describes, now with a field that says so and three files that predate it.
 
-[NEEDS CLARIFICATION: whether a baseline written by the installed copy can be identified after the
-fact at all. Still open, and now the only thing standing between the two existing files and the
-week-later run. The recorded field is prospective; it says nothing about a file written before it
-existed. The honest fix for those two remains a hand-written `note` — and both now also predate the
-pattern anchoring, so the note has two things to say, not one.]
+[DECISION: **yes, a baseline written by the installed copy can be identified after the fact** — by
+its session's transcript plus `stat` on the installed script, as done above. Not from the file,
+which is why the prospective field is still worth having; but the retrospective case is answerable,
+so the two files already on disk did not need the hand-written `note` this question was reaching
+for. Merged in from `2026-09-05-baseline-provenance-answered-by-the-installed-copy.md`, which asked
+to be merged here rather than kept apart, and is now **merged away and deleted** —
+`plans.py archive --show` reads it back.]
+
+**A same-scale baseline exists, saved rather than proposed.**
+`~/.local/state/session-bash-audit/2026-09-05-pipefail-live-rescored.json`, written under the code
+current at 19:30 local over the same 7-day window with `--until` at that session's harvest boundary,
+its `note` naming what it supersedes. The original is deliberately left in place: keeping both is
+what makes the two scales comparable rather than merely different.
+
+Re-scoring the same window under the two instruments is itself the evidence that the exposure was
+real:
+
+| row            | pre-`0165577` |   current | note                                     |
+| -------------- | ------------- | --------: | ---------------------------------------- |
+| Bash calls     | 13,754        |    14,331 | window slid ~10h, so some is real growth |
+| `head/tail`    | 3,765         |     3,767 | flat despite +577 calls                  |
+| `exit-masked`  | 2,383         | **2,323** | **down** despite +577 calls              |
+| `search\|head` | 468           | **1,359** | nearly tripled                           |
+| `rg-replace`   | 39            |        46 |                                          |
+| `find-not-fd`  | 41            |        44 |                                          |
+
+`head/tail` flat and `exit-masked` falling while the call count rises is the quote fix removing
+false positives, exactly as `0165577` intends. `search|head` moving by a factor of three is larger
+than that commit alone explains and wants attributing before the layer-1 measurement is read.
+
+[PITFALL: **twice in one day the fix for one instrument defect was nearly the other instrument
+defect.** Re-saving the rescored figures under the original filename would have destroyed the
+pre-`0165577` baseline — the only remaining artefact of the old scale — while fixing the scale
+mismatch. That is now a refusal rather than a silent overwrite (`c01973d`), but the near-miss is why
+the two concerns had to be decided together rather than in sequence.]
+
+[NEEDS CLARIFICATION: **all three baselines on disk now predate the pattern anchoring** (`2536d38`),
+which moved every tool-name row and is a larger change than `0165577` was. The rescored file was
+written at 19:30 local against code that did not yet have it. So the same question this section
+opened with is live again one scale later, and the `instrument` field is what answers it from here
+on — but only for files written after it. Whether the week-later `--compare` wants a fourth baseline
+taken now is the open call.]
 
 ## 2. `claims` counts the gate's own verdict as a claim, and layer 2 makes that structural
 

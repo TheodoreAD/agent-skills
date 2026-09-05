@@ -132,6 +132,29 @@ evidence _of_.
 
 Kept separate deliberately, 2026-09-04, when `absorb` paired them.
 
+## Migrated to
+
+Retired 2026-09-05. Where each part went, and what was deliberately dropped:
+
+- **The rule itself** — "`status:` and `updated:` are `set-status`' output. They are never lines you
+  type" — landed in `skills/plan-docs/SKILL.md` on 2026-09-02, in the command-surface section, with
+  the four-hand-edit measurement and the `[PITFALL:]` about the bypass leaving no trace. That is the
+  product; it is not migrated anywhere because it is already there.
+- **Why the rule sits there and what the placement beat** — the wording-first decision over the two
+  rejected options, the "try the sentence first or a detector's hit rate is measured against a rule
+  nobody was told" ordering argument, and why the rule is about two lines rather than about
+  promotion — to `skills/plan-docs/references/design-rationale.md`, under "Status vocabulary, in
+  full", as "Why the 'never hand-edit these two lines' rule sits where it does".
+- **The `[DEFERRED:]` detection question, with its re-armed trigger** — to
+  `plans/2026-09-04-session-rule-adherence-evidence.md` §1, which already owned the same four rows
+  of evidence from the other side and is open. That is live work and is why this file could not
+  simply be deleted.
+- **The two occurrence tables and the transcript/commit citations** — dropped. The measurement they
+  support is stated in `SKILL.md` as a count, the third session's four rows live in the evidence
+  plan, and a transcript path is only good for 30 days.
+- **The pointer to `plans/2026-08-29-plan-docs-ergonomics.md`** — dropped. That plan is itself
+  retired, and the reasoning it named is in the same rationale file this migrates into.
+
 ## Recommended direction
 
 Rough, and deliberately not settled here.

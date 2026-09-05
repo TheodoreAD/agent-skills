@@ -52,6 +52,38 @@ No `created:` field: the filename's date already is the creation date, and repea
 general principle of not adding a field "just in case" it's useful. `updated:` is the one genuinely
 new fact frontmatter adds — freshness at a glance, without `git log` or parsing the filename.
 
+### Why the "never hand-edit these two lines" rule sits where it does
+
+`SKILL.md` states, in its **command surface** section rather than under **Promoting a plan**, that
+`status:` and `updated:` are `set-status`' output. Both halves of that placement are a decision
+taken against measured evidence, and they are the kind that reads as arbitrary once the evidence is
+deleted.
+
+**Wording first, and the cheapest of three options.** Settled 2026-09-02 against four measured
+hand-edits across two repos and two sessions. The two rejected options were both more expensive than
+four occurrences justify: folding the transition into a normal editing flow means `set-status` grows
+a mode that edits the body, and after-the-fact detection is a separate open question that this
+decision does not foreclose. The ordering argument is the durable half — **the sentence has to be
+tried first anyway, or a detector's hit rate is measured against a rule nobody was told.**
+
+**Not aimed at "promotion", because none of the measured cases was one.** Two of the four were
+`idea -> in-progress`, one was `idea -> landed`, one was a bare `updated:` restamp. A rule living
+under **Promoting a plan** reads as being about `idea -> planned` specifically and would have been
+invisible to every case actually observed. So it is stated as a rule about **two lines** rather than
+about a transition, which is what makes it reachable by a session that has not classified what kind
+of transition it is making.
+
+**And the argument the rule makes is deliberately not "the gate matters".** A session that never
+consulted the rule is not persuaded by a stronger claim about the gate; what reaches it is that
+these two lines are a command's output rather than something to type. The `updated:` half is the
+tell: a session that hand-edits `status:` also hand-stamps `updated:`, and gets it right only
+because it happens to know today's date.
+
+The bypass itself is recorded as a `[PITFALL:]` in `SKILL.md` alongside the measurement, because the
+thing worth knowing is that it **leaves no trace** — well-formed frontmatter, `list` renders the new
+status, and nothing distinguishes a gate that passed from one that was never consulted. In all four
+measured cases the gate would have passed; that was sequencing, not process.
+
 ### `depends_on`: cross-repo dependencies
 
 A single-machine, poly-repo setup (a shared tooling repo, several small standalone-tool repos, and

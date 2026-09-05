@@ -41,6 +41,34 @@ Worth noting what did work: when the harvest later called `set-status` properly,
 twice** — once on two open `NEEDS CLARIFICATION` tags, once on an `UNVERIFIED` — and both refusals
 were correct. The mechanism is sound; only its reach into an already-running session is not.
 
+### Should anything _notice_ a hand-edited status?
+
+Moved here 2026-09-05 from `2026-08-30-plan-docs-status-gate-bypassed-by-hand-editing.md` when that
+plan was retired — it is the one piece of that file that was still live work, and this plan already
+owns the same four rows of evidence from the other side.
+
+[DEFERRED: whether anything should detect a bypass after the fact. `git log -p` over `plans/` can
+see a `status:` line changing in a commit, and `set-status` could leave a marker the check reads,
+but a marker in frontmatter is a new field to maintain and drift. A cheaper version — have `doctor`
+or `list` report a plan whose `updated:` disagrees with its file mtime or its last commit date — was
+looked at on 2026-09-02 and is **not** as clean as it reads: an ordinary body edit that changes no
+status legitimately leaves `updated:` behind, so the check fires on the common case and the backlog
+it prints is mostly noise. That is the alarm-fatigue shape the retirement-prompt work already argues
+against.]
+
+**The trigger for revisiting it is one occurrence, and it has already fired once without counting.**
+The 2026-09-02 decision was that wording is tried first, so the trigger is a fifth hand-edit _after_
+that wording landed. The four in §1 above arrived on 2026-09-04 and meet the count twice over — and
+do not fire the revisit, because that session could not have known the rule: the wording was
+committed to `plan-docs` after the session loaded the skill, and `skills-state --since` put
+`SKILL.md` 39 commits ahead of it, none of them the session's own. The 2026-09-02 reasoning was
+precisely that a detector's hit rate must not be "measured against a rule nobody was told", and this
+is a session nobody told.
+
+So the trigger is **re-armed rather than spent**: the next occurrence that counts is one by a
+session that held the current wording from the start. Finding it is a cheap grep of the corpus, not
+a mechanism.
+
 ## 2. `uv run <tool>` inside the session's own repo — a candidate for `session-bash-audit`
 
 `~/AGENTS.md` already says to check `which <tool>` before prefixing `uv run`, because direnv puts

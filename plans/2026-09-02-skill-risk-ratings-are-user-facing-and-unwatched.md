@@ -454,3 +454,15 @@ matter from these ratings — the audit call that produces them is not gated by 
 runs.
 
 Transcripts expire after 30 days by default, so this one is readable until roughly 2026-10-02.
+
+## The disclosure shipped 2026-09-05, so step 1 is partly done
+
+Every skill that ships a script now carries `## What this skill reads, runs and writes` and a
+`compatibility` field (`2026-09-03-skills-disclose-what-they-write.md`, landed). For
+`session-harvest` that is the stated-purpose widening step 1 asks for, in the body rather than the
+description — the description is the listing budget, and the section is what a reader opens.
+
+[UNVERIFIED: **whether the scanners read the disclosure as a wider declared footprint or as
+reassurance.** Re-query the audit endpoint for `session-harvest` after the push that publishes it
+and diff against the verdict table above. One measurement, taken once; nothing in the disclosure's
+design should move on the answer.]

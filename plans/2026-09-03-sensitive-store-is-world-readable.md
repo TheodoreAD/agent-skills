@@ -1,6 +1,6 @@
 ---
-status: planned
-updated: 2026-09-03
+status: landed
+updated: 2026-09-05
 ---
 
 # The sensitive plans store is created world-readable

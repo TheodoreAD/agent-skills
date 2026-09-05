@@ -1,6 +1,6 @@
 ---
-status: planned
-updated: 2026-09-03
+status: landed
+updated: 2026-09-05
 ---
 
 # Which version of a skill a measurement is actually describing

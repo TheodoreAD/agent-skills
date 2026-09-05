@@ -1,6 +1,6 @@
 ---
-status: planned
-updated: 2026-09-03
+status: landed
+updated: 2026-09-05
 ---
 
 # A skill's output must be actionable by whoever ran it
@@ -285,10 +285,20 @@ only an author ever writes: baselines are author-side work. If a default is want
 generated per machine the way a baseline can — it is authored, and it is a worked example — so "each
 machine makes its own" has no meaning there, and the token spend is untouched by everything above.
 
-[DEFERRED: **the "editing this skill" footer** carried by five skills tells the reader to edit the
-source in the author's repo and push. That is the same principle in miniature — an instruction to do
-work in a repo the reader does not own — and it was already on the fix list as a dead pointer. It
-now has a better reason, but the wording is downstream of the questions above, so it waits.]
+**The "editing this skill" footer** carried by five skills told the reader to edit the source in the
+author's repo and push — the same principle in miniature. Fixed 2026-09-03 (the footer now says "if
+you installed it from someone else's repo, the source is theirs: open an issue or a pull request
+there"), and on 2026-09-05 `session-harvest` stopped naming the author's repo path in its filing
+command too: `skills-state` detects the source checkout and prints the command, and with no checkout
+on the machine the friction goes in the report and nothing is filed.
+
+## Landed 2026-09-05
+
+Every decision above is built: `report` is installer-side only, the corpus header names the
+population, the derivable baseline lives in `tests/fixtures/`, the bash baseline's caveat is
+repeated at its point of use in `session-harvest`, and `trigger.py` refuses a suite whose `expect`
+names are not installed — the last piece, with `--allow-missing` as the override the PITFALL asked
+for.
 
 ## Recommended direction
 

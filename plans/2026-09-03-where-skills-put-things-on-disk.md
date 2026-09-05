@@ -1,6 +1,6 @@
 ---
-status: planned
-updated: 2026-09-03
+status: landed
+updated: 2026-09-05
 ---
 
 # Where a skill is allowed to put things on disk
@@ -241,19 +241,17 @@ currently hurting anyone. Same word, opposite situations.]
 ## Recommended direction
 
 Rules 1–10 are adopted, the visible stores stay where they are, and the per-skill key is the skill's
-own `name`. The concrete work is small and mostly deletion:
+own `name`. The concrete work was small and mostly deletion, and is all done as of 2026-09-05:
 
-- **a shared stdlib path resolver**, ten lines with `platformdirs`' semantics, so
-  `~/.config/<name>/` and `~/.local/state/<name>/` are computed once rather than per script;
-- **give baselines a real home** (`$XDG_STATE_HOME/<name>/`), which retires the "save it into the
-  installed copy" instruction on its own;
-- **delete `harvest.py:800`'s dev-environment fallback**, and have `harvest.py` ask `plans.py` for a
-  store path instead of re-deriving it;
-- **`mode=0o700`** where directories are created;
-- **teach the portability audit to read `scripts/`** with the two-segment rule, so the
-  no-hard-coded-paths decision is enforced rather than remembered;
-- **write the destination table into `skill-authoring`**, because the next skill needs the answer
-  before it invents a seventh destination.
-
-The resolver comes first and everything else consumes it, which is also what keeps rule 9 honest:
-one owner per location has to mean one implementation, not one per skill.
+- ~~**a shared stdlib path resolver**~~ — duplicated per script rather than shared, per the
+  dependency decision in `2026-09-03-skill-dependencies-and-bundling.md`; `plans.py` `config_path`,
+  `audit.py` `state_dir` and `harvest.py` `plan_docs_config` carry the same three lines, pinned by
+  `tests/unit/test_locations.py`.
+- ~~**give baselines a real home**~~ — `$XDG_STATE_HOME/session-bash-audit/`, 2026-09-03.
+- ~~**delete `harvest.py:800`'s dev-environment fallback**~~ — deleted 2026-09-03; on 2026-09-05
+  `harvest.py` stopped re-deriving the store defaults and reads `plan-docs`' config and variables,
+  and finds the skills source by walking the configured `projects_root` rather than naming a path.
+- ~~**`mode=0o700`**~~ — 2026-09-03.
+- ~~**teach the portability audit to read `scripts/`**~~ — 2026-09-05, with the two-segment rule,
+  `/tmp/<name>`, and the AST so docstrings and regexes are not findings.
+- ~~**write the destination table into `skill-authoring`**~~ — 2026-09-04.

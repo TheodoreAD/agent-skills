@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-03
+status: landed
+updated: 2026-09-05
 source_repo: github.com-personal/power-user-linux-setup
 source_session: cd4f9f9e-379a-4bb2-986c-1a99e0f84ac0.jsonl
 source_moment: 2026-09-03T11:40:00+03:00
@@ -121,37 +121,48 @@ should be written down rather than discovered later: the disclosure is for a rea
 to trust the skill, and its value is that it is checkable _by hand_ against the code, not that it is
 verified automatically.
 
-## Open questions
+## The three questions, answered 2026-09-05
 
-[NEEDS CLARIFICATION: **frontmatter or a body section?** Frontmatter is machine-readable, keeps the
-test trivial, and is where a future cross-tool format (the Universal Skill Format above) would
-expect it. A body section is readable by the agent that loads the skill, which is the audience that
-matters at run time, and does not risk the description budget. Possibly both — a short structured
-field and a prose section — but that is two things to keep in sync, which is its own failure.]
+[DECISION: **both, and they are not two copies of one thing.** The spec was re-read that day, and
+the frontmatter question turned out to be mis-framed: the 2026-09-04 ruling that frontmatter holds
+`name` and `description` and nothing else was wrong about the specification, which defines
+`license`, `compatibility`, `metadata` and `allowed-tools` too. `compatibility` is the spec's own
+field for **environment requirements** — the product, the system packages, network access — which is
+exactly the half of a disclosure a machine-readable field should carry, and the half a reader looks
+for first. The **writes** go in a body section under a fixed heading,
+`## What this skill reads,
+runs and writes`, with **Reads**, **Runs**, **Writes** and **Network**
+lines, because what a skill mutates is prose about kinds of thing, not a 500-character string. They
+are not in sync with each other because they say different things. The user's pushback that prompted
+the re-read: _"why is frontmatter illegal? it could be reasonable to use that to declare things that
+are needed across all skills"_ — and the spec agreed.]
 
-[NEEDS CLARIFICATION: **does every skill need one, or only mutating ones?** A read-only skill
-declaring "writes nothing" is the most useful line in the file for a reader deciding to trust it,
-and makes the test uniform. Against: it is noise in a dozen skills that plainly write nothing, and
-noise is how a convention stops being read.]
+[DECISION: **skills that ship a script or instruct a write outside the session's repo; not every
+skill.** Chosen by the user 2026-09-05. Eight of fourteen: the six with `scripts/`, plus
+`mcp-server-shipping` (`uv tool install`, `claude mcp add`) and `skill-authoring` (`skills add`, the
+`ln -s`). A pure convention skill carries neither the section nor `compatibility` — the spec's own
+note is that most skills do not need the field, and noise in six skills is how a section stops being
+read. The layout test gates presence, the `Writes` line and the `compatibility` field, and says in
+its docstring what it cannot gate: truth.]
 
-[NEEDS CLARIFICATION: how should this interact with skills.sh's scanners? This disclosure widens the
-_stated_ purpose, which is precisely what Socket's `Anomaly` finding on `session-harvest` says is
-too narrow (`2026-09-02-skill-risk-ratings-are-user-facing-and-unwatched.md`). Whether a scanner
-reads it as reassurance or as a larger declared footprint is unknown and probably unknowable in
-advance — worth checking the rating after the first skill discloses, as a one-off measurement rather
-than a design input.]
+**The scanner question is a measurement to take after this ships**, not a design input, and it is
+owed by `2026-09-02-skill-risk-ratings-are-user-facing-and-unwatched.md`, which owns the monitor and
+now carries the `[UNVERIFIED:]` for it. This plan only notes that the description-widening that plan
+recommends and the disclosure here are the same move.
 
 ## Recommended direction
 
-1. **Write the disclosure for `session-harvest` first**, since its footprint is the widest, its
-   rating is the live question, and it is the skill whose write scope has already been specified —
-   `2026-09-03-harvest-writes-only-to-the-session-repo-and-plans.md` is this plan's first instance
-   and the two should be absorbed together.
-2. **Then the `skill-authoring` section**, stating the recoverability test and the four carve-outs.
-   It is short: one question per mutation, and what to do when the answer is nothing.
-3. **Then the layout test**, once two or three skills have disclosures and the shape has stopped
-   moving. Writing the test first would freeze a format chosen from one example.
+All four steps done 2026-09-05, in one pass rather than the staged order below, because the shape
+stopped moving on the second skill written:
+
+1. ~~**Write the disclosure for `session-harvest` first**~~ — done, with its write set stated once
+   at the top of its procedure per
+   `2026-09-03-harvest-writes-only-to-the-session-repo-and-plans.md`, which landed the same day.
+2. ~~**Then the `skill-authoring` section**~~ — done: "Say what the skill reads, runs and writes —
+   and scrutinise every write", with the recoverability test and the four writes that pass it.
+3. ~~**Then the layout test**~~ — done, `test_a_skill_that_touches_the_machine_discloses_it`, plus
+   the frontmatter gate reopened to the spec's six keys with `metadata:` sub-keys still by decision.
 4. Do **not** add a rule to `~/AGENTS.md` for this. The disclosure is loaded exactly when the skill
    is, which is a more reliable trigger than an always-loaded sentence; the always-loaded file is at
    39 rules against reference points of ≤15 and its own leanness pass closed by concluding the
-   intake gate is the only lever left.
+   intake gate is the only lever left. Unchanged, and still right.

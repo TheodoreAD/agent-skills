@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-03
+status: landed
+updated: 2026-09-05
 source_repo: github.com-personal/power-user-linux-setup
 source_session: cd4f9f9e-379a-4bb2-986c-1a99e0f84ac0.jsonl
 source_moment: 2026-09-03T11:05:00+03:00
@@ -44,15 +44,11 @@ own text handles it by saying to find and edit the generated file's source. **Un
 is out too** unless the session happens to be in that repo — the candidate is filed as a plan
 instead.
 
-[NEEDS CLARIFICATION: **does "instructions" mean the deployed file only, or its source as well?**
-"Live skills or instructions" most naturally reads as the deployed `~/AGENTS.md` and the installed
-`~/.agents/skills/` copies — editing either is already banned, by PULSE's own rules and by this
-skill's self-update mechanics respectively, so on that reading the sentence changes nothing and the
-new content is only the positive write set. The stronger reading also rules out editing
-`config/agents-md/` fragments from a session in that repo, which would be a real change and sits
-oddly with that being ordinary work for a session working there — this very session did it as its
-main task, at the user's direction. Resolve before rewording step 2, since the two readings produce
-different instructions.]
+[DECISION: **the deployed copies only** — chosen by the user 2026-09-05. A session in the repo that
+holds the fragment sources edits them as ordinary work; from any other repo the candidate is filed
+for that repo. So the write set is the rule, and being in the owning repo is what makes an edit
+ordinary rather than an exception to it — which is how the skill now states it, once, at the top of
+its procedure.]
 
 ## Why it converges with the Socket finding
 
@@ -76,26 +72,24 @@ a commit in a tree nobody asked it to touch. So the narrowing costs nothing and 
 three things a scanner objected to. It is worth doing on its own merits and the rating is a second
 reason, not the reason.]
 
-## Open questions
+## The two remaining questions, settled 2026-09-05
 
-[NEEDS CLARIFICATION: **does anything else in the procedure write outside the allowed set?** Step 5
-prescribes running another repo's gate and re-running commands; those are reads. Step 8 says "fix
-what is cheap and unambiguous rather than only reporting it — kill the orphaned loops", which is a
-machine-level mutation outside any repo, not a file write. Worth deciding whether the rule is about
-**file writes** specifically or about **side effects** generally, because killing a stray process is
-plainly wanted and is not an edit.]
+[DECISION: **the rule is about file writes and commits; side effects are governed where they are
+proposed.** Killing an orphaned process the sweep found is plainly wanted and is not an edit, so
+step 8 keeps it and the write-set statement says so explicitly. Same carve-out
+`2026-09-03-skills-disclose-what-they-write.md` records for the disclosure format.]
 
-[NEEDS CLARIFICATION: how should the report name a candidate that the old routing would have written
-into `~/AGENTS.md` and the new one files? The risk is that a filed instruction-file candidate reads
-as deferred rather than routed, and the whole point of `--for` is that it is a delivery. One line in
-the report's "to a plan in another repo" group probably covers it.]
+[DECISION: **a filed instruction-file candidate is reported in the "to a plan in another repo" group
+like any other filing** — the report already has the group, and `--for` is a delivery, so no new
+wording is needed to stop it reading as deferred.]
 
 ## Recommended direction
 
-1. Resolve the deployed-versus-source ambiguity above; it decides the wording of change 2.
-2. Reword step 6 to derive the skills-repo carve-out from "the repo the session is in" rather than
-   naming the repo, and step 2 to file rather than edit when the instructions file's source is
-   elsewhere.
-3. State the allowed write set positively, once, near the top of the procedure — the current text
-   distributes it across steps 2, 6 and the self-update mechanics, which is why it reads as three
-   exceptions rather than one rule.
+All three done 2026-09-05:
+
+1. ~~Resolve the deployed-versus-source ambiguity~~ — deployed copies only, above.
+2. ~~Reword step 6 and step 2~~ — step 6 names "the repo that holds the skill's source, the checkout
+   `skills-state` named" and files with the command that subcommand prints; step 2 files an
+   instructions-file candidate from any repo but the one holding the fragments.
+3. ~~State the allowed write set positively, once~~ — the first paragraph under `## Procedure`, and
+   the skill's new disclosure section repeats it as its **Writes** line.

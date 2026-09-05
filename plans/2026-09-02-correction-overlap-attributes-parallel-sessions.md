@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-02
+updated: 2026-09-06
 source_repo: ingesta
 source_session: 0228a2e1-95e6-403c-b639-ad0d853eeb74.jsonl
 source_moment: 2026-09-02T20:46:18Z
@@ -116,17 +116,52 @@ third firing. Narrowing further needs something about the diff (a later commit t
 to a file is not correcting it), or the line stops claiming "CORRECTION?" and says what it actually
 knows: this file has commits on both sides of a push this session made.
 
+## The same defect in a second sweep check, 2026-09-06
+
+Found by an `agent-skills` harvest, and it widens the plan: **this is not one function's bug.** The
+disk-artifacts step printed
+
+> `new this session: 127.0.0.1:32812/clean-os-test:0.0.0  227MB  2026-09-06 01:34:56 +0300`
+> `new this session: 127.0.0.1:32812/clean-os-test:latest  227MB  2026-09-06 01:34:56 +0300`
+
+and **that session ran no `docker` command at all**, in a run whose every call is in one transcript.
+The images are a parallel session's — the name matches a clean-OS test, and `power-user-linux-setup`
+was sitting dirty in seven `tasks/*.py` at the same moment. The only thing "new this session"
+asserts is that the image timestamp falls inside the session's window.
+
+So the corpus now has the identical mistake in two independent checks, and the shared root is
+sharper than either instance: **a time window is being read as an attribution.** Neither check has
+any evidence about _who_ did the thing; both label it with the session that happens to be asking.
+That framing also predicts where else to look — anything in the sweep whose wording says "this
+session" while its computation says "since the boundary".
+
+It is the milder half of the pair, and worth saying so rather than filing it as equally urgent: an
+image wrongly attributed costs a reader a moment and a possible `docker rmi` of something another
+session still wants, whereas the correction line routes into "needs action now". But the fix is the
+same shape, and the two should be decided together — 458 MB proposed for removal on the strength of
+a timestamp is not nothing.
+
+[PITFALL: **the disk step cannot use the fix proposed for the other one.** Intersecting with this
+session's own write paths works for files in a repo and has nothing to say about a docker image,
+which no transcript write-path set will ever contain. What the session _does_ know is whether it ran
+`docker` at all — a cheap and complete guard for exactly this case, and one with no equivalent in
+the correction check. So "attribute rather than remove" survives as the principle while the
+mechanism has to differ per check, which is an argument against a single shared helper.]
+
 ## Recommended direction
 
 1. Gate `_correction_overlap` on the repo having been written to by this session, or intersect with
    this session's own write paths — whichever the sweep can supply cheaply, since it already tracks
    write paths for another check. **This removes the parallel-session shape and not the third one
    above**, so it is a partial fix rather than the fix.
-2. Until then, give the line the same parallel-session caveat its neighbour has, so a reader is not
+1. For the disk step, gate "new this session" on the session having run `docker` at all, and
+   otherwise report the images as new **since the boundary** without claiming whose they are. Same
+   principle as 2 below: say what was measured.
+1. Until then, give the line the same parallel-session caveat its neighbour has, so a reader is not
    handed a correction alarm with no way to tell whose work it describes.
-3. A test with two authors' commits on one upstream branch since the boundary, asserting the flag
+1. A test with two authors' commits on one upstream branch since the boundary, asserting the flag
    stays empty for a repo the session never wrote to.
-4. Decide whether the line keeps the word "CORRECTION". On the evidence so far it fires right once
+1. Decide whether the line keeps the word "CORRECTION". On the evidence so far it fires right once
    in six; a line naming what it actually measured — commits on both sides of a push this session
    made — needs no narrowing at all and costs a reader nothing when it fires.
 

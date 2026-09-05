@@ -101,10 +101,28 @@ the two concerns had to be decided together rather than in sequence.]
 
 [NEEDS CLARIFICATION: **all three baselines on disk now predate the pattern anchoring** (`2536d38`),
 which moved every tool-name row and is a larger change than `0165577` was. The rescored file was
-written at 19:30 local against code that did not yet have it. So the same question this section
-opened with is live again one scale later, and the `instrument` field is what answers it from here
-on — but only for files written after it. Whether the week-later `--compare` wants a fourth baseline
-taken now is the open call.]
+written at 19:26 local; the anchoring landed at 20:02, thirty-six minutes later, and the file
+carries no `instrument` field because the field itself landed after it. So the same question this
+section opened with is live again one scale later, and the `instrument` field answers it only for
+files written from here on. Whether the week-later `--compare` wants a fourth baseline taken now is
+the open call.]
+
+**The first `--compare` to straddle the anchoring has already run, and reading it correctly is the
+worked example this section exists to produce.** A harvest on 2026-09-05 compared a session against
+`2026-09-05-pipefail-live-rescored.json` and reported **11 of 11 expectations met**. That comparison
+does straddle `2536d38` — and it is still readable, for a reason that had to be checked rather than
+assumed: **none of the eleven judged rows is one the anchoring moved.** The anchoring touched
+`rg-replace`, `find-not-fd`, `find-exempt`, `grep-r-not-rg` and `grep/find`; of those only
+`find-not-fd` is in `EXPECTATIONS`, and it came back `(new)` — absent from the baseline, so excluded
+from the verdicts by the `compare` fix of 2026-09-02. Every row that _was_ judged (`chain`,
+`head/tail`, `exit-masked`, `sed-n`, `cat-view`, `heredoc`, the `cd`/`git -C` pair, `echo-exit`,
+`redirect-then-filter`) matches on a predicate the anchoring did not touch.
+
+So the honest form of that result is "11/11, across an instrument change that moved no judged row" —
+which is a sentence nobody can write from the JSON alone, and exactly what the `instrument` field is
+for. Two things follow for the week-later run: a straddling comparison is not automatically void,
+and deciding whether it is void requires knowing which rows a commit moved, so **the commit alone is
+not sufficient provenance** — the reader still has to read the diff.
 
 ## 2. `claims` counts the gate's own verdict as a claim, and layer 2 makes that structural
 

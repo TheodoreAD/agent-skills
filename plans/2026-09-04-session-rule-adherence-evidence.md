@@ -223,6 +223,40 @@ recovery follows a call whose cwd was elsewhere — but the audit reads calls on
 `cd-recovery` split only if the row keeps being read as a miss on sessions that did the right thing;
 two calls in 248 is not that yet.]
 
+## A fourth sample, 2026-09-05, and it is the first that mostly passes
+
+The session that fixed four script bugs and retired three plans in this repo, audited at its harvest
+boundary against `2026-09-05-pipefail-live-rescored.json` (n=154):
+
+| pattern     | this session | vs baseline |
+| ----------- | ------------ | ----------- |
+| chain       | 8%           | -37pp OK    |
+| head/tail   | 4%           | -23pp OK    |
+| exit-masked | **0%**       | —           |
+| sed-n       | 0%           | -6pp OK     |
+| cd-own-repo | 0%           | -1pp OK     |
+
+**11 of 11 expectations met**, against 6, 7 and 5 for the three samples above — so the corpus now
+has one session that cleared every row, which is worth as much as the misses for calibration. Three
+things it adds.
+
+**`exit-masked` at zero, on a session that ran the gate ten times.** Every run was unpiped, so
+`claims` reports **0 messages telling the user a gate was green** — not because none were made, but
+because the count is of claims resting on masked evidence and there was no masked evidence. The
+three samples above all resolved benignly after a re-run; this one needed no re-run at all, which is
+the first time the distinction has had a clean instance.
+
+**`head/tail` at 4% is the same six calls of the same habit**, and the same remedy went unused. All
+six were `rg … | head -N` or `| tail -N` surveys of a codebase — none a gate — and `rg -c` was not
+used once, exactly as the 2026-09-05 sample above records at 19%. The rate falling by a factor of
+five while the _shape_ is unchanged suggests the habit is bounded by how much surveying a session
+does rather than by whether the rule reached it.
+
+**Two `git -C <store> commit` calls, deliberate and argued in their own commit messages.** Filed
+separately as `2026-09-05-store-commit-has-no-multi-file-form.md`, because it is the "reasoned
+around" shape rather than a rate: `plan-docs` justifies its `commit` command by a mechanism, and a
+mechanism can be argued with when following it literally costs eleven commits.
+
 ## Open questions
 
 [DECISION: the propagation failure in §1 stays here, apart from the hand-editing plan. Settled

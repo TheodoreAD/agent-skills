@@ -33,6 +33,16 @@ reordering the block so `transcript` comes first would still leave a value to co
 commands, and the copy is the error surface. Default `--since` to the resolved session start, keep
 the flag as an override for auditing a window that is not this session's.]
 
+## Confirmed again the same day, by a second session in a different repo
+
+A harvest in `agent-skills` on 2026-09-05 hit it from the other side: rather than substituting a
+stand-in, it **reordered the block** — running `transcript` first purely to obtain the value, then
+passing `2026-09-05T16:22:47.492Z` to `skills-state` by hand. No wrong number resulted, which is the
+point worth adding: the friction is not that the value comes out wrong, it is that step 0's
+prescribed order cannot be followed as written. A session either substitutes something (the first
+instance, which inflated a count) or silently re-orders the block (this one). Both are the operator
+standing in for a resolver that is already in the process.
+
 ## Open questions
 
 [NEEDS CLARIFICATION: what the default should be when no session resolves — a harness that exports

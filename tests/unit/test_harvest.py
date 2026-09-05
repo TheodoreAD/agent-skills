@@ -349,6 +349,22 @@ def test_the_harness_session_id_resolves_a_bare_call(tmp_path, monkeypatch):
     assert harvest.resolve_transcript(None, None, None, tmp_path).path == real
 
 
+def test_an_explicit_session_that_names_nothing_is_an_error_not_a_fallback(tmp_path, monkeypatch):
+    """Found 2026-09-05 by passing a nonsense `--session` inside a live session: the call resolved
+    the harness's own transcript and labelled it as resolved by the environment. The caller pinned
+    a session; answering about a different one is the failure this whole resolver exists to
+    prevent, and it read as success."""
+    projects = tmp_path / "projects" / "-home-u-repo"
+    projects.mkdir(parents=True)
+    write_transcript(projects / "4e6fc3cc-eebb-4ea1-b035-ca0112dc9982.jsonl", [user_entry("mine")])
+    monkeypatch.setattr(harvest, "PROJECTS_DIR", tmp_path / "projects")
+    monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "4e6fc3cc-eebb-4ea1-b035-ca0112dc9982")
+
+    with pytest.raises(harvest.HarvestError, match=r"names no transcript"):
+        harvest.resolve_transcript("nonexistent-zzz", None, None, tmp_path)
+
+
 def test_expect_verifies_a_transcript_it_did_not_choose(tmp_path, monkeypatch):
     path = write_transcript(tmp_path / "s.jsonl", [user_entry("hello")])
     monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)

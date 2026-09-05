@@ -354,6 +354,21 @@ def _from_session_argument(session: str) -> tuple[Path, str] | None:
     return (matches[0], "session id, matched under ~/.claude/projects") if matches else None
 
 
+def _explicit_session(session: str) -> tuple[Path, str]:
+    """An explicit id that names nothing is an error, never a fall-through: the caller pinned a
+    session, and quietly resolving the harness's own instead reports a well-formed answer about a
+    different transcript. Found 2026-09-05 by passing a nonsense id inside a live session and
+    getting that session's transcript back, labelled as resolved by the environment."""
+    found = _from_session_argument(session)
+    if found is None:
+        raise HarvestError(
+            f"--session {session!r} names no transcript, job or file under {PROJECTS_DIR}. Check the id "
+            "rather than dropping the flag: a bare call resolves the harness's own session, which may "
+            "not be the one you meant."
+        )
+    return found
+
+
 def resolve_transcript(session: str | None, job: str | None, expect: str | None, cwd: Path) -> Transcript:
     """THIS session's transcript, with the route it was found by printed rather than assumed.
 
@@ -363,7 +378,7 @@ def resolve_transcript(session: str | None, job: str | None, expect: str | None,
     harvest audited 386 calls, not one of them its own, with nothing in the output reading as wrong.
     """
     notes: list[str] = []
-    found = _from_session_argument(session) if session else None
+    found = _explicit_session(session) if session else None
     if found is None and (job or os.environ.get("CLAUDE_JOB_DIR")):
         found = _from_job(job)
     if found is None and os.environ.get("CLAUDE_CODE_SESSION_ID"):

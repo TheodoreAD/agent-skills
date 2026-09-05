@@ -12,11 +12,12 @@ Filed from `repo-tasks` on 2026-09-04 by a `/session-harvest` run. A five-day se
 this repo was touched. Each finding below names the plan or skill it is evidence **for** — none of
 them is new, and the point of filing is the counts rather than the observation.
 
-## 1. Frontmatter hand-edited instead of `set-status` — evidence for an existing plan
+## 1. Frontmatter hand-edited instead of `set-status`
 
-Belongs in `plans/2026-08-30-plan-docs-status-gate-bypassed-by-hand-editing.md`, which already
-records four instances across two sessions on 2026-08-30 and 2026-09-01. **This session is a third
-session and adds four more**, all on 2026-09-04:
+Filed as evidence for the now-retired `2026-08-30-plan-docs-status-gate-bypassed-by-hand-editing.md`
+(`plans.py archive --show` reads it back), which recorded four instances across two sessions on
+2026-08-30 and 2026-09-01 and whose rule landed in `plan-docs`. **This session is a third session
+and adds four more**, all on 2026-09-04:
 
 | plan edited                                    | what was typed                                       |
 | ---------------------------------------------- | ---------------------------------------------------- |

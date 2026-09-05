@@ -89,8 +89,8 @@ not in the product, and the record of why it was made is gone.
 parallel session's push publishes it. The plan lifecycle does not know this: it treats "committed"
 and "shipped" as the same event, and they were not the same event for most of this session.
 
-[DECISION: **this is a different finding from
-`2026-08-30-plan-docs-status-gate-bypassed-by-hand-editing.md`**, which is about the gate being
+[DECISION: **this is a different finding from the now-retired
+`2026-08-30-plan-docs-status-gate-bypassed-by-hand-editing.md`**, which was about the gate being
 skipped by hand-editing frontmatter. This one is about what the gate checks when it does run. They
 share a file and nothing else.]
 

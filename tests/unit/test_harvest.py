@@ -59,6 +59,8 @@ def _no_real_machine(tmp_path, monkeypatch):
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(tmp_path / "no-config.toml"))
     monkeypatch.delenv("SESSION_HARVEST_CHECKOUT", raising=False)
     monkeypatch.setattr(harvest, "projects_root", lambda: tmp_path / "no-projects")
+    # Every fixture here is `ps`/`ss` output; the Windows tests set the constant themselves.
+    monkeypatch.setattr(harvest, "WINDOWS", False)
 
 
 class FakeRunner:
@@ -77,7 +79,8 @@ class FakeRunner:
     def __call__(self, argv, cwd=None):
         args = [str(a) for a in argv]
         self.calls.append(args)
-        line = " ".join(args)
+        # Keys are written with POSIX separators; a `Path("/repo")` renders as `\repo` on Windows.
+        line = " ".join(args).replace("\\", "/")
         for key in sorted(self.responses, key=len, reverse=True):
             if line.startswith(key):
                 code, out, err = self.responses[key]
@@ -242,7 +245,7 @@ def test_written_paths_ignore_reads():
             ],
         )
     ]
-    assert [str(p) for p in harvest.written_paths(entries)] == ["/repo/a.py", "/repo/c.md"]
+    assert [p.as_posix() for p in harvest.written_paths(entries)] == ["/repo/a.py", "/repo/c.md"]
 
 
 def test_shell_targets_read_cd_and_git_c():
@@ -255,7 +258,7 @@ def test_shell_targets_read_cd_and_git_c():
             ],
         )
     ]
-    assert sorted(str(p) for p in harvest.shell_targets(entries)) == ["/other/repo", "/third/repo"]
+    assert sorted(p.as_posix() for p in harvest.shell_targets(entries)) == ["/other/repo", "/third/repo"]
 
 
 # --------------------------------------------------------------------------------------------
@@ -958,7 +961,10 @@ def test_the_stores_and_projects_root_come_from_plan_docs_config(tmp_path, monke
     in `plans.py` — two copies of a default that had to agree, with nothing keeping them in step.
     The contract is the config file and the variables, which both skills read."""
     config = tmp_path / "plan-docs.toml"
-    config.write_text(f'projects_root = "{tmp_path / "code"}"\nstore = "{tmp_path / "ideas"}"\n', encoding="utf-8")
+    config.write_text(
+        f'projects_root = "{(tmp_path / "code").as_posix()}"\nstore = "{(tmp_path / "ideas").as_posix()}"\n',
+        encoding="utf-8",
+    )
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
     monkeypatch.delenv("PLANS_HOME", raising=False)
     monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
@@ -972,7 +978,7 @@ def test_the_stores_and_projects_root_come_from_plan_docs_config(tmp_path, monke
 
 def test_the_variable_beats_the_config_for_a_store(tmp_path, monkeypatch):
     config = tmp_path / "plan-docs.toml"
-    config.write_text(f'store = "{tmp_path / "ideas"}"\n', encoding="utf-8")
+    config.write_text(f'store = "{(tmp_path / "ideas").as_posix()}"\n', encoding="utf-8")
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
     monkeypatch.setenv("PLANS_HOME", str(tmp_path / "pinned"))
     monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)

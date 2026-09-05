@@ -51,6 +51,10 @@ def bare_env(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     for var in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "PLAN_DOCS_CONFIG", "APPDATA", "LOCALAPPDATA"):
         monkeypatch.delenv(var, raising=False)
+    # POSIX by default whatever the runner is; the Windows tests flip the seam themselves. Found on
+    # the first Windows CI run, where the "POSIX defaults are unchanged" test read the real platform.
+    monkeypatch.setattr(audit, "WINDOWS", False)
+    monkeypatch.setattr(plans, "WINDOWS", False)
     return tmp_path
 
 

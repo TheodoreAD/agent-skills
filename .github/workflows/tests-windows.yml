@@ -22,13 +22,14 @@ jobs:
   tests:
     runs-on: windows-latest
     steps:
+      # Before the checkout, or it does not apply to it: the runner's default converts line endings
+      # on checkout, and the tests write files, commit them in scratch repos and read the content
+      # back through git. Long paths because the plan store mirrors deep project trees under a temp
+      # directory.
+      - run: git config --global core.autocrlf false
+      - run: git config --global core.longpaths true
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v9.0.0
-      # The tests write files and commit them in scratch repos, then read the content back through
-      # git; the runner's default of converting line endings on checkout would change what comes
-      # back. Long paths because the plan store mirrors deep project trees under a temp directory.
-      - run: git config --global core.autocrlf false
-      - run: git config --global core.longpaths true
       - run: uv run --no-project --python 3.13 --with pytest pytest

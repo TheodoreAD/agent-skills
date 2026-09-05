@@ -106,7 +106,11 @@ def ws(tmp_path, monkeypatch):
 
 def write_config(ws: Workspace, body: str) -> None:
     ws.config.parent.mkdir(parents=True, exist_ok=True)
-    ws.config.write_text(f'projects_root = "{ws.projects}"\nstore = "{ws.store}"\n{body}', encoding="utf-8")
+    # `as_posix()`: a Windows path in a TOML basic string is a run of escapes (`\U` is a unicode
+    # escape), and the first Windows run failed 100 tests on exactly that line.
+    ws.config.write_text(
+        f'projects_root = "{ws.projects.as_posix()}"\nstore = "{ws.store.as_posix()}"\n{body}', encoding="utf-8"
+    )
 
 
 def route(path: Path):
@@ -231,7 +235,7 @@ def test_new_writes_into_the_store_with_the_origin_url(ws, capsys):
     assert plans.main(["new", "store-routing", "--path", str(ws.client)]) == 0
     created = Path(capsys.readouterr().out.splitlines()[0].split(": ", 1)[1])
     assert created.parent == ws.sensitive / "client.com-bitbucket" / "team" / "api"
-    front = plans.parse_frontmatter(created.read_text())
+    front = plans.parse_frontmatter(created.read_text(encoding="utf-8"))
     assert front["status"] == "idea"
     assert front["repo"] == "git@example.com:x/api.git"
 
@@ -243,7 +247,7 @@ def test_new_in_a_repo_route_omits_the_repo_field(ws, capsys, monkeypatch):
     created = Path(capsys.readouterr().out.splitlines()[0].split(": ", 1)[1])
     assert created.parent == ws.personal / "plans"
     # Location already says which repo it is; a second source of truth is a second thing to rot.
-    assert "repo:" not in created.read_text()
+    assert "repo:" not in created.read_text(encoding="utf-8")
 
 
 def test_new_refuses_a_second_file_for_the_same_topic(ws):
@@ -300,7 +304,7 @@ def test_move_relocates_and_stamps_the_repo_field(ws, capsys):
     capsys.readouterr()
     moved = ws.sensitive / "client.com-bitbucket" / "team" / "api" / "2026-01-01-old.md"
     assert not source.exists()
-    assert plans.parse_frontmatter(moved.read_text())["repo"] == "git@example.com:x/api.git"
+    assert plans.parse_frontmatter(moved.read_text(encoding="utf-8"))["repo"] == "git@example.com:x/api.git"
 
 
 def test_moving_back_to_the_repo_drops_the_repo_field(ws, capsys):
@@ -316,8 +320,8 @@ def test_moving_back_to_the_repo_drops_the_repo_field(ws, capsys):
     assert plans.main(["move", "2026-01-01-old.md", "--to", "store", "--path", str(ws.client)]) == 0
     assert plans.main(["move", "2026-01-01-old.md", "--to", "repo", "--path", str(ws.client)]) == 0
     capsys.readouterr()
-    assert "repo" not in plans.parse_frontmatter(source.read_text())
-    assert "## Context" in source.read_text()
+    assert "repo" not in plans.parse_frontmatter(source.read_text(encoding="utf-8"))
+    assert "## Context" in source.read_text(encoding="utf-8")
 
 
 def test_strip_frontmatter_key_leaves_the_body_and_a_fenceless_file_alone():
@@ -604,7 +608,7 @@ def test_tag_matching_is_anchored(ws):
     plans.main(["new", "tagged", "--path", str(ws.client)])
     path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-tagged.md"))
     path.write_text(
-        path.read_text()
+        path.read_text(encoding="utf-8")
         + "\n[NEEDS CLARIFICATION: which store]\n"
         + "- [DEFERRED: the aggregator]\n"
         + "prose mentioning [DEFERRED: ...] inside a sentence must not count\n",
@@ -643,13 +647,13 @@ def test_promotion_gate_blocks_planned_while_questions_are_open(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "gated", "--path", str(ws.client)])
     path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-gated.md"))
-    path.write_text(path.read_text() + "\n[NEEDS CLARIFICATION: unresolved]\n", encoding="utf-8")
+    path.write_text(path.read_text(encoding="utf-8") + "\n[NEEDS CLARIFICATION: unresolved]\n", encoding="utf-8")
 
     assert plans.main(["set-status", str(path), "planned", "--path", str(ws.client)]) == 1
-    assert plans.parse_frontmatter(path.read_text())["status"] == "idea"
+    assert plans.parse_frontmatter(path.read_text(encoding="utf-8"))["status"] == "idea"
 
     assert plans.main(["set-status", str(path), "planned", "--force", "--path", str(ws.client)]) == 0
-    assert plans.parse_frontmatter(path.read_text())["status"] == "planned"
+    assert plans.parse_frontmatter(path.read_text(encoding="utf-8"))["status"] == "planned"
 
 
 def test_set_status_bumps_updated_and_keeps_other_fields(ws):
@@ -657,18 +661,18 @@ def test_set_status_bumps_updated_and_keeps_other_fields(ws):
     plans.main(["new", "moving", "--path", str(ws.client)])
     path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-moving.md"))
     assert plans.main(["set-status", path.name, "blocked on the store landing", "--path", str(ws.client)]) == 0
-    front = plans.parse_frontmatter(path.read_text())
+    front = plans.parse_frontmatter(path.read_text(encoding="utf-8"))
     assert front["status"] == "blocked on the store landing"
     assert front["updated"] == plans.today()
     assert front["repo"] == "git@example.com:x/api.git"
-    assert path.read_text().count("## Context") == 1
+    assert path.read_text(encoding="utf-8").count("## Context") == 1
 
 
 def test_landed_gate_blocks_on_unverified(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "unproven", "--path", str(ws.client)])
     path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-unproven.md"))
-    path.write_text(path.read_text() + "\n- [UNVERIFIED: never actually run]\n", encoding="utf-8")
+    path.write_text(path.read_text(encoding="utf-8") + "\n- [UNVERIFIED: never actually run]\n", encoding="utf-8")
     assert plans.main(["set-status", path.name, "landed", "--path", str(ws.client)]) == 1
 
 
@@ -683,10 +687,10 @@ def test_landed_gate_blocks_on_open_questions_too(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "unanswered", "--path", str(ws.client)])
     path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-unanswered.md"))
-    path.write_text(path.read_text() + "\n[NEEDS CLARIFICATION: still open]\n", encoding="utf-8")
+    path.write_text(path.read_text(encoding="utf-8") + "\n[NEEDS CLARIFICATION: still open]\n", encoding="utf-8")
 
     assert plans.main(["set-status", path.name, "landed", "--path", str(ws.client)]) == 1
-    assert plans.parse_frontmatter(path.read_text())["status"] == "idea"
+    assert plans.parse_frontmatter(path.read_text(encoding="utf-8"))["status"] == "idea"
 
 
 def test_in_progress_is_not_gated_on_open_questions(ws):
@@ -699,10 +703,10 @@ def test_in_progress_is_not_gated_on_open_questions(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "starting", "--path", str(ws.client)])
     path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-starting.md"))
-    path.write_text(path.read_text() + "\n[NEEDS CLARIFICATION: still open]\n", encoding="utf-8")
+    path.write_text(path.read_text(encoding="utf-8") + "\n[NEEDS CLARIFICATION: still open]\n", encoding="utf-8")
 
     assert plans.main(["set-status", path.name, "in-progress", "--path", str(ws.client)]) == 0
-    assert plans.parse_frontmatter(path.read_text())["status"] == "in-progress"
+    assert plans.parse_frontmatter(path.read_text(encoding="utf-8"))["status"] == "in-progress"
 
 
 # --------------------------------------------------------------------------------------------
@@ -715,12 +719,13 @@ def test_config_set_keeps_every_comment_and_fills_in_the_commented_example(ws, c
     plans.main(["config", "init"])
     # Every comment except the commented-out example itself, which is what `set` consumes.
     example = '# default = "store"'
-    prose = [line for line in ws.config.read_text().splitlines() if line.startswith("#") and line != example]
+    lines = ws.config.read_text(encoding="utf-8").splitlines()
+    prose = [line for line in lines if line.startswith("#") and line != example]
     capsys.readouterr()
 
     assert plans.main(["config", "set", "default", "store"]) == 0
     assert "set:" in capsys.readouterr().out
-    after = ws.config.read_text()
+    after = ws.config.read_text(encoding="utf-8")
 
     assert [line for line in after.splitlines() if line.startswith("#")] == prose
     assert 'default = "store"' in after
@@ -742,21 +747,21 @@ def test_config_set_encodes_each_value_shape(ws, capsys, key, value, expected):
     plans.main(["config", "init"])
     capsys.readouterr()
     assert plans.main(["config", "set", key, value]) == 0
-    assert expected in ws.config.read_text()
+    assert expected in ws.config.read_text(encoding="utf-8")
 
 
 def test_config_set_creates_a_missing_table_and_rejects_a_value_toml_cannot_read(ws, capsys):
     plans.main(["config", "init"])
     capsys.readouterr()
     assert plans.main(["config", "set", "about.some/repo", "what it is for"]) == 0
-    assert '"some/repo" = "what it is for"' in ws.config.read_text()
+    assert '"some/repo" = "what it is for"' in ws.config.read_text(encoding="utf-8")
 
     # A value that parses as TOML but not as this config's schema fails next to the change, not on
     # some later command that has nothing to do with it — and is not left on disk, where it would
     # break every subsequent command.
-    before = ws.config.read_text()
+    before = ws.config.read_text(encoding="utf-8")
     assert plans.main(["config", "set", "view.idea_limit", "-4"]) == 1
-    assert ws.config.read_text() == before
+    assert ws.config.read_text(encoding="utf-8") == before
     assert plans.load_config().idea_limit == plans.DEFAULT_IDEA_LIMIT
 
 
@@ -766,10 +771,10 @@ def test_config_set_refuses_without_a_config(ws):
 
 def test_config_init_writes_a_skeleton_and_never_overwrites(ws):
     assert plans.main(["config", "init"]) == 0
-    assert "[roots]" in ws.config.read_text()
+    assert "[roots]" in ws.config.read_text(encoding="utf-8")
     ws.config.write_text('default = "store"\n', encoding="utf-8")
     assert plans.main(["config", "init"]) == 0
-    assert ws.config.read_text() == 'default = "store"\n'
+    assert ws.config.read_text(encoding="utf-8") == 'default = "store"\n'
 
 
 # --------------------------------------------------------------------------------------------
@@ -907,7 +912,7 @@ def test_new_unscoped_needs_no_repo_at_all(ws, capsys):
     assert plans.main(["new", "half-an-idea", "--unscoped", "--path", str(loose)]) == 0
     created = Path(capsys.readouterr().out.splitlines()[0].split(": ", 1)[1])
     assert created.parent == ws.store / "_unscoped"
-    assert plans.parse_frontmatter(created.read_text())["status"] == "idea"
+    assert plans.parse_frontmatter(created.read_text(encoding="utf-8"))["status"] == "idea"
 
 
 def test_unscoped_plans_are_isolated_by_scope_but_visible_from_a_repo(ws, capsys):
@@ -951,7 +956,7 @@ def test_filing_for_another_repo_never_touches_its_tree(ws, capsys):
     # A repo-routed target means the file is in transit, and the note has to say how it lands.
     assert "in transit" in out
     assert "move <file> --to repo" in out
-    assert plans.parse_frontmatter(filed.read_text())["repo"] == "git@example.com:x/agent-skills.git"
+    assert plans.parse_frontmatter(filed.read_text(encoding="utf-8"))["repo"] == "git@example.com:x/agent-skills.git"
 
 
 def anchor_session_to(ws: Workspace, repo: Path, monkeypatch) -> None:
@@ -1297,7 +1302,7 @@ def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys, monke
     # The store copy names its origin exactly once. Matched at line start: `source_repo:` contains
     # `repo:` as a substring, so a plain count silently passed for the wrong reason before the
     # provenance fields existed, and would have kept passing if the origin were emitted twice.
-    filed = mirror.read_text()
+    filed = mirror.read_text(encoding="utf-8")
     assert len([ln for ln in filed.splitlines() if ln.startswith("repo:")]) == 1
     # Inbound provenance: the repo the friction happened in, filled from where the session was.
     source = [ln for ln in filed.splitlines() if ln.startswith("source_repo:")]
@@ -1311,7 +1316,7 @@ def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys, monke
     assert absorbed.is_file()
     assert not mirror.exists()
     # …and the repo copy does not: its location names the repo again.
-    assert "repo" not in plans.parse_frontmatter(absorbed.read_text())
+    assert "repo" not in plans.parse_frontmatter(absorbed.read_text(encoding="utf-8"))
 
     assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
     assert capsys.readouterr().out == ""  # silent once drained
@@ -1370,7 +1375,7 @@ def test_absorb_refuses_to_rename_around_a_name_collision(ws, capsys, monkeypatc
     assert "merge, not a rename" in out
     # Neither copy was destroyed.
     assert (ws.store / "github.com-personal" / "agent-skills" / name).is_file()
-    assert "already here" in (ws.personal / "plans" / name).read_text()
+    assert "already here" in (ws.personal / "plans" / name).read_text(encoding="utf-8")
 
 
 def test_absorb_pairs_up_the_split_a_dirty_store_forced(ws, capsys, monkeypatch):
@@ -1554,7 +1559,7 @@ def test_graduate_into_a_store_routed_repo_stamps_the_origin(ws, capsys):
 
     plans.main(["graduate", source.name, "--to", str(ws.client), "--path", str(ws.client)])
     landed = ws.sensitive / "client.com-bitbucket" / "team" / "api" / source.name
-    assert plans.parse_frontmatter(landed.read_text())["repo"] == "git@example.com:x/api.git"
+    assert plans.parse_frontmatter(landed.read_text(encoding="utf-8"))["repo"] == "git@example.com:x/api.git"
 
 
 # --------------------------------------------------------------------------------------------
@@ -1603,13 +1608,13 @@ def test_repos_search_ranks_by_description(ws, capsys):
 
 def test_explain_writes_nothing_and_names_the_decisions(ws, capsys):
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
-    before = ws.config.read_text()
+    before = ws.config.read_text(encoding="utf-8")
 
     assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
     assert "nothing was written" in out
     assert not ws.store.exists()
-    assert ws.config.read_text() == before
+    assert ws.config.read_text(encoding="utf-8") == before
     for key in ("projects_root", "store", "default", "public_roots", "private.extra"):
         assert f"decision: {key}" in out
 
@@ -1671,16 +1676,16 @@ def test_install_is_idempotent_and_sets_both_tiers_up(ws, capsys):
         assert (store / ".git").is_dir()
         assert (store / "README.md").is_file()
     # Each half says what it is, so nobody has to infer the rule from the directory name.
-    assert "may have a remote" in (ws.store / "README.md").read_text()
-    assert "no remote, deliberately" in (ws.sensitive / "README.md").read_text()
+    assert "may have a remote" in (ws.store / "README.md").read_text(encoding="utf-8")
+    assert "no remote, deliberately" in (ws.sensitive / "README.md").read_text(encoding="utf-8")
     assert (ws.store / "_unscoped").is_dir()
     assert not (ws.sensitive / "_unscoped").exists()  # repo-less ideas are shareable by definition
-    edited = ws.config.read_text() + '\ndefault = "store"\n'
+    edited = ws.config.read_text(encoding="utf-8") + '\ndefault = "store"\n'
     ws.config.write_text(edited, encoding="utf-8")
 
     capsys.readouterr()
     assert plans.main(["install", "--path", str(ws.personal)]) == 0
-    assert ws.config.read_text() == edited  # never clobbers a config that already exists
+    assert ws.config.read_text(encoding="utf-8") == edited  # never clobbers a config that already exists
 
 
 def test_uninstall_keeps_both_stores_unless_told_twice(ws, capsys):

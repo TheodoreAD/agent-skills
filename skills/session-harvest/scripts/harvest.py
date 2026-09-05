@@ -1444,7 +1444,7 @@ def store_state(runner: Runner, name: str, path: Path, since: str | None) -> dic
         # provenance file, or one that failed partway. Nothing else on the machine can see it,
         # because the store is not version-controlled at all.
         state["entries_without_provenance"] = [
-            str(entry.relative_to(path)) for entry in entries if not _has_provenance(entry)
+            entry.relative_to(path).as_posix() for entry in entries if not _has_provenance(entry)
         ][:20]
     return state
 

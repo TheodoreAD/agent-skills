@@ -54,6 +54,7 @@ import threading
 import time
 import uuid
 from collections import Counter
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -225,6 +226,27 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
     return cases
 
 
+# Where a globally installed skill lives. The same two roots `fitness.py` reads, restated rather than
+# imported so this script keeps running when it is the only file a reader copied.
+INSTALLED_ROOTS = (Path.home() / ".agents" / "skills", Path.home() / ".claude" / "skills")
+
+
+def missing_expectations(
+    cases: list[dict[str, Any]], roots: Sequence[Path] = INSTALLED_ROOTS, exempt: Iterable[str] = ()
+) -> list[str]:
+    """The `expect` names a suite relies on that are not installed on this machine.
+
+    A suite ships inside its skill as a worked example, so a reader who installed two of an
+    author's fourteen skills has the author's suites for all fourteen — and running one spends real
+    tokens measuring whether a pair contends inside a set where half the pair is absent. A `null`
+    expectation needs nothing installed. Names in `exempt` are the ones a candidate or split run
+    registers itself, so the incumbent need not exist for the proposal to be scored.
+    """
+    wanted = {str(c["expect"]) for c in cases if c.get("expect")} - set(exempt)
+    installed = {p.name for root in roots if root.is_dir() for p in root.iterdir() if (p / "SKILL.md").is_file()}
+    return sorted(wanted - installed)
+
+
 def summarise(results: list[Result], collapse: dict[str, str] | None = None) -> dict[str, Any]:
     """Per-skill precision and recall, plus who actually won the cases it lost.
 
@@ -329,6 +351,40 @@ def execute(
     return results, twins, remap
 
 
+def _foreign_expectations(cases: list[dict[str, Any]], args: argparse.Namespace) -> list[str]:
+    """What the suite expects and this machine lacks, minus whatever the run registers itself."""
+    exempt: set[str] = set()
+    if args.mode == "candidate" and args.skill:
+        exempt.add(args.skill)
+    elif args.mode == "split" and args.proposal:
+        proposal = json.loads(Path(args.proposal).read_text(encoding="utf-8"))
+        exempt.update(s["name"] for s in proposal.get("skills", []))
+    return missing_expectations(cases, exempt=exempt)
+
+
+def _refuse(suite: Path, missing: list[str]) -> int:
+    """A gate, in a skill whose measures otherwise only rank. The cost it prevents is the reader's
+    money rather than their attention: this is the one script here that spends tokens, and a
+    shipped suite expects the author's skills, not the reader's."""
+    print(
+        f"refusing: {suite} expects skills not installed here: {', '.join(missing)}\n"
+        "  A suite is written for its author's installed set; running it elsewhere pays for\n"
+        "  a measurement of a contention that cannot occur on this machine. Pass\n"
+        "  --allow-missing to run it anyway.",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def _dry_run(cases: list[dict[str, Any]], args: argparse.Namespace, missing: list[str]) -> int:
+    print(f"{len(cases)} cases x {args.runs} runs = {len(cases) * args.runs} agent runs")
+    if missing:
+        print(f"  (would run only with --allow-missing: not installed here: {', '.join(missing)})")
+    for c in cases:
+        print(f"  expect={c.get('expect')!r:32} {c['prompt'][:90]}")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("mode", choices=["run", "candidate", "split"])
@@ -341,15 +397,19 @@ def main() -> int:
     p.add_argument("--proposal", help="split mode: JSON with `replaces` and a list of proposed skills")
     p.add_argument("--json", action="store_true")
     p.add_argument("--dry-run", action="store_true", help="print what would run, spend nothing")
+    p.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="run even when the suite expects skills that are not installed here (spends tokens on a foreign suite)",
+    )
     args = p.parse_args()
 
     cases = load_cases(args.cases)
-    total_runs = len(cases) * args.runs
+    missing = _foreign_expectations(cases, args)
+    if missing and not args.allow_missing:
+        return _refuse(args.cases, missing)
     if args.dry_run:
-        print(f"{len(cases)} cases x {args.runs} runs = {total_runs} agent runs")
-        for c in cases:
-            print(f"  expect={c.get('expect')!r:32} {c['prompt'][:90]}")
-        return 0
+        return _dry_run(cases, args, missing)
 
     results, _twins, remap = execute(cases, args)
     passed = sum(1 for r in results if r.passed)

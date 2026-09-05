@@ -346,6 +346,13 @@ pair is the unit of the failure. Each run is killed the moment a skill is named,
 proceeds into the skill's work; a case for a skill whose commands enumerate private directories
 cannot print them.
 
+**A suite that expects a skill you do not have installed is refused, and that is the one gate in
+this skill.** A suite ships inside its skill as a worked example, so installing two of an author's
+skills gives you the author's suites for all of them — and running one pays for a measurement of a
+contention that cannot occur on your machine. The refusal names the missing skills;
+`--allow-missing` overrides it, and `--dry-run` still counts the runs. Everything else here ranks
+and never gates; this gates because the cost is money rather than attention.
+
 **Write the hard cases, or the suite proves nothing.** Measured 2026-08-31 on this repo: a first
 suite of eight cases passed 24/24 at three runs each — and every prompt in it named something only
 one skill claims (`tasks.py`, `inv`, "full-text search"). A suite like that cannot tell "these

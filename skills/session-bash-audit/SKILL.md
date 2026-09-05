@@ -59,11 +59,14 @@ the session may have run from a worktree, the same as for Windows.
 
 - **Reads**: `~/.claude/projects/*.jsonl` and `~/.claude/settings.json`, Claude Code's own files,
   read-only.
-- **Runs**: nothing. `prompts.py` replays the permission rules in-process; the Probe procedure
-  prints commands for you to run and read.
+- **Runs**: three read-only `git` commands against its own directory, and only while writing a
+  baseline — `ls-files`, `rev-parse HEAD` and `status --porcelain` on `audit.py` itself, to record
+  which version of the instrument produced that measurement. Nothing else: `prompts.py` replays the
+  permission rules in-process, and the Probe procedure prints commands for you to run and read.
 - **Writes**: a baseline, only when asked with `--save-baseline`, under
-  `$XDG_STATE_HOME/session-bash-audit/` (`%LOCALAPPDATA%\session-bash-audit\` on Windows); a dump
-  wherever `--json <path>` says. Never a transcript, never a setting, never its own installed
+  `$XDG_STATE_HOME/session-bash-audit/` (`%LOCALAPPDATA%\session-bash-audit\` on Windows), and it
+  **refuses rather than overwrite** one already there — `--force` is how you destroy it on purpose;
+  a dump wherever `--json <path>` says. Never a transcript, never a setting, never its own installed
   directory.
 - **Network**: none.
 

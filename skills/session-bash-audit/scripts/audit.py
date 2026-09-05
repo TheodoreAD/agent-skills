@@ -21,6 +21,7 @@ import json
 import os
 import random
 import re
+import subprocess
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
@@ -525,11 +526,79 @@ def _rate_row(label: str, calls: list[Call], columns: list[str]) -> str:
     return f"{label:44} n={len(calls):5}  " + "  ".join(cells)
 
 
-def save_baseline(calls: list[Call], path: Path, days: float, note: str) -> None:
+def instrument_commit() -> str | None:
+    """The commit of the script writing this baseline, `-dirty` when its checkout has uncommitted
+    changes to it — or `None` when it did not run from a checkout at all, which is itself the answer
+    a reader needs.
+
+    A baseline recorded `saved`, `days`, `note` and `models` and **nothing about which `audit.py`
+    produced it**, so two baselines a day apart were compared as though one instrument had made
+    both. Confirmed 2026-09-05: a pattern commit landed 22 minutes before the surviving baseline was
+    written, and whether that baseline has it depends entirely on whether the run used the checkout
+    or the installed copy — a `--compare` straddling such a commit attributes a pattern change to
+    the change being measured, in the direction that flatters it, and the JSON gives no way to
+    notice. Read rather than refused: most pattern commits do not touch most rows, so a refusal
+    would have to be overridable, while a recorded value is always right.
+    """
+    here = Path(__file__).resolve()
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(here.parent), "ls-files", "--error-unmatch", str(here)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if tracked.returncode != 0:
+            return None  # the installed copy, or any run from outside a checkout
+        head = subprocess.run(
+            ["git", "-C", str(here.parent), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        sha = head.stdout.strip()
+        if not sha:
+            return None
+        dirt = subprocess.run(
+            ["git", "-C", str(here.parent), "status", "--porcelain", "--", str(here)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return f"{sha}-dirty" if dirt.stdout.strip() else sha
+    except (OSError, ValueError):
+        return None
+
+
+def save_baseline(calls: list[Call], path: Path, days: float, note: str, force: bool = False) -> None:
+    """Write this run's per-model rates, refusing to destroy a baseline already at `path`.
+
+    A baseline is a measurement of a corpus that has since moved on, so overwriting one is
+    irreplaceable by construction, and this was the only writer in the corpus that could do it with
+    no prompt, no backup and no mention that anything was there. Confirmed 2026-09-05: the default
+    path is UTC-dated, so a run at 02:13 local on the 5th wrote `2026-09-04.json` — the name the
+    previous afternoon's baseline already had — and destroyed the anchor a `[UNVERIFIED:]` in
+    another repo explicitly named. Survivable only because that question had already been answered
+    in prose.
+
+    The default filename stays UTC-dated, so an artefact already on disk keeps its scheme; `saved`
+    carries the local timestamp with its offset, because the corpus, the plans and the user's day
+    are all local and a bare UTC date claimed the wrong one.
+    """
+    if path.exists() and not force:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        raise SystemExit(
+            f"\nrefusing to overwrite {path}\n"
+            f"  it holds: saved={existing.get('saved')!r} days={existing.get('days')!r} "
+            f"note={existing.get('note')!r} instrument={existing.get('instrument')!r}\n"
+            "  a baseline measures a corpus that has since moved on, so this cannot be re-taken.\n"
+            "  pass a path to write beside it, or --force to destroy it deliberately."
+        )
     payload = {
-        "saved": time.strftime("%Y-%m-%d", time.gmtime()),
+        "saved": datetime.now().astimezone().isoformat(timespec="seconds"),
         "days": days,
         "note": note,
+        "instrument": instrument_commit(),
         "models": rates_by_model(calls),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -793,10 +862,11 @@ def main() -> None:
         default=False,
         type=Path,
         help="write this run's per-model rates as a baseline. With no path, "
-        "$XDG_STATE_HOME/session-bash-audit/<date>.json — never inside the installed skill, "
-        "which a re-install replaces",
+        "$XDG_STATE_HOME/session-bash-audit/<UTC date>.json — never inside the installed skill, "
+        "which a re-install replaces. Refuses if that file exists; --force destroys it",
     )
     ap.add_argument("--note", default="", help="free-text label stored in the baseline (mode in force, why)")
+    ap.add_argument("--force", action="store_true", help="overwrite an existing baseline at that path, destroying it")
     ap.add_argument("--probe", action="store_true", help="print the live permission probes and exit")
     ap.add_argument(
         "--session",
@@ -825,7 +895,7 @@ def main() -> None:
     report(calls, args.samples, args.compare)
     if args.save_baseline is not False:
         default = state_dir() / f"{time.strftime('%Y-%m-%d', time.gmtime())}.json"
-        save_baseline(calls, args.save_baseline or default, args.days, args.note)
+        save_baseline(calls, args.save_baseline or default, args.days, args.note, args.force)
     if args.json:
         args.json.write_text(json.dumps([{**c.__dict__, "tags": sorted(c.tags)} for c in calls], indent=1, default=str))
         print(f"\nwrote {args.json}")

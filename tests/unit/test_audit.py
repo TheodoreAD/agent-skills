@@ -10,7 +10,10 @@ number — a `|` inside a quoted regex alternation counted as a pipe to `head`/`
 # pyright: reportAny=false
 
 import importlib.util
+import json
+import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -175,3 +178,75 @@ def test_short_project_no_longer_knows_the_authors_root(monkeypatch):
     assert audit.short_project("-home-u-projects-flat-repo") == "flat-repo"
     assert audit.short_project("-home-u-elsewhere-thing") == "elsewhere-thing"
     assert audit.short_project("-tmp-scratch-x") == "-tmp-scratch-x"
+
+
+# --------------------------------------------------------------------------------------------
+# a baseline is irreplaceable, so writing one may not destroy one
+
+
+@pytest.fixture
+def _no_git(monkeypatch):
+    """`instrument_commit` shells out; every test here is about the writer, not about git."""
+    monkeypatch.setattr(audit, "instrument_commit", lambda: "abc1234")
+
+
+@pytest.mark.usefixtures("_no_git")
+def test_writing_a_baseline_refuses_to_destroy_one(tmp_path):
+    """The default path is UTC-dated, so a run at 02:13 local wrote the name the previous
+    afternoon's baseline already had, and destroyed it with no prompt, no backup and no mention that
+    anything was there — the only line of output being `baseline written to …`, last in a report
+    several hundred lines long. A baseline measures a corpus that has since moved on, so it cannot
+    be re-taken; every other writer in this corpus that can overwrite asks or diffs first.
+    """
+    path = tmp_path / "2026-09-04.json"
+    audit.save_baseline([], path, days=4.0, note="pipefail live")
+
+    with pytest.raises(SystemExit) as refusal:
+        audit.save_baseline([], path, days=7.0, note="a later run")
+
+    assert "refusing to overwrite" in str(refusal.value)
+    assert "pipefail live" in str(refusal.value), "the refusal has to name what it would have destroyed"
+    assert json.loads(path.read_text(encoding="utf-8"))["note"] == "pipefail live"
+
+
+@pytest.mark.usefixtures("_no_git")
+def test_force_is_how_a_baseline_is_destroyed_on_purpose(tmp_path):
+    path = tmp_path / "2026-09-04.json"
+    audit.save_baseline([], path, days=4.0, note="first")
+    audit.save_baseline([], path, days=4.0, note="second", force=True)
+    assert json.loads(path.read_text(encoding="utf-8"))["note"] == "second"
+
+
+@pytest.mark.usefixtures("_no_git")
+def test_a_baseline_records_the_instrument_that_wrote_it(tmp_path):
+    """Two baselines a day apart were compared as though one instrument made both, while a pattern
+    commit had landed 22 minutes before the second was written. A `--compare` straddling such a
+    commit attributes a pattern change to the change being measured, in the direction that flatters
+    it, and nothing in the JSON let a reader notice."""
+    path = tmp_path / "b.json"
+    audit.save_baseline([], path, days=4.0, note="")
+    assert json.loads(path.read_text(encoding="utf-8"))["instrument"] == "abc1234"
+
+
+@pytest.mark.usefixtures("_no_git")
+def test_saved_carries_the_local_moment_not_a_bare_utc_date(tmp_path):
+    """The corpus is local-time sessions, the plans are local-dated, and the user's day is local, so
+    a bare UTC date in `saved` claimed the wrong one: both files on the machine that produced this
+    finding recorded 2026-09-04, one of them written on the 5th. The filename stays UTC-dated, so an
+    artefact already on disk keeps its scheme."""
+    path = tmp_path / "b.json"
+    audit.save_baseline([], path, days=4.0, note="")
+    saved = json.loads(path.read_text(encoding="utf-8"))["saved"]
+    assert datetime.fromisoformat(saved).tzinfo is not None
+
+
+def test_no_checkout_means_no_instrument_rather_than_a_wrong_one(monkeypatch, tmp_path):
+    """The installed copy is not in a checkout, and `None` there is the useful answer — a SHA
+    borrowed from whatever repo the file happened to sit under would be worse than none."""
+
+    def untracked(argv, **kwargs):
+        assert argv[0] == "git"
+        return subprocess.CompletedProcess(argv, 1, "", "not in a git dir")
+
+    monkeypatch.setattr(audit.subprocess, "run", untracked)
+    assert audit.instrument_commit() is None

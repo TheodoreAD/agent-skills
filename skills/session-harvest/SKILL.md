@@ -610,6 +610,17 @@ What the script cannot do is decide what a finding means. That is this list:
   then produced that shape in a third of its own calls, and reported "went well, gate green
   throughout" — true, and beside the point. **Authoring a rule is not evidence of following it**,
   which is exactly why the number has to come from the transcript.
+
+  **A zero from any of these instruments is a claim, and you are holding the evidence to check it.**
+  Before reporting one, ask what a non-zero would have looked like and whether you saw it — the
+  session's own messages and commands are right there, which is what makes this cheap and what makes
+  skipping it careless rather than efficient. Every wrong zero found so far was found this way and
+  none by reading the code first. Confirmed 2026-09-06, twice in one run: `claims` reported **0
+  green-gate messages** in a session whose text says "both CI legs green" six times, because the
+  matcher's vocabulary is the local gate's and has no term for CI; and the adherence line reported
+  every rate at 0% while the session had typed `rg -rn …`, because `rg-replace` is in none of
+  `audit.py`'s display sets. Both are filed. **A zero that agrees with what you hoped is the one to
+  check**, and the tell is a zero on a row you have a specific reason to expect a hit on.
 - **Git state, every repo the session touched** — not just the primary one. An unpushed commit is
   the most common real loose end, and a session that ends with one usually believes it pushed. The
   sweep reads the upstream branch rather than typing `main` (measured 2026-08-30: 22 of 71 clones

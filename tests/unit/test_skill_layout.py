@@ -202,7 +202,7 @@ def test_remote_install_commands_are_global(skill: Path):
     a working tree as-is and is the documented way to iterate while drafting. So the rule is about
     remote sources, which is what dissolved the objection that deferred this check.
     """
-    for line in _fenced_lines((skill / "SKILL.md").read_text()):
+    for line in _fenced_lines((skill / "SKILL.md").read_text(encoding="utf-8")):
         m = SKILLS_ADD.search(line)
         if not m:
             continue
@@ -224,7 +224,7 @@ def test_skill_md_exists(skill: Path):
 def test_name_matches_directory(skill: Path):
     # The `skills` CLI installs into a directory named after the frontmatter `name`, not after the
     # source directory — a mismatch installs under a name the README never mentions.
-    fields = parse_frontmatter((skill / "SKILL.md").read_text())
+    fields = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8"))
     assert fields.get("name") == skill.name, (
         f"{skill.name}/SKILL.md declares name={fields.get('name')!r}; it must match the directory"
     )
@@ -232,7 +232,7 @@ def test_name_matches_directory(skill: Path):
 
 @each_skill
 def test_name_is_spec_valid(skill: Path):
-    name = parse_frontmatter((skill / "SKILL.md").read_text()).get("name", "")
+    name = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8")).get("name", "")
     assert len(name) <= MAX_NAME_CHARS, f"{skill.name} name is {len(name)} chars, over {MAX_NAME_CHARS}"
     assert NAME_PATTERN.match(name), (
         f"{skill.name} name {name!r} breaks the spec: lowercase alphanumerics and single "
@@ -242,7 +242,7 @@ def test_name_is_spec_valid(skill: Path):
 
 @each_skill
 def test_description_is_present_and_within_limit(skill: Path):
-    description = parse_frontmatter((skill / "SKILL.md").read_text()).get("description", "")
+    description = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8")).get("description", "")
     assert description, f"{skill.name}/SKILL.md has no description — agents match on this field"
     if skill.name in KNOWN_OVER_CAP:
         pytest.xfail(f"known over cap: {KNOWN_OVER_CAP[skill.name]}")
@@ -263,7 +263,7 @@ def test_description_has_no_xml_tags(skill: Path):
     first run flagged `inv <namespace>.<task>` in `invoke-task-conventions`, which is notation, not
     markup.
     """
-    description = parse_frontmatter((skill / "SKILL.md").read_text()).get("description", "")
+    description = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8")).get("description", "")
     outside_code = re.sub(r"`[^`]*`", "", description)
     assert not re.search(r"</?[A-Za-z][^>]*>", outside_code), (
         f"{skill.name}/SKILL.md description contains an XML tag outside a code span; the spec "
@@ -276,7 +276,7 @@ def test_no_stale_cap_debt():
     for name, reason in KNOWN_OVER_CAP.items():
         skill = SKILLS_DIR / name
         assert skill.is_dir(), f"KNOWN_OVER_CAP names {name}, which no longer exists"
-        description = parse_frontmatter((skill / "SKILL.md").read_text()).get("description", "")
+        description = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8")).get("description", "")
         assert len(description) > MAX_DESCRIPTION_CHARS, (
             f"{name} is now {len(description)} chars and within the cap — drop its KNOWN_OVER_CAP "
             f"entry, which still claims: {reason}"
@@ -348,5 +348,5 @@ def test_a_skill_that_touches_the_machine_discloses_it(skill: Path):
 @each_skill
 def test_listed_in_readme(skill: Path):
     # A skill nobody can find is a skill nobody installs — the README table is the only index.
-    readme = (REPO_ROOT / "README.md").read_text()
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     assert f"skills/{skill.name}/" in readme, f"{skill.name} is not linked from README.md's skill table"

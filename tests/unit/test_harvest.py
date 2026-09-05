@@ -73,7 +73,10 @@ class FakeRunner:
     """
 
     def __init__(self, responses: dict[str, tuple[int, str, str]] | None = None):
-        self.responses: dict[str, tuple[int, str, str]] = responses or {}
+        # Keys built from a real `tmp_path` carry backslashes on Windows; normalise both sides.
+        self.responses: dict[str, tuple[int, str, str]] = {
+            key.replace("\\", "/"): value for key, value in (responses or {}).items()
+        }
         self.calls: list[list[str]] = []
 
     def __call__(self, argv, cwd=None):

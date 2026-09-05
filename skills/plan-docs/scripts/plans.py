@@ -3480,7 +3480,7 @@ def misfiled_plans(cfg: Config) -> list[str]:
             if actual != store.tier:
                 found.append(
                     f"{path} is in the {store.tier} store but {path.name} is a {actual} root — "
-                    f"move it to {cfg.store_of(actual).path}/{path.name}, in both histories"
+                    f"move it to {cfg.store_of(actual).path / path.name}, in both histories"
                 )
     return found
 

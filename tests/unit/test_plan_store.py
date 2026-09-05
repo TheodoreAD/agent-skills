@@ -1841,7 +1841,7 @@ def test_the_sensitive_store_follows_the_shareable_one_and_the_environment_beats
 def test_pointing_both_tiers_at_one_directory_degrades_to_a_single_store(ws, capsys):
     """The pre-split shape, still expressible — and every command that walks the stores must then
     report and search that directory once, not twice."""
-    write_config(ws, tiered(f'sensitive_store = "{ws.store}"\n'))
+    write_config(ws, tiered(f'sensitive_store = "{ws.store.as_posix()}"\n'))
     cfg = plans.load_config()
     assert [(store.tier, store.path) for store in cfg.stores()] == [("shareable", ws.store)]
     assert route(ws.client).store_dir == ws.store / "client.com-bitbucket" / "team" / "api"

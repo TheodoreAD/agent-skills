@@ -41,3 +41,14 @@ replacement behaviour away.]
 the help text saying so, and two tests: the additive case, and a dedupe case for
 `--skill session-harvest` — the exact call that ended the incident, which a naive concatenation
 would report twice while passing the first test.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`, "Why step 0's own instruments kept reporting
+  clean"** — this as one of the four, and the asymmetric-cost argument that settled it, stated once
+  for all four rather than per fix: three extra rows against skipping the check step 0 exists for.
+- **`harvest.py`'s comment above the `names` assignment** — the incident verbatim, and that `--all`
+  remains the replace-everything case. Verified present.
+- **`tests/unit/test_harvest.py`** — the additive case and the dedupe case.
+
+Nothing else in this file outlives the fix; it is a two-line change with one incident behind it.

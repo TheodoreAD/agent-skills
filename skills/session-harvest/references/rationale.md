@@ -390,6 +390,61 @@ Three things the build found that reasoning had not, all from running it against
   browser started from a repository into a finding about that repository, so the served directory is
   now inferred only for something that looks like a file server or names `--directory` outright.
 
+## Why step 0's own instruments kept reporting clean (2026-09-04/05)
+
+Four defects in step 0 were found and fixed inside two days, and they are worth one section rather
+than four notes because they are one failure wearing four faces: **the check that exists to catch a
+silent problem was itself silent, and in three of the four the right answer was already in hand.**
+The fixes are in `harvest.py`, each with its incident in a comment beside the code; what belongs
+here is the shape, because it is what should be suspected first the next time an instrument reads
+clean.
+
+- **`skills-state` said "installed copy matches the checkout" while the installed script was an hour
+  stale.** The verdict branched on `SKILL.md` identity alone, with `subdirs_differing` naming
+  `scripts` in the same payload — computed one line above the branch and never read. Found by
+  running the check immediately after fixing two bugs in that same script.
+- **`--skill <name>` replaced the default set instead of extending it**, so naming any skill dropped
+  `session-harvest` — the one skill step 0 exists to check. A harvest passed two names, got two
+  clean rows, and only a second call naming `session-harvest` found its `SKILL.md` had moved after
+  session start with two unpushed commits.
+- **`transcript --expect` could not match a command containing double quotes**, because the
+  transcript stores it as a JSON string and the search was a raw substring. The more specific string
+  — the one a person is likelier to paste — is the one that failed.
+- **The command block could not be run as written.** `transcript --expect` printed the right session
+  and `turns` on the next line exited 1, because each line is a separate process. Three harvests hit
+  it identically before it was fixed.
+
+Two things generalise.
+
+**The first two are the dangerous half, and they are the ones with the answer already computed.** A
+check that fails loudly gets fixed by whoever hits it; a check that reports clean while wrong is
+trusted, and it is trusted specifically at the moment step 0 exists for — a session about to execute
+a stale copy of the very script it is fixing. So when an instrument's verdict is narrower than its
+wording, the payload beside it is where to look first: in both cases the contradicting field was
+already there, in the same output, on the same run.
+
+**The asymmetry between the two mistakes is what settles each fix, and it points the same way every
+time.** `--skill` extending the defaults costs three extra rows on a run that names a skill;
+`--skill` replacing them costs the check itself. The verdict counting `scripts/` costs a re-install
+nobody needed; not counting it costs a run that executes code it never looked at. Neither fix needs
+a judgement about likelihood — only about which error is recoverable, which is why none of them
+needed a second opinion.
+
+`references/` is the one place the rule deliberately stops: it is read on demand and inert, so a
+difference there changes no run, and letting it into the verdict would re-create a defect fixed on
+2026-08-30 where a references-only commit fired the most expensive branch in the procedure.
+Reporting it in its own wording, outside the verdict, is what keeps both properties.
+
+**And the command block's fix was a third option neither of its two candidates had seen.** The
+choices on the table were re-wording the block so each line carries `--session`, or a state file
+carrying the resolution between invocations. Claude Code exports `CLAUDE_CODE_SESSION_ID` into every
+Bash call and it is the transcript's own filename stem, so the bare lines resolve with nothing typed
+and no cross-invocation state at all — the environment is per-call and per-session by construction.
+It beat the wording fix because the re-type was never necessary, and it beat the state file because
+a state file is a second thing that can be stale. `--session` stays for a harness that exports no
+id, and the job check stays ahead of it, because a background job's environment names the parent
+session while only its `state.json` knows the job's own transcript.
+
 ## Why "the invocation asked for something the skill lacks" is a self-update trigger (2026-08-28)
 
 The original two triggers both assumed the skill did something and it went wrong — an ambiguous

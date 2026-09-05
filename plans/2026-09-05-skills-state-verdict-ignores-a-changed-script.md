@@ -100,3 +100,21 @@ whose `scripts/` differs, asserting the verdict does **not** say the copy matche
 absent today, which is how a check with a `subdirs_differing` field shipped without consulting it.
 
 Worth doing before the next harvest that fixes a script, since that is the run this misleads.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`, "Why step 0's own instruments kept reporting
+  clean"** — this plan's best observation, generalised: an instrument reporting clean while the
+  contradicting field sits in the same payload, three times in one week, and why the payload beside
+  a narrow verdict is the first place to look. Also why `references/` deliberately stays out of the
+  verdict, since letting it in would re-create the 2026-08-30 defect.
+- **`harvest.py`'s comment above `stale_script`** — the cause, the incident, and why `scripts/` is
+  the likelier half to be stale as this repo pushes derivable content out of skill bodies. Verified
+  present.
+- **`tests/unit/test_harvest.py`** — the three previously unreachable branches: a changed script
+  with a byte-identical `SKILL.md`, a references-only difference, and a checkout dirty only in
+  `scripts/`.
+
+Not migrated: the three-row verdict output and the `skill_md_identical`/`subdirs_differing` table.
+They are the evidence, and the fix they argued for is in code with tests on every branch they
+exposed.

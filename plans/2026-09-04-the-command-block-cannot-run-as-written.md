@@ -62,3 +62,16 @@ resolution and the precedence.]
 
 Landed: `harvest.py` resolves from the environment, its docstring and the `SKILL.md` block say so,
 and the block now runs as written in Claude Code.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`, "Why step 0's own instruments kept reporting
+  clean"** — that the fix was a third option neither candidate had seen, and why it beat both: the
+  re-type was never necessary, and a state file is a second thing that can go stale.
+- **`harvest.py`'s `resolve_transcript` docstring and the comment on the environment branch** — the
+  precedence, and why the job check stays ahead of it. Verified present rather than assumed.
+- **`tests/unit/test_harvest.py::test_the_harness_session_id_resolves_a_bare_call`** — pins both the
+  resolution and the precedence.
+
+Not migrated: the reproduction transcripts for all three occurrences. The count survives in the
+rationale section, and the sessions are named in this file's own history.

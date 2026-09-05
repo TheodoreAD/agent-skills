@@ -66,3 +66,18 @@ needle missing.
 
 Belonged in `agent-skills`, so filed here rather than edited from the `power-user-linux-setup`
 session that found it.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`, "Why step 0's own instruments kept reporting
+  clean"** — this as one of the four, and the half of the shape it belongs to: a check that fails
+  loudly but misleadingly, where the message names the wrong cause.
+- **`harvest.py`'s `_contains` docstring** — the escaped-form comparison, both encoders, the
+  single-versus-double-quote asymmetry, and why comparing escaped forms beat decoding (a substring
+  scan over a pool of megabyte transcripts becomes a JSON parse of all of them). Verified present.
+- **`tests/unit/test_harvest.py`** — including the test that asserts the escaped form is what is
+  actually on disk before asserting the match, which is what keeps a matcher for anything from
+  passing.
+
+Not migrated: the reproduction commands and the `rg -c` count. They are evidence for a fix that is
+now pinned by tests.

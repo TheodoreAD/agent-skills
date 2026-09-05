@@ -95,3 +95,23 @@ are the same code as the Linux arm past the parser, and the Linux arm is measure
 2. ~~Add a smoke step~~ — added, and green on its first run, which closed the last `UNVERIFIED`.
 3. Leave the two transcript questions open until a Windows user appears; they cannot move from here,
    and saying so is the honest state.
+
+## Migrated to
+
+- **`skills/session-bash-audit/references/research.md`, "Why there is a Windows CI leg for a
+  platform nobody here runs"** — the reversal and its reasoning, the wrong prediction and why that
+  is the argument for the leg rather than against it, the four causes of the 136 red, the two
+  findings that were in the scripts rather than the tests, the project-slug bug that turned out not
+  to be Windows-specific at all, and the two questions that remain declared with what would settle
+  each.
+- **`.github/workflows/tests-windows.yml`** — the leg itself, kept separate so `ci.yml` stays
+  byte-identical to the family template, with `autocrlf` off _before_ the checkout and long paths
+  on.
+- **`harvest.py` and `audit.py`, plus their tests** — the Windows arms of the sweep
+  (`Get-CimInstance Win32_Process`, `netstat -ano` filtered to listening TCP), the corrected project
+  slug, the encoding-explicit reads, and `doctor`'s path join. `tests/ci/assert_sweep_available.py`
+  is the smoke step that proved both parsers read live output.
+- **`skills/session-bash-audit/SKILL.md`** — the Windows slug is no longer called unverified.
+
+Deliberately not migrated: the run-by-run red counts and the smoke step's first output line. They
+are the evidence that the leg works, and the leg's own history is where that belongs.

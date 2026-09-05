@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-04
+updated: 2026-09-06
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 92f54986-8a19-49a4-b792-8ebb1d5fcf1a.jsonl
 source_moment: 2026-09-04T00:07:14+03:00
@@ -94,6 +94,35 @@ not code.]
 `head/tail` rather than an independent habit. A gate-only rate is a much better scoring candidate
 than the raw one — it has a defensible target of zero — so the two questions are coupled and the
 second should not be settled before the first.]
+
+## The same question on a second row, inherited 2026-09-06
+
+From `2026-09-05-rg-replace-counter-matches-its-own-prose.md` when that plan was retired, which
+scoped this out of itself:
+
+> [DEFERRED: the per-bundle breakdown in the row's own reporting. `-rn` and `-ril` are different
+> failures and one count cannot say which is happening; the distribution is in this plan's evidence
+> (`-rn` × 27, `-ril` × 3, `-rln` × 1, `-rl` × 1, and **zero** bare `-r`) but the script still does
+> not print it. Not done because the anchoring was what made the count trustworthy, and the
+> breakdown is worth building on a count worth reading.]
+
+**It is this plan's question with a different row in front of it**, which is the reason for merging
+rather than filing it separately: one rate covering outcomes that are not comparable, where the fix
+is a breakdown rather than a second number. `exit-masked` mixes a masked listing with a masked gate;
+`rg-replace` mixes `-rn` — which loses line numbers and rewrites the matched text — with `-ril`,
+which silently turns a case-insensitive file-list search into a case-sensitive line search. A reader
+told "81 calls" cannot tell which failure the corpus is actually having.
+
+Two things it adds rather than repeats. **Its distribution is already measured** (the numbers above,
+over the 30 days to 2026-09-05), so unlike the gate-versus-listing split this one needs no new
+analysis to know what the output would say — only somewhere to print it. And **the anchoring
+precondition generalises**: the breakdown was deliberately not built until the count itself was
+trustworthy, which is the same ordering this plan should follow, since a per-shape split of a number
+that includes prose mentions would split the noise too.
+
+The rejected shape is the same one, for the same reason: a second **column** cannot express it. Both
+rows want a short list — the masked gate calls themselves, the bundles actually used — which is
+empty for the sessions that have no problem and one line per distinct shape for the ones that do.
 
 ## Recommended direction
 

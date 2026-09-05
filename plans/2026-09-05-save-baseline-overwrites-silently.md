@@ -85,3 +85,26 @@ tzinfo. A fifth covers `instrument_commit` outside a checkout returning `None`.
 ## Recommended direction
 
 Done, in the shape recommended: refuse unless `--force`, naming the existing file's fields.
+
+## Migrated to
+
+- **`skills/session-bash-audit/references/research.md`, "`--save-baseline` destroyed the baseline it
+  was meant to be compared against"** — the incident, both decisions with the arguments that settled
+  them (refuse rather than auto-suffix, because nobody names the default path and so nobody would
+  notice a `-2` either; keep the UTC filename because once the collision is a refusal the naming was
+  never what cost anything), why the artefact is irreplaceable by construction, the `instrument`
+  field, and the `--note` question.
+- **`skills/session-bash-audit/SKILL.md`** — the refusal and `--force` in the writes disclosure, and
+  the three read-only `git` calls scoped to the write path.
+- **`audit.py` and `tests/unit/test_audit.py`** — the raise, `--force`, the recorded instrument, the
+  tz-aware `saved`, and `instrument_commit` returning `None` outside a checkout.
+
+Deliberately not migrated:
+
+- **The `DEFERRED` on `--note` is not carried to an open plan, because it is a settled no rather
+  than pending work.** It reads as deferred and argues itself down: `saved` and `instrument` already
+  make a note-less baseline identifiable, and requiring prose from the ordinary case would cost more
+  than it buys. Recorded as a sentence in the research section instead.
+- **The `ls -la` inode evidence and the reconstruction's exact flags.** The reconstruction's
+  limitation — `--days` counts from now, not from `--until` — is in the research section because it
+  will catch the next person; the flags themselves are in this file's history.

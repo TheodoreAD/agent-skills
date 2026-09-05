@@ -116,3 +116,20 @@ Accepted rather than worked around, on two grounds: those calls already carry th
 `~/AGENTS.md` exempts `find` "running somewhere `fd` is not installed — inside a container, say", so
 counting them as misses was itself wrong. Recovering them means the pattern layer re-implementing
 `split_chain`, which is exactly what the third decision above declined.]
+
+## Migrated to
+
+- **`skills/session-bash-audit/references/research.md`, "The counters matched their own prose, and
+  every published figure moved (2026-09-05)"** — already written when this plan landed, and it
+  carries the whole of it: the self-inflation argument, both measured instances, the before/after
+  table, the `-printf` fix moving the ratio twice, the seven gains and the caution they support, and
+  the `bash -c` PITFALL. Verified rather than assumed; nothing needed adding.
+- **`audit.py`'s patterns and `tests/unit/test_audit.py`** — `strip_quoted` on every tool-name row,
+  the segment anchoring, and the flag lists.
+- **`plans/2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md`** — the `DEFERRED`. It is
+  that plan's question with a second row in front of it: one rate covering outcomes that are not
+  comparable, where the fix is a breakdown rather than a second column. The measured distribution
+  travelled with it.
+
+Nothing is left. This plan is the rare case where the migration had already happened at landing time
+and retirement is only the checking.

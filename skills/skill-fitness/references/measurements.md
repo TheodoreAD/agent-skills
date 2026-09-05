@@ -327,6 +327,66 @@ already ships as `scripts/audit.py`. Two more of the same shape:
 installed" probe with no home), and a `tomllib` validation one-liner for a setup file (19 calls, 7
 sessions) that belongs in that repo's task runner.
 
+## Why the author-side sections are opt-in (2026-09-02, built 2026-09-05)
+
+This tool is the concentration of a corpus-wide problem — `skill-authoring`'s "a skill's output is
+for whoever ran it" carries the rule and the 34-findings measurement — and the reason the split is a
+property of the **command** rather than of the corpus in front of it is worth keeping, because the
+cheaper-looking options both fail on a machine the author cannot test.
+
+Sorting the sections by who owns the remedy is what made the size of the problem visible:
+`inventory`, `budget` and `usage` belong to the installer, while `overlap`, `absorb`, `derivable`,
+`portability` and the rubric score belong to the **author**. `report` ran all of them, so the
+default entry point handed a stranger four sections of work they could not do, under a heading that
+reads as a defect list. `report` is now installer-side only and the other four have to be named.
+
+Two rejected shapes, each of which looks cheaper:
+
+- **Scope the author-side sections to "authorable" roots and skip with one line.** It leaves the
+  section in `report`'s path and makes behaviour depend on cwd. There is also nothing on disk to
+  classify by: a `--global` install writes no lockfile anywhere, so nothing records who authored an
+  installed skill, and the best available discriminator is the root — an explicit `--root` or a
+  `./skills` directory in a git repo is authorable, the install hub is not. Per-skill would be
+  sharper (someone who installed from their own fork _is_ editing the right thing) and is not
+  available.
+- **Print two sections split by who acts.** Keeps a count of somebody else's defects in front of the
+  reader on every run, which is the cost being removed.
+
+**The verdict on a skill depended on what else the reader happened to have installed**, which is a
+second and independent argument that `portability` was not one measurement. Reproduced under a fake
+`HOME` on 2026-09-02: `plan-docs` fell from 1 finding to 0, not because anything in it changed, but
+because a repo name left the derived author vocabulary when the skill that links it was absent.
+Tolerable in an author's audit of a whole corpus; indefensible in a reader-facing report.
+
+### Why `trigger.py` refuses, when everything else here only ranks
+
+`trigger.py` refuses a suite whose `expect` names are not installed, with `--allow-missing` as the
+override. That is a **gate**, and this corpus's standing position is that these measures rank and
+never gate, so it is a deliberate exception and was flagged at the time as the weakest of its group.
+
+What makes it defensible is what it protects: `trigger.py` is the only thing here that spends the
+reader's **money** rather than their attention. The eleven shipped eval suites are each written for
+a contention between two skills of _this_ corpus and each expects our names to win, so a reader
+running one pays real tokens to measure whether our pair contends inside their installed set. A
+refusal is the only option that stops that spend, and unlike a caveat it works whether or not the
+reader read anything. Since a refusal that fires wrongly is worse than a caveat that goes unread, it
+needs the override and a message naming the mismatch.
+
+The suites still ship, because they are data **and** a worked example of how to write trigger cases,
+and a fork that loses them loses the proof its descriptions work. The baselines split the other way:
+a gate fixture belongs in `tests/fixtures/`, and a published reference point ships legitimately when
+it is labelled as somebody else's.
+
+[PITFALL: **a caveat does not travel to the point of use.** `session-bash-audit` says its shipped
+numbers are "one author's machine under one set of rules — save your own on the first run", which is
+exactly the right sentence. `session-harvest` then cited that same baselines directory with a
+`<baseline>` placeholder and repeated none of it, and the only file in that directory is the
+author's — so a reader following the instruction literally compared their session against this
+machine's rates under this machine's rules. **One skill declaring an assumption does not protect a
+reader who arrives through a different skill**, which is this corpus's standing argument for putting
+a check in code rather than in prose. Fixed by repeating the caveat at the point of use, which is
+the cheap half; the refusal above is the half that does not depend on being read.]
+
 ## Harness facts to re-check after a CLI upgrade
 
 Everything below was true on **CLI 2.1.251, 2026-08-31**, and none of it is documented behaviour.

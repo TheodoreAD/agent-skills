@@ -314,3 +314,38 @@ reading.
 **And the sequencing:** nothing in the corpus gets reworded for portability until this is settled,
 because the fix for a finding depends on which side of the line it falls. The portability audit
 itself is committed and unpushed at `fd51e53`, carrying the flaw it describes.
+
+## Migrated to
+
+- **`skills/skill-authoring/SKILL.md`, "A skill's output is for whoever ran it"** — the rule, the
+  three-shape table (print / route / opt-in), the PITFALL that an author's own machine cannot show
+  this bug with the 34-findings measurement in it, and the population-header rule. The rule landed
+  here rather than in `skill-fitness` because it is read while _writing_ a skill; the behaviour
+  landed in the tool because it is read while measuring, and a rule in the wrong one is a rule
+  nobody meets when it applies.
+- **`skills/skill-fitness/references/measurements.md`, "Why the author-side sections are opt-in"** —
+  the section-by-owner sorting, both rejected shapes and why each fails on a machine the author
+  cannot test, the absence of any on-disk provenance to classify by, and the fake-`HOME` finding
+  that a skill's verdict depended on what else the reader had installed.
+- **`skills/skill-fitness/references/measurements.md`, "Why `trigger.py` refuses, when everything
+  else here only ranks"** — the deliberate gate exception and what makes it defensible (the cost
+  prevented is the reader's money, not their attention), why the suites still ship, and the PITFALL
+  that a caveat does not travel to the point of use.
+- **`CLAUDE.md`, the authoring section** — that this repo's test data lives in `tests/fixtures/`,
+  never inside a skill, with the derivable baseline as the worked case; and what legitimately ships
+  as evidence labelled as somebody else's.
+- **`fitness.py`, `trigger.py` and their tests** — `report` running installer-side sections only,
+  the corpus header, the refusal and `--allow-missing`.
+
+Deliberately not migrated:
+
+- **The three-option analysis of what shipped data costs.** It was the deliberation, and all three
+  options were adopted for different artefacts, so the conclusions are what survive; re-reading the
+  weighing would only re-open a settled split.
+- **Whether `skills add` prunes files it did not place.** Still unverified — a probe under a
+  throwaway `HOME` hung on what is almost certainly an interactive agent-selection prompt and was
+  killed at five minutes. It is recorded here as needing a human at a terminal, and it blocks
+  nothing: the instruction not to point at the install directory is right either way. Not carried as
+  an open tag because nothing depends on the answer.
+- **The sequencing note and the `fd51e53` reference.** Both are spent — the audit was pushed and the
+  rewording it gated has happened.

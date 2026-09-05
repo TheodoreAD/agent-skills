@@ -76,7 +76,7 @@ def _read_roots(rules: list[str]) -> list[str]:
 
 
 def load_rules() -> Rules:
-    perms = json.loads(SETTINGS.read_text()).get("permissions", {})
+    perms = json.loads(SETTINGS.read_text(encoding="utf-8")).get("permissions", {})
     allow = _rule_regexes(perms.get("allow", []))
     ask = _rule_regexes(perms.get("ask", []))
     scope = perms.get("additionalDirectories", []) + _read_roots(perms.get("allow", []))

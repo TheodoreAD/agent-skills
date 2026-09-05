@@ -326,7 +326,7 @@ def _text(content: object) -> str:
 
 def _blocks(path: Path):
     """Yield (message, block) for every content block in a transcript, skipping unparsable lines."""
-    with path.open() as fh:
+    with path.open(encoding="utf-8") as fh:
         for line in fh:
             try:
                 obj = json.loads(line)
@@ -514,7 +514,7 @@ def compare(calls: list[Call], baseline_path: Path) -> None:
     """Per model present in both runs: delta in percentage points against the baseline, with a
     verdict for every tag EXPECTATIONS names. A model with under 50 calls in either run is shown
     but not judged — the rates are too noisy to call."""
-    baseline = json.loads(baseline_path.read_text())
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     print(f"\n== vs baseline {baseline_path.name} ({baseline.get('saved')}, {baseline.get('note', '')}) ==")
     now = rates_by_model(calls)
     verdicts: list[bool] = []

@@ -571,6 +571,62 @@ def test_the_same_diff_means_three_different_things(tmp_path, dirty, ahead, expe
     assert expected in state["verdict"]
 
 
+def test_naming_a_skill_adds_it_rather_than_replacing_the_defaults(tmp_path):
+    """`--skill` reads as additive in SKILL.md — "add `--skill <name>` for anything else this run
+    used" — and dropped the defaults instead, so the harvest's own skill was the one that went
+    unchecked. Confirmed 2026-09-05: a run passed `--skill plan-docs --skill
+    invoke-task-conventions`, got two clean rows, and only a second call naming session-harvest
+    explicitly found its SKILL.md had moved after session start with two unpushed commits.
+    """
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    for name in (*harvest.DEFAULT_SKILLS, "invoke-task-conventions"):
+        make_skill(checkout, name, "body\n")
+        make_installed(installed_root, name, "body\n")
+    args = harvest.build_parser().parse_args(
+        [
+            "skills-state",
+            "--json",
+            "--checkout",
+            str(checkout),
+            "--installed",
+            str(installed_root),
+            "--skill",
+            "invoke-task-conventions",
+        ]
+    )
+
+    payload = harvest.cmd_skills_state(args, FakeRunner())
+
+    assert [s["skill"] for s in payload["skills"]] == [*harvest.DEFAULT_SKILLS, "invoke-task-conventions"]
+
+
+def test_naming_a_default_skill_does_not_report_it_twice(tmp_path):
+    """The additive form has to dedupe, or `--skill session-harvest` — the exact call the incident
+    above ended with — reports that skill in two rows."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    for name in harvest.DEFAULT_SKILLS:
+        make_skill(checkout, name, "body\n")
+        make_installed(installed_root, name, "body\n")
+    args = harvest.build_parser().parse_args(
+        [
+            "skills-state",
+            "--json",
+            "--checkout",
+            str(checkout),
+            "--installed",
+            str(installed_root),
+            "--skill",
+            "session-harvest",
+        ]
+    )
+
+    payload = harvest.cmd_skills_state(args, FakeRunner())
+
+    assert [s["skill"] for s in payload["skills"]] == list(harvest.DEFAULT_SKILLS)
+
+
 def test_a_skill_that_moved_after_the_session_began_is_named(tmp_path):
     checkout = tmp_path / "checkout"
     installed_root = tmp_path / "installed"

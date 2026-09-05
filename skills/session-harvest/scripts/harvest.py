@@ -1152,7 +1152,13 @@ def skill_state(runner: Runner, name: str, checkout: Path, installed_root: Path,
 
 def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     checkout = find_checkout(args.checkout)
-    names = args.skill or list(DEFAULT_SKILLS)
+    # `--skill` ADDS to the defaults rather than replacing them, because the skill whose staleness
+    # matters most is this one, and naming any other must not be what drops it. Confirmed
+    # 2026-09-05: a harvest passed `--skill plan-docs --skill invoke-task-conventions`, got two
+    # clean rows, and only a second call naming session-harvest found that its SKILL.md had moved
+    # after session start with two unpushed commits — the finding step 0 exists for. `--all` is the
+    # replace-everything case and stays one.
+    names = list(DEFAULT_SKILLS) + [s for s in (args.skill or []) if s not in DEFAULT_SKILLS]
     if args.all:
         names = sorted(p.name for p in (checkout / "skills").iterdir() if p.is_dir())
     installed_root = Path(args.installed).expanduser() if args.installed else INSTALLED_SKILLS
@@ -2031,7 +2037,9 @@ def build_parser() -> argparse.ArgumentParser:
     skills = subparsers.add_parser(
         "skills-state", parents=[common], help="installed copy vs checkout, dirt, unpushed work, moves"
     )
-    skills.add_argument("--skill", action="append", help="skill name; repeatable (default: the ones a harvest uses)")
+    skills.add_argument(
+        "--skill", action="append", help="skill name; repeatable, ADDED to the ones a harvest uses (--all replaces)"
+    )
     skills.add_argument("--all", action="store_true", help="every skill in the checkout")
     skills.add_argument("--checkout", help="path to the agent-skills checkout")
     skills.add_argument("--installed", help="installed skills root (default ~/.agents/skills)")

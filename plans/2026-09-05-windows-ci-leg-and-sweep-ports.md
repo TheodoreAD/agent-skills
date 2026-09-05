@@ -42,18 +42,34 @@ sweep's `ps`/`ss` steps.
   PowerShell out of the survivors. The served-directory and readable-secrets findings apply through
   `--directory`, since there is no `/proc` to read a cwd from.
 
-[UNVERIFIED: **the CI leg has never run.** It runs on the first push, and the first red is likely to
-be a path-string assertion somewhere in `test_plan_store.py` comparing `str(path)` with `/` in it —
-the suite was never written with backslashes in mind. Read that run before believing anything below
-it; the fixture work of 2026-09-04 was the prerequisite, and whether it was the whole prerequisite
-is exactly what the run answers.]
+**The CI leg ran three times on 2026-09-05 and went green on the third.** What the first two runs
+named, none of it in the scripts except two small things:
+
+- 136 red on the first run, four causes: a fake config written with a Windows path inside a TOML
+  basic string (a backslash opens an escape, so `C:\Users` is an invalid `\U`), which took a hundred
+  plan-store tests down with one helper line; tests reading files through the platform code page,
+  which turned the skeleton's em dash into mojibake and put a description over the cap by four
+  characters; harvest fixtures keying commands on POSIX separators while `Path` renders backslashes;
+  and two suites reading the real platform constant where they meant the POSIX arm. Plus the
+  workflow setting `autocrlf` _after_ the checkout, which is the only order in which it does
+  nothing.
+- 6 red on the second, the same four causes in the places the first round missed.
+- The two script findings: three reads in `session-bash-audit` relied on the platform encoding, so a
+  transcript with an em dash would have raised on Windows; and `doctor` joined a store path and a
+  root name with a literal slash, printing a mixed-separator path there.
+
+[DECISION: **the prediction was wrong in an instructive way.** The expected first red was a
+path-string assertion; the actual one was TOML escaping, which no amount of reading the tests would
+have predicted, and the encoding findings were in the scripts, not the tests. That is the argument
+for the leg in one sentence: the failures a platform produces are not the ones a reviewer on the
+other platform imagines.]
 
 [UNVERIFIED: **the two Windows commands have never executed.** The parsers are pinned to the
 documented column layouts by fixture text; the PowerShell script inside one `argv` element, the tab
 separators surviving PowerShell's output encoding, and `netstat` needing no elevation for `-o` are
-all reasoned, not seen. A Windows CI leg exercises the parsers only — the runner has a `ps`-less
-PowerShell, so `sweep --only processes` there would be the first live measurement, and it is worth
-adding as a smoke step once the suite is green there.]
+all reasoned, not seen. The workflow now pipes a live `sweep --only processes --only sockets --json`
+into `tests/ci/assert_sweep_available.py` after the suite, so the next push is the measurement; this
+tag comes off when that step is green.]
 
 ## Still declared, not measured, and what would settle each
 
@@ -65,10 +81,7 @@ adding as a smoke step once the suite is green there.]
 
 ## Recommended direction
 
-1. Push, read the first Windows run, fix what it names as its own commit each, and re-run until
-   green. Expect one or two rounds.
-2. Add a smoke step to the Windows workflow that runs the sweep's processes and sockets sections
-   from the checkout with `--json` and asserts `available: true` on both — the one live measurement
-   a runner can make of the arms above.
+1. ~~Push, read the first Windows run, fix what it names~~ — done, three rounds, green.
+2. ~~Add a smoke step~~ — added; its first run is what the remaining `UNVERIFIED` waits on.
 3. Leave the two transcript questions open until a Windows user appears; they cannot move from here,
    and saying so is the honest state.

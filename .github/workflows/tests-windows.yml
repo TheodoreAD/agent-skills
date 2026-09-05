@@ -33,3 +33,11 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v9.0.0
       - run: uv run --no-project --python 3.13 --with pytest pytest
+      # The one live measurement a runner can make of the sweep's Windows arms: the suite pins the
+      # PowerShell and netstat parsers to documented output, and this runs the two commands for
+      # real. Without a transcript the sweep degrades and says so; both sections must still answer
+      # `available: true`, which is the whole assertion.
+      - run: >-
+          uv run --no-project --python 3.13 python skills/session-harvest/scripts/harvest.py
+          sweep --only processes --only sockets --json
+          | uv run --no-project --python 3.13 python tests/ci/assert_sweep_available.py

@@ -23,10 +23,11 @@ artifact is allowed to say.
 
 ## Read with the location plan — they are two halves of one subject
 
-A parallel session committed `plans/2026-09-03-where-skills-put-things-on-disk.md` in `agent-skills`
-within hours of this being filed, and **nothing links them**: different names, neither cites the
-other, so `absorb` will not pair them and the next session there gets both without being told they
-interlock.
+A parallel session committed `plans/2026-09-03-where-skills-put-things-on-disk.md` (retired
+2026-09-06; its reasoning is in `skill-authoring`'s and `plan-docs`' rationale files) in
+`agent-skills` within hours of this being filed, and **nothing linked them**: different names,
+neither cites the other, so `absorb` will not pair them and the next session there gets both without
+being told they interlock.
 
 **It is the further-along half.** Re-read 2026-09-03 at 23:43: that plan is pushed and already at
 `planned`, with its twelve open questions answered, while this one is still `idea`. Treat its

@@ -46,14 +46,15 @@ that needs it costs almost nothing and preserves the property the whole corpus i
 is a self-contained unit that can be read, copied or vendored on its own. A little copying is
 cheaper than a little dependency, and this is the cheapest copying available.]
 
-[DECISION: **shared _location_ is a contract, not a call — and this corrects rule 9 of
-`2026-09-03-where-skills-put-things-on-disk.md`.** That rule says "one skill owns a location; the
-others ask it rather than re-deriving it", which reads as "call the owner" and is wrong for exactly
-the reasons above. The right form: **one skill owns the location and publishes it as configuration
-the others read.** `$PLANS_HOME` and `~/.config/plan-docs/config.toml` already are that contract, so
-`harvest.py` does not need to import `plans.py` — it needs to read the same environment variable and
-the same config file. That is not duplicated logic; it is two readers of one source of truth, which
-is how independently-installed tools have always shared state.]
+[DECISION: **shared _location_ is a contract, not a call — and this corrected rule 9 of the
+now-retired `plans/2026-09-03-where-skills-put-things-on-disk.md`.** That rule said "one skill owns
+a location; the others ask it rather than re-deriving it", which reads as "call the owner" and is
+wrong for exactly the reasons above; the correction is what `skill-authoring`'s "share a
+**location** as configuration both read" now says. The right form: **one skill owns the location and
+publishes it as configuration the others read.** `$PLANS_HOME` and `~/.config/plan-docs/config.toml`
+already are that contract, so `harvest.py` does not need to import `plans.py` — it needs to read the
+same environment variable and the same config file. That is not duplicated logic; it is two readers
+of one source of truth, which is how independently-installed tools have always shared state.]
 
 [DECISION: **optional _invocation_ stays, because the agent is the integration layer.** A skill's
 prose may tell the agent to run a sibling's script when it is present — `session-harvest` already

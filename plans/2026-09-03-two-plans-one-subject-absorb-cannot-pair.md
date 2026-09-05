@@ -22,7 +22,8 @@ Confirmed 2026-09-03, and the pair is a good one because neither is wrong:
   scrutinises them.
 - `plans/2026-09-03-where-skills-put-things-on-disk.md`, committed in `agent-skills` by a parallel
   session within hours — where a skill may put things at all: XDG config versus data versus state,
-  `$PLANS_HOME`, `$RESEARCH_HOME`.
+  `$PLANS_HOME`, `$RESEARCH_HOME`. Since retired, into `skill-authoring`'s "Where a skill may put
+  things" and the two rationale files.
 
 They compose rather than duplicate, and the dependency runs one way: **a disclosure names locations,
 so its format cannot be settled before the locations are.** A session absorbing the first without

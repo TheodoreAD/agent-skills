@@ -70,18 +70,48 @@ worst-case run, which is the exact outcome the inherited `DEFERRED` wanted sched
 Only `list`'s passive footer reports the pile in the meantime, and it is a footer on a command
 nobody runs unless they are already thinking about plans.
 
-## What the 16 actually are
+## What the backlog actually is
+
+Assigned by counting each skill's name in each plan, which is a starting point and **not** the
+answer — see the first batch below.
 
 | destination rationale file                         | plans | plan lines | file lines |
 | -------------------------------------------------- | ----: | ---------: | ---------: |
-| `skills/plan-docs/references/design-rationale.md`  |     6 |     ~1,030 |        880 |
 | `skills/session-harvest/references/rationale.md`   |     5 |       ~575 |        450 |
+| `skills/plan-docs/references/design-rationale.md`  |     4 |       ~655 |        957 |
 | `skills/session-bash-audit/references/research.md` |     4 |       ~620 |        679 |
-| `skills/skill-authoring/references/rationale.md`   |     1 |       ~170 |         83 |
+| `skills/skill-authoring/references/rationale.md`   |     1 |       ~170 |        215 |
 
-2,331 lines, 35% of everything in `plans/`. 61 `DECISION` and 14 `PITFALL` tags to migrate or verify
-as already-covered, and **5 `DEFERRED` across 4 plans, which block deletion** until they move to a
-plan that stays.
+**14 left of the original 16**, 1,955 lines, still around a third of everything in `plans/`. 47
+`DECISION` and 12 `PITFALL` tags to migrate or verify as already-covered, and **4 `DEFERRED` across
+3 plans, which block deletion** until they move to a plan that stays.
+
+## Batch 1, 2026-09-06: the two on-disk-location plans
+
+`2026-09-03-where-skills-put-things-on-disk.md` and
+`2026-09-03-sensitive-store-is-world-readable.md` — retired, in three commits: migration, then
+reference fixes plus deletion.
+
+**The name-counting assignment was wrong about both, and it is worth knowing how.** Both counted as
+`plan-docs` plans; both migrated almost entirely to **`skill-authoring`**, because the rules they
+produced are corpus-wide rules about what any skill may do, and only their store-specific
+consequences belong to `plan-docs`. The count measures what a plan _talks about_, and the
+destination is decided by what a plan _concludes_. So the table above is a batching hint, and the
+first step of every batch is confirming the destination by reading — which is cheap, since that read
+is the batch's shared cost anyway.
+
+What the pass actually cost, against the estimate inherited above: **under an hour for the pair**,
+where the estimate for a "content already shipped" plan was an hour each. The saving was entirely
+the shared read, and the second plan is a sub-case of the first — a two-plan batch where the second
+is free is the shape to look for when choosing the next one.
+
+The other finding: **most of both plans was already shipped, and none of the migration was
+mechanical.** `skill-authoring`'s `SKILL.md` already carried every rule, better worded than the plan
+that produced them. What had no home anywhere was the _why_ — the platformdirs measurement, the
+rejected git-URL keying, the severity-tier argument, and the record of a check that was built and
+deliberately deleted the next day. That last one is the case for doing this at all: nothing else on
+disk explains why the mode is set and never checked, so the next reader to notice the asymmetry
+would have re-added the warning.
 
 ## Decisions, 2026-09-06
 

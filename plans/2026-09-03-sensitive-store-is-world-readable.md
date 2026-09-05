@@ -115,3 +115,30 @@ would have fired forever on a concept that does not exist there — `skills/skil
 carries that reasoning now, in the `0700` bullet under "Where a skill may put things". The three
 decisions above about which stores get `0700`, and about `install` creating versus `doctor`
 reporting, are answered by there being no reporting at all.
+
+## Migrated to
+
+- **`skills/skill-authoring/references/rationale.md`, "Why the `0700` check was built and then
+  deleted"** — the measurement that found the gap (no `mkdir` in the corpus passed a mode; `775`
+  under umask `002`; permissions mentioned nowhere), the verification that the controls the design
+  leans on were intact before this was called an exposure, the single-user premise that removed the
+  severity argument, and the Windows `st_mode` reason the check could never be reinstated cheaply.
+  This is the section that stops someone re-adding the warning.
+- **`skills/skill-authoring/SKILL.md`**, the `0700` bullet — the rule itself, plus why it is set on
+  the root rather than a leaf and why a umask needs no handling.
+- **`skills/plan-docs/SKILL.md`**, the tier table — already carried "both are created mode `0700` —
+  a free default, not a protection to rely on", with the single-user assumption stated.
+- **`skills/plan-docs/references/design-rationale.md`, "Why the stores stay visible in `$HOME`, and
+  what mode they are created with"** — which stores get `0700` and why `$RESEARCH_HOME` does not,
+  and the conspicuousness caution rescued from the `DEFERRED` below.
+
+Deliberately not migrated:
+
+- **The `DEFERRED` about XDG is not carried to an open plan, because it is no longer live work.** It
+  argued that XDG answers a different question from permissions, which is true and is now settled
+  the other way: `2026-09-03-where-skills-put-things-on-disk.md` decided the visible stores stay
+  where they are, so there is no pending move for the caveat to attach to. Its one durable half — if
+  the sensitive store ever does move somewhere less conspicuous, the `0700` matters more rather than
+  less — is in the `plan-docs` rationale section above.
+- **The `775` table and the umask arithmetic** — a measurement of a state that was corrected the
+  same day. The finding it supports is in the rationale; the numbers are only evidence for it.

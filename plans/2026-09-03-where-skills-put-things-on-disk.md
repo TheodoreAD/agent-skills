@@ -255,3 +255,33 @@ own `name`. The concrete work was small and mostly deletion, and is all done as 
 - ~~**teach the portability audit to read `scripts/`**~~ — 2026-09-05, with the two-segment rule,
   `/tmp/<name>`, and the AST so docstrings and regexes are not findings.
 - ~~**write the destination table into `skill-authoring`**~~ — 2026-09-04.
+
+## Migrated to
+
+- **`skills/skill-authoring/SKILL.md`, "Where a skill may put things, and what it may assume about
+  the machine"** — rules 1–10 as instructions: the six-destination table (with Windows defaults
+  added since), the material-versus-bookkeeping axis and its `cd` test, the resolution order, never
+  writing inside your own installed directory, another tool's directory being read-only, `0700` at
+  creation, no hard-coded local path, and skills not depending on each other.
+- **`skills/skill-authoring/references/rationale.md`, "Why a skill's directories are keyed by its
+  bare `name`"** — the three reasons the git-URL scheme was rejected, the platformdirs measurement,
+  the copy-the-semantics-not-the-dependency decision, the deliberately unbuilt escape hatch, and the
+  Flatpak precedent that does not transfer.
+- **`skills/skill-authoring/references/rationale.md`, "Why a guarded dev-environment path is a
+  defect, with no severity tier"** — including why the audit's `bare`/`declared` split is not a
+  precedent for one, and the two-segment rule that made reading `scripts/` viable.
+- **`skills/plan-docs/references/design-rationale.md`, "Why the stores stay visible in `$HOME`, and
+  what mode they are created with"** — the stores staying put, the sensitive tier keeping its own
+  variable, and `$PLAN_DOCS_CONFIG` being outside rule 4 rather than an exception to it.
+
+Deliberately not migrated:
+
+- **"What is actually on disk today"** — a snapshot of a state that no longer holds. Every row it
+  named has since changed, which is the strongest possible argument against copying it forward.
+- **The portability audit's two-segment rule as a contract** — it is code, in `fitness.py`'s
+  `_home_literal` docstring and gated by `tests/unit/test_portability.py`. Only its reasoning
+  travelled.
+- **The `harvest.py` duplicated-defaults finding and its 2026-09-04 amendment** — the instance is
+  fixed and the general form is `skill-authoring`'s "share a **location** as configuration both
+  read", which says it better than the plan did.
+- **The closing done-list** — a verification log, which is what the commits already are.

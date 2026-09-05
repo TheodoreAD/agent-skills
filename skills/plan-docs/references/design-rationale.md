@@ -374,6 +374,41 @@ A store-held plan additionally carries `repo:` frontmatter holding the **origin 
 the path is already the file's own location, so repeating it would be a second copy of the same
 fact, while the origin URL is the identity that survives the clone being moved or renamed.
 
+### Why the stores stay visible in `$HOME`, and what mode they are created with
+
+Settled with the user 2026-09-03, when the corpus's on-disk locations were reviewed against XDG
+orthodoxy: **`~/plans`, `~/plans-sensitive` and `~/research` stay exactly where they are**, for
+parity with `~/projects`. The general rule that puts them there is `skill-authoring`'s — the axis is
+whether something is the user's material or the tool's bookkeeping, and the concrete test is whether
+a human would ever `cd` here. A store is a git working tree that gets `git log` run on it and, for
+the shareable tier, pushed; XDG's base directories are for what an application manages on the user's
+behalf. Moving them would touch git remotes and config for an aesthetic gain.
+
+Two store-specific consequences of that decision, both of which read as arbitrary without it:
+
+- **The sensitive tier keeps its own variable rather than becoming a subdirectory of one root.** A
+  single root makes it easy to sync or back up both tiers with one gesture — and the entire purpose
+  of that tier is that it must never leave the machine, so the convenient gesture is the accident to
+  design against. Two variables is the cheaper mistake. There is a second, quieter reason to leave
+  it where it is: part of why the sensitive store has never been synced by accident is that it is
+  **conspicuous**. If it ever does move somewhere it sits among ordinary application data, it stops
+  being obvious, and the `0700` below matters more rather than less.
+- **`$PLAN_DOCS_CONFIG` is not an exception to "an XDG destination needs no new variable".** It
+  names a **file**, and `$XDG_CONFIG_HOME` can only redirect a **directory** — `test_plan_store.py`
+  depends on exactly that, pointing the whole config at one path under `tmp_path` rather than
+  building an XDG tree. So it is not a second way to do one thing; it expresses something XDG
+  cannot. The rule is therefore stated as no new variable for a location XDG **already addresses**,
+  which puts this outside its scope rather than against it.
+
+**Both tiers are created `0700`; `$RESEARCH_HOME` is not.** The mode follows the content rather than
+a list of directories, which is why the answer differs per store without the rule differing. The
+sensitive tier is obvious. The shareable tier gets it too because "shareable" means shareable with
+the people you choose, not readable by any local uid, and it costs nothing. The research library
+holds clones of public third-party repos, so `0700` there would protect nothing — and **a rule that
+does visibly meaningless things is a rule that gets copied without thought.** Why nothing checks the
+mode afterwards is `skill-authoring`'s to explain; it is the same decision seen from the corpus
+level.
+
 ### Why the store is two git repositories split by sensitivity
 
 A single personal remote accumulating several employers' internal architecture, ticket references

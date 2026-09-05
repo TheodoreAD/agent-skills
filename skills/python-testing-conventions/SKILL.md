@@ -28,6 +28,18 @@ thing.
   `capsys`, `caplog`) before writing a helper that reimplements one. A helper _function_ is the
   fallback only for setup that needs per-call arguments a fixture can't take — and even then, a
   fixture returning a factory (`make_repo(name)`) usually fits.
+- A fake home is two variables, and a suite that runs on Windows finds three more traps on its first
+  run there. `expanduser` reads `HOME` on POSIX and `USERPROFILE` on Windows, so a fixture setting
+  only the first writes into the real profile once per test. Write a path into a TOML or JSON
+  fixture as `path.as_posix()` — in a TOML basic string a backslash opens an escape, and `C:\Users`
+  is an invalid `\U`. Pass `encoding="utf-8"` to every `read_text`/`write_text`, in tests as well as
+  code: the platform default is a code page there, and a config with an em dash in a comment comes
+  back as mojibake or a decode error. Key fake-runner tables and compare path lists through
+  `as_posix()` too, since `Path("/repo")` renders as `\repo`. And pin any platform seam
+  (`WINDOWS = os.name == "nt"` in the module under test) to the arm the fixtures were written for,
+  because a test written on Linux reads the real platform otherwise. Measured 2026-09-05 on a suite
+  that had never run on Windows: 136 of 557 red on the first run, every one of them one of these
+  five, none of them in the code under test.
 - Fixture scope: narrowest that stays correct. For the module-singleton pattern in
   `python-conventions` — construct the expensive object at module/session scope, but reset its
   _mutable_ state via a function-scoped fixture. A `monkeypatch` inside a broad-scoped fixture stays

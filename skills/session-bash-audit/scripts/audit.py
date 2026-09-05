@@ -147,33 +147,64 @@ def _chain_tags(cmd: str) -> set[str]:
     return {f"chain{min(len(parts), 5)}"}
 
 
+# How Claude Code names a project's transcript directory, read from the CLI binary 2026-09-05:
+# `path.replace(/[^a-zA-Z0-9]/g, "-")`, and past 200 characters the slug is cut there and a hash is
+# appended. Until that day these tags replaced only `/` and `.`, so a repo path holding `_`, a space
+# or any other punctuation slugged to something the harness never writes and both rows reported
+# zero — on Linux, not only on the Windows path (`\`, `:`) the skill had been warning about.
+SLUG_CAP = 200
+
+
+def project_slug(path: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9]", "-", path)
+
+
+def slug_matches(target: str, project: str) -> bool:
+    """Whether a command's target directory is the transcript's own project.
+
+    Past the cap the harness appends a hash this script cannot recompute, so a long path matches on
+    its first 200 characters and the `-` that opens the suffix — a prefix comparison, which is what
+    equality degrades to when the tail is unknowable.
+    """
+    slug = project_slug(target)
+    if len(slug) <= SLUG_CAP:
+        return slug == project
+    return project.startswith(slug[:SLUG_CAP] + "-")
+
+
+def _absolute_target(raw: str) -> str:
+    return raw.replace("~", str(Path.home())).replace("$HOME", str(Path.home())).rstrip("/")
+
+
 def _cd_tag(cmd: str, project: str) -> set[str]:
     m = re.search(r"(?:^|&&|;|\n)\s*cd\s+(\S+)", strip_heredoc(cmd))
     if not m:
         return set()
-    target = m.group(1).replace("~", str(Path.home())).replace("$HOME", str(Path.home())).rstrip("/")
-    # Claude Code names a project directory by its absolute path with / and . turned into -.
-    return {"cd-own-repo"} if target.replace("/", "-").replace(".", "-") == project else {"cd-other"}
+    return {"cd-own-repo"} if slug_matches(_absolute_target(m.group(1)), project) else {"cd-other"}
 
 
 def _git_c_tag(cmd: str, project: str) -> set[str]:
     """`git -C <path>` where <path> is the session's own repo — the directory it is already in.
 
-    Same normalisation as _cd_tag: Claude Code slugs a project directory by its absolute path with
-    `/` and `.` turned into `-`. Cross-repo `git -C` is the recommended shape and is not tagged.
+    Same normalisation as _cd_tag. Cross-repo `git -C` is the recommended shape and is not tagged.
     """
     m = re.search(r"\bgit\s+-C\s+(\S+)", strip_heredoc(cmd))
     if not m:
         return set()
-    target = m.group(1).replace("~", str(Path.home())).replace("$HOME", str(Path.home())).rstrip("/")
-    return {"git-C-own-repo"} if target.replace("/", "-").replace(".", "-") == project else set()
+    return {"git-C-own-repo"} if slug_matches(_absolute_target(m.group(1)), project) else set()
 
 
 def short_project(project: str) -> str:
-    """`-home-u-projects-github-com-personal-repo-tasks` -> `repo-tasks` (best effort)."""
-    for marker in ("-github-com-personal-", "-projects-"):
-        if marker in project:
-            return project.split(marker, 1)[1]
+    """`-home-u-projects-some-root-repo-tasks` -> `some-root-repo-tasks` (best effort).
+
+    The slug is lossy, so this cannot recover the path; it strips the home prefix when the
+    transcript came from under `$HOME` and otherwise keeps the tail. It used to also cut at the
+    author's own root name, which was one machine's layout in shipped code.
+    """
+    home = project_slug(str(Path.home()))
+    if project.startswith(home + "-"):
+        rest = project[len(home) + 1 :]
+        return rest.removeprefix("projects-")
     return project[-24:]
 
 

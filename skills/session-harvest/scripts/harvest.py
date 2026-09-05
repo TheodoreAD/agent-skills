@@ -290,6 +290,16 @@ def _from_job(job_id: str | None, must_match: str | None = None) -> tuple[Path, 
     return path, f"{state_path} (job {session}, linkScanPath)"
 
 
+def project_slug(cwd: Path) -> str:
+    """The transcript directory Claude Code writes for a project: every character that is not an
+    ASCII letter or digit becomes `-`, read from the CLI binary 2026-09-05. Past 200 characters the
+    harness cuts the slug and appends a hash this script cannot recompute, so a directory lookup for
+    such a path falls back to the machine-wide search. Same three lines as `audit.py`, duplicated
+    rather than imported, because skills install individually."""
+    slug = re.sub(r"[^a-zA-Z0-9]", "-", str(cwd))
+    return slug if len(slug) <= 200 else ""
+
+
 def _search_projects(needle: str) -> list[Path]:
     return sorted(
         (p for p in PROJECTS_DIR.rglob("*.jsonl") if p.stem == needle or p.stem.startswith(needle)),
@@ -304,9 +314,9 @@ def _by_content(expect: str, cwd: Path) -> list[Path]:
     Scoped to the project directory for `cwd` when one exists, because a marker distinctive enough
     to identify a session is rarely distinctive across every project on the machine.
     """
-    slug = "-" + str(cwd).strip("/").replace("/", "-").replace(".", "-")
-    scoped = PROJECTS_DIR / slug
-    pool = sorted(scoped.glob("*.jsonl")) if scoped.is_dir() else list(PROJECTS_DIR.rglob("*.jsonl"))
+    slug = project_slug(cwd)
+    scoped = PROJECTS_DIR / slug if slug else None
+    pool = sorted(scoped.glob("*.jsonl")) if scoped and scoped.is_dir() else list(PROJECTS_DIR.rglob("*.jsonl"))
     hits = [p for p in pool if expect in p.read_text(encoding="utf-8", errors="replace")]
     return sorted(hits, key=lambda p: -p.stat().st_mtime)
 

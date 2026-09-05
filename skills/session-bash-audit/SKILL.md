@@ -26,12 +26,14 @@ match, and the report then reads as "no problems found" when it means "wrong too
 transcript". Until someone runs it against a real PowerShell transcript, read a suspiciously clean
 run on Windows as the second, not the first.
 
-**One number would go quietly wrong there rather than loudly**, and it is worth knowing before
-trusting a Windows run: `cd-own-repo` and `git-C-own-repo` decide "own repo" by slugging the
-command's target the way Claude Code slugs a project directory — replacing `/` and `.` with `-` —
-and what the harness writes for a Windows path has never been seen here. If it treats backslashes
-differently, both tags and `--project` match nothing and report zero, which reads as perfect
-adherence. A zero on those two rows from a Windows transcript is unverified, not good news.
+**`cd-own-repo` and `git-C-own-repo` decide "own repo" by slugging the command's target the way
+Claude Code slugs a project directory**, and until 2026-09-05 they got that wrong on every platform:
+they replaced `/` and `.` while the harness replaces _every_ character that is not an ASCII letter
+or digit (read from the CLI binary that day, with a 200-character cap and a hash suffix past it). A
+repo path holding an underscore therefore never matched and both rows reported zero, which reads as
+perfect adherence. The script now uses the harness's own rule, so a Windows path (`\`, `:`) slugs
+the same way a Linux one does; a zero on those rows is still only as good as the transcript being a
+POSIX-shell one, per the paragraph above.
 
 **The same two rows go quietly wrong for a session run from a git worktree, on any platform, and
 that is the harder one because nothing about the transcript looks unusual.** Both tags compare the
@@ -46,8 +48,8 @@ This is a **declared limitation, not a fix**, because the data cannot support on
 transcripts offline, long after the directory may be gone, so it cannot ask git which checkout a
 slug was. The only signal is the slug's own shape, and it exists for one layout out of several —
 Claude Code's `<repo>/.claude/worktrees/<name>` leaves a `--claude-worktrees-` segment (derived from
-the `/`-and-`.`-to-`-` rule, not observed: none of the 211 project directories on this author's
-machine is a worktree), while VS Code's default `<repo>.worktrees/<name>` and the flat
+the harness's slug rule, not observed: none of the 211 project directories on this author's machine
+is a worktree), while VS Code's default `<repo>.worktrees/<name>` and the flat
 `<repo>-<branch>` beside a checkout are indistinguishable from an ordinary repo name. Half a fix
 across one layout would make the other layouts read as verified. Treat a zero on those two rows as
 unverified whenever the session may have run from a worktree, the same as for Windows.

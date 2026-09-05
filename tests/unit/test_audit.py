@@ -75,3 +75,49 @@ def test_a_heredoc_body_is_not_a_command():
 def test_strip_quoted_keeps_the_shell_shape():
     assert audit.strip_quoted('rg -n "a|b" f | tail -1') == 'rg -n "" f | tail -1'
     assert audit.strip_quoted("echo 'it | is' > f") == 'echo "" > f'
+
+
+# --------------------------------------------------------------------------------------------
+# the own-repo tags compare against the slug the harness actually writes
+
+
+@pytest.mark.parametrize(
+    ("target", "project"),
+    [
+        ("/home/u/projects/my_repo", "-home-u-projects-my-repo"),
+        ("/home/u/projects/a.b/c+d", "-home-u-projects-a-b-c-d"),
+        ("/home/u/projects/x", "-home-u-projects-x"),
+        ("C:\\Users\\u\\projects\\x", "C--Users-u-projects-x"),
+    ],
+)
+def test_the_slug_replaces_every_non_alphanumeric(target, project):
+    """Read from the Claude Code binary 2026-09-05: `replace(/[^a-zA-Z0-9]/g, "-")`. The tags
+    replaced only `/` and `.`, so an underscore, a space or a Windows separator slugged to a
+    directory the harness never writes and both own-repo rows reported zero — on every platform,
+    not only the Windows one the skill had been warning about."""
+    assert audit.slug_matches(target, project)
+    assert audit._cd_tag(f"cd {target} && ls", project) == {"cd-own-repo"}
+    assert audit._git_c_tag(f"git -C {target} status", project) == {"git-C-own-repo"}
+
+
+def test_a_different_directory_is_still_not_the_own_repo():
+    assert audit._cd_tag("cd /home/u/projects/other && ls", "-home-u-projects-my-repo") == {"cd-other"}
+    assert audit._git_c_tag("git -C /home/u/projects/other log", "-home-u-projects-my-repo") == set()
+
+
+def test_a_slug_past_the_cap_matches_on_its_prefix():
+    """Past 200 characters the harness cuts the slug and appends a hash nobody can recompute, so
+    equality has to become a prefix match — otherwise a deep path silently never matches."""
+    deep = "/home/u/" + "/".join(["directory"] * 30)
+    slug = audit.project_slug(deep)
+    assert len(slug) > audit.SLUG_CAP
+    assert audit.slug_matches(deep, slug[: audit.SLUG_CAP] + "-abc123")
+    assert not audit.slug_matches(deep, slug[: audit.SLUG_CAP - 1] + "-abc123")
+
+
+def test_short_project_no_longer_knows_the_authors_root(monkeypatch):
+    monkeypatch.setattr(audit.Path, "home", classmethod(lambda cls: Path("/home/u")))
+    assert audit.short_project("-home-u-projects-some-root-repo-tasks") == "some-root-repo-tasks"
+    assert audit.short_project("-home-u-projects-flat-repo") == "flat-repo"
+    assert audit.short_project("-home-u-elsewhere-thing") == "elsewhere-thing"
+    assert audit.short_project("-tmp-scratch-x") == "-tmp-scratch-x"

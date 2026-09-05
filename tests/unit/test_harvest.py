@@ -890,3 +890,39 @@ def test_a_submodule_is_not_mistaken_for_a_worktree(tmp_path):
     (fake / ".git").write_text("gitdir: ../../.git/modules/vendor/sub\n", encoding="utf-8")
 
     assert harvest.worktree_main(fake) is None
+
+
+# --------------------------------------------------------------------------------------------
+# the transcript directory is named the way the harness names it
+
+
+def test_by_content_scopes_to_the_slug_the_harness_writes(tmp_path, monkeypatch):
+    """Claude Code slugs a project path as `[^a-zA-Z0-9]` -> `-` (read from the binary
+    2026-09-05). This lookup replaced only `/` and `.`, so a cwd holding an underscore looked in a
+    directory that does not exist and fell back to searching every project on the machine — where a
+    marker distinctive within one project is rarely distinctive at all."""
+    projects = tmp_path / "projects"
+    own = projects / "-home-u-projects-my-repo"
+    other = projects / "-home-u-projects-other"
+    own.mkdir(parents=True)
+    other.mkdir(parents=True)
+    (own / "a.jsonl").write_text("ran the marker here\n", encoding="utf-8")
+    (other / "b.jsonl").write_text("ran the marker here\n", encoding="utf-8")
+    monkeypatch.setattr(harvest, "PROJECTS_DIR", projects)
+
+    hits = harvest._by_content("the marker", Path("/home/u/projects/my_repo"))
+
+    assert hits == [own / "a.jsonl"]
+
+
+def test_a_path_past_the_slug_cap_searches_machine_wide(tmp_path, monkeypatch):
+    """Past 200 characters the harness appends a hash this script cannot recompute, so the scoped
+    directory cannot be named and the honest fallback is the whole store, not a guessed name."""
+    projects = tmp_path / "projects"
+    (projects / "-deep").mkdir(parents=True)
+    (projects / "-deep" / "a.jsonl").write_text("the marker\n", encoding="utf-8")
+    monkeypatch.setattr(harvest, "PROJECTS_DIR", projects)
+    deep = Path("/home/u/" + "/".join(["directory"] * 30))
+
+    assert harvest.project_slug(deep) == ""
+    assert harvest._by_content("the marker", deep) == [projects / "-deep" / "a.jsonl"]

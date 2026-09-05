@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-05
 ---
 
@@ -58,21 +58,38 @@ and discarded one line before the branch that needed it.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: should a differing `scripts/` produce the same verdict as a differing
-`SKILL.md`, or its own? They have different remedies for the reader — a stale `SKILL.md` means
-re-read the procedure from whichever side is ahead, a stale script means the next run executes old
-code and cannot be re-read into correctness. Arguably the script case is the more urgent of the two
-and should say so rather than being folded in.]
+[DECISION: **the same three branches, plus a clause of its own.** A stale `scripts/` takes the same
+dirty/ahead/stale verdict as a stale `SKILL.md`, because the three causes of a difference are the
+same three whichever part differs — but it appends "the stale part includes `scripts/`, which this
+session EXECUTES rather than reads". Two verdict vocabularies for one question would have to be kept
+in step; one vocabulary with a clause about the remedy does not, and the remedy is the only thing
+that actually differs: a stale `SKILL.md` can be re-read from whichever side is ahead, and a stale
+script cannot.]
 
-[NEEDS CLARIFICATION: whether `references/` should count. It differs for `plan-docs` here, and a
-stale `references/` costs nothing at run time — nothing loads it unless the agent opens it, and a
-reader opening it in the checkout gets the current one. Counting it may be how this check becomes
-noisy enough to ignore, which is the failure the dirty/ahead/stale split was built to avoid.]
+[DECISION: **`references/` does not count.** It is read on demand and inert, so a difference there
+changes no run — and `_subdir_diffs` was split into `scripts` and `references` in the first place
+because a directory-scoped comparison "fired the most expensive branch in the procedure on a
+references-only commit" on 2026-08-30. Letting it back into the verdict would have re-created that
+defect one level up. It is still reported, in its own wording: "installed copy matches, except
+`references/` — read on demand and inert, so nothing to do".]
 
-[NEEDS CLARIFICATION: whether the dirty and unpushed branches need the same treatment. They are
-reached only when `same` is false, so a checkout that is dirty **only in `scripts/`** currently
-reports "matches" and never reaches the branch that would have said "another session is
-mid-restructure, touch nothing" — which is the case that rule was written for.]
+[DECISION: **yes, and that was the sharper half of the bug.** The dirty and unpushed branches sat
+behind `if same:`, so a checkout dirty **only in `scripts/`** never reached the branch that says
+another session is mid-restructure — the exact case that rule exists for, unreachable since it was
+written. The gate is now computed from both facts, so all three branches see every difference.]
+
+## What landed
+
+The verdict is decided by `SKILL.md` identity **and** a differing `scripts/`, with `references/`
+excluded by design. The move-since-session-start note moved into `_with_move_check` when the verdict
+grew an early return, so it cannot be appended by one branch and missed by another — which is the
+shape of the defect being fixed, one level down.
+
+Four tests, and the three new ones each cover a branch that could not previously be reached: a
+changed script with a byte-identical `SKILL.md`, a references-only difference, and a checkout dirty
+only in `scripts/`. Run against this machine afterwards, all three installed skills changed verdict
+and all three are now true — `session-harvest` DIRTY rather than matching, `plan-docs` matching
+except `references/`, `session-bash-audit` stale in both `SKILL.md` and `scripts/`.
 
 ## Recommended direction
 

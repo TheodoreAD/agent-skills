@@ -1104,20 +1104,41 @@ def skill_state(runner: Runner, name: str, checkout: Path, installed_root: Path,
     )
     last = runner(["git", "-C", str(checkout), "log", "-1", "--format=%cI", "--", f"{rel}/SKILL.md"]).out.strip()
 
+    subdirs = _subdir_diffs(installed, source)
     state |= {
         "skill_md_identical": same,
-        "subdirs_differing": _subdir_diffs(installed, source),
+        "subdirs_differing": subdirs,
         "checkout_dirty": dirty,
         "unpushed_commits": ahead,
         "skill_md_last_commit": last,
     }
 
+    # What the verdict is about: the parts of the installed copy that decide what a run does.
+    # `SKILL.md` is held in context and `scripts/` is executed; `references/` is read on demand and
+    # inert, so a difference there changes no run and must not read as a stale install.
+    #
+    # Until 2026-09-05 this branched on `same` alone, so a skill whose script had changed while its
+    # SKILL.md had not reported "installed copy matches the checkout" — with `subdirs_differing`
+    # naming `scripts` in the same payload, computed one line above and never read. Found by running
+    # this check right after fixing two bugs in THIS script: the installed copy did not contain the
+    # function committed an hour earlier and the verdict said it matched. `scripts/` is the likelier
+    # half to be stale, too, since SKILL.md changes when the procedure does while a script changes on
+    # every fix — and this repo's convention pushes anything derivable out of the body and into a
+    # script, so the share this check has to see keeps growing.
+    stale_script = "scripts" in subdirs
+    if same and not stale_script:
+        state["verdict"] = (
+            "installed copy matches the checkout"
+            if not subdirs
+            else "installed copy matches, except references/ — read on demand and inert, so nothing to do"
+        )
+        return _with_move_check(state, runner, checkout, rel, since, last)
+
     # The three causes of a difference, which the diff alone cannot tell apart. Confirmed both ways
     # a day apart in 2026-08-30/29: the same non-empty diff meant "re-install" on a clean, level
     # checkout and "another session is mid-restructure, touch nothing" on a dirty one.
-    if same:
-        state["verdict"] = "installed copy matches the checkout"
-    elif dirty:
+    what = "SKILL.md and scripts/" if stale_script and not same else "scripts/" if stale_script else "SKILL.md"
+    if dirty:
         touched = any(x.endswith("SKILL.md") for x in dirty)
         whose = "SKILL.md itself is uncommitted" if touched else "elsewhere in the skill"
         state["verdict"] = (
@@ -1129,8 +1150,22 @@ def skill_state(runner: Runner, name: str, checkout: Path, installed_root: Path,
             "a re-install reinstalls the same stale copy; the push belongs to whoever authored them"
         )
     else:
-        state["verdict"] = "install is stale against a clean, pushed checkout — a re-install is the remedy"
+        state["verdict"] = f"install is stale ({what}) against a clean, pushed checkout — a re-install is the remedy"
+    if stale_script:
+        # Said separately because the remedy differs: a stale SKILL.md can be re-read from whichever
+        # side is ahead, and a stale script cannot — the run executes it.
+        state["verdict"] += "; the stale part includes scripts/, which this session EXECUTES rather than reads"
+    return _with_move_check(state, runner, checkout, rel, since, last)
 
+
+def _with_move_check(
+    state: dict[str, Any], runner: Runner, checkout: Path, rel: str, since: str | None, last: str
+) -> dict[str, Any]:
+    """The moved-after-this-session-began note, appended to whatever verdict was reached.
+
+    Split out when the verdict grew an early return, so the note cannot be reached by one branch and
+    missed by another — which is the shape of the defect the early return exists to fix.
+    """
     if since and last:
         moved = as_instant(last) is not None and as_instant(since) is not None and as_instant(last) > as_instant(since)
         state["moved_since_session_start"] = moved

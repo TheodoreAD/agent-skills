@@ -540,6 +540,68 @@ def test_pycache_does_not_make_scripts_look_different(tmp_path):
     assert harvest._subdir_diffs(installed, source) == []
 
 
+def test_a_changed_script_is_not_an_install_that_matches(tmp_path):
+    """The verdict branched on SKILL.md alone, so a skill whose script had changed while its
+    procedure had not reported "installed copy matches the checkout" — with `subdirs_differing`
+    naming `scripts` in the same payload, computed one line above the branch and never read.
+
+    Confirmed 2026-09-05 by running this check right after fixing two bugs in this very script: the
+    installed copy did not contain the function committed an hour earlier, and two of the three rows
+    printed contradicted their own verdict.
+    """
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    make_skill(checkout, "demo", "same body\n", script="print('new')\n")
+    make_installed(installed_root, "demo", "same body\n", script="print('old')\n")
+
+    state = harvest.skill_state(FakeRunner(), "demo", checkout, installed_root, since=None)
+
+    assert state["skill_md_identical"] is True
+    assert state["subdirs_differing"] == ["scripts"]
+    assert "matches" not in state["verdict"]
+    assert "scripts/" in state["verdict"]
+    assert "EXECUTES" in state["verdict"], "a stale script cannot be re-read into correctness"
+
+
+def test_a_references_only_difference_is_not_a_stale_install(tmp_path):
+    """`references/` is read on demand and inert, so a difference there changes no run. Counting it
+    as staleness is how a check with three honest branches becomes one nobody reads — the same
+    directory-scoped comparison fired the most expensive branch on a references-only commit in
+    2026-08-30, which is why `_subdir_diffs` splits them at all."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    source = make_skill(checkout, "demo", "same body\n")
+    installed = make_installed(installed_root, "demo", "same body\n")
+    (source / "references").mkdir()
+    (source / "references" / "r.md").write_text("new\n")
+    (installed / "references").mkdir()
+    (installed / "references" / "r.md").write_text("old\n")
+
+    state = harvest.skill_state(FakeRunner(), "demo", checkout, installed_root, since=None)
+
+    assert state["subdirs_differing"] == ["references"]
+    assert "references/" in state["verdict"]
+    assert "stale" not in state["verdict"]
+
+
+def test_a_dirty_checkout_is_reached_when_only_the_script_differs(tmp_path):
+    """The dirty and unpushed branches sat behind `if same:`, so a checkout dirty only in `scripts/`
+    never reached the branch that says another session is mid-restructure — the case that rule was
+    written for."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    make_skill(checkout, "demo", "same body\n", script="print('new')\n")
+    make_installed(installed_root, "demo", "same body\n", script="print('old')\n")
+    runner = FakeRunner(
+        {f"git -C {checkout} status --porcelain -- skills/demo": (0, " M skills/demo/scripts/x.py\n", "")}
+    )
+
+    state = harvest.skill_state(runner, "demo", checkout, installed_root, since=None)
+
+    assert "DIRTY" in state["verdict"]
+    assert "elsewhere in the skill" in state["verdict"]
+
+
 @pytest.mark.parametrize(
     ("dirty", "ahead", "expected"),
     [

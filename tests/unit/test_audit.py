@@ -350,6 +350,34 @@ def test_the_masked_row_separates_a_gate_from_a_listing(capsys):
     assert "2 wrapped a gate, 1 a listing" in row
 
 
+@pytest.mark.parametrize(
+    ("cmd", "bundled"),
+    [
+        ("rg -rn cd src", True),
+        ("rg -ril todo .", True),
+        ("rg -nr pat f", True),
+        ("rg -o -r '' 'v[0-9]+' notes.md", False),
+        ("rg --replace '' -o pat f", False),
+        ("rg -il todo .", False),
+    ],
+)
+def test_only_a_bundled_r_is_the_accident(cmd, bundled):
+    """A flag group of two or more letters containing `r` means `-r` took the rest of the group as
+    its replacement string, and nobody wants that. A lone `-r` is the deliberate `rg -o -r ''`
+    extraction idiom — 13 of the parent row's 86 hits over the 30 days to 2026-09-06 — which is why
+    `EXPECTATIONS` scores the bundle and leaves `rg-replace` itself unjudged."""
+    tags = tags_of(cmd)
+    assert ("rg-replace-bundle" in tags) is bundled
+    assert "rg-replace" in tags or not bundled
+
+
+def test_the_bundle_is_the_row_that_carries_the_expectation():
+    assert audit.EXPECTATIONS["rg-replace-bundle"] == "zero"
+    assert "rg-replace" not in audit.EXPECTATIONS, (
+        "the parent row counts deliberate --replace too, so zero there is a verdict nobody can satisfy"
+    )
+
+
 def test_every_judged_row_is_a_row_that_gets_computed():
     """`EXPECTATIONS` judged `find-not-fd` while `rates()` computed `RATE_COLUMNS` plus two, and that
     row was in neither. `compare` read it as absent from both runs and skipped it as "a pattern added

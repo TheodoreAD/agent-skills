@@ -372,6 +372,18 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
         "prints every match with the matched text rewritten — plausible output that is not what the "
         "file says. Deliberate --replace exists, so read the sample before counting it a defect",
     ),
+    # The subset of the row above that is always an accident, and the only half that can carry an
+    # expectation. A flag group of two or more letters containing `r` means `-r` took the remaining
+    # letters as its replacement string; a lone `-r` or a spelled-out `--replace` is the deliberate
+    # `rg -o -r '' <pattern> <path>` idiom, which is 13 of the row's 86 hits over the 30 days to
+    # 2026-09-06 and correct usage of a real flag. Scoring the parent row `zero` would therefore be
+    # a verdict nobody can satisfy; scoring this one `zero` asks only that the accident stop.
+    "rg-replace-bundle": (
+        _rx_unquoted(r"(?:^|&&|;|\||\n)\s*rg\b[^|;&\n]*?\s-(?=[A-Za-z]*r)[A-Za-z]{2,}(?=[\s=])"),
+        "a bundled -r took the rest of the group as its replacement string: `rg -rn` prints "
+        "rewritten matches and no line numbers, `rg -ril` searches case-sensitively for lines where "
+        "you asked for a case-insensitive file list. Spell --replace in full when you mean it",
+    ),
 }
 
 
@@ -537,6 +549,7 @@ SESSION_ROWS = [
     "find-not-fd",
     "find-exempt",
     "rg-replace",
+    "rg-replace-bundle",
 ]
 
 # What a re-measurement after the 2026-08-24 changes (acceptEdits default, rewritten ~/AGENTS.md
@@ -555,6 +568,10 @@ EXPECTATIONS: dict[str, str] = {
     "git-mutating-in-chain": "down",
     "git-C-mutating": "zero",
     "find-not-fd": "down",
+    # The bundle, never the parent row: `rg-replace` counts the deliberate `-o -r ''` idiom too, so
+    # `zero` there would demand that correct usage stop. Added 2026-09-06, once the split existed to
+    # key on. `rg-replace` itself stays unjudged for the same reason `grep-r-not-rg` does.
+    "rg-replace-bundle": "zero",
     # `grep-r-not-rg` is deliberately absent, and `find-exempt` too. The first sat at 8% of its pair
     # when measured (2026-08-29) — adherence already good, so the useful direction is "not up",
     # which this table cannot express: "down" would demand improvement on a rule that is being

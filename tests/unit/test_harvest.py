@@ -396,6 +396,20 @@ def test_docker_created_at_is_parsed():
     assert harvest._docker_instant("img\t1GB\tnonsense") is None
 
 
+def bash_entry(command: str, timestamp: str = "2026-09-02T10:00:00.000Z") -> dict[str, object]:
+    block = {"type": "tool_use", "id": "b", "name": "Bash", "input": {"command": command}}
+    return blocks_entry("assistant", [block], timestamp=timestamp)
+
+
+def test_last_activity_is_the_latest_entry_parsed_not_the_latest_string():
+    entries = [
+        bash_entry("first", timestamp="2026-09-06T09:00:00Z"),
+        bash_entry("second", timestamp="2026-09-06T11:30:00+03:00"),  # 08:30Z — earlier
+    ]
+    assert harvest.as_instant(harvest.last_activity(entries)) == harvest.as_instant("2026-09-06T09:00:00Z")
+    assert harvest.last_activity([]) is None
+
+
 # --------------------------------------------------------------------------------------------
 # git state
 # --------------------------------------------------------------------------------------------
@@ -770,6 +784,43 @@ def test_the_sweeps_own_pipeline_is_not_a_surviving_process(monkeypatch):
     result = harvest.processes(FakeRunner(), table)
     assert [row["pid"] for row in result["session_children"]] == [600]
     assert result["harness_pid"] == 10
+
+
+def test_a_listener_says_whether_a_session_still_holds_it():
+    """Step 5's rule turns on "reparented to `systemd --user` rather than held by a live session",
+    and until 2026-09-06 the sweep printed neither the parent nor its command. Confirmed 2026-09-05:
+    deciding what to report took two further `ps -o pid,ppid` calls the sweep had the data for, and
+    without the second one "orphaned" would have been an assumption."""
+    ss_output = 'LISTEN 0 5 127.0.0.1:8765 0.0.0.0:* users:(("python3",pid=42,fd=3))\n'
+    runner = FakeRunner({"ss -ltnp": (0, "header\n" + ss_output, "")})
+    table = {
+        7: harvest.Process(1, 7, "S", 90000, "/usr/lib/systemd/systemd --user"),
+        42: harvest.Process(7, 42, "S", 900, "python3 -m http.server 8765"),
+    }
+    served = harvest.sockets(runner, table)["listeners"][0]["processes"][0]
+    assert served["orphaned"] is True, "parented to systemd --user, so no session holds it"
+    assert served["parent"].endswith("systemd --user")
+
+    table[42] = harvest.Process(7, 42, "S", 900, "python3 -m http.server 8765")
+    table[7] = harvest.Process(1, 7, "S", 90000, "-zsh")
+    held = harvest.sockets(runner, table)["listeners"][0]["processes"][0]
+    assert held["orphaned"] is False, "a live shell holds it — somebody is working"
+
+
+def test_a_parent_missing_from_the_listing_is_unknown_rather_than_orphaned():
+    """The sweep supplies this fact; inventing it would defeat the point of supplying it."""
+    proc = harvest.Process(4242, 99, "S", 900, "python3 -m http.server")
+    assert harvest.parentage({99: proc}, proc)["orphaned"] is None
+
+
+def test_a_process_started_after_the_sessions_last_activity_is_not_that_sessions():
+    """Confirmed 2026-09-05: an `http.server` whose start was 36 minutes after the harvested
+    session's last entry was nearly reported as that session's own leftover — the misattribution
+    step 5 already warns about for unpushed commits, arriving through a different door."""
+    two_hours_ago = (harvest.datetime.now(harvest.UTC) - harvest.timedelta(hours=2)).isoformat()
+    assert harvest.started_after(600, two_hours_ago) is True, "ten minutes old, so it began after"
+    assert harvest.started_after(36000, two_hours_ago) is False, "ten hours old, so it predates it"
+    assert harvest.started_after(600, None) is None, "no transcript, so no claim either way"
 
 
 def test_a_machine_without_ps_reports_unavailable_rather_than_no_survivors():
@@ -1292,7 +1343,9 @@ def test_windows_netstat_listeners_use_the_same_shape_as_ss(tmp_path, monkeypatc
     assert loopback["exposed"] is False
     assert exposed["processes"][0]["name"] == "python.exe"
     assert exposed["processes"][0]["readable_secrets"] == [".env"]
-    assert loopback["processes"] == [{"name": "node.exe", "pid": 43}]
+    served_keys = {"serves", "is_repo_root", "readable_secrets"}
+    assert [(p["name"], p["pid"]) for p in loopback["processes"]] == [("node.exe", 43)]
+    assert not served_keys & set(loopback["processes"][0]), "nothing is claimed about what it serves"
     assert result["over_a_repo"] == [exposed]
 
 

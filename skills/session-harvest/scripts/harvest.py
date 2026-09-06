@@ -52,7 +52,7 @@ import sys
 import tomllib
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PureWindowsPath
 from typing import Any, Protocol
 
@@ -631,6 +631,17 @@ def shell_targets(entries: Iterable[dict[str, Any]]) -> list[Path]:
                     continue
                 seen[str(Path(target).expanduser())] = None
     return [Path(p) for p in seen]
+
+
+def last_activity(entries: Iterable[dict[str, Any]]) -> str | None:
+    """The transcript's own last stamped entry — the moment a process's age is compared against.
+
+    Parsed rather than string-compared: the corpus's standing trap is that a transcript stamps UTC
+    with a trailing `Z` while everything else carries an offset, and comparing those as text sorts
+    by the offset instead of by the moment.
+    """
+    instants = [moment for entry in entries if (moment := as_instant(str(entry.get("timestamp", "")))) is not None]
+    return max(instants).isoformat() if instants else None
 
 
 def bash_calls(entries: Iterable[dict[str, Any]]) -> list[tuple[str, str]]:
@@ -1288,7 +1299,49 @@ def _windows_process_table(runner: Runner, mine: int) -> dict[int, Process]:
     return table
 
 
-def processes(runner: Runner, table: dict[int, Process] | None = None) -> dict[str, Any]:
+REPARENTED_RE = re.compile(r"\b(systemd|init|launchd)\b")
+
+
+def parentage(table: dict[int, Process], proc: Process) -> dict[str, Any]:
+    """Who holds this process — the fact the orphan rule turns on, reported rather than fetched.
+
+    `SKILL.md`'s step 5 tells the reader that an orphan reparented to `systemd --user` is a
+    different finding from a process a live session still holds, and until 2026-09-06 the sweep
+    printed neither the parent nor its command, so every run that reached that rule paid for it in
+    two more `ps -o pid,ppid` calls. Confirmed 2026-09-05: a harvest did exactly that, and without
+    the second call "orphaned" would have been an assumption — which is how the rule came to exist.
+
+    `orphaned` is deliberately three-valued. A parent missing from the listing is not evidence of
+    an orphan, and reporting one as orphaned would be the sweep inventing the fact it exists to
+    supply.
+    """
+    parent = table.get(proc.ppid)
+    if proc.ppid <= 1:
+        orphaned: bool | None = True
+    elif parent is None:
+        orphaned = None
+    else:
+        orphaned = bool(REPARENTED_RE.search(parent.args.split(maxsplit=1)[0] if parent.args else ""))
+    return {"ppid": proc.ppid, "parent": parent.args[:80] if parent else "", "orphaned": orphaned}
+
+
+def started_after(etimes: int, cutoff: str | None) -> bool | None:
+    """Whether a process began after a moment. Its age is the only start time the table carries.
+
+    The comparison that separates "my leftover" from "somebody else's process": a listener that
+    started after the harvested session's last transcript entry cannot be that session's, whatever
+    else it looks like. Confirmed 2026-09-05 — an `http.server` whose start was 36 minutes after the
+    session's last activity was nearly reported as that session's own litter.
+    """
+    moment = as_instant(cutoff) if cutoff else None
+    if moment is None:
+        return None
+    return datetime.now(UTC) - timedelta(seconds=etimes) > moment
+
+
+def processes(
+    runner: Runner, table: dict[int, Process] | None = None, last_activity: str | None = None
+) -> dict[str, Any]:
     """Survivors of the turn that spawned them, plus everything holding a listening socket.
 
     Two populations, deliberately: descendants of this session's own harness process (the
@@ -1317,7 +1370,15 @@ def processes(runner: Runner, table: dict[int, Process] | None = None) -> dict[s
     harness = next((pid for pid in chain if "claude" in table[pid].args), None)
 
     def row(pid: int, proc: Process, **extra: Any) -> dict[str, Any]:
-        return {"pid": pid, "stat": proc.stat, "etimes": proc.etimes, "args": proc.args[:200], **extra}
+        return {
+            "pid": pid,
+            "stat": proc.stat,
+            "etimes": proc.etimes,
+            "args": proc.args[:200],
+            **parentage(table, proc),
+            "started_after_last_activity": started_after(proc.etimes, last_activity),
+            **extra,
+        }
 
     # This call's own pipeline is not a survivor. Excluded by process group rather than by age: the
     # `ps` reading the table and whatever is filtering its output both show up as children of the
@@ -1402,7 +1463,9 @@ def _netstat_listeners(lines: list[str], table: dict[int, Process]) -> list[tupl
     return out
 
 
-def sockets(runner: Runner, table: dict[int, Process] | None = None) -> dict[str, Any]:
+def sockets(
+    runner: Runner, table: dict[int, Process] | None = None, last_activity: str | None = None
+) -> dict[str, Any]:
     """What the survivors *expose*, which `ps` cannot see and liveness never flags.
 
     A development server's default bind is usually every interface, and that default is invisible
@@ -1431,15 +1494,20 @@ def sockets(runner: Runner, table: dict[int, Process] | None = None) -> dict[str
         served: list[dict[str, Any]] = []
         for name, pid in who:
             proc = table.get(pid)
+            # Who holds it and whether it predates the session are what the report reasons about,
+            # so they travel with every listener rather than only with the ones serving a directory.
+            held: dict[str, Any] = {"name": name, "pid": pid}
+            if proc is not None:
+                held |= parentage(table, proc)
+                held["started_after_last_activity"] = started_after(proc.etimes, last_activity)
             directory = _served_directory(pid, proc.args if proc else "")
             if directory is None:
-                served.append({"name": name, "pid": pid})
+                served.append(held)
                 continue
             readable = [n for n in SECRET_NAMES if (directory / n).exists()]
             served.append(
-                {
-                    "name": name,
-                    "pid": pid,
+                held
+                | {
                     "serves": str(directory),
                     "is_repo_root": (directory / ".git").exists(),
                     "readable_secrets": readable,
@@ -1744,9 +1812,12 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     # sockets, one git pass for the repo report and CI.
     table = process_table(runner) if wanted("processes", "sockets") else {}
     states = [repo_state(runner, p, since, not args.no_fetch, written) for p in repos] if wanted("repos", "ci") else []
+    # Can a process this old be this session's at all? Only a transcript answers that, so without
+    # one the claim is not made.
+    last = last_activity(entries) if transcript else None
     producers: dict[str, Callable[[], dict[str, Any]]] = {
-        "processes": lambda: {"processes": processes(runner, table)},
-        "sockets": lambda: {"sockets": sockets(runner, table)},
+        "processes": lambda: {"processes": processes(runner, table, last)},
+        "sockets": lambda: {"sockets": sockets(runner, table, last)},
         "disk": lambda: {"disk": disk(runner, since)},
         "repos": lambda: {"repos": [asdict(state) for state in states]},
         "ci": lambda: {"ci": {s.path: ci_runs(runner, Path(s.path), s.branch, since) for s in states}},
@@ -1842,10 +1913,31 @@ def _print_processes(procs: dict[str, Any] | None) -> None:
     print(f"  this session's surviving children: {len(children)}")
     for row in children[:15]:
         print(f"    pid {row['pid']:>7} {row['stat']:<4} {row['etimes']:>7}s  {row['args']}")
+        print(f"      {_holder(row)}")
     others = procs["watchers_and_servers"]
     print(f"  watchers and servers machine-wide: {len(others)}")
     for row in others[:15]:
         print(f"    pid {row['pid']:>7} {row['kind']:<8} {row['etimes']:>7}s  {row['args']}")
+        print(f"      {_holder(row)}")
+
+
+def _holder(row: dict[str, Any]) -> str:
+    """Who holds a process and whether it can be this session's, in one line per row.
+
+    Both facts are what the report reasons about and neither was printed before 2026-09-06, so
+    every run that reached step 5's orphan rule went and fetched them by hand.
+    """
+    orphaned = row.get("orphaned")
+    parent = f"parent {row.get('ppid')} {row.get('parent') or '(not in the listing)'}"
+    if orphaned is True:
+        held = f"ORPHANED — {parent}, so no session holds it"
+    elif orphaned is None:
+        held = f"holder unknown — {parent}"
+    else:
+        held = f"held by a live process — {parent}"
+    if row.get("started_after_last_activity") is True:
+        held += "; started AFTER this session's last activity, so it is not this session's"
+    return held
 
 
 def _print_sockets(socks: dict[str, Any] | None) -> None:
@@ -1860,6 +1952,8 @@ def _print_sockets(socks: dict[str, Any] | None) -> None:
         who = ", ".join(f"{p['name']}/{p['pid']}" for p in row["processes"])
         print(f"    {row['local']:<28} {flag:<24} {who}")
         for proc in row["processes"]:
+            if "ppid" in proc:
+                print(f"      {_holder(proc)}")
             if proc.get("is_repo_root") or proc.get("readable_secrets"):
                 secrets = ", ".join(proc.get("readable_secrets", [])) or "none by name"
                 print(f"      serves {proc['serves']} — repo root, readable: {secrets}")

@@ -513,6 +513,16 @@ What the script cannot do is decide what a finding means. That is this list:
   again rather than held by a live session, which is the check that tells the two apart. Say that
   the kill did not hold and let the lifetime question own the fix; killing on a loop inside one
   session is the shape this skill refuses everywhere else.
+
+  **The sweep answers both of those questions itself now, so read its line rather than re-deriving
+  it.** Every process and every listener carries its parent pid and that parent's command, and says
+  `ORPHANED` when the parent is `systemd`/`init`/`launchd`, `held by a live process` when it is
+  anything else, and `holder unknown` when the parent is not in the listing — the third is an honest
+  gap, never a quiet orphan. A row also says when the process **started after this session's last
+  activity**, which is what separates this session's litter from somebody else's process; on a
+  machine running parallel sessions age alone never establishes that. Both were prose rules costing
+  two `ps -o pid,ppid` calls per run until 2026-09-06 — the "a correction a script can simply not
+  make belongs in the script" case that step 6 names.
 - **Disk artifacts outside any repo.** Container images and build caches, throwaway interpreters,
   volumes — none of which `ps`, `git status` or either store can see. Report the sizes with a
   proposed removal line the user can approve; do not delete unasked, because the build cache is

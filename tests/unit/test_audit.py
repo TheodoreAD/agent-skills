@@ -238,6 +238,40 @@ def _no_git(monkeypatch):
 
 
 @pytest.mark.usefixtures("_no_git")
+def test_a_zero_expectation_is_judged_on_the_count(tmp_path, capsys):
+    """It was `after <= 0.02`, which is not a definition of zero at any scale, and it hid the
+    finding at both ends. Over the 7 days to 2026-09-06 every zero row passed for the busiest model
+    while carrying hundreds of instances — `git-C-mutating` 288, `git-C-own-repo` 231, `echo-exit`
+    146, `cd-own-repo` 94, all OK — and on a 157-call session one real `rg -rn` printed `1%(OK)`
+    beside a session view printing the count. A verdict that cannot be falsified hides a finding,
+    which is worse than one that overstates it."""
+    calls = [_call("rg -rn cd src")] + [_call("ls") for _ in range(199)]
+    baseline = tmp_path / "b.json"
+    audit.save_baseline(calls, baseline, days=7.0, note="")
+
+    audit.compare(calls, baseline)
+
+    line = next(ln for ln in capsys.readouterr().out.splitlines() if "rg-replace-bundle" in ln)
+    assert "rg-replace-bundle=1(MISS)" in line, "one instance in 200 calls is 0.5%, which the old band passed"
+
+
+@pytest.mark.usefixtures("_no_git")
+def test_a_zero_row_shows_no_delta_because_the_test_is_absolute(tmp_path, capsys):
+    """A percentage-point delta on a row living near zero rounds to `-0pp` and says nothing, and a
+    count delta is worse than nothing across different denominators: a 160-call session against a
+    15,000-call corpus baseline would read `-288` as though it had improved."""
+    clean = [_call("ls") for _ in range(200)]
+    baseline = tmp_path / "b.json"
+    audit.save_baseline([_call("rg -rn cd src"), *clean], baseline, days=7.0, note="")
+
+    audit.compare(clean, baseline)
+
+    line = next(ln for ln in capsys.readouterr().out.splitlines() if "rg-replace-bundle" in ln)
+    assert "rg-replace-bundle=0(OK)" in line
+    assert "pp" not in line.split("rg-replace-bundle=")[1].split()[0]
+
+
+@pytest.mark.usefixtures("_no_git")
 def test_writing_a_baseline_refuses_to_destroy_one(tmp_path):
     """The default path is UTC-dated, so a run at 02:13 local wrote the name the previous
     afternoon's baseline already had, and destroyed it with no prompt, no backup and no mention that

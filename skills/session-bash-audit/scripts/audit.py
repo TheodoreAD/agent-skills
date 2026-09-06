@@ -744,11 +744,29 @@ def compare(calls: list[Call], baseline_path: Path) -> None:
                 continue
             before = float(old.get(tag, 0.0))
             delta = (after - before) * 100
-            ok = after <= 0.02 if want == "zero" else after < before
+            # A "zero" expectation is judged on the count, not on a rate band. It used to be
+            # `after <= 0.02`, which is not a definition of zero at any scale and hid the finding at
+            # both ends: over the 7 days to 2026-09-06 **every** zero row passed for the busiest
+            # model while carrying hundreds of instances — `git-C-mutating` 288, `git-C-own-repo`
+            # 231, `echo-exit` 146, `cd-own-repo` 94, all reported OK — and on a 157-call session a
+            # single real `rg -rn` printed `1%(OK)` beside a session view that printed the count.
+            # A verdict that cannot be falsified is worse than a harsh one: it hides the finding
+            # instead of overstating it. The cell prints the count for these rows, since that is
+            # what is being judged, and keeps the pp delta so improvement still shows.
+            hits = round(after * int(cur["n"])) if want == "zero" else 0
+            ok = hits == 0 if want == "zero" else after < before
             mark = ("OK" if ok else "MISS") if judge else "?"
             if judge:
                 verdicts.append(ok)
-            cells.append(f"{tag}={after:.0%}({delta:+.0f}pp,{mark})")
+            if want == "zero":
+                # The count alone, and no delta: a "zero" expectation is absolute, so the baseline
+                # is not part of the test. A percentage-point delta on a row that lives near zero
+                # rounds to `-0pp` and says nothing, and a count delta is worse than nothing when
+                # the two runs have different denominators — a 160-call session against a
+                # 15,000-call corpus baseline would read `-288` as though it had improved.
+                cells.append(f"{tag}={hits}({mark})")
+            else:
+                cells.append(f"{tag}={after:.0%}({delta:+.0f}pp,{mark})")
         print(f"{label:44} n={cur['n']:5}  " + "  ".join(cells))
     if verdicts:
         print(f"\n{sum(verdicts)}/{len(verdicts)} expectations met (models with >=50 calls in both runs)")

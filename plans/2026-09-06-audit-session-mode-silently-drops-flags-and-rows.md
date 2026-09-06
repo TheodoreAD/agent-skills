@@ -151,16 +151,33 @@ spellings, both from the other plan. Five tests, and the first run on its own se
 `rg-replace 1 (-rn x 1)`: **the row the plan was written about caught this session's own `rg -rn`**,
 which is the shape the original finding said would go unreported.
 
-[NEEDS CLARIFICATION: **a `zero` verdict and a session-scale count can contradict each other on one
-screen, and now do.** `compare` scores `zero` as `after <= 0.02`, a band chosen for a corpus of
-thousands of calls. Run against a 124-call session on 2026-09-06 the view printed
-`rg-replace-bundle 1 1%` and the verdict line under it printed `rg-replace-bundle=1%(+1pp,OK)` — one
-real instance of a rule whose expectation is that it never happens, reported as met. This is the
-plan's own display finding one level up: the count is right, the band is a corpus band, and a reader
-sees both at once. Options: judge `zero` on the count when the run is one session (`after * n < 1`),
-keep the band and say in the skill that a `zero` verdict is a corpus judgement rather than a session
-one, or drop the band entirely and accept `MISS` on rows that sit at one or two instances across a
-corpus. The last one changes what several existing rows report, so it is not a small choice.]
+[DECISION: **`zero` means a count of zero, at every scale — the band is gone, 2026-09-06.** The
+question was filed as a session-scale display wrinkle: the view printed `rg-replace-bundle 1 1%` and
+the verdict under it printed `rg-replace-bundle=1%(+1pp,OK)`, one real instance of a rule whose
+expectation is that it never happens, reported as met. Measuring the corpus turned it into something
+larger. Over the 7 days to 2026-09-06, **every `zero` row passed for the busiest model while
+carrying hundreds of instances**:
+
+| row                    | Opus 5, 15,165 calls | old verdict |
+| ---------------------- | -------------------: | ----------- |
+| `git-C-mutating`       |                  288 | OK          |
+| `git-C-own-repo`       |                  231 | OK          |
+| `echo-exit`            |                  146 | OK          |
+| `cd-own-repo`          |                   94 | OK          |
+| `redirect-then-filter` |                   35 | OK          |
+| `rg-replace-bundle`    |                   46 | OK          |
+
+`after <= 0.02` is not a definition of zero at any scale; at 15,000 calls it takes 300 violations to
+fail. **A verdict that cannot be falsified hides a finding, which is worse than one that overstates
+it** — so the rejected option (keep the band, document it as a corpus judgement) was rejected on
+evidence rather than on taste. The corpus verdict line now carries more misses; they were always
+there.
+
+The scale-dependent option — count at session scale, band at corpus scale — was refused as the
+threshold nobody can defend, which this corpus objects to elsewhere in its own words. And the cell
+prints the count with **no delta**, because a `zero` test is absolute: a pp delta on a row near zero
+rounds to `-0pp`, and a count delta across different denominators would read a 160-call session
+against a 15,000-call baseline as `-288`, an improvement it did not make.]
 
 [PITFALL: **the same defect was one level further in, and nothing would have found it by reading.**
 `EXPECTATIONS` judged `find-not-fd` while `rates()` computed `RATE_COLUMNS` plus two — and

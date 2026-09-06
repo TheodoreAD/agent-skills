@@ -190,3 +190,23 @@ Revised 2026-09-06, after taking steps 1 and 2. What is left is smaller than wha
    corpus (`~/plans/…/2026-09-06-adherence-corpus-rows-understated-by-the-heredoc-bug.md`). Whatever
    lands here should be back-filled in the same pass rather than in two, and three of the seven
    transcripts expire around 2026-10-02.
+
+## Migrated to
+
+- **`skills/session-bash-audit/references/research.md`**, section "One rate over two outcomes: what
+  a column, a listing and a band each could not say (2026-09-06)" — the four-sample table that
+  showed the rate ranks sessions backwards, all three rejected shapes with the measurement that
+  killed each (the column against sample 8; the listing against 50% of 2,770 masked calls, 55 of 67
+  sessions, median 14 distinct shapes; scoring the row against the shell-dependence), the
+  `harvest.py claims` pitfall, and the `rg-replace` distribution including bare `-r` moving from 0
+  to 13 between the question and its answer.
+- **`SKILL.md`** already carries the rules themselves — how to read the gate/listing split, why the
+  bundle row rather than its parent carries the expectation, and why `exit-masked` is unjudged.
+- **The code and its tests** carry the contracts: `GATE_RE`, `masked_gate`, `rg_replace_flags`,
+  `rg-replace-bundle`, and the `EXPECTATIONS` comments that say why two rows are absent.
+
+Deliberately not migrated: the per-step "done 2026-09-06" log above (a verification log — the
+commits are the record), the `--samples` mechanics (already in `SKILL.md`), and the citations of
+`power-user-linux-setup`'s corpus plan, which that repo owns and keeps current. Item 5 above is not
+open work of this plan's: it is filed against the repo that owns the corpus, and named in
+`2026-09-06-audit-strip-heredoc-drops-the-rest-of-the-command.md`, which stays open.

@@ -123,9 +123,10 @@ the row would therefore be a verdict nobody can satisfy, which this corpus alrea
 
 The split the numbers actually want is bundle (74) against deliberate (14): a flag group carrying
 letters besides `r` is the accident, a lone `-r` or `--replace` is the idiom. **`zero` is defensible
-on the bundle and only on the bundle** — so the expectation waits on the per-bundle breakdown that
-`2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md` inherited, exactly the ordering both
-plans guessed at. One live failure in the window, worth citing when that row is built:
+on the bundle and only on the bundle** — so the expectation waited on the per-bundle breakdown owned
+by the gate-versus-listing plan, since retired into
+`skills/session-bash-audit/references/research.md` ("One rate over two outcomes"), exactly the
+ordering both plans guessed at. One live failure in the window, worth citing when that row is built:
 `rg -n "…" <path> -r 2>/dev/null` — a bare `-r` whose value the shell ate as a redirect, exit 123,
 with the error message discarded by the same redirect.]
 
@@ -137,11 +138,12 @@ helper both paths call, `report_session` returns its calls, `--save-baseline` er
 `--session` section now states both behaviours. It was the smaller change, it had no design question
 worth arguing, and it unblocked a caller that exists today: the harvest's adherence step.
 
-**Decided 2026-09-06 — the rows half**, in the three decisions above, taken with
-`2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md` open beside it as the sequencing
-required. Two of the three collapsed into one answer: they were both arguments about horizontal
-space, and a session view does not need to be a line. The third turned out not to belong to this
-plan at all — the expectation goes on the bundle sub-row, which the other plan owns.
+**Decided 2026-09-06 — the rows half**, in the three decisions above, taken with the
+gate-versus-listing plan open beside it as the sequencing required (that plan has since landed and
+retired; its measurements are in `skills/session-bash-audit/references/research.md` under "One rate
+over two outcomes"). Two of the three collapsed into one answer: they were both arguments about
+horizontal space, and a session view does not need to be a line. The third turned out not to belong
+to this plan at all — the expectation goes on the bundle sub-row, which that plan owned.
 
 **Built 2026-09-06, same day.** `SESSION_ROWS` is the session view's own list — `RATE_COLUMNS` plus
 `echo-exit`, `git-C-mutating`, `search|head`, `grep-r-not-rg`, `find-not-fd`, `find-exempt` and

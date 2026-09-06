@@ -67,13 +67,13 @@ per session the correction is an order of magnitude larger.
 | `5c8ee566` | 307 |               14% |            **25%** |
 | `13aa58df` | 252 |               27% |            **37%** |
 
-[PITFALL: **the last row is sample 6 of the published adherence corpus**, cited by
-`2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md` and recorded in
-`power-user-linux-setup`'s `plans/2026-09-02-agents-md-adherence-sample-corpus.md` at 27%. Its real
-rate is 37%. That sample is the one the gate-versus-listing argument leans on hardest — "the
-cleanest possible case of a high rate that means nothing" — so a correction to it is a correction to
-the reasoning built on it, not just to a cell. Any row of that corpus taken from a session that
-wrote patch heredocs is understated by the same mechanism.]
+[PITFALL: **the last row is sample 6 of the published adherence corpus**, recorded in
+`power-user-linux-setup`'s `plans/2026-09-02-agents-md-adherence-sample-corpus.md` at 27% and cited
+by the gate-versus-listing argument, now in `skills/session-bash-audit/references/research.md` under
+"One rate over two outcomes". Its real rate is 37%. That sample is the one the argument leans on
+hardest — "the cleanest possible case of a high rate that means nothing" — so a correction to it is
+a correction to the reasoning built on it, not just to a cell. Any row of that corpus taken from a
+session that wrote patch heredocs is understated by the same mechanism.]
 
 The two instruments' disagreement, which is what surfaced this: `harvest.py`'s `EXIT_MASKED_RE`
 matches the raw command, so it sees these calls and `audit.py` does not. Of 390 calls in the week

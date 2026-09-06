@@ -85,26 +85,49 @@ harvest that reads `head/tail=0%` and reports "zero" is over-claiming by up to o
 the section where a session's own adherence is stated. At corpus scale (tens of thousands of calls)
 the rounding is invisible; at session scale it is the difference between none and a couple.
 
-[NEEDS CLARIFICATION: **print counts beside rates in the session view, or one decimal place?** A
-count is unambiguous and is what a session-sized denominator actually wants — `head/tail=1 (0.5%)` —
-but it widens an already-long line. One decimal place is narrower and still reads as a rate, which
-is the thing that misleads. A third option is to print rates only above some n and counts below it,
-which trades a clear rule for a threshold nobody can defend — the same objection this corpus already
-made to a staleness threshold.]
+[DECISION: **counts beside rates, and the width objection dies with the one-line shape.** Both this
+question and the next one were arguments about horizontal space in a line that is already 229
+characters for 11 rows. A session view has **one** row — the corpus table is wide because it is
+models × rows — so it does not have to be a line at all. Printed vertically, one row per line with
+its count and its rate, there is no width budget to spend and nothing to trade off:
 
-[NEEDS CLARIFICATION: **which rows belong in the session view at all?** `RATE_COLUMNS` was built for
-the per-model corpus table, and a session view has inherited it without the question being asked.
-`rg-replace` is the instance that surfaced it, but `find-not-fd`, `grep-r-not-rg` and `find-exempt`
-are in the same position — computed, and absent from the summary line. Adding all of them widens a
-line that is already long, so the real question is whether a session view wants the same columns as
-a corpus view or a different, shorter set aimed at what one session can act on.]
+```
+head/tail     227   53%
+rg-replace      2    0%
+```
 
-[NEEDS CLARIFICATION: **does `EXPECTATIONS` want an `rg-replace` entry, and in which direction?**
-The table's vocabulary is `down` and `zero`. `zero` is defensible — the flag is never wanted, and
-`--replace` spelled in full is unaffected — but the corpus has a standing objection to a verdict
-nobody can satisfy, and the deliberate absences of `grep-r-not-rg` and `find-exempt` are precedent
-for leaving a well-followed rule unjudged. Decide it with the row's own numbers in hand: zero bare
-`-r` in the last measured corpus, against 32 real bundle instances.]
+Measured 2026-09-06 over 7 days, 67 sessions: median session n=247, so one call is 0.40% and rounds
+to `0%` — and the rows where that bites are the low-frequency ones. Of the 30 sessions with at least
+one `rg-replace`, **13 would print `0%`**; `find-not-fd` 9 of 20, `redirect-then-filter` 5 of 9,
+`find-exempt` 2 of 3. A false zero on roughly half the sessions that have the finding is not a
+rounding curiosity. One decimal place was the cheap fix and is rejected: `0.4%` is honest and still
+makes the reader do arithmetic to learn that it means one call.]
+
+[DECISION: **all of them, which is what dropping the line shape buys.** The question was only ever
+hard because every added row cost horizontal space; vertically it costs one line, and a row a
+session cannot act on costs one line saying `0`. So `rg-replace`, `find-not-fd`, `grep-r-not-rg` and
+`find-exempt` join the view, and the corpus's `RATE_COLUMNS` stops being the session view's column
+list — it keeps its own job, which is the per-model table where width is a real constraint. **A zero
+that is printed is the point**: the original finding here was that a session can commit `rg-replace`
+and read an adherence line that does not mention it in either direction. A row nobody prints cannot
+be read as zero, and a row printed as `0` can.]
+
+[DECISION: **not this row — the bundle sub-row, once it exists.** The question offered `down` or
+`zero` for `rg-replace`, and the row's own numbers refuse both. Re-measured 2026-09-06 over 30 days,
+31,011 calls, 86 tagged: `-rn` × 62, **bare `-r` × 13**, `-ril` × 6, `-rln` × 4, `-rl` × 2,
+`--replace` × 1. The bare `-r` count was **zero** when this question was written and is now 13, so
+the premise it was to be decided on has expired — and every one of the 13 is the deliberate
+extraction idiom, `rg -o -r '' <pattern> <path>`, which is correct usage of a real flag. `zero` on
+the row would therefore be a verdict nobody can satisfy, which this corpus already objects to;
+`down` would push against legitimate use.
+
+The split the numbers actually want is bundle (74) against deliberate (14): a flag group carrying
+letters besides `r` is the accident, a lone `-r` or `--replace` is the idiom. **`zero` is defensible
+on the bundle and only on the bundle** — so the expectation waits on the per-bundle breakdown that
+`2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md` inherited, exactly the ordering both
+plans guessed at. One live failure in the window, worth citing when that row is built:
+`rg -n "…" <path> -r 2>/dev/null` — a bare `-r` whose value the shell ate as a redirect, exit 123,
+with the error message discarded by the same redirect.]
 
 ## What is done, and what is left
 
@@ -114,10 +137,19 @@ helper both paths call, `report_session` returns its calls, `--save-baseline` er
 `--session` section now states both behaviours. It was the smaller change, it had no design question
 worth arguing, and it unblocked a caller that exists today: the harvest's adherence step.
 
-**Left — the rows half**, which is the three `NEEDS CLARIFICATION` above: whether a session view
-wants `RATE_COLUMNS` at all, whether `rg-replace` joins `EXPECTATIONS` and in which direction, and
-whether session-scale rates print counts or a decimal place. All three want deciding alongside
-`2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md`, which already owns what a row's
-reporting should look like and now carries the `rg-replace` per-bundle breakdown — **that plan asks
-how the row should report, this one asks whether it reports at all**, and answering them in the
-wrong order would design a breakdown for a row no session view prints.
+**Decided 2026-09-06 — the rows half**, in the three decisions above, taken with
+`2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md` open beside it as the sequencing
+required. Two of the three collapsed into one answer: they were both arguments about horizontal
+space, and a session view does not need to be a line. The third turned out not to belong to this
+plan at all — the expectation goes on the bundle sub-row, which the other plan owns.
+
+**Left — building it.** The session view becomes a vertical block: every row in `PATTERNS` that a
+session can act on, one per line, count then rate, `RATE_COLUMNS` left to the corpus table it was
+written for. Nothing about it is contentious now; it is an afternoon's work and a test that the
+zeros print.
+
+One consequence to carry into the build, because it reverses an assumption made here: **the numbers
+in these decisions were measured with an instrument that was wrong until this morning.**
+`strip_heredoc` was dropping every command after a heredoc
+(`2026-09-06-audit-strip-heredoc-drops-the-rest-of-the-command.md`), so any session-scale figure
+quoted before it landed is a floor. The rounding counts above were taken after the fix.

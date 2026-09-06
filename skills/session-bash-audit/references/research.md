@@ -748,3 +748,61 @@ cannot answer are recorded as open rather than resolved: whether Claude Code's B
 produces POSIX-shell transcripts or PowerShell ones, and whether `%APPDATA%`/`%LOCALAPPDATA%` are
 set in the shell the harness spawns. Both need one real Windows session; neither can move from here,
 and saying so is the honest state.
+
+## A heredoc hid every command that followed it (2026-09-06)
+
+`strip_heredoc` existed so a heredoc's body could not look like chained commands. It cut at the
+marker and returned everything before it — dropping the body **and the rest of the command**. The
+shape that lost is the one this family writes constantly: a patch heredoc, then the gate.
+
+```
+python3 - <<'PY'
+...
+PY
+inv quality.precommit 2>&1 | tail -30
+```
+
+The table saw `python3 -`. Every pattern builds on this function — `strip_quoted` and `split_chain`
+both call it — so the loss was uniform rather than confined to one row.
+
+Over the 7 days to 2026-09-06, 15,479 calls, 1,569 of them carrying a heredoc: **1,267 tag hits were
+invisible, across 30 sessions.**
+
+| row            | hits recovered |
+| -------------- | -------------: |
+| `head/tail`    |            437 |
+| `exit-masked`  |            381 |
+| `grep/find`    |            218 |
+| `search\|head` |            105 |
+| `git-mutating` |             38 |
+| the rest       |            114 |
+
+Corpus-wide that is `head/tail` 25.0% -> 27.8% and `exit-masked` 15.3% -> 17.8%, which understates
+it badly: the calls concentrate in the sessions that drive edits through scripts, so per session the
+correction reached **+12pp** — one session's `exit-masked` moved 26% -> 39%, another 20% -> 32%.
+
+**One of the understated sessions is a published corpus row.** Sample 6 of
+`power-user-linux-setup`'s adherence corpus is recorded at 27% `exit-masked` against a real 37%, and
+it is the row the gate-versus-listing argument leans on hardest — "the cleanest possible case of a
+high rate that means nothing". Any row of that corpus taken from a heredoc-heavy session is
+understated by the same mechanism, which is a correction to the reasoning and not only to a cell.
+
+The finding arrived sideways, which is the part worth keeping: `session-harvest`'s `claims` uses its
+own copy of the `exit-masked` regex against the **raw** command, so the two skills disagreed. 390
+calls in the week were tagged by `harvest` and not by `audit`; **388 of them were this bug** and 2
+were genuine quoted mentions — the thing `audit`'s `strip_quoted` is right to exclude. Two
+instruments over one corpus is how a defect in either becomes visible; a single one is only ever
+self-consistent.
+
+Now the function drops the body and resumes after the terminator, by the shell's own rule: `<<-WORD`
+tolerates leading whitespace on the closing line, plain `<<WORD` requires the word alone at
+column 0. The strict form for plain `<<` is deliberate — a loose one resumes inside a body whose own
+text happens to be the delimiter, which puts body text back into the table. An unterminated heredoc
+keeps the old behaviour and cuts to the end; there was exactly one such call in the week, and it was
+a `<<<` here-string inside a quoted `rg` pattern, now excluded by a lookaround since a here-string
+has no terminator to find.
+
+[PITFALL: **a baseline saved before this fix is not comparable to one saved after.** The rates moved
+because the instrument changed, not because any session did, and the two headline rows moved by
++2.8pp and +2.5pp — the size of a real regression. `save_baseline` records the instrument commit for
+exactly this reason, so check it before reading a delta that straddles 2026-09-06.]

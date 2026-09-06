@@ -175,12 +175,11 @@ Revised 2026-09-06, after taking steps 1 and 2. What is left is smaller than wha
    `n wrapped a gate, m a listing` from `GATE_RE`, and `rg-replace` prints its flag spellings, both
    in the vertical session view that
    `2026-09-06-audit-session-mode-silently-drops-flags-and-rows.md` settled the shape of.
-4. **Then `EXPECTATIONS`, on the bundle sub-row only** — still open, and now the only code left
-   here. Not on `rg-replace` as a whole: 13 of its 86 hits are the deliberate `-r ''` idiom, so a
-   `zero` on the row is a verdict nobody can satisfy. The breakdown prints today but is not a tag,
-   so `EXPECTATIONS` has nothing to key on yet; the smallest form is an `rg-replace-bundle` tag
-   beside the existing row, scored `zero`, with the deliberate spelling left unjudged the way
-   `grep-r-not-rg` and `find-exempt` already are.
+4. ~~Then `EXPECTATIONS`, on the bundle sub-row only~~ — **done 2026-09-06**. `rg-replace-bundle` is
+   a tag (a flag group of two or more letters containing `r`, which always means `-r` swallowed the
+   rest as its replacement string), it is in `SESSION_ROWS`, and `EXPECTATIONS` scores it `zero`.
+   `rg-replace` itself stays unjudged, the way `grep-r-not-rg` and `find-exempt` do: 13 of its 86
+   hits are the deliberate `-o -r ''` idiom. Over 30 days the split is 73 bundle calls of 87 tagged.
 5. Re-scoring the seven samples is now a **second** correction rather than a first: the heredoc
    truncation understated several of the same rows, and that is filed against the repo that owns the
    corpus (`~/plans/…/2026-09-06-adherence-corpus-rows-understated-by-the-heredoc-bug.md`). Whatever

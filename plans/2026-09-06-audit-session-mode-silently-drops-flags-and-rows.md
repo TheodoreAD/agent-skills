@@ -143,10 +143,21 @@ required. Two of the three collapsed into one answer: they were both arguments a
 space, and a session view does not need to be a line. The third turned out not to belong to this
 plan at all — the expectation goes on the bundle sub-row, which the other plan owns.
 
-**Left — building it.** The session view becomes a vertical block: every row in `PATTERNS` that a
-session can act on, one per line, count then rate, `RATE_COLUMNS` left to the corpus table it was
-written for. Nothing about it is contentious now; it is an afternoon's work and a test that the
-zeros print.
+**Built 2026-09-06, same day.** `SESSION_ROWS` is the session view's own list — `RATE_COLUMNS` plus
+`echo-exit`, `git-C-mutating`, `search|head`, `grep-r-not-rg`, `find-not-fd`, `find-exempt` and
+`rg-replace` — printed one per line, count then rate, with `RATE_COLUMNS` left to the corpus table
+it was written for. `exit-masked` carries the gate-versus-listing split and `rg-replace` its flag
+spellings, both from the other plan. Five tests, and the first run on its own session reported
+`rg-replace 1 (-rn x 1)`: **the row the plan was written about caught this session's own `rg -rn`**,
+which is the shape the original finding said would go unreported.
+
+[PITFALL: **the same defect was one level further in, and nothing would have found it by reading.**
+`EXPECTATIONS` judged `find-not-fd` while `rates()` computed `RATE_COLUMNS` plus two — and
+`find-not-fd` was in neither, so `compare` read it as absent from both runs and skipped it as "a
+pattern added since this baseline was saved", every time, silently, permanently. A judged row that
+is never computed and a computed row that is never displayed are the same defect; this plan found
+the second and only turned up the first because building the view meant listing the rows. `rates()`
+now returns `SESSION_ROWS`, and a test asserts every `EXPECTATIONS` key is computed.]
 
 One consequence to carry into the build, because it reverses an assumption made here: **the numbers
 in these decisions were measured with an instrument that was wrong until this morning.**

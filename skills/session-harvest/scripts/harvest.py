@@ -2012,9 +2012,13 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         print(f"    masked: {call['command'][:160]}")
     if masked and claims:
         print(
-            "\nRe-run the repo's own gate unpiped before believing any of those greens, and report the\n"
-            "count with the re-run's verdict attached — the claims are in the conversation either way,\n"
-            "and the conversation is the one artefact a later commit cannot amend."
+            "\nAsk the shell first: `setopt | rg pipefail` (zsh) or `set -o | rg pipefail` (bash), as a\n"
+            "Bash call in this session — a pipeline under pipefail reports the rightmost non-zero status,\n"
+            "so those greens stood on real exit codes and no re-run is owed. The option can be guarded on\n"
+            "a harness variable, so a config file is not the answer and neither is another shell.\n"
+            "Without it, re-run the repo's own gate unpiped before believing any of those greens, and\n"
+            "report the count with the re-run's verdict attached — the claims are in the conversation\n"
+            "either way, and the conversation is the one artefact a later commit cannot amend."
         )
     elif not masked:
         print("\nno masked exits: the session's own green results stand on unfiltered evidence")

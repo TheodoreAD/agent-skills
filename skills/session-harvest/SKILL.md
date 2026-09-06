@@ -578,8 +578,32 @@ What the script cannot do is decide what a finding means. That is this list:
   numbers**, one line: "6% during the work, 14% including this sweep." The first is the session; the
   second is the honesty.
 
-  **If `exit-masked` is above zero, this session's own green results are unverified — re-run the
-  gate before believing any of them.** A masked exit code is not a style finding: it means a command
+  **If `exit-masked` is above zero, ask the shell before paying for a re-run.** One call:
+
+  ```shell
+  setopt | rg pipefail          # zsh; `set -o | rg pipefail` under bash
+  ```
+
+  With `pipefail` in force a pipeline reports the **rightmost** non-zero status, so
+  `inv quality.precommit 2>&1 | tail -3` already exits non-zero on a red gate and every green this
+  session read was a real exit code. Report the count and say the guarantee was in force; do not
+  re-run. Without it, the re-run below is the only thing standing between the session and a false
+  green.
+
+  **Ask the shell, not a config file.** A file says what should be set; the option can be guarded on
+  a harness environment variable (on this author's machine `~/.zshenv` sets it only when
+  `CLAUDECODE` is), so the answer differs between the session's own shell and any other on the same
+  box. The check has to run as a Bash call in the session being audited.
+
+  **The guarantee covers the exit code and nothing else.** `| head -20` still discards output, so a
+  claim resting on _reading_ the gate's output rather than on its status is still unverified; and
+  the guard means the same command loses its status in cron, in CI, in a container, or on any
+  machine without that snippet. A session that learns the shape is harmless here writes it into a
+  script that runs somewhere else — which is why `exit-masked` stays a finding and this paragraph is
+  a reason to skip the re-run, never a reason to skip the row.
+
+  **When `pipefail` is off, this session's own green results are unverified — re-run the gate before
+  believing any of them.** A masked exit code is then not a style finding: it means a command
   reported success through a filter that discarded the real answer. Confirmed 2026-08-31: a session
   ran `inv quality.precommit 2>&1 | grep -Ei "…" | tail -3` perhaps twenty times, read the absence
   of a match as success, and pushed three red commits — `basedpyright` printed

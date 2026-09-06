@@ -1,6 +1,6 @@
 ---
-status: in-progress
-updated: 2026-08-29
+status: landed
+updated: 2026-09-06
 ---
 
 ## Context
@@ -145,3 +145,23 @@ The marker question — whether a specialized collection should carry a git attr
 one detail here they do not want to solve now and it was the only thing holding this plan open.
 Nothing in the implementation needs it: collection-ness is derived from the tree and policy comes
 from the config.
+
+## Migrated to
+
+- **The behaviour** — `skills/plan-docs/scripts/plans.py`: `walk_projects` returning repos and
+  layout problems together, `repo_paths` as the thin wrapper that gives every caller the invariants
+  for free, `looks_bare`, the depth peek, the symlink skip and the per-directory `iterdir` guard.
+  Re-checked 2026-09-06 rather than taken from this file: `doctor` reports no problems on this
+  machine and `--strict` lists only the playground directories, which is the 24 -> 8 -> 0 sequence
+  below at its end state.
+- **The invariants a reader follows** — `plan-docs`' `SKILL.md`, "What the projects tree has to look
+  like", including which one is fatal and why a repo cloned straight into the root is routed with
+  `[repos]`.
+- **The reasoning** — `references/design-rationale.md`, "Why the projects tree has invariants, and
+  why only one of them hard-fails (2026-08-29)": derived collection-ness, the refinement of the
+  interior-directory rule against a real three-level hierarchy, the symlink decision the worktree
+  section already cited as a precedent, and both over-reporting rounds.
+
+Not migrated: the marker question, which was split out on the user's instruction into
+`plans/2026-08-29-collection-specialization-marker.md` and is still open there — that plan's own
+opening line now says this one is retired and where its content went.

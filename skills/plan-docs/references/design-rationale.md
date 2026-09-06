@@ -693,6 +693,84 @@ session never writes to the target at all, which is the point of the design, so 
 contention can actually happen — and it makes the check one cheap call regardless of how many repos
 a harvest files for.
 
+### Why the projects tree has invariants, and why only one of them hard-fails (2026-08-29)
+
+Migrated from `plans/2026-08-29-collection-dir-invariants.md` on retirement. The invariants
+themselves are in `SKILL.md` under "What the projects tree has to look like"; what has no other home
+is why each was drawn where it was, and the two rounds of over-reporting that came before the
+version anyone would keep reading.
+
+**Collection-ness is derived, never configured and never asked.** A directory is a collection if and
+only if it is not a repo and has at least one repo beneath it. That falls out of the walk that
+already exists, so there is nothing to declare, nothing to keep in sync, and no registry to go stale
+— the same reason discovery itself stays implicit.
+
+**One invariant was refined against the machine rather than accepted as stated.** The rule offered
+was "any directory inside a collection MUST be a repo", which outlaws the interior level of a
+`<root>/<project>/<repo>` hierarchy — a shape this machine actually uses. It became repo **or**
+collection: leaf or interior node. A directory that is neither, with no `.git` and no repo anywhere
+beneath it, is the genuinely reportable case.
+
+**Only `projects_root` being a git repository hard-fails, and it fails everywhere rather than in
+`doctor` alone.** Verified 2026-08-29: with a `.git` at the root, `repo_paths` returns `["."]` — the
+whole tree collapses to one repo named `.`, every real repo becomes invisible to every command, and
+`private_terms` derives almost nothing, so **the confidentiality gate silently empties while still
+reporting success.** A gate reporting "0 hits" because it can no longer see anything is the worst
+failure available in this tool, and every answer downstream of the walk is wrong, so continuing is
+worse than stopping.
+
+Three quieter failures were found by testing rather than by reading, and each is reported rather
+than fatal:
+
+- **A bare repository is neither a repo nor a collection, and was being mistaken for the latter.**
+  It has no `.git` child, so the walker descends into `objects/`, `refs/` and `hooks/` looking for
+  repos. Nothing bogus enrolls — but the directory name still reaches the private-term list through
+  the `iterdir` pass, split into two terms, and the walk is wasted.
+- **The depth limit failed silently.** A repo below `MAX_REPO_DEPTH` was never found by anything —
+  not `list`, not `doctor`, and critically not `scan`, whose whole job is to know every name under
+  the root. Given that collections nest, such a repo is invisible rather than excluded.
+- **An unreadable directory crashed the command.** `iterdir()` raised uncaught, so one permissions
+  problem anywhere under the root took down whichever command was running. It is caught per
+  directory now: the subtree is skipped with a note and everything readable still answers.
+
+[DECISION: **symlinked directories are never followed** — tested 2026-08-29, and the risk is worse
+than duplication. Git resolves symlinks, so `rev-parse --show-toplevel` from inside a linked
+directory returns the real path: **routing is always correct while discovery is not, and the two
+disagree.** A link to a repo _inside_ the root enrolls it a second time under the link's path — one
+plan file listed as two plans in two locations, and the link name entering the term list as though
+it were a distinct repo. A link to a repo _outside_ the root is worse: discovery accepts it and its
+name reaches the term list, while `where` inside it refuses, because its store path cannot be
+mirrored. Discovered but unusable. Skipping makes discovery and routing agree, and costs nothing
+that ever worked — deliberately symlinking an external repo into the tree never enrolled it usably,
+per that second case. `doctor` reports the skip, so someone who intended enrolment learns why it is
+not happening.]
+
+[PITFALL: **the first version reported 24 problems on a healthy machine, which is a failed gate by
+this codebase's own standard — and only running it against the real tree showed it.** Two categories
+were over-reporting. `too deep` fired for every directory sitting at the depth limit, ordinary
+source and docs folders included, burying the real findings; it now peeks one level for a `.git` and
+reports only when a repo is genuinely being excluded, which took that category from 8 entries to
+zero. `no repos` fired for every playground and scratch directory — correct by the letter of the
+invariant and useless in practice, since acting on none of them is the right answer — so it moved
+behind `--strict`, with a count in the enrolled block so it stays discoverable. **A permanent entry
+inside `problems (N)` is how a problems list stops being read.** 24 down to 8, then to 0 once the
+roots were categorised.]
+
+[PITFALL: **a `default` route turns every later collection into a silent decision.** With
+`default = "store"` set, a newly cloned root never triggers a question: `where` returns `ok` and the
+plans go to the store. For a client root that is exactly right. For a **personal** root it is
+quietly wrong in a way nothing surfaces — a store-routed repo's mirror _is_ its permanent home, so
+`absorb` correctly does nothing, and the plans accumulate in the store forever without ever reaching
+the repo they belong to. The safe default is right for the common case and wrong for the rare one,
+which is precisely why it goes unnoticed.]
+
+So **every root is categorised explicitly and `doctor` flags any that is not** (settled with the
+user 2026-08-29). Each employer and client root got a `[roots]` entry that changes no behaviour —
+they already reached the same answer through `default` — but converts the config into a record of
+what has been decided. `default` returns to being a safety net, so a root reaching it now means
+exactly "this appeared since you last decided anything": no seen-markers, no registry, no second
+source of truth, the signal being the absence of a config entry.
+
 ### Why a linked worktree is skipped rather than folded, and why detecting one is free
 
 The walk enrolls a directory as a repo on `(path / ".git").exists()`, and a linked worktree's `.git`

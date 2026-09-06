@@ -5,9 +5,11 @@ updated: 2026-08-29
 
 ## Context
 
-Split out of `plans/2026-08-29-collection-dir-invariants.md` on 2026-08-29 at the user's request:
-everything else in that plan is built, and this is the one detail they explicitly do not want to
-solve now. Parked here so the parent plan is not held open by it.
+Split out of the now-retired `plans/2026-08-29-collection-dir-invariants.md` on 2026-08-29 at the
+user's request: everything else in that plan was built, and this is the one detail they explicitly
+do not want to solve now. Parked here so the parent was not held open by it — that parent has since
+landed and retired, its reasoning in `skills/plan-docs/references/design-rationale.md` under "Why
+the projects tree has invariants, and why only one of them hard-fails".
 
 The original proposal was that a **specialized** repo collection directory — one that is not a plain
 `projects/`, which would more likely be configured globally — SHOULD carry a git attributes file

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-06
 ---
 
@@ -194,3 +194,27 @@ in these decisions were measured with an instrument that was wrong until this mo
 `strip_heredoc` was dropping every command after a heredoc
 (`2026-09-06-audit-strip-heredoc-drops-the-rest-of-the-command.md`), so any session-scale figure
 quoted before it landed is a floor. The rounding counts above were taken after the fix.
+
+## Migrated to
+
+- **The behaviour** — `skills/session-bash-audit/scripts/audit.py`: `dump_json` shared by both
+  paths, `report_session` returning its calls, `--save-baseline` erroring under `--session`,
+  `SESSION_ROWS` as the session view's own list, `rates()` computing it, and the `zero` verdict
+  judged on a count.
+- **The rules a reader follows** — that skill's `SKILL.md`: every row prints including the zeros and
+  the count is beside the rate; `--save-baseline` is refused rather than skipped; a `zero`
+  expectation is judged on the count with the corpus table that killed the band; `zero` is scored on
+  `rg-replace-bundle` and never on `rg-replace` itself.
+- **The reasoning** — `references/research.md`, "What a session view owes a reader that a corpus
+  table does not (2026-09-06)": the three rejected shapes and the measurements that killed them, the
+  display-versus-instrument distinction, and the judged-but-never-computed `find-not-fd` pitfall.
+- **Tests** — `tests/unit/test_audit.py`, including the two flag tests confirmed failing against the
+  pre-change script and the assertion that every `EXPECTATIONS` key is computed.
+
+Verified before retirement, 2026-09-06, rather than taken from this file: `--json` under `--session`
+wrote the file, `--save-baseline` exited 2 with its message, and `SESSION_ROWS` prints all of the
+listed rows one per line with counts.
+
+Not migrated: the `rg-replace` expectation decision, which belongs to the bundle sub-row and is
+already recorded in `references/research.md` under "One rate over two outcomes"; and the
+`strip_heredoc` cross-reference, which is a live plan of its own and needs no pointer from here.

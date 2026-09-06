@@ -870,3 +870,73 @@ the status through the pipe, and a transcript records the command and not the sh
 here is a confident number standing on an assumption about a machine the instrument never saw. The
 row is reported, split, and left unjudged; `head/tail` scores the habit instead, from output loss,
 which holds on every machine.
+
+## What a session view owes a reader that a corpus table does not (2026-09-06)
+
+Migrated from `plans/2026-09-06-audit-session-mode-silently-drops-flags-and-rows.md` on retirement.
+The rules are in `SKILL.md` and in `SESSION_ROWS`; what has no other home is the three shapes that
+were rejected and the measurements that killed them — plus one distinction that was nearly filed as
+a defect and is not one.
+
+**The finding, in one sentence: `--session` was a second-class path.** `report_session` returned
+before the tail of `main()`, so `--json` was accepted and silently did nothing, and `rg-replace` was
+computed but appeared in none of the three lists that decide what a reader sees. Both are the shape
+this corpus keeps finding in its own instruments — an option that is accepted and does nothing, a
+measure that is computed and never displayed — and neither is visible from the output, which is what
+separates them from a fix in passing.
+
+The cost of the first was specific rather than theoretical: **the harvest's adherence step is always
+a `--session` run**, so the machine-readable form was missing in exactly the mode one existing
+caller uses. `--save-baseline` took the opposite half of that decision and now errors (exit 2)
+instead of being silently skipped, because one session's rates genuinely are not a corpus baseline.
+A flag that works on some invocations and not others costs a retry every time an agent assumes
+uniformity, and silence is what makes it cost the retry twice.
+
+[PITFALL: **the same defect was one level further in, and only building the view found it.**
+`EXPECTATIONS` judged `find-not-fd` while `rates()` computed `RATE_COLUMNS` plus two — and
+`find-not-fd` was in neither, so `compare` read it as absent from both runs and skipped it as "a
+pattern added since this baseline was saved": silently, every time, permanently. **A judged row that
+is never computed and a computed row that is never displayed are the same defect.** Nothing would
+have found this by reading; it surfaced because building the session view meant listing the rows.
+`rates()` now returns `SESSION_ROWS` and a test asserts every `EXPECTATIONS` key is computed.]
+
+**`0%` in a session view did not mean zero, and that one is a display fault rather than an
+instrument fault.** Rates printed as `:.0%`, so at session scale a single instance rounds away — a
+run that piped exactly one command to `head -40` read `head/tail=0%` at n=215, because 1/215 is
+0.47%. Worth recording because of how close it came to being filed as a missed tag: the predicate
+was tested directly against the exact command, returned `True`, and only then did the arithmetic
+explain the zero. **The instrument was right and the display was lossy**, which is a different fault
+from the two above and would have been filed as the same one.
+
+It is not a curiosity at this scale. Measured over the 7 days to 2026-09-06, 67 sessions, median
+session n=247, so one call is 0.40%: of the 30 sessions carrying at least one `rg-replace`, **13
+would print `0%`** — and `find-not-fd` 9 of 20, `redirect-then-filter` 5 of 9, `find-exempt` 2 of 3.
+A false zero on roughly half the sessions that have the finding is the failure the row exists to
+prevent, arriving through the formatter.
+
+**Rejected — one decimal place.** `0.4%` is honest and still makes the reader do arithmetic to learn
+that it means one call. The count is the thing a session reader wants; the rate is the thing a
+corpus reader wants.
+
+**Rejected — keep `RATE_COLUMNS` as the session view's column list.** Every question here was
+secretly an argument about horizontal space in a line already 229 characters wide for 11 rows. A
+corpus table is models × rows and has a real width budget; **a session view has one row, so it does
+not have to be a line at all.** Printed vertically, one row per line with its count and its rate,
+there is nothing to trade off — so `rg-replace`, `find-not-fd`, `grep-r-not-rg`, `find-exempt`,
+`echo-exit`, `git-C-mutating` and `search|head` all join the view, and `RATE_COLUMNS` keeps its own
+job. **A zero that is printed is the point**: the original finding was that a session could commit
+`rg-replace` and read an adherence line that did not mention it in either direction, and a row
+nobody prints cannot be read as zero.
+
+**Rejected — a scale-dependent `zero` (a count at session scale, a band at corpus scale).** Refused
+as the threshold nobody can defend, which this corpus objects to in its own words elsewhere. The
+band went entirely; `SKILL.md` carries the table showing every `zero` row passing for the busiest
+model while carrying hundreds of instances.
+
+Two things to carry forward. **The first run of the finished view caught the session that built it**
+— `rg-replace 1 (-rn x 1)`, the exact shape the original finding said would go unreported, from a
+session that had retired the plan measuring `rg-replace` hours earlier and then typed the bundle
+anyway. Authoring a rule is not evidence of following it; measuring one is not evidence of measuring
+it either. And **every session-scale number quoted before the morning of 2026-09-06 is a floor**:
+`strip_heredoc` was dropping each command after a heredoc until that day, so the rounding counts
+above were re-taken after the fix and the earlier ones were not.

@@ -521,6 +521,24 @@ RATE_COLUMNS = [
     "git-mutating-in-chain",
 ]
 
+# Every row a session can act on, including the ones `RATE_COLUMNS` has no width for. The session
+# view prints these vertically rather than as one line, which is what makes the list affordable: the
+# corpus table is wide because it is models x rows, a session has one row, and the width budget was
+# the only argument against showing everything. Every `EXPECTATIONS` key appears here, so a verdict
+# always has a computed number behind it — which was not true until 2026-09-06.
+SESSION_ROWS = [
+    "chain",
+    "chain5",
+    *RATE_COLUMNS,
+    "echo-exit",
+    "git-C-mutating",
+    "search|head",
+    "grep-r-not-rg",
+    "find-not-fd",
+    "find-exempt",
+    "rg-replace",
+]
+
 # What a re-measurement after the 2026-08-24 changes (acceptEdits default, rewritten ~/AGENTS.md
 # Bash cluster) should show, per model, relative to the stored baseline. "down": lower share;
 # "zero": at or near 0%. Anything else is reported but not judged.
@@ -547,13 +565,19 @@ EXPECTATIONS: dict[str, str] = {
 
 
 def rates(calls: list[Call]) -> dict[str, float]:
-    """Share of `calls` carrying each tag, plus the aggregate chain rate."""
+    """Share of `calls` carrying each tag, plus the aggregate chain rate.
+
+    Every row the session view prints, which is a superset of `RATE_COLUMNS` and — the part that
+    matters — of `EXPECTATIONS`. It used to compute `RATE_COLUMNS` plus two, while `EXPECTATIONS`
+    judged `find-not-fd`, which was in neither: `compare` read it as absent from both runs and
+    skipped it as "a pattern added since this baseline was saved", every time, silently and
+    permanently. A judged row that is never computed is the same defect as a computed row that is
+    never displayed, one level further in.
+    """
     n = len(calls)
     counts = Counter(t for c in calls for t in c.tags)
-    out = {"chain": sum(counts[f"chain{i}"] for i in range(2, 6)) / n, "chain5": counts["chain5"] / n}
-    for col in [*RATE_COLUMNS, "git-C-mutating", "echo-exit"]:
-        out[col] = counts[col] / n
-    return out
+    counts["chain"] = sum(counts[f"chain{i}"] for i in range(2, 6))
+    return {row: counts[row] / n for row in SESSION_ROWS}
 
 
 def rates_by_model(calls: list[Call]) -> dict[str, dict[str, float | int]]:
@@ -870,6 +894,78 @@ def _before(calls: list[Call], until: str) -> list[Call]:
     return kept
 
 
+# What counts as "the gate" behind a masked exit code. A name list rather than the more general "was
+# this command's output asserted about", which was the preferred design until it was measured: this
+# regex classifies half the masked population with no per-repo catalog, and the general rule would
+# couple this row to the claims matcher for no gain. Measured 2026-09-06 over 7 days: 2,770 masked
+# calls, 1,389 of them gate-shaped.
+GATE_RE = re.compile(
+    r"\b(inv\s+\S*(quality|test|check|precommit)|pytest|basedpyright|ruff\b|mypy|npm\s+(run\s+)?test"
+    r"|cargo\s+test|make\b|tox|nox|pre-commit\s+run)",
+    re.IGNORECASE,
+)
+
+# The `rg` flag spelling that produced each `rg-replace` hit. A bundle (`-rn`, `-ril`) is the
+# accident the row exists for; a lone `-r` or `--replace` is the deliberate extraction idiom, and
+# over 30 days to 2026-09-06 that is 13 of 86 hits — which is why one count over both cannot be
+# scored, and why the row prints its spellings rather than a total.
+RG_FLAG_RE = re.compile(r"(?:^|&&|;|\||\n)\s*rg\b[^|;&\n]*?\s(-[A-Za-z]*r[A-Za-z]*(?=[\s=])|--replace\b)")
+
+
+def masked_gate(calls: list[Call]) -> list[Call]:
+    """Masked calls that wrapped a gate rather than a listing.
+
+    The distinction the hand-made `what was masked` column in the adherence corpus recorded, and the
+    reason the raw rate ranks sessions backwards on consequence: a session masking forty listings has
+    no reader, one masking a single gate run and saying "green" does.
+
+    Reported as a count beside `exit-masked` rather than as a list of the calls. The list was the
+    design until 2026-09-06, on the premise that masked gate calls are few and the list empty for a
+    clean session; at corpus scale it is 50% of the masked population, non-empty for 55 of 67
+    sessions, and a median of 14 distinct command shapes per session with a maximum of 77.
+    """
+    return [c for c in calls if "exit-masked" in c.tags and GATE_RE.search(strip_quoted(c.cmd))]
+
+
+def rg_replace_flags(calls: list[Call]) -> Counter[str]:
+    """Which `rg` flag spelling each `rg-replace` hit used — `-rn` and `-ril` are different failures.
+
+    `-rn` loses line numbers and rewrites the matched text; `-ril` turns a case-insensitive file-list
+    search into a case-sensitive line search. One count cannot say which is happening, and the two
+    have different fixes.
+    """
+    found: Counter[str] = Counter()
+    for call in calls:
+        if "rg-replace" in call.tags:
+            found.update(m.group(1) for m in RG_FLAG_RE.finditer(strip_quoted(call.cmd)))
+    return found
+
+
+def _print_session_rows(calls: list[Call]) -> None:
+    """The session view: one row per line, count first, rate after.
+
+    A count is what a session-sized denominator wants. Rates print as `:.0%`, so at a median session
+    of 247 calls one instance is 0.40% and rounds to `0%` — measured 2026-09-06 over 67 sessions, and
+    it is the low-frequency rows that lose: of the 30 sessions with an `rg-replace` hit, 13 would
+    print `0%`, and `find-not-fd` 9 of 20. The rate stays beside the count because it is what
+    `--compare` judges; the count is what makes the row readable.
+    """
+    n = len(calls)
+    counts = Counter(t for c in calls for t in c.tags)
+    counts["chain"] = sum(counts[f"chain{i}"] for i in range(2, 6))
+    gates = len(masked_gate(calls))
+    flags = rg_replace_flags(calls)
+    print(f"\n== this session, {n} calls ==")
+    for row in SESSION_ROWS:
+        hits = counts[row]
+        note = ""
+        if row == "exit-masked" and hits:
+            note = f"   {gates} wrapped a gate, {hits - gates} a listing"
+        elif row == "rg-replace" and flags:
+            note = "   " + ", ".join(f"{flag} x {k}" for flag, k in flags.most_common())
+        print(f"  {row:24} {hits:5}  {hits / n:4.0%}{note}")
+
+
 def report_session(args: argparse.Namespace) -> list[Call]:
     """One session measured against the baseline — the shape a run checking itself uses.
 
@@ -889,7 +985,7 @@ def report_session(args: argparse.Namespace) -> list[Call]:
     print(f"# this session: {len(calls)} Bash calls")
     if args.until:
         print(f"#   excluding {whole - len(calls)} at or after {args.until} — the run's own sweep")
-    print(_rate_row("this session", calls, RATE_COLUMNS))
+    _print_session_rows(calls)
     # Comparison first, samples after. The samples run to dozens of lines and the comparison is one
     # block, so printing the comparison last put the only judged output behind the bulk. Confirmed
     # 2026-09-02: a harvest ran this exact command as `… --compare … | head -12`, saw the rates line

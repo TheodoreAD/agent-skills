@@ -300,6 +300,81 @@ def test_no_checkout_means_no_instrument_rather_than_a_wrong_one(monkeypatch, tm
 
 
 # --------------------------------------------------------------------------------------------
+# the session view: one row per line, count first, and every row printed
+
+
+def _call(cmd: str) -> object:
+    call = audit.Call(
+        cmd=cmd, model="m", project="p", session="s", subagent=False, timestamp="", error=False, result=""
+    )
+    audit.classify(call)
+    return call
+
+
+def test_the_session_view_prints_every_row_including_the_zeros(capsys):
+    """A session could commit `rg-replace` and read an adherence line that never mentioned it, in
+    either direction — `RATE_COLUMNS` was built for the per-model corpus table and the session view
+    inherited it. A row nobody prints cannot be read as zero; a row printed as `0` can."""
+    audit._print_session_rows([_call("ls")])
+    out = capsys.readouterr().out
+    for row in ("rg-replace", "find-not-fd", "grep-r-not-rg", "find-exempt"):
+        assert f"{row:24}     0" in out, f"{row} has to print its zero"
+    for row in audit.EXPECTATIONS:
+        assert row in out, "a verdict without a printed number behind it is the defect this fixes"
+
+
+def test_a_single_instance_prints_as_a_count_not_as_zero_percent(capsys):
+    """Rates print as `:.0%`, so at a median session of 247 calls one instance is 0.40% and rounds
+    away. Measured 2026-09-06 over 67 sessions: of the 30 with an `rg-replace` hit, 13 would print
+    `0%`. The count is what the reader acts on; the rate stays because `--compare` judges it."""
+    calls = [_call("rg -rn pattern src")] + [_call("ls") for _ in range(299)]
+    audit._print_session_rows(calls)
+    row = next(line for line in capsys.readouterr().out.splitlines() if "rg-replace" in line)
+    assert "1" in row.split()[1], "the count says one"
+    assert row.split()[2] == "0%", "and the rate still rounds to zero, which is why the count is there"
+
+
+def test_the_masked_row_separates_a_gate_from_a_listing(capsys):
+    """The raw `exit-masked` rate ranks sessions backwards on consequence: masking forty listings has
+    no reader, masking one gate run and saying "green" does. A count rather than a listing of the
+    calls — at corpus scale the gate half is 50% of the masked population, non-empty for 55 of 67
+    sessions, median 14 distinct shapes."""
+    calls = [
+        _call("inv quality.precommit 2>&1 | tail -30"),
+        _call("pytest tests/unit 2>&1 | tail -3"),
+        _call("plans.py list 2>&1 | head -60"),
+    ]
+    assert len(audit.masked_gate(calls)) == 2
+    audit._print_session_rows(calls)
+    row = next(line for line in capsys.readouterr().out.splitlines() if "exit-masked" in line)
+    assert "2 wrapped a gate, 1 a listing" in row
+
+
+def test_every_judged_row_is_a_row_that_gets_computed():
+    """`EXPECTATIONS` judged `find-not-fd` while `rates()` computed `RATE_COLUMNS` plus two, and that
+    row was in neither. `compare` read it as absent from both runs and skipped it as "a pattern added
+    since this baseline was saved" — every time, silently, permanently. A judged row that is never
+    computed is the same defect as a computed row that is never displayed."""
+    computed = audit.rates([_call("ls")])
+    assert not [tag for tag in audit.EXPECTATIONS if tag not in computed]
+
+
+def test_the_replace_row_names_the_spelling_that_produced_it():
+    """`-rn` loses line numbers and rewrites the matched text; `-ril` turns a case-insensitive
+    file-list search into a case-sensitive line search. One count cannot say which is happening, and
+    a lone `-r` is the deliberate extraction idiom — 13 of 86 hits over the 30 days to 2026-09-06,
+    which is why the row cannot be scored as one number."""
+    flags = audit.rg_replace_flags(
+        [
+            _call("rg -rn cd src"),
+            _call("rg -ril todo ."),
+            _call("rg -o -r '' 'v[0-9]+' notes.md"),
+        ]
+    )
+    assert flags == {"-rn": 1, "-ril": 1, "-r": 1}
+
+
+# --------------------------------------------------------------------------------------------
 # `--session` is the mode a harvest runs, so a flag it accepts has to work there or refuse
 
 

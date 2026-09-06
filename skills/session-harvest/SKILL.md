@@ -578,7 +578,16 @@ What the script cannot do is decide what a finding means. That is this list:
   numbers**, one line: "6% during the work, 14% including this sweep." The first is the session; the
   second is the honesty.
 
-  **If `exit-masked` is above zero, ask the shell before paying for a re-run.** One call:
+  **Read the gate/listing split before reasoning about any of this.** The audit line prints
+  `exit-masked = n  m wrapped a gate, k a listing`, and **when `m` is zero the greens were never at
+  risk**, whatever the shell does: no claim rested on a masked exit code, because no masked call was
+  a gate. That is a shorter and stronger answer than the pipefail check below, it needs no extra
+  command, and it is the common shape for a session that runs its gate unpiped and pipes only
+  listings. Confirmed 2026-09-06 on the first harvest to have the split available: 4 masked calls,
+  **0 of them a gate**, and 8 green-gate claims that had all come from unpiped runs. Only when `m`
+  is above zero does the shell's state decide anything.
+
+  **If a masked call did wrap a gate, ask the shell before paying for a re-run.** One call:
 
   ```shell
   setopt | rg pipefail          # zsh; `set -o | rg pipefail` under bash

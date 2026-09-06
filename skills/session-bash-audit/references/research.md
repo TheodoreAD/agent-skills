@@ -806,3 +806,67 @@ has no terminator to find.
 because the instrument changed, not because any session did, and the two headline rows moved by
 +2.8pp and +2.5pp — the size of a real regression. `save_baseline` records the instrument commit for
 exactly this reason, so check it before reading a delta that straddles 2026-09-06.]
+
+## One rate over two outcomes: what a column, a listing and a band each could not say (2026-09-06)
+
+Migrated from `plans/2026-09-04-exit-masked-needs-a-gate-versus-listing-column.md` on retirement.
+The rules it produced are in `SKILL.md` and in the script; what has no other home is the three
+shapes that were designed, measured and rejected, and the numbers that killed each one.
+
+**The problem.** `exit-masked` was one rate over calls that are not comparable. Four hand-read
+samples from the adherence corpus:
+
+| sample | rate | what was masked    | consequence                                                         |
+| ------ | ---: | ------------------ | ------------------------------------------------------------------- |
+| 6      |  27% | read-only listings | damage structurally impossible — no exit code carried anything      |
+| 2      |  28% | the gate           | the session pushed five times on evidence it could not check        |
+| 7      |  22% | the gate           | seven green claims; the unpiped re-run held, so all seven were true |
+| 8      |  25% | **both**           | listings throughout, **one** masked gate run, five green claims     |
+
+A reader ranking sessions by the headline number ranks them backwards on consequence.
+
+**Rejected 1 — a second column (gate rate beside total rate).** Sample 8 killed it: that session is
+99% listings and the 1% is the part a reader needs, so a rate cannot carry it. A column averages
+away the single call that mattered.
+
+**Rejected 2 — list the masked gate calls instead.** Adopted on the strength of the same four
+samples, on the premise that such calls are few by construction and the list would be empty for a
+clean session. **At corpus scale the premise is false**, and this is the measurement worth keeping:
+over the 7 days to 2026-09-06, of 2,770 masked calls **1,389 (50%) were gate-shaped**, **55 of 67
+sessions** had at least one, per-session counts ran to 83, and deduplicating did not rescue it —
+distinct command shapes per session had a median of 14 and a maximum of 77, because the same gate is
+typed with different `tail -N` values and different chained prefixes. A listing is a report section,
+not a footnote. **Four hand-read samples were not a sample of the corpus**; they were a sample of
+what a person had already found interesting.
+
+**Adopted — two counts.** `n masked, of which m wrapped a gate`, which is one line, is exactly the
+distinction the corpus recorded by hand, and leaves the existing `--samples` machinery to show
+examples. "The gate" is derived from a name list (`inv <ns>.(quality|test|check|precommit)`,
+`pytest`, `basedpyright`, `ruff`, `mypy`, `npm test`, `cargo test`, `make`, `tox`, `nox`,
+`pre-commit run`) — one regex, no per-repo catalog, and it classifies half the masked population.
+The more general rule that had been preferred on paper, "was this command's output ever asserted
+about", was not needed and would have coupled the row to the claims matcher.
+
+[PITFALL: **`harvest.py claims` looked like it already answered this and does not.** It prints every
+green claim and then up to `--samples` masked calls as **two independent lists**: no claim is tied
+to the call it rests on, and the masked list is not gate-filtered. The assertion count exists; the
+correspondence does not. Checking that before building was the cheapest step in the plan and it
+changed the answer.]
+
+**The same shape on a second row.** `rg-replace` mixes `-rn` (loses line numbers, rewrites the
+matched text) with `-ril` (turns a case-insensitive file-list search into a case-sensitive line
+search) and with the deliberate `rg -o -r '' <pattern> <path>` extraction idiom. Over the 30 days to
+2026-09-06: `-rn` × 62, bare `-r` × 13, `-ril` × 6, `-rln` × 4, `-rl` × 2, `--replace` × 1 — 73
+bundle calls of 87 tagged. **The bare `-r` count had been zero when the question was first written
+and was 13 by the time it was answered**, every one of them correct usage, so an expectation on the
+row as a whole moved from "arguably `zero`" to "unsatisfiable" while nobody was looking. That is the
+argument for measuring a row again at the moment you score it, rather than trusting the measurement
+that motivated it.
+
+**Rejected 3 — score `exit-masked`, or a gate-only version of it.** The hoped-for argument was that
+a gate-only rate has a defensible target of zero. What disqualifies both is upstream of the split:
+whether a masked exit code cost anything depends on the shell, a shell setting `pipefail` carries
+the status through the pipe, and a transcript records the command and not the shell. Any verdict
+here is a confident number standing on an assumption about a machine the instrument never saw. The
+row is reported, split, and left unjudged; `head/tail` scores the habit instead, from output loss,
+which holds on every machine.

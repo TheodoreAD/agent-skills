@@ -401,6 +401,36 @@ def bash_entry(command: str, timestamp: str = "2026-09-02T10:00:00.000Z") -> dic
     return blocks_entry("assistant", [block], timestamp=timestamp)
 
 
+def test_a_session_that_ran_no_docker_command_owns_no_image(monkeypatch, tmp_path):
+    """Confirmed 2026-09-06: a sweep reported twenty images, 2.4 GB, as "new this session" for a
+    session whose 183 Bash calls contained no `docker` at all — a parallel session's container
+    testing. The bullet reading that report proposes a removal line, so the mislabel is a proposal
+    to delete another session's work while it may still be running against it."""
+    monkeypatch.setattr(harvest.shutil, "which", lambda name: str(tmp_path / name))
+    images = "sample-service:latest\t1.2GB\t2026-09-06 01:10:00 +0300 EEST\n"
+    runner = FakeRunner({"docker images": (0, images, ""), "docker system df": (0, "TYPE\n", "")})
+    since = "2026-09-06T00:00:00+03:00"
+
+    unattributed = harvest.disk(runner, since, ran_docker=False)
+    assert unattributed["images_in_window"], "the row is still reported — the size is worth seeing"
+    assert unattributed["images_attribution"] == "no docker command in this session's transcript"
+
+    assert harvest.disk(runner, since, ran_docker=True)["images_attribution"] == "this session ran docker"
+    assert "no transcript" in harvest.disk(runner, since, ran_docker=None)["images_attribution"]
+
+
+def test_docker_is_counted_at_command_position_not_wherever_the_word_appears():
+    """A session that greps for the word, or writes it into a plan, has not run it."""
+    assert harvest.invoked_docker([bash_entry("docker images --format '{{.Repository}}'")])
+    assert harvest.invoked_docker([bash_entry("inv build && docker compose up -d")])
+    assert harvest.invoked_docker([bash_entry("sudo -A docker system prune")])
+    assert not harvest.invoked_docker([bash_entry("rg -n docker skills/session-harvest/SKILL.md")])
+    assert not harvest.invoked_docker([bash_entry("git commit -m 'note the docker images'")])
+    # The false positive on this check's own first live run, 2026-09-06: an alternation inside a
+    # quoted search pattern is a pipe followed by the command, by every rule the regex knows.
+    assert not harvest.invoked_docker([bash_entry('rg -n "def sweep|docker|listener" harvest.py')])
+
+
 def test_last_activity_is_the_latest_entry_parsed_not_the_latest_string():
     entries = [
         bash_entry("first", timestamp="2026-09-06T09:00:00Z"),

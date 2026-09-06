@@ -531,6 +531,18 @@ What the script cannot do is decide what a finding means. That is this list:
   names — the session is the only party that can still tell those apart.** Confirmed 2026-09-01: a
   run that had verified a container fix left a 4.11 GB image, 445 MB of others and a ~58 GB
   machine-wide build cache, while the processes check reported clean and correctly so.
+
+  **An artifact created during the window is not this session's, and the same parallel-sessions
+  caveat the git bullet carries applies here just as hard.** The sweep now cross-checks the images
+  against whether this session ran `docker` at all — zero docker calls means nothing is
+  attributable, whatever the timestamps say — and prints the unattributable rows under their own
+  heading rather than dropping them, because the sizes are worth seeing whoever made them. **Never
+  propose a removal line for a row under that heading**: it is another session's work, possibly a
+  live one mid-run, and this bullet's own reason for not deleting unasked is that an image another
+  session is about to reuse costs a rebuild. Confirmed 2026-09-06: a harvest reported twenty images,
+  2.4 GB, as "new this session" for a session whose 183 Bash calls contained no `docker` at all. It
+  read as authoritative in the one direction nobody checks — a specific, plausible number the
+  reading session had no cheap way to falsify.
 - **Files this session edited that no repository and no store covers.** The sweep subtracts every
   write path inside a git repo and reports what is left; the work is saying **what would recover
   it**. Every other check here asks whether a store was left tidy, and a file belonging to no store

@@ -1532,12 +1532,42 @@ def _docker_instant(row: str) -> datetime | None:
     return as_instant(f"{parts[0]}T{parts[1]}{parts[2]}")
 
 
-def disk(runner: Runner, since: str | None) -> dict[str, Any]:
+DOCKER_CALL_RE = re.compile(r"(?:^|[|;&]|\bsudo(?:\s+-A)?\s+)\s*docker\b", re.MULTILINE)
+QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
+
+
+def invoked_docker(entries: Iterable[dict[str, Any]]) -> bool:
+    """Whether the session ran `docker` at all — the cross-check that turns a timestamp into an
+    attribution.
+
+    Matched at command position, so a `rg docker` or a sentence naming it is not an invocation.
+    A form this misses (an env-assignment prefix, a wrapper script) costs an image reported as
+    unattributed, which is the direction that cannot make a false claim.
+
+    **Quoted spans are removed first, and skipping that was a false positive on the very first live
+    run of this check, 2026-09-06**: `rg -n "def sweep|docker|listener" harvest.py` matched, because
+    an alternation inside a quoted search pattern is a pipe followed by the word — command position
+    by every rule the regex knows. A search for the word is the single most likely way `docker`
+    appears in a session that never ran it, which is exactly the session this check exists to
+    protect.
+    """
+    return any(DOCKER_CALL_RE.search(QUOTED_SPAN_RE.sub(" ", command)) for _, command in bash_calls(entries))
+
+
+def disk(runner: Runner, since: str | None, ran_docker: bool | None = None) -> dict[str, Any]:
     """Container images, build caches and interpreters — gigabytes no repository can see.
 
     Reported with sizes so the user can approve a removal line; never removed here. The build cache
     is shared with every other project on the machine, and an image another session is about to
     reuse costs a rebuild.
+
+    **A timestamp inside the session window is not an attribution on a machine running parallel
+    sessions.** Confirmed 2026-09-06: a sweep called twenty images — 2.4 GB — "new this session" for
+    a session whose 183 Bash calls contained no `docker` at all; they were a parallel session's
+    container-testing work. The report then proposes removing them, and the reason it gives for not
+    deleting unasked is precisely that another session may be about to reuse one. So `ran_docker`
+    decides which heading the rows land under, and rows that cannot be attributed are still
+    reported: the sizes are worth seeing whoever made them.
     """
     out: dict[str, Any] = {}
     if shutil.which("docker"):
@@ -1548,9 +1578,16 @@ def disk(runner: Runner, since: str | None) -> dict[str, Any]:
         out["images"] = rows[:40]
         cutoff = as_instant(since) if since else None
         if cutoff:
-            out["images_since_session_start"] = [
+            out["images_in_window"] = [
                 row for row in rows if (created := _docker_instant(row)) is not None and created > cutoff
             ]
+            out["images_attribution"] = (
+                "this session ran docker"
+                if ran_docker
+                else "no docker command in this session's transcript"
+                if ran_docker is False
+                else "no transcript to check this session's commands against"
+            )
     else:
         out["docker"] = "not installed"
     if shutil.which("uv"):
@@ -1812,13 +1849,14 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     # sockets, one git pass for the repo report and CI.
     table = process_table(runner) if wanted("processes", "sockets") else {}
     states = [repo_state(runner, p, since, not args.no_fetch, written) for p in repos] if wanted("repos", "ci") else []
-    # Can a process this old be this session's at all? Only a transcript answers that, so without
-    # one the claim is not made.
+    # Both are the same question asked of two sections: can this artifact be this session's at all?
+    # A transcript is what answers it, so without one neither claim is made.
     last = last_activity(entries) if transcript else None
+    ran_docker = invoked_docker(entries) if transcript else None
     producers: dict[str, Callable[[], dict[str, Any]]] = {
         "processes": lambda: {"processes": processes(runner, table, last)},
         "sockets": lambda: {"sockets": sockets(runner, table, last)},
-        "disk": lambda: {"disk": disk(runner, since)},
+        "disk": lambda: {"disk": disk(runner, since, ran_docker)},
         "repos": lambda: {"repos": [asdict(state) for state in states]},
         "ci": lambda: {"ci": {s.path: ci_runs(runner, Path(s.path), s.branch, since) for s in states}},
         "stores": lambda: _sweep_stores(runner, args.checkout, repos, since),
@@ -1966,8 +2004,16 @@ def _print_disk(disks: dict[str, Any] | None) -> None:
     print("\n== disk artifacts outside any repo ==")
     for line in disks.get("docker_system_df", [disks.get("docker", "")]):
         print(f"    {line}")
-    for line in disks.get("images_since_session_start", []):
-        print(f"    new this session: {line}")
+    rows = disks.get("images_in_window", [])
+    if rows:
+        why = disks.get("images_attribution", "")
+        if why == "this session ran docker":
+            print(f"  images created during the window, this session's ({len(rows)}):")
+        else:
+            print(f"  images created during the window, NOT attributable to this session ({len(rows)}):")
+            print(f"      ^ {why} — a parallel session is the usual author; do not propose removing these")
+        for line in rows:
+            print(f"    {line}")
 
 
 def _print_repo(state: dict[str, Any]) -> None:

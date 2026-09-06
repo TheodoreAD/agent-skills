@@ -286,7 +286,9 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
     ),
     "exit-masked": (
         _rx_unquoted(r"2>&1\s*\|\s*(tail|head|grep|rg)\b"),
-        "$? after a pipe is the filter's, not the command's — a failing gate reads as clean",
+        "$? after a pipe is the filter's, not the command's — a failing gate reads as clean, unless "
+        "the shell sets pipefail, which is a per-machine answer the transcript cannot give: ask the "
+        "session's own shell (`setopt | rg pipefail`) before reading a consequence into this row",
     ),
     "redirect-then-filter": (
         _rx_unquoted(r">\s*\S+\s+2>&1\s*;.*\|\s*(rg|grep|head|tail)\b"),
@@ -572,6 +574,14 @@ EXPECTATIONS: dict[str, str] = {
     # `zero` there would demand that correct usage stop. Added 2026-09-06, once the split existed to
     # key on. `rg-replace` itself stays unjudged for the same reason `grep-r-not-rg` does.
     "rg-replace-bundle": "zero",
+    # `exit-masked` is deliberately absent, decided 2026-09-06. It measures a **hazard**, not a
+    # defect: whether a masked exit code ever cost anything depends on the shell that ran the
+    # command, and a shell setting `pipefail` carries the status through the pipe so nothing was
+    # hidden. The transcript records the command and not the shell, so no verdict computed from it
+    # can be sound. `head/tail` already scores the habit itself, from output loss, which holds on
+    # every machine — so the row stays reported, stays unjudged, and the consequence is read from
+    # the session's own shell rather than from a number.
+    #
     # `grep-r-not-rg` is deliberately absent, and `find-exempt` too. The first sat at 8% of its pair
     # when measured (2026-08-29) — adherence already good, so the useful direction is "not up",
     # which this table cannot express: "down" would demand improvement on a rule that is being

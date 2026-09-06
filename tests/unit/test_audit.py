@@ -371,6 +371,15 @@ def test_only_a_bundled_r_is_the_accident(cmd, bundled):
     assert "rg-replace" in tags or not bundled
 
 
+def test_exit_masked_is_reported_and_never_judged():
+    """It measures a hazard, not a defect. Whether a masked exit code cost anything depends on the
+    shell: under `pipefail` a pipeline reports the rightmost non-zero status, so nothing was hidden.
+    The transcript records the command and not the shell, so no verdict computed from it can be
+    sound — `head/tail` scores the habit instead, from output loss, which holds on every machine."""
+    assert "exit-masked" in audit.SESSION_ROWS
+    assert "exit-masked" not in audit.EXPECTATIONS
+
+
 def test_the_bundle_is_the_row_that_carries_the_expectation():
     assert audit.EXPECTATIONS["rg-replace-bundle"] == "zero"
     assert "rg-replace" not in audit.EXPECTATIONS, (

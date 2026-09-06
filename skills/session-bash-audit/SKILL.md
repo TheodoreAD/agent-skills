@@ -55,6 +55,24 @@ beside a checkout are indistinguishable from an ordinary repo name. Half a fix a
 would make the other layouts read as verified. Treat a zero on those two rows as unverified whenever
 the session may have run from a worktree, the same as for Windows.
 
+**`exit-masked` counts a shape, and whether that shape cost anything is a per-machine answer this
+script cannot give.** A pipeline reports its last stage's status by default, which is what the row
+is named for — but a shell with `pipefail` set reports the rightmost non-zero status instead, so
+`inv quality.precommit 2>&1 | tail -3` exits non-zero on a red gate and nothing was ever hidden. The
+transcript records the command and not the shell, so **ask the session's own shell** —
+`setopt | rg pipefail` under zsh, `set -o | rg pipefail` under bash — as a Bash call in the session
+being audited, before reading any consequence into a high rate. A config file is not the answer: the
+option is often guarded on a harness variable (on this author's machine `~/.zshenv` sets it only
+when `CLAUDECODE` is), so it can be in force for agent shells and absent everywhere else on the same
+box.
+
+The row stays, and stays **unjudged** by `EXPECTATIONS`, for two reasons that pull the same way. The
+guard means the identical command still loses its status in cron, in CI, in a container and on any
+machine without that snippet — a session that learns the shape is harmless here writes it into a
+script that runs somewhere else. And a verdict computed from a transcript cannot know which shell
+ran the command, so it would be a confident number standing on an assumption. `head/tail` scores the
+habit instead, from output loss, which holds everywhere.
+
 ## What this skill reads, runs and writes
 
 - **Reads**: `~/.claude/projects/*.jsonl` and `~/.claude/settings.json`, Claude Code's own files,

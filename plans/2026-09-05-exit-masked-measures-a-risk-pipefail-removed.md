@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-06
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 25ea8788-b99d-43a2-9611-2d0c1f207694.jsonl
@@ -103,3 +103,34 @@ One measurement worth keeping from the decision: `setopt | rg pipefail` returns 
 machine's agent shells today, confirmed 2026-09-06, and `~/.zshenv` sets it under
 `if [ -n "${CLAUDECODE:-}" ]` — so a human's interactive shell on the same box does **not** have it,
 which is exactly why the check has to run inside the session being audited.
+
+## The awaited branch, walked 2026-09-06
+
+The residue above — "the pipefail branch itself still awaits a session that actually pipes its gate"
+— is now closed, by a session that was not run to test it. `audit.py --session` reported
+`exit-masked 5 6% — 4 wrapped a gate, 1 a listing` against 80 Bash calls; `claims` reported three
+green-gate claims, one of them resting on `inv quality.precommit 2>&1 | tail -25`;
+`setopt | rg
+pipefail` answered `pipefail`; no gate was re-run. That is the whole procedure taken
+end to end on the branch the first smoke test could not reach, and it cost one Bash call instead of
+a full gate.
+
+The complementary case was confirmed the same day on a session with `m = 0`, so the split's two
+sides have now each been walked once, on real sessions rather than constructed ones.
+
+## Migrated to
+
+- **The rule** — `session-harvest`'s `SKILL.md` step 5, which already carried the check, the
+  ask-the-shell condition and the exit-code-only caveat; this plan's closing item added the dated
+  confirmation of the `m > 0` branch beside the `m = 0` one.
+- **The rejected alternative** — `session-bash-audit`'s `references/research.md`, "Rejected 3 —
+  score `exit-masked`, or a gate-only version of it", which carries the argument this plan's first
+  DECISION made: the split is not derivable at all, because a transcript records the command and
+  never the shell that ran it.
+- **The limitation** — `session-bash-audit`'s `SKILL.md`, where the counter's consequence is
+  declared machine-dependent beside the worktree and Windows limitations, and `EXPECTATIONS` carries
+  the reason the row is deliberately unjudged, pinned by a test.
+
+Not migrated: the two `ingesta` sample rates, which live in `power-user-linux-setup`'s corpus plan
+where they were filed and are cited from here rather than copied; and the second DECISION's naming
+argument, which is now moot in the only way that matters — nothing split, so nothing was renamed.

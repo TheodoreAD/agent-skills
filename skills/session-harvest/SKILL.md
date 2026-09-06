@@ -619,7 +619,10 @@ What the script cannot do is decide what a finding means. That is this list:
   `inv quality.precommit 2>&1 | tail -3` already exits non-zero on a red gate and every green this
   session read was a real exit code. Report the count and say the guarantee was in force; do not
   re-run. Without it, the re-run below is the only thing standing between the session and a false
-  green.
+  green. Confirmed 2026-09-06 on the first session where `m` was above zero — 5 masked calls, **4 of
+  them a gate or suite**, three green claims resting on them, `setopt` answering `pipefail`, no gate
+  re-run. The branch above it had been confirmed the same day on a session where `m` was zero, so
+  both sides of the split have now been walked.
 
   **Ask the shell, not a config file.** A file says what should be set; the option can be guarded on
   a harness environment variable (on this author's machine `~/.zshenv` sets it only when

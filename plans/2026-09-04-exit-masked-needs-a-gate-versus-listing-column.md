@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-06
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 92f54986-8a19-49a4-b792-8ebb1d5fcf1a.jsonl
@@ -110,11 +110,16 @@ the assertion count exists and the correspondence does not. Whether to build the
 separate question from this row; what is settled is that citing `claims` as the existing answer
 would have been wrong.]
 
-[NEEDS CLARIFICATION: **does this change `EXPECTATIONS`?** The corpus separately asks whether
-`exit-masked` should be scored at all, arguing against on the grounds that it is a symptom of
-`head/tail` rather than an independent habit. A gate-only rate is a much better scoring candidate
-than the raw one — it has a defensible target of zero — so the two questions are coupled and the
-second should not be settled before the first.]
+[DECISION: **`exit-masked` stays out of `EXPECTATIONS`, 2026-09-06** — and the gate-only rate does
+not go in either, which is the part that changed. The hoped-for argument was that a gate-only rate
+has a defensible target of zero; the disqualifier is one the corpus question could not see, and
+`2026-09-05-exit-masked-measures-a-risk-pipefail-removed.md` supplies it: **whether a masked exit
+code cost anything depends on the shell**, a shell setting `pipefail` carries the status through the
+pipe, and a transcript records the command and not the shell. So any verdict on this row — raw or
+gate-only — is a confident number standing on an assumption about a machine the instrument never
+saw. `head/tail` scores the habit instead, from output loss, which holds everywhere. The row is
+reported, split into gate and listing, and left unjudged; a test pins the absence so it reads as a
+decision.]
 
 ## The same question on a second row, inherited 2026-09-06
 

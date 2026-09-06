@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-05
+status: in-progress
+updated: 2026-09-06
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 25ea8788-b99d-43a2-9611-2d0c1f207694.jsonl
 source_moment: 2026-09-05T19:00:00Z
@@ -47,17 +47,30 @@ this machine, it cannot be.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: whether `exit-masked` should **split** — "masked, and this shell would have
-hidden it" against "masked, but `PIPE_FAIL` carries it" — or whether the harvest step should read
-the shell's own state (`setopt | rg pipefail`) and skip the re-run when the guarantee is in force.
-The split keeps one honest number per shape and makes the baseline comparison across the deploy
-meaningful; the harvest check is one line and fixes the cost without touching the instrument. They
-are not exclusive.]
+[DECISION: **no split — the harvest asks the shell, 2026-09-06.** The split is not merely the more
+expensive option, it is **not derivable at all**: a transcript records the command and the result,
+and nothing about the shell that ran it. `audit.py` cannot tell "this shell would have hidden it"
+from "`PIPE_FAIL` carried it" for any call, on any machine, and a per-date heuristic would be a
+guess dressed as a measurement — worse in a skill that ships to strangers whose machines have no
+such snippet at all.
 
-[NEEDS CLARIFICATION: what the counter should be **called** if it splits. `exit-masked` asserts the
-consequence, and the consequence is now conditional on the machine — a name that survives the
-condition is worth a minute's thought, and renaming a counter invalidates every stored baseline that
-carries the old key.]
+So the counter stays whole and the question moves to where the answer exists: the session's own
+shell. `session-harvest` step 5 now runs `setopt | rg pipefail` (`set -o | rg pipefail` under bash)
+as a Bash call before re-running anything, and skips the re-run when the option is in force —
+`cmd_claims` prints the same instruction with its own output. Two conditions are stated with it,
+because both are ways the check could be misread: **ask the shell, not a config file** (the option
+is guarded on `CLAUDECODE` here, so the answer differs between an agent's shell and any other on the
+same box), and **the guarantee covers the exit code only** — `| head -20` still discards output, so
+a claim resting on reading the gate's output is still unverified.]
+
+[DECISION: **the name stays `exit-masked`, since nothing splits.** Recorded rather than dropped
+because the reasoning outlives the question: renaming a counter invalidates every stored baseline
+carrying the old key, and this row's name is now doing the job the plan worried about — it describes
+the **shape**, and the consequence is read from the shell rather than from the name. The row is also
+deliberately absent from `EXPECTATIONS`, which is the same decision one level up: a verdict computed
+from a transcript cannot know which shell ran the command, so it would be a confident number
+standing on an assumption. `head/tail` scores the habit instead, from output loss, which holds
+everywhere.]
 
 [PITFALL: **do not simply retire the counter.** The guard is `CLAUDECODE`, so the same piped command
 is still status-losing in cron, in CI, in a devcontainer, on any machine this repo has not set up,
@@ -65,12 +78,24 @@ and in any harness that is not Claude Code. A session that learns the shape is h
 it into a script that runs somewhere else. The measurement stays; what has changed is what it
 licenses anyone to conclude about _this_ session's own claims.]
 
-## Recommended direction
+## What landed, 2026-09-06
 
-1. Decide the split-or-check question above; the harvest half is the one costing time today.
-2. Whatever is decided, **say in `session-bash-audit` that the counter's consequence is
-   machine-dependent** and name the guard, so the next reader of a high `exit-masked` does not
-   re-derive this.
-3. `power-user-linux-setup`'s corpus plan already states the general form — that `exit-masked`
-   measures a hazard rather than a defect rate — and that sentence is the thing this repo's own
-   wording should agree with rather than contradict.
+1. ~~Decide the split-or-check question~~ — decided above: check, because the split is not
+   derivable. `session-harvest`'s step 5 and `harvest.py`'s `claims` footer both ask the shell first
+   and skip the re-run when `pipefail` is in force, which is the cost this plan was filed about.
+2. ~~Say in `session-bash-audit` that the counter's consequence is machine-dependent~~ — `SKILL.md`
+   carries it as a declared limitation beside the worktree and Windows ones, the `PATTERNS` row's
+   own "why" names the check, and `EXPECTATIONS` carries the reason the row is unjudged. A test pins
+   that last one, so the absence reads as a decision rather than an oversight.
+3. `power-user-linux-setup`'s corpus plan states the general form — `exit-masked` measures a hazard
+   rather than a defect rate — and the wording here now agrees with it in those words.
+
+[UNVERIFIED: the harvest half is written but has not run end to end. The next harvest is the test:
+it should print the `setopt` check, find `pipefail` on, and report the claim count without paying
+for a gate re-run. Watch for it doing the check and re-running anyway, which is the failure mode a
+procedure change has and a code change does not.]
+
+One measurement worth keeping from the decision: `setopt | rg pipefail` returns `pipefail` in this
+machine's agent shells today, confirmed 2026-09-06, and `~/.zshenv` sets it under
+`if [ -n "${CLAUDECODE:-}" ]` — so a human's interactive shell on the same box does **not** have it,
+which is exactly why the check has to run inside the session being audited.

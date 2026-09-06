@@ -108,6 +108,29 @@ python3 $S/scripts/audit.py --session <session-id> --compare ~/.local/state/sess
 The id is the transcript's filename stem, and a unique prefix is enough. Everything else in this
 script measures a trend after the fact; this measures the run you are in.
 
+**Read it as counts, not as rates.** The session view prints one row per line, count first:
+
+```
+== this session, 247 calls ==
+  head/tail                   38   15%
+  exit-masked                 22    9%   14 wrapped a gate, 8 a listing
+  rg-replace                   1    0%   -rn x 1
+```
+
+Every row prints, including the zeros, and the count is there because a rate at session scale rounds
+a real finding away: at a median session of 247 calls one instance is 0.40% and prints `0%`.
+Measured 2026-09-06 across 67 sessions — of the 30 with an `rg-replace` hit, **13 would have read
+`0%`**. A `0` is a row that was checked and was clean; a row that is not printed at all is what this
+view had for `rg-replace`, `find-not-fd`, `grep-r-not-rg` and `find-exempt` until then, because it
+had inherited the corpus table's columns and the corpus table has no width for them.
+
+Two rows carry a breakdown, because one number over two different failures cannot be acted on.
+`exit-masked` splits the masked calls that wrapped a **gate** from the ones that wrapped a listing —
+masking forty listings has no reader, masking one gate run and then saying "green" does.
+`rg-replace` names the flag spelling: `-rn` loses line numbers and rewrites the matched text, `-ril`
+turns a case-insensitive file-list search into a case-sensitive line search, and a lone `-r` is
+usually the deliberate `rg -o -r ''` extraction idiom rather than a mistake at all.
+
 `--json <path>` works in this mode too, and dumps the same `--until`-filtered set the printed report
 is about. Until 2026-09-06 the `--session` path returned before the flag was read, so the dump was
 unavailable in precisely the mode `session-harvest` always uses, with no error and no file.

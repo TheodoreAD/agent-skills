@@ -72,22 +72,43 @@ the one with consequences riding on it".
 No user correction prompted this — it came out of merging two filed samples into the corpus, and
 both filed plans raised it themselves, each naming `agent-skills` as where it belongs.
 
-## Open questions
+## Measured at corpus scale, 2026-09-06 — and it breaks the listing decision
 
-[NEEDS CLARIFICATION: **what counts as "the gate", and can it be derived at all?** The hand-made
-column was easy because a human reading the calls knows `inv quality.precommit` and `pytest` from
-`plans.py list` and `--help`. A derivation needs a rule. Candidates: a configurable list of
-gate-shaped commands; anything the repo's own task runner exposes; or the weaker but fully general
-"was the masked command's output ever asserted about", which needs no list. The last one shades into
-the assertions question below rather than being independent of it.]
+Step 1 of the recommended direction, taken. The answers are not the ones the four hand-read samples
+suggested, and the difference is scale: the decision above was drawn from a session that was 99%
+listings with one masked gate in it, and that session is not typical.
 
-[NEEDS CLARIFICATION: **calls or assertions — and is `harvest.py claims` already the answer?**
-Sample 7 masked 22% of calls and made seven green claims, and it is the claims that reach the user:
-a run that masks forty listings and asserts nothing has no reader, while one that masks a single
-gate and says "green" once does. `harvest.py claims` already counts assertions, so the number
-exists. The question is whether `audit.py` should surface it as a column, or whether it belongs only
-in the harvest report where it already is — in which case the fix is a cross-reference in the skill,
-not code.]
+**The `2>&1 | filter` population splits almost exactly in half.** Over the 7 days to 2026-09-06,
+2,770 masked calls: **1,389 gate-shaped (50%)**, 1,381 not. **55 of 67 sessions** have at least one
+masked gate, and the per-session counts run 83, 74, 74, 63, 56, 54, 52 …
+
+[DECISION: **a name list derives "the gate" well enough, and the weaker general rule is not
+needed.** `inv <ns>.(quality|test|check|precommit)`, `pytest`, `basedpyright`, `ruff`, `mypy`,
+`npm test`, `cargo test`, `make`, `tox`, `nox`, `pre-commit run` — one regex, no per-repo catalog,
+and it classifies 50% of the masked population. The "was its output asserted about" rule was
+preferred on generality; it is not needed to answer this question and would couple the row to the
+claims matcher, so it stays available for a repo whose gate has an unusual name rather than being
+the design.]
+
+[PITFALL: **the "short list, empty for clean sessions" premise is false.** The decision above chose
+a listing over a column on the grounds that masked gate calls are few by construction and the list
+would be empty for the sessions the column would have scored as clean. At corpus scale it is
+neither: 40–80 lines for a busy session, and non-empty for **55 of 67**. Deduplicating does not
+rescue it — the distinct command shapes per session run to a median of 14 and a maximum of 77,
+because the same gate is typed with different `tail -N` values and different chained prefixes.
+
+So the listing is a report section, not a footnote, and the thing that actually separates the two
+populations is the pair of counts: "136 masked, 74 of them a gate". That is one line, it is exactly
+the distinction the hand-made column recorded, and the existing `--samples` machinery already prints
+examples for anyone who wants them. The list survives as a `--samples`-bounded dump, not as the
+row.]
+
+[DECISION: **`harvest.py claims` is not already the answer, and the reason is worth keeping.** It
+prints two independent lists — every green claim, then up to `--samples` masked calls — and **pairs
+nothing**: no claim is tied to the call it rests on, and the masked list is not gate-filtered. So
+the assertion count exists and the correspondence does not. Whether to build the pairing is a
+separate question from this row; what is settled is that citing `claims` as the existing answer
+would have been wrong.]
 
 [NEEDS CLARIFICATION: **does this change `EXPECTATIONS`?** The corpus separately asks whether
 `exit-masked` should be scored at all, arguing against on the grounds that it is a symptom of
@@ -106,6 +127,20 @@ scoped this out of itself:
 > not print it. Not done because the anchoring was what made the count trustworthy, and the
 > breakdown is worth building on a count worth reading.]
 
+**Re-measured 2026-09-06 over 30 days** (31,011 calls, 86 tagged), which changes what the breakdown
+is for: `-rn` × 62, **bare `-r` × 13**, `-ril` × 6, `-rln` × 4, `-rl` × 2, `--replace` × 1. The bare
+`-r` count moved from zero to 13, and every one of the 13 is the deliberate extraction idiom
+(`rg -o -r '' <pattern> <path>`) — correct usage of a real flag, which the row currently counts
+alongside the accidents. So the breakdown is not only a reporting nicety: **it is the precondition
+for scoring the row at all.** 74 bundle instances against 14 deliberate ones, and `zero` is
+defensible on the first and unsatisfiable on the second, which is what
+`2026-09-06-audit-session-mode-silently-drops-flags-and-rows.md` concluded when it tried to give
+`EXPECTATIONS` an `rg-replace` entry and found it could not.
+
+One live failure in the window, the first on record for this row: `rg -n "…" <path> -r 2>/dev/null`
+— the shell took `2>/dev/null` as a redirect, so `-r` reached `rg` with no value, exit 123, and the
+same redirect discarded the message that said so.
+
 **It is this plan's question with a different row in front of it**, which is the reason for merging
 rather than filing it separately: one rate covering outcomes that are not comparable, where the fix
 is a breakdown rather than a second number. `exit-masked` mixes a masked listing with a masked gate;
@@ -120,21 +155,30 @@ precondition generalises**: the breakdown was deliberately not built until the c
 trustworthy, which is the same ordering this plan should follow, since a per-shape split of a number
 that includes prose mentions would split the noise too.
 
-The rejected shape is the same one, for the same reason: a second **column** cannot express it. Both
-rows want a short list — the masked gate calls themselves, the bundles actually used — which is
-empty for the sessions that have no problem and one line per distinct shape for the ones that do.
+The rejected shape was the same one, for the same reason: a second **column** cannot express it.
+Both rows were said to want a short list — the masked gate calls themselves, the bundles actually
+used — empty for the sessions that have no problem and one line per distinct shape for the ones that
+do. **The measurement above withdraws that for `exit-masked`** (median 14 distinct shapes, up to 77)
+and leaves it standing for `rg-replace`, where six bundle spellings is the whole vocabulary. The two
+rows turn out not to want the same output after all, which is worth knowing before one design is
+built for both.
 
 ## Recommended direction
 
-Rough. The cheap end first, because the expensive end may turn out not to be needed.
+Revised 2026-09-06, after taking steps 1 and 2. What is left is smaller than what was expected.
 
-1. **Check what `harvest.py claims` already produces** before adding anything to `audit.py`. If its
-   output already pairs an assertion with the call it rests on, the column may be a report change
-   rather than an analysis one.
-2. **Try the general rule before the configurable list** — "was this masked command's output
-   asserted about" needs no per-repo gate catalog and degrades sensibly on a repo whose gate has an
-   unusual name. A list is the fallback, not the design.
-3. **Re-score the seven existing samples with whatever lands**, since the corpus's whole value is
-   that the rows are comparable. A column that cannot be back-filled from the surviving transcripts
-   is worth less than one that can, and three of the seven transcripts expire around 2026-10-02.
-4. Leave `EXPECTATIONS` alone until 1–3 answer the third question above.
+1. ~~Check what `harvest.py claims` already produces~~ — done: it pairs nothing, so no report-only
+   fix was available.
+2. ~~Try the general rule before the configurable list~~ — done: the name list classifies half the
+   masked population with one regex, and the general rule is not needed to answer this.
+3. **Build the two counts, not the listing** — `n masked, of which m wrapped a gate` — plus the
+   `rg-replace` bundle breakdown, which is six named spellings and genuinely short. Both land in the
+   session view that `2026-09-06-audit-session-mode-silently-drops-flags-and-rows.md` settled the
+   shape of: vertical, one row per line, count then rate.
+4. **Then `EXPECTATIONS`, on the bundle sub-row only.** Not on `rg-replace` as a whole — 13 of its
+   86 hits are the deliberate `-r ''` idiom, so a `zero` on the row is a verdict nobody can satisfy.
+5. Re-scoring the seven samples is now a **second** correction rather than a first: the heredoc
+   truncation understated several of the same rows, and that is filed against the repo that owns the
+   corpus (`~/plans/…/2026-09-06-adherence-corpus-rows-understated-by-the-heredoc-bug.md`). Whatever
+   lands here should be back-filled in the same pass rather than in two, and three of the seven
+   transcripts expire around 2026-10-02.

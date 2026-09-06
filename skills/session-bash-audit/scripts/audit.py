@@ -69,7 +69,14 @@ def state_dir(skill: str = "session-bash-audit") -> Path:
     return Path.home() / ".local" / "state" / skill
 
 
-HEREDOC_RE = re.compile(r"<<-?\s*['\"]?[A-Za-z_]+['\"]?")
+# The delimiter word is captured, because dropping a heredoc body means finding where it ends. The
+# word may carry digits (`<<PY2`): matching only its leading letters would look for the wrong
+# terminator and lose the rest of the command, which is the bug this regex's caller used to have.
+# The lookarounds exclude a here-string: `<<< word` is one line of stdin, not a body with a
+# terminator, and reading it as a heredoc cut the command at that point and tagged `heredoc`. One
+# such call in the 7 days to 2026-09-06, inside a quoted `rg` pattern — quoting is no defence here,
+# since `strip_heredoc` runs before `strip_quoted`.
+HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 SEPARATOR_RE = re.compile(r"&&|\|\||[;|\n]")
 
 
@@ -92,9 +99,44 @@ class Call:
 
 
 def strip_heredoc(cmd: str) -> str:
-    """Drop heredoc bodies so their content can't look like chained commands."""
-    m = HEREDOC_RE.search(cmd)
-    return cmd[: m.start()] if m else cmd
+    """Drop heredoc bodies so their content can't look like chained commands — and keep what runs
+    after them.
+
+    It used to cut at the marker and return everything before it, which dropped the body **and the
+    rest of the command**. The shape that lost is the ordinary one — a patch heredoc, then the gate:
+
+        python3 - <<'PY'
+        ...
+        PY
+        inv quality.precommit 2>&1 | tail -30
+
+    The table saw `python3 -` and nothing else, so the masked gate run was invisible to every
+    pattern, `strip_quoted` and `split_chain` included, since both build on this. Measured
+    2026-09-06 over 7 days: 1,267 tag hits lost across 30 sessions — 437 `head/tail`, 381
+    `exit-masked` — and per session the correction reached +12pp, against +2.5pp corpus-wide. One
+    understated session is sample 6 of the published adherence corpus, recorded at 27% `exit-masked`
+    against a real 37%.
+
+    The terminator rule is the shell's: `<<-WORD` allows leading whitespace on the closing line,
+    plain `<<WORD` requires the word alone at column 0. Taking the strict form for plain `<<` is
+    deliberate — a loose one would resume inside a body whose own text happens to be the delimiter,
+    and body text re-entering the table is the false positive `strip_quoted` exists to prevent. An
+    unterminated heredoc keeps the old behaviour and cuts to the end: nothing after it is
+    trustworthy.
+    """
+    kept = ""
+    rest = cmd
+    while True:
+        m = HEREDOC_RE.search(rest)
+        if not m:
+            return kept + rest
+        kept += rest[: m.start()]
+        indent = "[ \t]*" if m.group(1) else ""
+        body = rest[m.end() :]
+        end = re.search(rf"^{indent}{re.escape(m.group(3))}[ \t]*$", body, re.MULTILINE)
+        if not end:
+            return kept
+        rest = body[end.end() :]
 
 
 QUOTED_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'[^\']*\'')

@@ -81,6 +81,53 @@ def test_strip_quoted_keeps_the_shell_shape():
 
 
 # --------------------------------------------------------------------------------------------
+# a heredoc hides its body, not the commands after it
+
+
+def test_the_gate_run_after_a_heredoc_is_still_a_command():
+    """`strip_heredoc` cut at the marker and returned everything before it, so a patch heredoc
+    followed by the gate handed the table `python3 -` and nothing else. Measured 2026-09-06 over 7
+    days: 1,267 tag hits lost across 30 sessions, 437 of them `head/tail` and 381 `exit-masked`, and
+    per session the correction reached +12pp. One understated session is sample 6 of the published
+    adherence corpus — 27% recorded against a real 37%."""
+    cmd = "python3 - <<'PY'\nprint('x')\nPY\ninv quality.precommit 2>&1 | tail -30"
+    tags = tags_of(cmd)
+    assert "exit-masked" in tags
+    assert "head/tail" in tags
+    assert "heredoc" in tags
+
+
+def test_two_heredocs_in_one_call_both_close():
+    cmd = "cat > a <<'EOF'\nbody | head -1\nEOF\ncat > b <<'EOF'\nmore | head -1\nEOF\nsed -n '1,5p' a"
+    tags = tags_of(cmd)
+    assert "sed-n" in tags, "the command after the second body is still a command"
+    assert "head/tail" not in tags, "neither body is"
+
+
+def test_an_unterminated_heredoc_still_cuts_to_the_end():
+    """Nothing after an unclosed body can be told from body, so the old behaviour is right there —
+    a transcript entry truncated mid-write is the case that produces one."""
+    assert audit.strip_heredoc("python3 - <<'PY'\nprint('x')\ninv precommit | tail -3") == "python3 - "
+
+
+def test_a_here_string_is_not_a_heredoc():
+    """`<<<` feeds one line to stdin and has no terminator, so reading it as a heredoc cut the
+    command there and tagged `heredoc`. The only instance in the 7 days to 2026-09-06 was a `<<<`
+    inside a quoted `rg` pattern, which quoting does not protect: `strip_heredoc` runs first."""
+    cmd = "rg -o '<<< finished=[^>]*>>>' log | tail -1"
+    assert "heredoc" not in tags_of(cmd)
+    assert "head/tail" in tags_of(cmd), "and the rest of the command survives"
+
+
+def test_a_dash_heredoc_closes_on_an_indented_terminator():
+    """`<<-WORD` allows leading whitespace on the closing line and plain `<<WORD` does not, which is
+    the shell's own rule. The strict form for plain `<<` is deliberate: resuming inside a body whose
+    text happens to be the delimiter puts body text back into the table."""
+    assert "head/tail" in tags_of("cat > f <<-EOF\n\tbody\n\tEOF\nrg x f | head -3")
+    assert "head/tail" not in tags_of("cat > f <<EOF\n  EOF\nstill body | head -3\nEOF")
+
+
+# --------------------------------------------------------------------------------------------
 # a counter keyed on a bare tool name must not match its own prose
 
 

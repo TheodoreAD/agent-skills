@@ -126,10 +126,13 @@ regression, because the instrument changed and no session did.
 
 ## What is left
 
-1. **The corpus question above**, which is the one open `NEEDS CLARIFICATION`. It cannot be answered
-   from here: the corpus lives in `power-user-linux-setup` and is that repo's to change, so this
-   goes to it as a filed plan rather than an edit. Three of the seven sample transcripts expire
-   around 2026-10-02, so a re-score is possible now and not later.
+1. **The corpus question above** is the one open `NEEDS CLARIFICATION`, and it cannot be answered
+   from here: the corpus lives in `power-user-linux-setup` and is that repo's to change. **Filed
+   there 2026-09-06** as `2026-09-06-adherence-corpus-rows-understated-by-the-heredoc-bug.md` — in
+   the store mirror, not that repo's tree, commit `3186660` in `~/plans`. It carries the affected
+   rows, the re-score-versus-annotate question, and the deadline: three of the seven sample
+   transcripts expire around 2026-10-02, sample 6's among them. Nothing further to do from this
+   repo.
 2. `harvest.py`'s `EXIT_MASKED_RE` keeps its own defect — it counts quoted mentions, the two the
    week's divergence turned up. Fixing it means sharing `strip_quoted`/`strip_heredoc` across two
    skills that install independently and cannot import each other, which is

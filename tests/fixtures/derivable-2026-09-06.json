@@ -1,5 +1,5 @@
 {
-  "saved": "2026-09-04",
+  "saved": "2026-09-06",
   "skills": {
     "plan-docs": {
       "derivable": 3,
@@ -12,6 +12,10 @@
     "mcp-server-shipping": {
       "derivable": 1,
       "delegated": 0
+    },
+    "session-harvest": {
+      "derivable": 1,
+      "delegated": 7
     },
     "db-defaults": {
       "derivable": 0,
@@ -46,10 +50,6 @@
       "delegated": 6
     },
     "session-bash-audit": {
-      "derivable": 0,
-      "delegated": 7
-    },
-    "session-harvest": {
       "derivable": 0,
       "delegated": 7
     },

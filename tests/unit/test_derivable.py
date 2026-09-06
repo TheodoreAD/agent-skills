@@ -191,7 +191,7 @@ def test_this_repos_own_corpus_stays_within_its_baseline():
     """The audit run against the corpus that motivated it, which is where drift would show first.
 
     A rise here is a real finding, not a broken test: read
-    `tests/fixtures/derivable-2026-09-04.json`, decide whether the new command lines are legitimate
+    `tests/fixtures/derivable-2026-09-06.json`, decide whether the new command lines are legitimate
     residue, and either fix the skill or re-save the baseline deliberately.
 
     The 2026-09-04 re-save is the worked example of the second, and of a tension worth knowing
@@ -201,10 +201,18 @@ def test_this_repos_own_corpus_stays_within_its_baseline():
     author. Replacing it with `<path-to-your-checkout>` fixed the portability finding and raised
     this count by one. The placeholder is right on both measures once that is understood, and it is
     exactly the residue this skill names as legitimate: an external CLI's own documented one-liner.
+
+    The 2026-09-06 re-save adds a residue category the tool's own list does not name: **a check of
+    the agent's own shell, which a script cannot perform.** `session-harvest` gained
+    `setopt | rg pipefail`, the one-line question that decides whether a masked exit code cost
+    anything — and it has to run as a Bash call in the session being audited, because a subprocess
+    gets its own shell and `harvest.py` is Python besides. The measure sees a pipeline and counts
+    it, correctly; there is simply nothing to move into `scripts/`. Legitimate, and the reason it is
+    recorded here rather than argued each time it resurfaces.
     """
     skills = fitness.load_skills([REPO_ROOT / "skills"])
     rows = fitness.scan_derivable(skills)
-    baseline_path = REPO_ROOT / "tests" / "fixtures" / "derivable-2026-09-04.json"
+    baseline_path = REPO_ROOT / "tests" / "fixtures" / "derivable-2026-09-06.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))["skills"]
     risen = [
         f"{r['skill']}: {baseline[str(r['skill'])]['derivable']} -> {r['derivable']}"

@@ -151,6 +151,17 @@ spellings, both from the other plan. Five tests, and the first run on its own se
 `rg-replace 1 (-rn x 1)`: **the row the plan was written about caught this session's own `rg -rn`**,
 which is the shape the original finding said would go unreported.
 
+[NEEDS CLARIFICATION: **a `zero` verdict and a session-scale count can contradict each other on one
+screen, and now do.** `compare` scores `zero` as `after <= 0.02`, a band chosen for a corpus of
+thousands of calls. Run against a 124-call session on 2026-09-06 the view printed
+`rg-replace-bundle 1 1%` and the verdict line under it printed `rg-replace-bundle=1%(+1pp,OK)` — one
+real instance of a rule whose expectation is that it never happens, reported as met. This is the
+plan's own display finding one level up: the count is right, the band is a corpus band, and a reader
+sees both at once. Options: judge `zero` on the count when the run is one session (`after * n < 1`),
+keep the band and say in the skill that a `zero` verdict is a corpus judgement rather than a session
+one, or drop the band entirely and accept `MISS` on rows that sit at one or two instances across a
+corpus. The last one changes what several existing rows report, so it is not a small choice.]
+
 [PITFALL: **the same defect was one level further in, and nothing would have found it by reading.**
 `EXPECTATIONS` judged `find-not-fd` while `rates()` computed `RATE_COLUMNS` plus two — and
 `find-not-fd` was in neither, so `compare` read it as absent from both runs and skipped it as "a

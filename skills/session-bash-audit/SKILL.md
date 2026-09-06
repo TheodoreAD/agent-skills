@@ -208,6 +208,17 @@ per expectation (`EXPECTATIONS` in the script: chaining, head/tail, sed -n, cat,
 git-in-chain should be _down_; own-repo `cd` and `git -C` mutations, and a bundled `rg -r`, at
 zero). Models with fewer than 50 calls in either run are shown as `?`, not judged.
 
+**A `zero` expectation is judged on the count, and its cell prints that count with no delta.** It
+was a rate band (`<= 2%`) until 2026-09-06, which is not a definition of zero at any scale and hid
+the finding at both ends: over the 7 days to that date **every** zero row passed for the busiest
+model while carrying hundreds of instances — `git-C-mutating` 288, `git-C-own-repo` 231, `echo-exit`
+146, `cd-own-repo` 94, all reported `OK` — and on a 157-call session a single real `rg -rn` printed
+`1%(OK)` beside a session view that printed the count. A verdict that cannot be falsified hides a
+finding, which is worse than one that overstates it. Expect the corpus verdict line to carry more
+misses than it used to; they were always there. No delta is shown because the test is absolute: a pp
+delta on a row living near zero rounds to `-0pp`, and a count delta across different denominators
+would read a 160-call session against a 15,000-call baseline as an improvement.
+
 **A `zero` expectation is scored on `rg-replace-bundle`, never on `rg-replace` itself.** The parent
 row counts the deliberate `rg -o -r '' <pattern> <path>` extraction idiom as well as the accident —
 13 of its 86 hits over the 30 days to 2026-09-06 — so a `zero` there would demand that correct usage

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-06
 source_repo: github.com-personal/ingesta
 ---
@@ -62,3 +62,26 @@ it ran no docker at all.]
 The run that found it: session `88f860c9` in `ingesta`, 2026-09-05 21:03 to 2026-09-06 03:12. Its
 `processes` section was correct and clean, which is what made the docker section stand out — a
 session with no surviving children and no watchers does not usually have twenty fresh images.
+
+## Migrated to
+
+- **The behaviour** — `skills/session-harvest/scripts/harvest.py`: `invoked_docker()` and `disk()`'s
+  `ran_docker` argument, printed by `_print_disk()` under a heading that says whether the rows are
+  attributable and why. Rows that are not attributable are still reported, per this plan's second
+  recommendation.
+- **The rule a reader follows** — `SKILL.md` step 5's disk-artifacts bullet, which now carries the
+  parallel-sessions caveat this plan asked for and forbids proposing a removal line for an
+  unattributable row.
+- **The reasoning** — `references/rationale.md`, "Why the sweep now says who owns a process and an
+  image (2026-09-05/06)", merged with `2026-09-05-sweep-should-say-whether-a-server-is-orphaned.md`.
+  That section carries this plan's DECISION (the git bullet is proof the mental model was already in
+  the skill) and its PITFALL (the report reads as authoritative in the direction nobody checks),
+  plus a pitfall this plan could not have: the cross-check's own first live run counted a quoted
+  `rg` alternation as a docker invocation.
+- **Tests** — `tests/unit/test_harvest.py`:
+  `test_a_session_that_ran_no_docker_command_owns_no_image`,
+  `test_docker_is_counted_at_command_position_not_wherever_the_word_appears`.
+
+Not migrated: the specific image names and registry ports, which identify a parallel session's work
+and are evidence for a count that is already recorded; and the third recommendation as its own item,
+since carrying the caveat into the bullet is what the SKILL.md edit did.

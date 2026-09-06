@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-05
+status: landed
+updated: 2026-09-06
 source_repo: github.com-personal/ingesta
 source_session: 6291d9d1-b8ed-4826-9967-9ae30f70bebf.jsonl
 ---
@@ -52,3 +52,23 @@ whose parent is a live shell is somebody working, and one whose parent is `syste
 
 **It does not change what the harvest may do about it.** Killing stays the user's call, and the
 existing rule that a returning orphan means the lifetime question owns the fix is unaffected.
+
+## Migrated to
+
+- **The behaviour** — `skills/session-harvest/scripts/harvest.py`: `parentage()` and
+  `started_after()`, called from `processes()` and `sockets()`, printed by `_holder()`. Their
+  docstrings carry the 2026-09-05 incident this plan describes.
+- **The rule a reader follows** — `SKILL.md` step 5's processes bullet: read the sweep's own line
+  rather than re-deriving it, and what each of the three `orphaned` verdicts means.
+- **The reasoning** — `references/rationale.md`, "Why the sweep now says who owns a process and an
+  image (2026-09-05/06)", which merges this plan with
+  `2026-09-06-sweep-attributes-another-sessions-docker-images-to-this-one.md`: both are the same
+  finding, that a timestamp inside the session window is not an attribution on a machine running
+  parallel sessions.
+- **Tests** — `tests/unit/test_harvest.py`: `test_a_listener_says_whether_a_session_still_holds_it`,
+  `test_a_parent_missing_from_the_listing_is_unknown_rather_than_orphaned`,
+  `test_a_process_started_after_the_sessions_last_activity_is_not_that_sessions`.
+
+Not migrated: the two `ps -o` command lines this plan quotes, which are now what the sweep does
+rather than what a reader types, and the closing note that killing stays the user's call —
+`SKILL.md` and the skill's write-set section already say so, in more places than this plan did.

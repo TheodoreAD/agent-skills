@@ -445,6 +445,64 @@ a state file is a second thing that can be stale. `--session` stays for a harnes
 id, and the job check stays ahead of it, because a background job's environment names the parent
 session while only its `state.json` knows the job's own transcript.
 
+## Why the sweep now says who owns a process and an image (2026-09-05/06)
+
+Two findings a fortnight apart turned out to be one: **on a machine that runs parallel sessions, a
+timestamp inside the session window is not an attribution, and the sweep was making that inference
+at two sites while stating the opposite at a third.** The git bullet has warned since 2026-08-28
+that an ahead-count "is not necessarily this session's work" and that recommending a push may
+publish another session's history. Neither the disk check nor the process check inherited a word of
+it, though both rest on exactly the same machine fact. The mental model was present in the skill and
+applied at one site, which is why this is one section rather than two fixes.
+
+**The docker case, 2026-09-06.** A sweep printed twenty images — 2.4 GB — as `new this session:` for
+a session whose 183 Bash calls contained no `docker` at all; they were a parallel session's
+container-testing work, registry ports and all. The mislabel is worse than a wrong row because of
+what the bullet tells the reader to do next: propose a removal line. So the report proposed deleting
+images the session did not create, while a live session might have been mid-run against them — and
+the bullet's own stated reason for never deleting unasked is precisely that an image another session
+is about to reuse costs a rebuild. It also reads as authoritative in the one direction nobody
+checks: "your session left 2.4 GB" is specific and plausible, and the session reading it has no
+cheap way to know it ran no docker.
+
+The fix is a cross-check the transcript already affords — did this session invoke `docker` at all —
+which is a stronger filter than any timestamp and fails safe: zero calls means zero attributable
+images. **Dropping the unattributable rows was rejected.** The totals are genuinely useful (977 MB
+of build cache is worth seeing whoever made it), so the answer is a second heading rather than a
+narrower filter, and the heading says the rows are not this session's and why.
+
+[PITFALL: **"at command position" is a claim about a shell, and a regex over raw command text is not
+reading a shell.** The very first live run of the docker cross-check counted
+`rg -n "def sweep|docker|listener" harvest.py` as an invocation — an alternation inside a quoted
+search pattern is a pipe followed by the word, by every rule the regex knows. A search for the word
+is the single most likely way `docker` appears in a session that never ran it, so the false positive
+lands exactly on the session the check exists to protect. Quoted spans are stripped before matching
+and that command line is a test case.]
+
+**The listener case, 2026-09-05.** Step 5's rule for a returning orphan turns on whether a process
+is "reparented to `systemd --user` rather than held by a live session". The sweep printed the pid,
+age and command line — everything except the parent — so the one fact the rule turns on was the one
+fact the harvest had to go and get, and the run that hit the rule paid two extra `ps -o pid,ppid`
+calls for it. Both answers changed the report: without the parent lookup "orphaned" would have been
+an assumption, and the rule exists because that assumption was wrong once already; without the start
+time the harvest would have reported another session's process as its own leftover, which is the
+same misattribution as the docker case arriving through a different door.
+
+Every process and listener row now carries the parent pid and command, an `orphaned` verdict, and
+whether the process started after the harvested session's last transcript entry. **`orphaned` is
+three-valued on purpose.** A parent missing from the listing is not evidence of an orphan, and a
+sweep that guesses there would be inventing the fact it exists to supply — the same standard as "an
+absent measurement must not read as a measured zero" elsewhere in this file. The first live run
+separated two otherwise identical chrome debug listeners: one held by a live shell, one reparented
+to `systemd --user`.
+
+What neither plan claimed, and this section does: **prose is where a check's operative fact goes to
+be re-derived by hand.** The orphan rule was written on 2026-09-05 and the very next harvest paid
+for it in two manual calls; the parallel-sessions caveat was written for git in August and never
+reached the two checks that needed it. That is the same argument as "a correction a script can
+simply not make does not belong in prose at all", one step further out: a rule whose evidence the
+tool does not print is a rule the next run re-derives, differently.
+
 ## Why the write set is stated positively, and why narrowing it cost nothing (2026-09-03/05)
 
 The user's specification, close to verbatim: harvest _"should exclusively edit things in the repo

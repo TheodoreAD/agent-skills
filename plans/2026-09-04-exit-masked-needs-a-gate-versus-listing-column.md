@@ -171,12 +171,16 @@ Revised 2026-09-06, after taking steps 1 and 2. What is left is smaller than wha
    fix was available.
 2. ~~Try the general rule before the configurable list~~ — done: the name list classifies half the
    masked population with one regex, and the general rule is not needed to answer this.
-3. **Build the two counts, not the listing** — `n masked, of which m wrapped a gate` — plus the
-   `rg-replace` bundle breakdown, which is six named spellings and genuinely short. Both land in the
-   session view that `2026-09-06-audit-session-mode-silently-drops-flags-and-rows.md` settled the
-   shape of: vertical, one row per line, count then rate.
-4. **Then `EXPECTATIONS`, on the bundle sub-row only.** Not on `rg-replace` as a whole — 13 of its
-   86 hits are the deliberate `-r ''` idiom, so a `zero` on the row is a verdict nobody can satisfy.
+3. ~~Build the two counts, not the listing~~ — **done 2026-09-06** (`1cac6e3`): `exit-masked` prints
+   `n wrapped a gate, m a listing` from `GATE_RE`, and `rg-replace` prints its flag spellings, both
+   in the vertical session view that
+   `2026-09-06-audit-session-mode-silently-drops-flags-and-rows.md` settled the shape of.
+4. **Then `EXPECTATIONS`, on the bundle sub-row only** — still open, and now the only code left
+   here. Not on `rg-replace` as a whole: 13 of its 86 hits are the deliberate `-r ''` idiom, so a
+   `zero` on the row is a verdict nobody can satisfy. The breakdown prints today but is not a tag,
+   so `EXPECTATIONS` has nothing to key on yet; the smallest form is an `rg-replace-bundle` tag
+   beside the existing row, scored `zero`, with the deliberate spelling left unjudged the way
+   `grep-r-not-rg` and `find-exempt` already are.
 5. Re-scoring the seven samples is now a **second** correction rather than a first: the heredoc
    truncation understated several of the same rows, and that is filed against the repo that owns the
    corpus (`~/plans/…/2026-09-06-adherence-corpus-rows-understated-by-the-heredoc-bug.md`). Whatever

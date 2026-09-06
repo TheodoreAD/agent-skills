@@ -139,3 +139,10 @@ regression, because the instrument changed and no session did.
    `2026-09-03-skill-dependencies-and-bundling.md`'s question rather than this one's. Until then the
    divergence is worth stating in both skills, so a reader comparing the two numbers knows why they
    differ.
+
+   **Instance, 2026-09-06**, from the harvest of the session that made the fix: `claims` reported
+   **7** masked calls and `audit.py` **4**, over the same transcript at the same moment. The three
+   extra were all `2>&1` inside a `python3 - <<'PY'` probe body — the heredoc half of the divergence
+   rather than the quoted half, which is the commoner one in practice and was not what the original
+   pair of examples showed. Small and harmless here, and it is the shape that makes a reader trust
+   whichever number they saw first.

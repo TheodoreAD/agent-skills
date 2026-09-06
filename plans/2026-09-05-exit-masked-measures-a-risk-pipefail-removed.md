@@ -90,10 +90,14 @@ licenses anyone to conclude about _this_ session's own claims.]
 3. `power-user-linux-setup`'s corpus plan states the general form — `exit-masked` measures a hazard
    rather than a defect rate — and the wording here now agrees with it in those words.
 
-[UNVERIFIED: the harvest half is written but has not run end to end. The next harvest is the test:
-it should print the `setopt` check, find `pipefail` on, and report the claim count without paying
-for a gate re-run. Watch for it doing the check and re-running anyway, which is the failure mode a
-procedure change has and a code change does not.]
+**Verified 2026-09-06, same day, by the next harvest** — which was this session's own, so read it as
+a smoke test rather than as an independent one. `claims` printed the new footer, the `setopt` check
+ran as a Bash call and returned `pipefail`, and no gate was re-run. What the test did **not**
+exercise is the branch that matters most: this session's masked calls were 4 listings and **zero
+gates**, so the greens were never at risk and the pipefail answer decided nothing. That turned into
+a skill change rather than a pass — step 5 now reads the gate/listing split first, since `m = 0` is
+a shorter and stronger answer than any shell state. The pipefail branch itself still awaits a
+session that actually pipes its gate.
 
 One measurement worth keeping from the decision: `setopt | rg pipefail` returns `pipefail` in this
 machine's agent shells today, confirmed 2026-09-06, and `~/.zshenv` sets it under

@@ -187,11 +187,17 @@ python3 $S/scripts/audit.py --days 7 --samples 0 --compare $S/references/baselin
 
 Prints each model's current rates next to the baseline as percentage-point deltas, with `OK`/`MISS`
 per expectation (`EXPECTATIONS` in the script: chaining, head/tail, sed -n, cat, heredoc and
-git-in-chain should be _down_; own-repo `cd` and `git -C` mutations at zero). Models with fewer than
-50 calls in either run are shown as `?`, not judged. Report the verdict line and the misses to the
-user; then route each miss with the table in "Decide where the fix goes". After a rule or mode
-change, save a new baseline for the next comparison — `--save-baseline --note "<mode in force>"` —
-and keep the old file; the deltas are the point.
+git-in-chain should be _down_; own-repo `cd` and `git -C` mutations, and a bundled `rg -r`, at
+zero). Models with fewer than 50 calls in either run are shown as `?`, not judged.
+
+**A `zero` expectation is scored on `rg-replace-bundle`, never on `rg-replace` itself.** The parent
+row counts the deliberate `rg -o -r '' <pattern> <path>` extraction idiom as well as the accident —
+13 of its 86 hits over the 30 days to 2026-09-06 — so a `zero` there would demand that correct usage
+of a real flag stop. The bundle row is the half that is always a mistake: two or more flag letters
+containing `r` means `-r` swallowed the rest of the group as its replacement string. Report the
+verdict line and the misses to the user; then route each miss with the table in "Decide where the
+fix goes". After a rule or mode change, save a new baseline for the next comparison —
+`--save-baseline --note "<mode in force>"` — and keep the old file; the deltas are the point.
 
 **A baseline you save goes to `$XDG_STATE_HOME/session-bash-audit/`** (`~/.local/state/…` by
 default, `%LOCALAPPDATA%\session-bash-audit\` on Windows), which is what a bare `--save-baseline`

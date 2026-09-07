@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-07
+status: in-progress
+updated: 2026-09-08
 ---
 
 # Text-only reference clones: skip what a grep skips anyway
@@ -121,54 +121,103 @@ anyone re-testing the combination.
 2,348 KB, 256 files, `core.sparseCheckout` still true and the pattern list intact. So
 `library.py update` needs no special case — the entry stays text-only across refreshes on its own.
 
+## What landed
+
+`add` clones text-only by default: `--depth 1 --filter=blob:none --sparse` and then the non-cone
+pattern set, `text-only: yes` in `SOURCE.md`, `--all-files` per call and `RESEARCH_TEXT_ONLY=0` per
+machine. `check` reports both directions of drift. `size --ungreppable` measures by content.
+`update` was not touched.
+
+**Verified end to end 2026-09-08 with the shipping pattern list**, `intellectronica/ruler` cloned
+both ways at the same commit — the measurement that matters most, because the whole safety argument
+is that a text search cannot tell the difference:
+
+|                              | text-only  | `--all-files` |
+| ---------------------------- | ---------- | ------------- |
+| on disk                      | **3.0 MB** | 141 MB        |
+| `.git`                       | **644 KB** | 70 MB         |
+| files in the working tree    | 257        | 258           |
+| files `grep -rIl .` can read | **257**    | **257**       |
+| `grep -rIl ruler`            | **190**    | **190**       |
+
+The searchable sets are **identical, file for file**, and the one file the exclusion removed is a 69
+MB `.gif`. A refresh afterwards left `core.sparseCheckout` true and the pattern list intact, so
+measurement 5 holds against the real code and not only the probe.
+
+Re-measured over the library at 86 entries while building `--ungreppable`: **1,286 MB of 3,274 MB of
+working tree, 39%**, against 41% of 2,959 MB when this plan was written. `nodejs/node` is still the
+counterexample at 15 MB of 669.
+
+[DECISION: **text-only is the default**, `--all-files` opts one clone out, `RESEARCH_TEXT_ONLY=0`
+opts a machine out. Asked 2026-09-08; the user's answer was that there are no consumers but
+themselves across several machines, so the general rule against moving a published tool's default
+under its consumers has nothing to protect here yet — _"we should make it default, with opt-out via
+command line, but allow configuration to flip that if needed"_. The configuration is one env var
+rather than a config file: the library already has exactly one (`RESEARCH_HOME`), and a second
+mechanism for a single boolean would be the larger change.]
+
+[DECISION: `--no-cone` is safe to build on for now, and the fallback is written down rather than
+rediscovered. Read 2026-09-08 in git's own tree: `Documentation/git-sparse-checkout.adoc` says
+outright _"For all these reasons, non-cone mode is deprecated. Please switch to using cone mode"_,
+and `Documentation/BreakingChanges.adoc` does not mention sparse-checkout at all — deprecated in the
+docs, scheduled for removal nowhere. Cone mode is not an alternative: it matches directories and the
+criterion here is file type. If removal is ever scheduled, the fallback is writing
+`.git/info/sparse-checkout` and setting `core.sparseCheckout` directly, which is the same mechanism
+one layer down and is plumbing rather than the deprecated porcelain.]
+
+[DECISION: the pattern list is a constant in `library.py`, `UNGREPPABLE_EXTENSIONS`, with no
+per-entry override. It is organised by category rather than by what this library happens to hold, so
+it covers a repo nobody has cloned yet; the measured tail it deliberately does not chase is per-repo
+oddities — `.binobj`, `.tgv`, `.res` — worth under a megabyte together. The override waits for an
+entry that actually needs it.]
+
+[DECISION: the keep-list is `pdf`, the ebook formats (`epub`, `mobi`, `azw3`, `djvu`, `chm`) and the
+office containers (`docx`, `xlsx`, `pptx`, `odt`, `ods`, `odp`) — binary to a grep and kept anyway,
+because an agent reads them and the line is document-versus-demo-asset. Measured cost of keeping
+every one: 9 PDFs inside repo clones, 6.6 MB, **0.5% of the excluded weight**. `.svg` needs no entry
+at all and is the tell that this is a judgement about purpose constrained by a fact: it is text, so
+the NUL rule keeps it whatever anyone thinks of it as a demo asset.
+
+Worth recording because it caught the count: a NUL scan finds **eight** of those nine, because one
+PDF carries no NUL in its first 8 KB and ripgrep searches it as text. The NUL rule is a property of
+a file, not of a format — which is precisely why the keep-list is a stated judgement rather than
+something derived from a scan of what happens to be on disk.]
+
+[DECISION: the extensionless residue is the answer, and no size-based second filter is added.
+Measured library-wide rather than on `node` alone: 620 files and 16 MB, **1.25% of the ungreppable
+weight**. What the residue costs is that the patterns cannot prove an entry holds no ungreppable
+bytes — so `size --ungreppable` classifies by **content** instead, which is a different rule from
+the exclusion list on purpose. The report can therefore contradict the patterns, which is the only
+way the gap stays visible.]
+
+[DECISION: case variants are not in the pattern list. Git matches sparse patterns case-sensitively,
+so `IMG.PNG` survives; measured 2026-09-08, 4 files and 0.3 MB of the whole library carry an
+uppercase extension — 0.02% of the excluded weight, against doubling the list.]
+
+[DECISION: a failed `sparse-checkout set` runs `sparse-checkout disable` and then raises. A
+`--sparse` clone starts with only its root files checked out, so the untreated failure leaves an
+entry that is present, is a real git clone, passes every check the script makes, and holds almost
+none of the repo — the store's characteristic silent shape. The provenance file is written before
+the raise, so the entry ends up complete and conformant while the run ends up loud.]
+
 ## Open questions
 
-[NEEDS CLARIFICATION: is text-only the **default** for new entries, or opt-in? The library's stated
-purpose is text search, the excluded bytes are useless for it by construction, and 41% is a large
-number to leave on the floor by default. Against: changing what a tool already does belongs behind
-an opt-in, and an entry someone later wants an image out of would surprise them. Leaning default-on
-with `--all-files` to opt out, but it is a real decision and the reason to file rather than assume.]
-
-[NEEDS CLARIFICATION: is `--no-cone` safe to build on? Git documents cone mode as the recommended
-one and non-cone as legacy; the probe printed no warning on this version, but a deprecation that
-lands later would break every entry cloned this way. Check what git actually says about removal
-before this becomes the default, and know what the fallback is — most likely writing the sparse
-pattern file under `.git/info/` directly, which is the same mechanism one layer down.]
-
-[NEEDS CLARIFICATION: where does the pattern list live, and who edits it? A constant in `library.py`
-is one answer and covers the measured 95% (PNG, MP4, GIF, JPG, `.so`, `.dex`, fonts, archives) while
-keeping document formats. A per-entry override in `SOURCE.md` would handle the repo whose `.bin`
-fixtures are actually the thing being read. Start with the constant, and only add the override when
-an entry needs it.]
-
-[NEEDS CLARIFICATION: where exactly is the document/asset line, beyond PDF? Epub, mobi, azw3, djvu
-and chm are ebook formats the library's own `docs/` bucket is for, and none appears inside a repo
-clone today — so including them in the keep-list costs nothing now and is the same judgement as PDF.
-Less obvious: `.docx`/`.xlsx` (zip containers, unreadable to grep, sometimes the material), and
-`.svg`, which is _text_ and so already kept by the NUL rule while being a demo asset by intent. The
-last one is the tell that this list is a judgement about purpose, not a file-type fact.]
-
-[NEEDS CLARIFICATION: extension patterns cannot catch an extensionless binary, and the measurement
-used content. `nodejs/node` carries 607 extensionless binary files, totalling under 1 MB, so the gap
-is real and currently worthless — but it means `check` cannot verify "this entry holds no
-ungreppable bytes" from the patterns alone. Is that worth a size-based second filter
-(`--filter=blob:limit=`), or is under-1-MB residue simply the answer?]
-
-[NEEDS CLARIFICATION: what happens to the 1.2 GB already on disk? Sparse can be applied to an
+[NEEDS CLARIFICATION: what happens to the ~1.2 GB already on disk? Sparse can be applied to an
 existing clone and reclaims the working tree; the blobs are already in the pack, so the `.git` half
-needs a re-clone. That makes retrofitting a per-entry choice between a partial saving now and a
-re-download — worth quantifying before offering a `--retrofit` anything.]
+needs a re-clone. `size --ungreppable` now prices any given entry — `block/goose` 310 MB of 343,
+`RooCodeInc/Roo-Code` 276 of 293 — so the choice between a partial saving now and a re-download is
+answerable per entry, and the question is only whether a `--retrofit` is worth writing or whether
+re-adding the four worst entries by hand is the whole of it.]
 
-## Recommended direction
+[NEEDS CLARIFICATION: does a `docs/` or `pages/` entry need `--all-files` to be rejected rather than
+ignored? `add` only ever creates repo entries, so the flags are unreachable from those buckets
+today. It becomes real if `provenance` ever grows a fetching half.]
 
-1. **`add --text-only`** (name provisional): `--depth 1 --filter=blob:none --sparse`, then the
-   non-cone pattern set, recorded in `SOURCE.md` so `check` can report which entries are text-only
-   and nobody has to infer it from a file listing. Repo entries only — the flag has no meaning for a
-   `docs/` or `pages/` entry and should say so rather than accept and ignore it.
-2. **Nothing in `update` changes** — measurement 5 says the shape survives a refresh untouched.
-3. **`size` grows an ungreppable column**, which is where the 41% came from and is what makes the
-   case for retrofitting any given entry concrete rather than rhetorical.
-4. **Leave path exclusion alone.** It is a different lever on a different set of entries, it is the
-   unsafe one, and the two should not be decided together just because both are spelled
-   `sparse-checkout`.
-5. **Correct the earlier plan's `blob:none` line** as part of this work, not after it.
+## What is still deliberately not done
+
+**Path exclusion.** A different lever on an almost disjoint set of entries, and the unsafe one:
+excluding a directory means a grep silently does not see it. It stays where it was, in
+`2026-09-07-research-library-clone-size.md`, unresolved and correctly so. One thing this work does
+hand it: `check` now reports any sparse checkout that nothing records, whatever narrowed it — which
+is the "so the grep saw everything is never assumed" half that plan named as the middle answer worth
+testing.

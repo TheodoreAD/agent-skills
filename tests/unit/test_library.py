@@ -317,3 +317,188 @@ def test_strict_turns_a_finding_into_a_non_zero_exit(tmp_path, capsys):
     assert library.main(["check", "--root", str(store)], FakeGit()) == 0
     assert library.main(["check", "--root", str(store), "--strict"], FakeGit()) == 1
     capsys.readouterr()
+
+
+# --------------------------------------------------------------------------------------------
+# size, and the clone lifecycle
+#
+# Every sequence here was measured on 2026-09-07 before it was code, and two of the measurements
+# contradict what the obvious implementation would have done. Each test names which one it pins.
+
+
+def fill(entry: Path, name: str, size: int) -> None:
+    (entry / name).write_bytes(b"x" * size)
+
+
+def test_reshallow_deletes_the_tags_and_that_is_the_step_that_reclaims_the_disk():
+    """Measured on `encode/httpx`, `.git` in KB: fresh `--depth 1` is 2,492; deepened 400 commits
+    and re-shallowed with `fetch --depth 1` + `reset --hard` it reports ONE commit again while the
+    disk does not move; adding reflog expire, gc --prune, repack -a -d, prune and gc --aggressive
+    reaches 4,852 and stops. Deepening brings the repo's tags, each pinning a deep commit, so every
+    object below stays reachable. Delete them and the same clone lands at 2,472 — below where it
+    started. The published sequence omits this step and reports success at 95% overhead.
+    """
+    git = FakeGit({"symbolic-ref": (0, "main\n", ""), " tag": (0, "0.1.0\n0.2.0\n", "")})
+    steps = [" ".join(step[3:]) for step in library.reshallow(git, Path("/store/repos/x"))]
+
+    assert steps[0] == "fetch --depth 1 origin main"
+    assert "tag -d 0.1.0 0.2.0" in steps, "without this the other four reclaim nothing"
+    assert steps.index("tag -d 0.1.0 0.2.0") < steps.index("gc --prune=now -q"), "delete before collecting"
+
+
+def test_reshallow_on_a_clone_with_no_tags_skips_the_deletion():
+    git = FakeGit({"symbolic-ref": (0, "main\n", ""), " tag": (0, "\n", "")})
+    steps = [" ".join(step[3:]) for step in library.reshallow(git, Path("/store/repos/x"))]
+    assert not any(s.startswith("tag -d") for s in steps)
+
+
+def test_a_deep_clone_nobody_recorded_is_skipped_rather_than_truncated(tmp_path):
+    """Confirmed 2026-09-07 in a real 71-entry library: exactly one entry was deep, it had been
+    deepened on purpose to read a dependency's constraint history, and a loop refreshing every entry
+    with `fetch --depth 1` would have destroyed that silently. Nothing distinguishes a deliberate
+    deepening from an accident, and truncating is the answer that cannot be undone by reading."""
+    store = make_store(tmp_path)
+    entry = make_clone(store, "github.com--a--b")
+    git = FakeGit({"rev-list --count HEAD": (0, "436\n", "")})
+
+    steps, why = library.refresh_plan(git, entry)
+    assert steps is None
+    assert "skipped rather than truncated" in why
+
+
+def test_a_recorded_depth_is_refreshed_without_re_shallowing(tmp_path):
+    """And any value but `1` counts, including prose: the real library's one deep entry records a
+    whole sentence in that field, because the store's convention asks for the divergence *and why*.
+    A field that only accepted an integer would have read that as unrecorded and truncated it."""
+    store = make_store(tmp_path)
+    entry = make_clone(
+        store,
+        "github.com--a--b",
+        provenance="url: u\nkind: repo-clone\nref: r\nfetched: f\ndepth: deepened to ~436 commits, not --depth 1\n",
+    )
+    git = FakeGit({"rev-list --count HEAD": (0, "436\n", "")})
+
+    steps, why = library.refresh_plan(git, entry)
+    assert steps is not None
+    assert [" ".join(s[3:]) for s in steps] == ["fetch origin", "reset --hard FETCH_HEAD"]
+    assert "not re-shallowed" in why
+
+
+def test_an_ordinary_shallow_clone_is_re_shallowed(tmp_path):
+    store = make_store(tmp_path)
+    entry = make_clone(store, "github.com--a--b")
+    git = FakeGit({"rev-list --count HEAD": (0, "1\n", ""), "symbolic-ref": (0, "main\n", "")})
+
+    steps, why = library.refresh_plan(git, entry)
+    assert steps is not None
+    assert "re-shallowed" in why
+
+
+def test_deepen_records_the_intent_so_the_next_update_cannot_undo_it(tmp_path, capsys):
+    store = make_store(tmp_path)
+    entry = make_clone(store, "github.com--a--b")
+    args = library.build_parser().parse_args(["deepen", "github.com--a--b", "--root", str(store), "--depth", "500"])
+
+    library.cmd_deepen(args, FakeGit({"rev-list --count HEAD": (0, "501\n", "")}))
+    capsys.readouterr()
+    assert "depth: 500" in (entry / "SOURCE.md").read_text(encoding="utf-8")
+    assert library.recorded_depth(entry) == "500"
+
+
+def test_a_recorded_depth_replaces_the_line_rather_than_appending_a_second(tmp_path):
+    """The provenance file is hand-editable by design, so a second `depth:` line would be
+    well-formed, ambiguous, and read by `parse_provenance` as whichever came last."""
+    store = make_store(tmp_path)
+    body = "url: u\nkind: repo-clone\nref: r\nfetched: f\ndepth: 50\n"
+    entry = make_clone(store, "github.com--a--b", provenance=body)
+    library.set_provenance_field(entry, "depth", "1")
+    body = (entry / "SOURCE.md").read_text(encoding="utf-8")
+
+    assert body.count("depth:") == 1
+    assert "depth: 1" in body
+    assert "note" not in body, "no field is invented on the way past"
+
+
+def test_reshallow_refuses_a_detached_head_because_its_tags_may_be_the_point(tmp_path):
+    """`check` already treats a detached HEAD as the pinned-at-a-tag signature. Deleting every tag
+    there destroys the thing the clone exists to read."""
+    store = make_store(tmp_path)
+    make_clone(store, "github.com--a--b")
+    args = library.build_parser().parse_args(["reshallow", "github.com--a--b", "--root", str(store)])
+    git = FakeGit({"symbolic-ref": (1, "", "fatal: ref HEAD is not a symbolic ref")})
+
+    with pytest.raises(library.LibraryError, match="detached HEAD"):
+        library.cmd_reshallow(args, git)
+
+
+def test_add_asks_before_cloning_a_repo_the_host_calls_large(tmp_path, capsys):
+    """Exit 3, not a prompt: this runs inside an agent's Bash call, where an interactive prompt
+    hangs with nothing to type into. `--yes` is the documented way past it."""
+    store = make_store(tmp_path)
+    big = FakeGit({"gh api": (0, f"{600 * 1024}\n", "")})
+    argv = ["add", "https://github.com/nodejs/node", "--root", str(store)]
+
+    assert library.main(argv, big) == library.NEEDS_DECISION
+    assert "600 MB" in capsys.readouterr().err
+    assert not (store / "repos" / "github.com--nodejs--node").exists()
+
+
+def test_the_reported_size_is_a_trigger_and_the_warning_never_predicts_a_number(tmp_path, capsys):
+    """Measured against five real entries at depth 1: on-disk cost ran 0.23x the reported size
+    (`cpython`) to 1.32x (`Roo-Code`). A 5.7x spread and not an upper bound, so a warning quoting a
+    predicted figure would have been wrong by 4x in the reassuring direction."""
+    store = make_store(tmp_path)
+    huge = FakeGit({"gh api": (0, "999999\n", "")})
+    library.main(["add", "https://github.com/nodejs/node", "--root", str(store)], huge)
+    err = capsys.readouterr().err
+    assert "not a prediction" in err
+    assert "0.2x and 1.3x" in err
+
+
+def test_a_non_github_url_is_cloned_without_a_size_question(tmp_path):
+    """The size probe is GitHub's API and nothing else. A host it cannot ask must not become a host
+    it refuses to clone from."""
+    assert library.reported_size_mb(FakeGit(), "https://gitlab.com/group/sub/proj") is None
+    assert library.reported_size_mb(FakeGit({"gh api": (0, "1024\n", "")}), "https://github.com/a/b") == 1
+
+
+def test_size_splits_the_git_directory_from_the_working_tree(tmp_path):
+    """They have different remedies and the ratio says which applies: a big `.git` at one commit is
+    large blobs, a big tree at one commit is vendored directories. Measured on the worst real entry —
+    940 MB at ONE commit, 675 MB of it a single vendored `deps/`."""
+    store = make_store(tmp_path)
+    entry = make_clone(store, "github.com--a--b")
+    fill(entry, "vendored.bin", 4 * library.MB)
+    fill(entry / ".git", "pack", 1 * library.MB)
+
+    row = library.entry_size(FakeGit({"rev-list --count HEAD": (0, "1\n", "")}), store, entry)
+    assert library.mb(row.total) == 5
+    assert library.mb(row.git) == 1
+    assert library.mb(row.worktree) == 4
+    assert not row.deepened
+
+
+def test_size_reports_only_what_is_at_or_above_the_minimum(tmp_path, capsys):
+    store = make_store(tmp_path)
+    fill(make_clone(store, "github.com--big--one"), "blob", 3 * library.MB)
+    fill(make_clone(store, "github.com--small--one"), "blob", 1)
+    args = library.build_parser().parse_args(["size", "--root", str(store), "--min", "2"])
+
+    payload = library.cmd_size(args, FakeGit({"rev-list --count HEAD": (0, "1\n", "")}))
+    out = capsys.readouterr().out
+    assert [row["entry"] for row in payload["over_min"]] == ["repos/github.com--big--one"]
+    assert "github.com--small--one" not in out
+    assert "2 entries" in out, "the total still counts everything"
+
+
+def test_tree_size_does_not_follow_a_symlink_out_of_the_store(tmp_path):
+    """A library entry linking somewhere else would otherwise bill that directory to the store, and
+    a link into a parent would recurse."""
+    store = make_store(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "huge").write_bytes(b"x" * (2 * library.MB))
+    entry = make_clone(store, "github.com--a--b")
+    (entry / "link").symlink_to(outside)
+
+    assert library.mb(library.tree_size(entry)) == 0

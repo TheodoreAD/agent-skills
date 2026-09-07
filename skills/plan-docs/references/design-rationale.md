@@ -382,16 +382,23 @@ itself still has committed plans to read (`{ mode = "both", write = "store" }`),
 in-repo plans still has store-held ones (`{ mode = "both", write = "repo" }`). Without it, a switch
 silently orphans half the corpus.
 
-`[roots]` keys are path **prefixes** and `[repos]` keys are whole paths, which is a distinction with
-one sharp edge: a repo cloned straight into `projects_root` has no prefix, so a `[roots]` entry
-naming it is never consulted and the repo falls through to `default`. Reproduced 2026-08-29 against
-a scratch root — `where` reported `(default)` while an entry naming that exact repo sat in the
-config, unread. The entry is left inert rather than made to match, because letting `[roots]` match a
-whole path collapses "a directory containing repos" into "a repo" and that distinction is the only
-thing the two sections are for; what changed is that `where` and `doctor` now name the mistake and
-print the `[repos]` spelling that works. Worth knowing because the flat `~/projects/<repo>` layout
-is the more common one in the wild — the `<host>-<org>/<repo>` shape this skill was written against
-is the unusual one, so this was a portability defect in a published skill rather than a local quirk.
+`[roots]` keys are path **prefixes** and `[repos]` keys are whole paths, and the distinction is
+load-bearing in two places. The first is that only a directory _holding_ repos is a root at all, so
+neither `doctor` nor the install walkthrough ever asks about a repo cloned straight into
+`projects_root` — reported by the user 2026-09-07, because on the flat `~/projects/<repo>` layout
+every clone on the machine would otherwise be listed as an undecided root. One warning per repo is a
+problems list nobody reads, `default` already answers every one of them, and the per-repo answer is
+made once when a plan is first written there. The second is the sharp edge below.
+
+A repo cloned straight into `projects_root` has no prefix, so a `[roots]` entry naming it is never
+consulted and the repo falls through to `default`. Reproduced 2026-08-29 against a scratch root —
+`where` reported `(default)` while an entry naming that exact repo sat in the config, unread. The
+entry is left inert rather than made to match, because letting `[roots]` match a whole path
+collapses "a directory containing repos" into "a repo" and that distinction is the only thing the
+two sections are for; what changed is that `where` and `doctor` now name the mistake and print the
+`[repos]` spelling that works. Worth knowing because the flat `~/projects/<repo>` layout is the more
+common one in the wild — the `<host>-<org>/<repo>` shape this skill was written against is the
+unusual one, so this was a portability defect in a published skill rather than a local quirk.
 
 ### Why ownership is read from the remote, and where `[orgs]` sits (2026-09-07)
 

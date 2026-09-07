@@ -1790,6 +1790,12 @@ def set_remote(repo: Path, url: str) -> Path:
     return repo
 
 
+def _problem_lines(out: str) -> list[str]:
+    """`doctor`'s problems section, as the lines under its heading."""
+    body = out.partition("\nproblems (")[2]
+    return [line.strip(" -") for line in body.splitlines()[1:] if line.startswith("  - ")]
+
+
 @pytest.mark.parametrize(
     ("url", "host", "owner", "name"),
     [
@@ -1975,19 +1981,51 @@ def test_a_foreign_org_filed_under_a_shareable_root_is_reported_as_a_tier_proble
     assert any("tier that may have a remote" in problem for problem in about_acme)
 
 
-def test_a_repo_at_the_projects_root_is_offered_a_repos_key_not_an_inert_roots_one(loose, ws, capsys):
-    """The tool used to propose `roots.<name>` for a depth-1 repo and then report that very entry as
-    matching nothing — proposing the mistake it goes on to diagnose."""
-    assert plans.root_config_keys(["loose-repo", "github.com-personal/agent-skills"]) == {
-        "loose-repo": "repos.loose-repo",
-        "github.com-personal": "roots.github.com-personal",
-    }
+def test_a_git_repo_is_never_a_candidate_root(loose, ws):
+    """`[roots]` keys are path prefixes, so an entry naming a depth-1 repo is never consulted. The
+    tool used to propose exactly that entry and then report it as matching nothing."""
+    assert plans.collection_roots(["loose-repo", "github.com-personal/agent-skills"]) == ["github.com-personal"]
 
-    write_config(ws, "")
-    assert plans.main(["doctor", "--path", str(loose)]) == 0
+
+def test_a_flat_projects_root_of_only_repos_warns_about_no_roots_at_all(tmp_path, monkeypatch, ws, capsys):
+    """Asked for by the user 2026-09-07: `~/projects/<repo>` with nothing but repos in it is the
+    more common layout in the wild, and there is no root in it to categorise. Listing each clone as
+    an undecided root is one warning per repo on the machine — a problems list nobody reads, and
+    `default` answers every one of them anyway."""
+    flat = ws.home / "flat"
+    for name in ("alpha", "beta", "gamma"):
+        make_repo(flat / name)
+    ws.config.parent.mkdir(parents=True, exist_ok=True)
+    ws.config.write_text(
+        f'projects_root = "{flat.as_posix()}"\nstore = "{ws.store.as_posix()}"\ndefault = "store"\n',
+        encoding="utf-8",
+    )
+
+    assert plans.main(["doctor", "--path", str(flat / "alpha")]) == 0
     out = capsys.readouterr().out
-    assert "config set repos.loose-repo" in out
-    assert "config set roots.loose-repo" not in out
+    assert "no explicit rule" not in out
+    assert "config set roots." not in out
+    # Whatever else the fixture leaves unset, not one problem is about a repo in that tree.
+    assert not [line for line in _problem_lines(out) if any(name in line for name in ("alpha", "beta", "gamma"))]
+
+
+def test_a_root_holding_repos_is_still_listed_when_nobody_has_decided_about_it(ws, capsys):
+    """The discipline the check exists for is unchanged: a collection reaching only `default` has
+    never been answered for, and once every root carries a rule the list is exactly what appeared
+    since."""
+    write_config(ws, 'default = "store"\n')
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "github.com-personal: no explicit rule (default)" in out
+    assert "config set roots.github.com-personal" in out
+
+
+def test_no_rule_and_no_default_is_the_design_rather_than_a_problem(ws, capsys):
+    """`where` exits 3 and the agent asks — the documented contractor behaviour. Reporting it as a
+    problem would put a permanent entry in the list for a machine working as intended."""
+    write_config(ws, "")
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "no explicit rule" not in capsys.readouterr().out
 
 
 def test_a_config_key_arriving_already_quoted_is_unwrapped(ws):

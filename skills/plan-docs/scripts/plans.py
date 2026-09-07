@@ -137,12 +137,16 @@ REMOTE_PATH_NOISE = frozenset({"_git", "scm"})
 # `://` case is handled by `urlsplit` instead, so this only has to match a colon that is not one.
 SCP_REMOTE_RE = re.compile(r"^(?:[^@/]+@)?(?P<host>[^/:]+):(?P<path>.+)$")
 
-# Where a rule came from when nobody recorded one. `default` is a decision about the machine rather
-# than about this root, and the two work-device fallbacks are decisions about the *device* — so a
-# root reaching any of them has never been answered for, which is what `doctor` lists.
+# Where a rule came from when nobody decided about *this root*: `default` is a decision about the
+# machine, and the two work-device fallbacks are decisions about the device. A root reaching one of
+# them has never been answered for, which is what `doctor` lists.
+#
+# `no rule` is deliberately absent. Having no rule and no default is the documented behaviour on a
+# contractor device — `where` exits 3 and the agent asks — so listing it as a problem would put a
+# permanent entry in a problems list for a machine that is working as designed.
 WORK_DEFAULT_SOURCE = "work device default"
 WORK_OWN_SOURCE = "work device, your own account"
-FALLBACK_SOURCES = ("default", "no rule", WORK_DEFAULT_SOURCE, WORK_OWN_SOURCE)
+UNDECIDED_SOURCES = ("default", WORK_DEFAULT_SOURCE, WORK_OWN_SOURCE)
 
 MODES = ("repo", "store", "both")
 TAG_NAMES = ("NEEDS CLARIFICATION", "DECISION", "PITFALL", "DEFERRED", "UNVERIFIED")
@@ -3764,16 +3768,16 @@ def install_decisions(ws: Workspace) -> list[Decision]:
     # one of them has the same answer already, and asking anyway turned a six-question walkthrough
     # into a twelve-question one on this author's machine — questions the user pays for and whose
     # answer was never in doubt.
-    keys = root_config_keys(ws.repos)
-    roots = sorted(keys)
-    unrouted = [name for name in roots if name not in cfg.roots and name not in cfg.repos]
+    # Collections only, never a repo cloned straight into the projects root: on a flat
+    # `~/projects/<repo>` layout that would be one question per clone on the machine, and `default`
+    # above already answers all of them.
+    roots = sorted({rel.split("/")[0] for rel in ws.repos})
+    unrouted = [name for name in collection_roots(ws.repos) if name not in cfg.roots]
     if unrouted and cfg.default is None and cfg.device != WORK:
         decisions += [
             Decision(
-                key=keys[name],
-                what="where plans go for this repo"
-                if keys[name].startswith("repos.")
-                else f"where plans go for every repo under {name}/",
+                key=f"roots.{name}",
+                what=f"where plans go for every repo under {name}/",
                 current="(no rule, and no default — these repos cannot be planned in until this is set)",
                 suggest="repo if these are yours to commit to, store if they are an employer's",
                 cost='guessing "repo" writes a plans/ directory into someone else\'s repository',
@@ -4034,26 +4038,30 @@ def layout_problems(ws: Workspace, *, strict: bool = False) -> list[str]:
     # no registry, just the config read as a record of what has been answered.
     known = ws.repos
     out += [
-        f"{name}: no explicit rule ({match_rule(cfg, f'{name}/x').source}) — config set {key} <repo|store>"
-        for name, key in sorted(root_config_keys(known).items())
-        if match_rule(cfg, f"{name}/x").source in FALLBACK_SOURCES
+        f"{name}: no explicit rule ({match_rule(cfg, f'{name}/x').source}) — config set roots.{name} <repo|store>"
+        for name in collection_roots(known)
+        if match_rule(cfg, f"{name}/x").source in UNDECIDED_SOURCES
     ]
     return out + inert_root_rules(cfg, known)
 
 
-def root_config_keys(repos: list[str]) -> dict[str, str]:
-    """Each top-level name under the projects root, and the config key that actually routes it.
+def collection_roots(repos: list[str]) -> list[str]:
+    """Top-level names that are directories *holding* repos — never a repository itself.
 
-    A directory holding repos takes a `[roots]` entry; a repo cloned **straight into** the projects
-    root takes a `[repos]` one, because `match_rule` walks a path's *proper* prefixes and a key equal
-    to a whole repo path is never consulted. Deriving both from the same walk is the point: before
-    this, `install` and `doctor` told the user to write `roots.<name>` for such a repo, and
-    `inert_root_rules` then reported that entry as matching nothing — the tool proposing the mistake
-    it goes on to diagnose.
+    A git repo is not a candidate root, and this is where that matters most. `[roots]` keys are path
+    *prefixes*, so an entry naming a repo cloned straight into the projects root is never consulted;
+    telling the user to write one is the tool proposing the mistake `inert_root_rules` then reports.
+    Excluding those repos from the list entirely is the stronger form of the same fix, and it is
+    what keeps the flat `~/projects/<repo>` layout — the more common one in the wild — from turning
+    `doctor` and the install walkthrough into one line per clone on the machine.
+
+    Reported by the user 2026-09-07 against exactly that layout. The per-repo decision still exists;
+    it is simply made once, when a plan is first written there, rather than nagged about for every
+    repo at setup time. A repo that genuinely needs its own answer takes a `[repos]` entry, and
+    `doctor` still names one that holds plans with no rule routing it.
     """
     at_root = {rel for rel in repos if "/" not in rel}
-    heads = {rel.split("/")[0] for rel in repos}
-    return {head: f"repos.{head}" if head in at_root else f"roots.{head}" for head in heads}
+    return sorted({rel.split("/")[0] for rel in repos} - at_root)
 
 
 def inert_root_rules(cfg: Config, known: list[str]) -> list[str]:

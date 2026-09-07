@@ -405,19 +405,22 @@ beneath it.
 - A directory holding no repos is simply ignored — `doctor` counts them and `--strict` lists them.
 - **A repo cloned straight into `projects_root` is routed with `[repos]`, never `[roots]`.** A
   `[roots]` key is a path _prefix_, and a repo at depth 1 has no prefix, so an entry naming it is
-  never consulted and the repo falls through to `default`. **A git repository is never a candidate
-  root**, so `install --explain` and `doctor` both offer `config set repos.<name>` for one — they
-  used to offer `roots.<name>` and then report that entry as matching nothing, the tool proposing
-  the mistake it goes on to diagnose. Both derive the key from the same walk, so they cannot
-  disagree.
+  never consulted and the repo falls through to `default` — which `doctor` reports through
+  `inert_root_rules` if you write one anyway. **A git repository is never a candidate root**, so
+  neither `doctor` nor `install --explain` ever asks you to categorise one: on a flat
+  `~/projects/<repo>` layout, the more common one in the wild, every clone would otherwise be listed
+  as an undecided root, which is one warning per repo on the machine. `default` answers all of them,
+  and a repo that genuinely needs its own answer takes a `[repos]` entry when a plan is first
+  written there.
 
 **Categorise every root explicitly**, even where `default` would give the same answer. Then a root
 falling through to `default` means exactly "this appeared since you last decided anything", and
 `doctor` lists it as awaiting a decision — no seen-markers, no registry, just the config read as a
-record of what has been answered. Without that pass, a newly cloned root is routed silently, which
-is right for a client root and quietly wrong for a personal one: its plans would accumulate in the
-store mirror forever, because a store-routed repo's mirror _is_ its home and `absorb` correctly does
-nothing.
+record of what has been answered. **"Root" there means a directory holding repos**, so a machine
+whose projects root holds only repos has nothing to categorise and `doctor` says nothing about it.
+Without that pass, a newly cloned root is routed silently, which is right for a client root and
+quietly wrong for a personal one: its plans would accumulate in the store mirror forever, because a
+store-routed repo's mirror _is_ its home and `absorb` correctly does nothing.
 
 ### Is this machine set up, and what is in it
 

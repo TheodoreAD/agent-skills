@@ -195,7 +195,17 @@ re-check that the prescribed checks would not have: both changed skills' install
 the checkout, so the diff said "same" for everything and would have prompted nothing.
 
 The three subdirectories fail differently, which is why the subcommand reports `SKILL.md` and the
-rest apart. Only `SKILL.md` is held in this session's context, so only it can go stale there.
+rest apart. Only `SKILL.md` is held in this session's context, so only it can go stale there. **Diff
+it rather than re-reading it**, the same technique the next paragraph prescribes for `scripts/` —
+`diff -u <installed>/SKILL.md <checkout>/skills/<name>/SKILL.md` returns the handful of lines that
+changed where a re-read returns the whole file. Confirmed 2026-09-07: a stale harvest diffed instead
+of re-reading and got four hunks, ~40 lines, against ~700 — and every hunk changed what the run then
+did. **The one case that needs the full re-read is a re-install that ran mid-session, _after_ the
+skill was loaded**: the diff is only sound when the copy held in context is one side of it, and
+there the held text is neither. `skills-state` prints the install's mtime, so that case is
+recognisable rather than something to assume; the listing changing mid-session (above) is the other
+tell.
+
 `scripts/` is shelled out to, so the next call already runs the new code — but a call made _earlier_
 in the session ran the old one. **Read the diff before deciding a note is enough.** A change that
 reworks output is a one-line note; a change that _adds or widens a check_ means the earlier call

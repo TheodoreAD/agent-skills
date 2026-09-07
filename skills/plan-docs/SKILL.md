@@ -103,6 +103,7 @@ python3 <path> archive --search <words>     # a retired plan, back out of git hi
 
 # keeping the machine right
 python3 <path> scan                         # no private name reaches a repo you publish
+python3 <path> orgs                         # whose repo each directory is, from its own remote
 python3 <path> install --explain            # set the machine up, one decision at a time
 ```
 
@@ -153,6 +154,14 @@ landed where the worktree never looks.
 **A work device has no boundary for a tier to draw**, so the split would be an empty directory every
 command still reasons about. `sensitive_store` and `shareable_roots` stop applying, `where` and
 `new --for` stop naming a tier, and `install` asks one fewer question.
+
+**It also has a default, which a contractor device deliberately does not.** Everything on a
+corporate machine belongs to one organisation, and an organisation has its own work tracker — so an
+unmatched repo goes to the **store**, and the carve-out is the user's own repos, matched by
+`own_accounts` against the remote rather than by host. That is what makes it work on a GitHub
+Enterprise instance, where your repos and the employer's sit on the same hostname and only the
+account tells them apart. `where` names the fallback it used (`work device default`, or
+`work device, your own account`), so the answer is never silent. Setting `default` overrides it.
 
 **What does not relax is the remote check.** The single store is the guarded one: pushing an
 employer's internal work to a personal remote does not become acceptable because the machine holds
@@ -242,19 +251,62 @@ or the reverse. Leave it unset until they actually disagree.
 wrong store and names where it should go; relocating it is a `git mv` in two histories and a
 decision about what gets published, so it is never done automatically.
 
-**`where` exiting 3 is a question, not a failure.** It means no rule covers this repo. Ask the user
-which route it should use, then record the answer. Never pick a side silently: guessing "repo"
-writes a directory into someone else's repository, and guessing "store" hides the plan somewhere the
-user never named.
+### Whose repo is it? Ask the remote, not the directory
+
+**A directory name is where a clone was filed; its remote is who it belongs to**, and only the
+second one stays true when a clone is moved. So `[orgs]` routes by `<host>/<owner>` read from the
+repo's own remote, and it is checked **after `[repos]` and before `[roots]`** — the full order is:
+
+| checked | key                      | means                                                 |
+| ------- | ------------------------ | ----------------------------------------------------- |
+| 1st     | `[repos]` exact path     | this one repository                                   |
+| 2nd     | `[orgs]` remote owner    | every clone belonging to that account or organisation |
+| 3rd     | longest `[roots]` prefix | every repo filed under that directory                 |
+| 4th     | `default`                | the machine's answer for everything unmatched         |
+| 5th     | the device fallback      | `work` devices only, see above                        |
+
+`[orgs]` sits above `[roots]` because the two answer different questions and only one of them is
+about the repository. Where they disagree — one clone from somebody else's organisation sitting
+under a root routed `repo` — the remote is right and the directory is a coincidence.
+
+**A repo belonging to an organisation you have not decided about is refused a `plans/` directory.**
+Organisations keep their own trackers, so a `plans/` directory committed into theirs is a convention
+nobody there agreed to, and the commit is visible inside that organisation the moment it is pushed.
+`where` exits 3 naming the org and the line that records the answer either way. Two things
+deliberately do not trigger it: a repo with **no remote** (local, so nobody could have agreed or
+objected — absence of evidence is not evidence), and a machine where **`own_accounts` is unset**,
+because with nothing to compare against every owner reads as foreign and the check would fire on
+every repo at once, which is how a check gets configured away rather than answered.
+
+```shell
+python3 <path> orgs            # every owner on this machine, its route, and who decided it
+python3 <path> orgs --repos    # …with each organisation's clones listed
+```
+
+It exits 3 when a foreign organisation's repos are routed `repo` with nobody having said so, so it
+works as a check and not only as a listing. Like `doctor` and `repos`, its output names employers
+and clients: it is for deciding where plans go, never for pasting into a repo you publish.
+
+**`where` exiting 3 is a question, not a failure.** It means no rule covers this repo, or it belongs
+to an organisation nobody has decided about. Ask the user which route it should use, then record the
+answer. Never pick a side silently: guessing "repo" writes a directory into someone else's
+repository, and guessing "store" hides the plan somewhere the user never named.
 
 **Record it with `config set`, never by editing the TOML yourself:**
 
 ```shell
 python3 <path> config set roots.<root-name> repo         # a whole root
 python3 <path> config set repos.<root>/<repo> store      # one repo, beats any root rule
+python3 <path> config set orgs.<host>/<owner> store      # every clone of theirs, beats a root rule
+python3 <path> config set own_accounts '["<account>"]'   # the accounts that are yours
 python3 <path> config set default store                  # everything unmatched
 python3 <path> config set view.idea_limit 20             # how many ideas a listing shows
 ```
+
+**Write an `[orgs]` key unquoted on the command line.** The quotes are how it is spelled inside the
+TOML file, so copying one out of the config writes a key whose first character is `"` — well-formed
+TOML that matches no organisation ever. The script unwraps a quoted name rather than storing it,
+because that mistake is otherwise silent.
 
 It preserves every comment in the file — those comments carry the reasoning for each key — replaces
 a commented-out example in place, and rejects a value the config's own schema will not accept,
@@ -270,11 +322,16 @@ default = "store" # omit it and an unmatched repo asks instead
 public_roots = ["github.com-personal"] # names that may appear in a published repo
 # shareable_roots = ["github.com-personal"] # the tier boundary; defaults to public_roots
 
+own_accounts = ["your-account"] # unset = no repo's ownership is checked at all
+
 [roots]
 "github.com-personal" = "repo" # longest matching prefix wins
 
 [repos] # an exact repo entry beats any root entry
 "github.com-acme/legacy-api" = { mode = "both", write = "store" }
+
+[orgs] # by remote owner; beats [roots], loses to [repos]
+"github.com/acme-corp" = "store"
 ```
 
 ### Environment assumptions, and setting them up
@@ -301,8 +358,12 @@ surface:
    nothing.
 2. Put each decision to the user with `AskUserQuestion`, using the `suggest` line as the recommended
    option and the `cost` line as the description. Do not skip to the defaults: the `default`,
-   `public_roots` and `shareable_roots` answers decide whether plans land in repos the user does not
-   own, whether `scan` will catch a client's name, and which roots may reach a remote at all.
+   `own_accounts`, `public_roots` and `shareable_roots` answers decide whether plans land in repos
+   the user does not own, whether `scan` will catch a client's name, and which roots may reach a
+   remote at all. **`own_accounts` is the one to confirm rather than accept**: the suggestion is
+   built from the commonest remote owner on the machine, which on a corporate box is the employer —
+   recording that answer would mark their organisation as the user's own and make every ownership
+   check downstream pass silently.
 3. Record each answer with `config set` (above). Never edit the TOML by hand.
 4. `python3 <path> install` — idempotent: writes the config skeleton if there isn't one (never over
    an existing one), creates **both stores** as git repositories, adds neither a remote, creates the
@@ -344,8 +405,11 @@ beneath it.
 - A directory holding no repos is simply ignored — `doctor` counts them and `--strict` lists them.
 - **A repo cloned straight into `projects_root` is routed with `[repos]`, never `[roots]`.** A
   `[roots]` key is a path _prefix_, and a repo at depth 1 has no prefix, so an entry naming it is
-  never consulted and the repo falls through to `default`. `where` and `doctor` both say so now
-  rather than leaving it silent; the fix is `config set repos.<name> <repo|store>`.
+  never consulted and the repo falls through to `default`. **A git repository is never a candidate
+  root**, so `install --explain` and `doctor` both offer `config set repos.<name>` for one — they
+  used to offer `roots.<name>` and then report that entry as matching nothing, the tool proposing
+  the mistake it goes on to diagnose. Both derive the key from the same walk, so they cannot
+  disagree.
 
 **Categorise every root explicitly**, even where `default` would give the same answer. Then a root
 falling through to `default` means exactly "this appeared since you last decided anything", and
@@ -365,7 +429,9 @@ One call for the whole picture: config location, **both stores with their git st
 has a remote**, which roots are enrolled, by which rule and into which tier, which repos actually
 hold plans, a tally by status and open tag, and a **problems** list — a store that is not a git
 repository or has lost its git identity, a remote on the sensitive tier, a mirrored root filed in
-the wrong tier, an unset `PLANS_HOME`, a repo holding plans that no rule routes. Run it when
+the wrong tier, an unset `PLANS_HOME`, a repo holding plans that no rule routes, an organisation
+that is not yours whose repos are routed `repo`, and a foreign organisation's clone filed under a
+shareable root, whose store plans would land in the tier that may have a remote. Run it when
 something behaves oddly and before trusting `archive`, which retrieves nothing from a store with no
 git history.
 

@@ -63,8 +63,13 @@ from "risky, breaks grep" to "the single biggest saving available, decided per e
 
 Measured on the same repo, same minute: `git clone --depth 1` and
 `git clone --depth 1 --filter=blob:none` both produce **6 MB total, 3 MB `.git`**. At depth 1 the
-checkout materialises every blob at HEAD anyway, so the filter has nothing left to defer. `--filter`
-is a history optimisation and this store has no history to optimise. Ruled out, with a number.
+checkout materialises every blob at HEAD anyway, so the filter has nothing left to defer.
+
+**Corrected 2026-09-07, same day: that is true of the filter _alone_ and wrong as a general
+conclusion.** Give the clone a sparse set and the excluded blobs are never wanted, so they are never
+fetched — `.git` on a real 97%-binary repo went 71,204 KB → **644 KB** with the same patterns
+applied. The two are useless separately and transformative together, which is exactly the shape a
+settled-looking negative result hides. See `2026-09-07-research-library-text-only-clones.md`.
 
 ### 3. Re-shallowing reclaims nothing — until the tags go
 
@@ -210,11 +215,20 @@ destroys the thing the clone exists to read.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: does `add` take `--sparse` at all, given finding 1 is a 6× lever and finding 2
-ruled out the safe alternative? The saving is real and the cost is that a grep silently does not see
-excluded paths — silent, which is the failure mode this corpus weighs heaviest. A middle answer
-worth testing: allow it, record the excluded paths in `SOURCE.md`, and have `check` report any entry
-whose checkout is partial, so "the grep saw everything" is never assumed.]
+[NEEDS CLARIFICATION: does `add` take a **path**-based `--sparse` at all? The saving on
+`nodejs/node` is a 6x lever and the cost is that a grep silently does not see the excluded
+directories — silent, which is the failure mode this corpus weighs heaviest. Still open, and
+deliberately separate from the type-based exclusion below, which is safe by construction and hits an
+almost disjoint set of entries. A middle answer worth testing: allow it, record the excluded paths
+in `SOURCE.md`, and have `check` report any entry whose checkout is partial, so "the grep saw
+everything" is never assumed.]
+
+[DECISION: the **type**-based half of this split off into
+`2026-09-07-research-library-text-only-clones.md` on the user's reframing — exclude what a grep
+skips anyway, since the library exists to search text and never to run anything. Measured at 41% of
+the library's working-tree bytes, and safe in a way path exclusion is not, so deciding the two
+together because both are spelled `sparse-checkout` would have held the safe one hostage to the
+risky one.]
 
 [NEEDS CLARIFICATION: what happens to the machine's `research-update` once `library.py update`
 exists? Two implementations of one guarantee is the thing worth avoiding — the wrapper should become

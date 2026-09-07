@@ -40,12 +40,13 @@ considered and rejected).
 
 `scripts/harvest.py` carries every mechanical step: the boundary, the installed-vs-checkout
 comparison, resolving this session's transcript, extracting the turns and answers, the live-state
-sweep, and the green-claim count. **Run it rather than composing the commands by hand** — measured
-2026-09-02 across 24,429 Bash calls in 1,134 transcripts, those commands were re-invented every run
-and drifted, so answers that ought to be comparable across harvests were not. Six documented
-failures are now code the script cannot repeat (the upstream branch is read rather than typed,
-nothing runs through a shell so no pipe can eat an exit code, CI is read as JSON, `depends_on` is
-anchored, a job's transcript comes from its `state.json`, answers are matched by tool-use id).
+sweep, the green-claim count, and what an earlier harvest in this session already filed. **Run it
+rather than composing the commands by hand** — measured 2026-09-02 across 24,429 Bash calls in 1,134
+transcripts, those commands were re-invented every run and drifted, so answers that ought to be
+comparable across harvests were not. Six documented failures are now code the script cannot repeat
+(the upstream branch is read rather than typed, nothing runs through a shell so no pipe can eat an
+exit code, CI is read as JSON, `depends_on` is anchored, a job's transcript comes from its
+`state.json`, answers are matched by tool-use id).
 
 ```shell
 H=~/.agents/skills/session-harvest/scripts/harvest.py   # or <checkout>/skills/session-harvest/scripts/harvest.py
@@ -55,6 +56,7 @@ python3 $H turns                                        # step 4
 python3 $H skills-state --since <session start>         # step 0 — needs a checkout, see below
 python3 $H sweep --boundary <instant>                   # step 5
 python3 $H claims --until <instant>                     # step 5, the exit-masked rule
+python3 $H filed --until <instant>                      # step 8, on a second harvest in one session
 ```
 
 **The bare `turns`, `sweep` and `claims` lines resolve the transcript from
@@ -926,6 +928,29 @@ the two — confirmed 2026-08-30, twenty minutes apart, a parallel session had c
 in the gap and only the re-run saw it — while re-listing the findings the user read twenty minutes
 ago buries the two lines that are new. Say what changed since the last report and name the earlier
 one, rather than restating it.
+
+**And it corrects what the first one _filed_ before writing that delta, which matters more than the
+delta does.** The report is the cheap half: the user has read it and it dies with the terminal. The
+plans the first harvest wrote outlive the session, and nobody re-derives a number that is already in
+a file. A measurement filed mid-session is a **prefix** of the session, and a prefix of a session
+whose phases differ is not a smaller version of the whole. Confirmed 2026-09-07, two harvests of one
+session 2h40m apart: the first filed an adherence row reading
+`n=211 chain=36% head/tail=20% sed-n=0%(1)`, and the same session at the second boundary measured
+`n=306 chain=44% head/tail=27% sed-n=2%(7)` — every rate moved the wrong way, because the last third
+was a different kind of work (reading five sibling repos' configs) and chained and `sed -n`'d far
+more than the phase before it. Ordinary, and it will recur. Nothing prompted the correction: the
+second harvest happened to remember it had filed the row, and had the user asked for one harvest
+instead of two, the corpus would have taken the prefix as the session's row.
+
+**`python3 $H filed --until <the boundary>` is what replaces the remembering.** It counts this
+session's own step-0 `boundary` calls, so "this is harvest #2" is read rather than recalled; lists
+the plan files this session wrote, each with the lines in it that carry a number; and lists every
+plans-store commit since session start, attributed to this session or explicitly not — the store is
+shared, so a commit inside the window is not yours by virtue of being there, and a row marked
+`(another session)` is reported, never edited. Re-derive each measurement it prints and **edit the
+file**, then write the delta. Correcting a plan in the store is inside the write set at the top of
+this procedure, one filed `--for` another repo included; a row marked `MISSING` has been absorbed
+into the repo that owns it, and there the correction is a new filing rather than an edit.
 
 **Open with where everything went**, as four groups, because "did this land somewhere durable, or is
 it still only in the chat?" is the question the whole report exists to answer:

@@ -1,7 +1,7 @@
 ---
 name: research-library
 description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library. Also owns judging a named third-party package or repo before depending on it: whether it is still maintained, who is actually committing to it, how often it releases on its stable line, whether it ships py.typed, how much test suite is behind it, whether a version cap it carries will hold you back — read from PyPI, the GitHub API and the project's own source rather than from a search summary."
-compatibility: Python 3.11+ (stdlib only), git, and network access - clones from the URL you give, and package health from PyPI's JSON API and the GitHub API through gh, so your own token and rate limit apply. A library directory ($RESEARCH_HOME, default ~/research) that you create.
+compatibility: Python 3.11+ (stdlib only), git, and network access - clones from the URL you give, and package health from PyPI's JSON API and the GitHub API through gh, so your own token and rate limit apply. Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs none of that. A library directory ($RESEARCH_HOME, default ~/research) that you create.
 ---
 
 # Research library
@@ -20,12 +20,16 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
 ## What this skill reads, runs and writes
 
 - **Reads**: `$RESEARCH_HOME` and the entries in it; a repo's own `AGENTS.md` for pointers.
-- **Runs**: `git clone`/`fetch`/`reset`/`tag -d`/`reflog expire`/`gc` inside library clones only,
-  and `gh api` for package health and for a repo's reported size before `add` clones it.
+  `size --ungreppable` opens every file in the store and reads its first 8 KB.
+- **Runs**: `git clone`/`fetch`/`reset`/`sparse-checkout`/`tag -d`/`reflog expire`/`gc` inside
+  library clones only, and `gh api` for package health and for a repo's reported size before `add`
+  clones it.
 - **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file, `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field.
   `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
   or a copy into a project repo, and nothing outside the store is ever touched.
+- **Reads from the environment**: `RESEARCH_HOME` for the store, and `RESEARCH_TEXT_ONLY` for
+  whether `add` clones text-only by default.
 - **Network**: the clone URL you give; PyPI and GitHub for `package_health.py` and for the pre-clone
   size question, GitHub through your own `gh` login. Nothing is uploaded.
 
@@ -63,8 +67,9 @@ python3 $S/scripts/library.py check                 # every entry against these 
 
 `S=~/.agents/skills/research-library`. `add` re-derives the name from the clone's own remote after
 cloning and renames the entry when they disagree; it records `ref` as the branch and short sha it
-actually got. For an entry that is not a git clone — a downloaded PDF, a mirrored docs site — fetch
-it however the material requires, then
+actually got, and it clones **text-only** unless told otherwise — see below for what that leaves out
+and why it costs a search nothing. For an entry that is not a git clone — a downloaded PDF, a
+mirrored docs site — fetch it however the material requires, then
 `library.py provenance <path> --url <url> --kind <kind> --ref <ref>` writes the metadata half, which
 is the deterministic part and the part that gets skipped. `--json` on everything; `name` and `check`
 are read-only, `add` and `provenance` write only inside `$RESEARCH_HOME`.
@@ -72,8 +77,8 @@ are read-only, `add` and `provenance` write only inside `$RESEARCH_HOME`.
 The provenance file's shape, since `check` enforces it and a reader may need to fix one by hand:
 `url`, `kind` (`repo-clone`, `llms-txt-mirror` or `site-mirror`), `ref` (branch/tag/commit for a
 clone, fetch date for a mirror), `fetched`, `depth` when the history was deliberately deepened (see
-below), and `note` only when non-obvious — e.g. docs publishing from a different branch or repo than
-the one cloned.
+below), `text-only` when the checkout is narrowed (see below), and `note` only when non-obvious —
+e.g. docs publishing from a different branch or repo than the one cloned.
 
 **`add` asks before cloning something the host calls large**, exiting 3 with the reported figure
 rather than prompting — an interactive prompt inside an agent's Bash call hangs with nothing to type
@@ -87,12 +92,71 @@ the reported size (`cpython`, 851 MB reported and 192 MB on disk) to 1.32× (`Ro
 and 473 on disk). A 5.7× spread, and not even an upper bound — a warning naming a predicted figure
 would have been wrong by 4× in the reassuring direction.
 
+## Clones hold text, because that is all anyone searches
+
+**`add` clones text-only by default**: images, video, audio, fonts, archives, compiled objects and
+model weights are left on the server, and everything a text search can read is checked out.
+`--all-files` opts one entry out; `RESEARCH_TEXT_ONLY=0` opts a whole machine out.
+
+```shell
+python3 $S/scripts/library.py add <url>               # text-only, the default
+python3 $S/scripts/library.py add <url> --all-files   # every file, images and binaries included
+python3 $S/scripts/library.py add <url> --dry-run     # the two commands and the file it would write
+```
+
+**The exclusion cannot cost a search a single hit, and that is the only reason it is a default.**
+Every format it skips is one ripgrep and grep already refuse to search — both treat a file with a
+NUL byte in its first block as binary and skip it — so those bytes buy a search nothing. This is
+also why it is not the same decision as excluding a _directory_, which makes a grep silently blind
+and stays unadopted here for exactly that reason.
+
+Verified end to end 2026-09-08 on `intellectronica/ruler`, 97% binary, the same commit cloned both
+ways: **257 searchable files in both trees, the identical set**, `grep -rIl ruler` returning 190
+files in both, and one file absent from the text-only clone — a 69 MB `.gif`. On disk, 141 MB became
+**3.0 MB**, and `.git` 70 MB became **644 KB**.
+
+That last number is the part worth knowing, because it comes from combining two things that each do
+nothing alone. `--filter=blob:none` defers nothing on a `--depth 1` clone, since the checkout
+materialises every blob at HEAD anyway; the sparse set alone shrinks the working tree while `.git`
+stays exactly as large. Together, blobs the sparse set never wants are never fetched. A clone
+carrying one without the other saves a fraction of what it appears to.
+
+**Documents are kept, and PDFs are the reason.** A PDF is binary to a grep and readable by an agent,
+so the line is document-versus-demo-asset rather than greppable-versus-not. Nine PDFs sit inside
+repo clones today — 6.6 MB, **0.5% of the excluded weight**, including a 4.6 MB
+`flameshot-documentation.pdf`. Half a percent of the saving removes the only case where this could
+lose something a reader wanted. Ebook and office formats are kept on the same judgement. `.svg`
+needs no exemption at all: it is text, so the NUL rule keeps it regardless.
+
+**An entry whose checkout is narrower than its HEAD has to say so**, or a later grep that finds
+nothing reads as an answer rather than as a question about what was checked out. `add` records
+`text-only: yes`, and `check` reports both directions of drift — an entry claiming it over a full
+checkout, and a sparse checkout nothing records, which also catches a path-based `sparse-checkout`
+someone applied by hand.
+
+`update` needs no special case: a shallow fetch and hard reset leave `core.sparseCheckout` and the
+pattern list intact, confirmed on a real refresh.
+
 ## What the library costs
 
 ```shell
-python3 $S/scripts/library.py size            # entries at or above 250 MB, biggest first
-python3 $S/scripts/library.py size --min 0    # everything
+python3 $S/scripts/library.py size                  # entries at or above 250 MB, biggest first
+python3 $S/scripts/library.py size --min 0          # everything
+python3 $S/scripts/library.py size --ungreppable    # and how much of it no text search can read
 ```
+
+`--ungreppable` is what makes re-cloning an existing entry text-only a decision with a number
+attached rather than a principle. It classifies by **content**, not by the exclusion list, so the
+report can contradict the patterns — which is how the extensionless residue stays visible: 620 files
+and 16 MB library-wide, 1.25% of the ungreppable weight and reachable by no extension pattern. Small
+enough to be the answer rather than a reason for a second filter. It reads every file in the store
+(184,279 files in 2.9s warm on a 3 GB library), which is why it is a flag.
+
+Measured 2026-09-08 over 86 entries: **1,286 MB of 3,274 MB of working tree, 39%, is ungreppable**.
+It concentrates — `block/goose` is 310 MB of 343, `RooCodeInc/Roo-Code` 276 of 293 — and the biggest
+entry in the library is the counterexample that keeps path exclusion a separate question:
+`nodejs/node` is 15 MB of 669, because its 669 MB working tree is vendored V8 and OpenSSL
+**source**, greppable to the last byte.
 
 Per entry it splits `.git` from the working tree, **because they have different remedies and the
 ratio says which applies**: a large `.git` at one commit is big blobs, where the only lever is not

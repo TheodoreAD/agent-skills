@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-08
 ---
 
@@ -194,24 +194,63 @@ way the gap stays visible.]
 so `IMG.PNG` survives; measured 2026-09-08, 4 files and 0.3 MB of the whole library carry an
 uppercase extension — 0.02% of the excluded weight, against doubling the list.]
 
+[DECISION: a `docs/` or `pages/` entry needs no rejection of `--all-files`, because `add` only ever
+creates repo entries and the flags are unreachable from those buckets. It becomes real only if
+`provenance` ever grows a fetching half, and belongs to that change rather than to this one.]
+
 [DECISION: a failed `sparse-checkout set` runs `sparse-checkout disable` and then raises. A
 `--sparse` clone starts with only its root files checked out, so the untreated failure leaves an
 entry that is present, is a real git clone, passes every check the script makes, and holds almost
 none of the repo — the store's characteristic silent shape. The provenance file is written before
 the raise, so the entry ends up complete and conformant while the run ends up loud.]
 
-## Open questions
+## The retrofit, run 2026-09-08
 
-[NEEDS CLARIFICATION: what happens to the ~1.2 GB already on disk? Sparse can be applied to an
-existing clone and reclaims the working tree; the blobs are already in the pack, so the `.git` half
-needs a re-clone. `size --ungreppable` now prices any given entry — `block/goose` 310 MB of 343,
-`RooCodeInc/Roo-Code` 276 of 293 — so the choice between a partial saving now and a re-download is
-answerable per entry, and the question is only whether a `--retrofit` is worth writing or whether
-re-adding the four worst entries by hand is the whole of it.]
+The existing library was re-cloned entry by entry rather than left as the plan's largest loose end.
+Seven entries, chosen by ungreppable **share** rather than by total size — which is the correction
+the new column paid for immediately, since `npm/cli` is the fourth-largest entry in the store and
+only 15% ungreppable, so it would have been picked by every ranking that did not have this number:
 
-[NEEDS CLARIFICATION: does a `docs/` or `pages/` entry need `--all-files` to be rejected rather than
-ignored? `add` only ever creates repo entries, so the flags are unreachable from those buckets
-today. It becomes real if `provenance` ever grows a fetching half.]
+| entry                                    | before | after  | reclaimed  |
+| ---------------------------------------- | ------ | ------ | ---------- |
+| `block/goose`                            | 638 MB | 42 MB  | 596 MB     |
+| `RooCodeInc/Roo-Code`                    | 464 MB | 22 MB  | 442 MB     |
+| `sst/opencode`                           | 204 MB | 63 MB  | 141 MB     |
+| `intellectronica/ruler`                  | 140 MB | 2 MB   | 138 MB     |
+| `shanraisshan/claude-code-best-practice` | 135 MB | 6 MB   | 130 MB     |
+| `Aider-AI/aider`                         | 139 MB | 11 MB  | 128 MB     |
+| `Futsch1/medTimer`                       | 84 MB  | 4 MB   | 80 MB      |
+| **total**                                | 1.8 GB | 150 MB | **1.7 GB** |
+
+Store-wide: **4,728 MB → 3,073 MB**, and ungreppable **1,286 MB (39%) → 380 MB (16%)**. `check`
+reports the same four pre-existing findings as before and no new ones. `goose` still answers a real
+search — `rg -c recipe` over it returns 8,878 matches across 309 of 1,990 files.
+
+Three things the run established that a design discussion would not have:
+
+**A re-clone destroys the provenance, and three of the seven carried multi-line hand-written notes**
+— why a decompile is tracked per release, why a candidate was cloned during a prior-art survey. An
+`add --note` would have flattened each onto one line. The working shape is to restore the old file
+whole and then rewrite only `ref`, `fetched` and `text-only` through `set_provenance_field`, which
+is the line editor that already exists for exactly this and leaves a `note: |` block untouched.
+
+**`betawatch/tandroid` was excluded, and it is the case that makes a blanket `--retrofit` wrong.**
+It is 115 MB ungreppable of a 239 MB tree, so every size heuristic selects it — and its own note
+says it is a decompile of a specific shipped Telegram beta, tracked per release. Re-cloning changes
+_which build the entry is_. That is a content decision wearing a disk decision's clothes, and no
+threshold can tell the two apart.
+
+**The verification that mattered is not a size comparison.** Sizes only say something got smaller.
+`git ls-files -t` names every path git actually excluded, and asserting each one's extension is in
+the list is what would catch a pattern doing something unintended. It passed on all 1,883 excluded
+paths across the seven entries, which is a far stronger statement than any of the megabyte figures.
+
+[DECISION: no `--retrofit` command. The operation is a loop over `add`, and the two things it has to
+get right — preserving a hand-written provenance, and not re-cloning an entry that is pinned to a
+particular upstream state on purpose — are a judgement per entry rather than a flag.
+`size
+--ungreppable` supplies the ranking, and a session that wants this runs the loop with the
+ranking in front of it, as this one did.]
 
 ## What is still deliberately not done
 

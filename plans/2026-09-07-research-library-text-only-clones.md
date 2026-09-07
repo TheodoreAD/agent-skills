@@ -20,6 +20,25 @@ skip it, so those bytes buy a search nothing at all. The saving is free by const
 Everything below is measured. The mechanism probe changed the design and it also corrects a
 conclusion the earlier plan recorded as settled.
 
+### Scope, stated first because "exclude binaries" reads wider than it is
+
+Raised by the user on reading the first draft: the library holds PDFs, epubs and other ebook formats
+in their own right. Two boundaries follow, and neither is optional.
+
+**Sparse patterns reach `repos/` and nothing else.** `docs/` (6 entries, 4 MB — PDFs with their
+provenance files) and `pages/` (3 entries, 1 MB — mirrored doc snapshots) are loose files that no
+git clone contains, so a sparse-checkout pattern cannot touch them and must never be described as if
+it could. Those buckets exist precisely to hold material that is not greppable source, and the 41%
+figure below is measured over `repos/` only.
+
+**And "not greppable" is the wrong criterion for a document.** A PDF is binary to ripgrep and is
+still readable by an agent — Claude reads PDFs natively — so the real line is not
+greppable-versus-not but **document versus demo asset**. Nine PDFs sit inside repo clones today,
+including a 4.8 MB `flameshot-documentation.pdf` that is exactly the reference material this library
+exists for. They total **6.6 MB, 0.52% of the ungreppable bytes**, so keeping every one of them
+costs half a percent of the saving and removes the only case where this exclusion could lose
+something a reader wanted. `!*.pdf` came out of the pattern list for that reason.
+
 ## What the measurements say
 
 ### 1. 41% of the library's working trees cannot be searched
@@ -79,6 +98,10 @@ Probed on `intellectronica/ruler` (97% binary), three clones of the same commit:
 Patterns are `sparse-checkout set --no-cone '/*' '!*.png' '!*.jpg' …` — **non-cone mode**, because
 cone mode matches directories and the criterion here is file type.
 
+The probe's list carried `!*.pdf`; the shipping list must not, per the scope note above. Nothing
+else about the measurement changes — the excluded file in this repo was a 69 MB `.gif`, and document
+formats are 0.52% of the excluded weight library-wide.
+
 ### 4. The correction: `blob:none` is useless alone and transformative with sparse
 
 The earlier plan recorded, correctly measured and wrongly generalised: _"A blobless partial clone
@@ -113,9 +136,17 @@ before this becomes the default, and know what the fallback is — most likely w
 pattern file under `.git/info/` directly, which is the same mechanism one layer down.]
 
 [NEEDS CLARIFICATION: where does the pattern list live, and who edits it? A constant in `library.py`
-is one answer and covers the measured 95% (PNG, MP4, GIF, JPG, `.so`, `.dex`, fonts, archives). A
-per-entry override in `SOURCE.md` would handle the repo whose `.bin` fixtures are actually the thing
-being read. Start with the constant, and only add the override when an entry needs it.]
+is one answer and covers the measured 95% (PNG, MP4, GIF, JPG, `.so`, `.dex`, fonts, archives) while
+keeping document formats. A per-entry override in `SOURCE.md` would handle the repo whose `.bin`
+fixtures are actually the thing being read. Start with the constant, and only add the override when
+an entry needs it.]
+
+[NEEDS CLARIFICATION: where exactly is the document/asset line, beyond PDF? Epub, mobi, azw3, djvu
+and chm are ebook formats the library's own `docs/` bucket is for, and none appears inside a repo
+clone today — so including them in the keep-list costs nothing now and is the same judgement as PDF.
+Less obvious: `.docx`/`.xlsx` (zip containers, unreadable to grep, sometimes the material), and
+`.svg`, which is _text_ and so already kept by the NUL rule while being a demo asset by intent. The
+last one is the tell that this list is a judgement about purpose, not a file-type fact.]
 
 [NEEDS CLARIFICATION: extension patterns cannot catch an extensionless binary, and the measurement
 used content. `nodejs/node` carries 607 extensionless binary files, totalling under 1 MB, so the gap
@@ -132,7 +163,8 @@ re-download — worth quantifying before offering a `--retrofit` anything.]
 
 1. **`add --text-only`** (name provisional): `--depth 1 --filter=blob:none --sparse`, then the
    non-cone pattern set, recorded in `SOURCE.md` so `check` can report which entries are text-only
-   and nobody has to infer it from a file listing.
+   and nobody has to infer it from a file listing. Repo entries only — the flag has no meaning for a
+   `docs/` or `pages/` entry and should say so rather than accept and ignore it.
 2. **Nothing in `update` changes** — measurement 5 says the shape survives a refresh untouched.
 3. **`size` grows an ungreppable column**, which is where the 41% came from and is what makes the
    case for retrofitting any given entry concrete rather than rhetorical.

@@ -20,12 +20,14 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
 ## What this skill reads, runs and writes
 
 - **Reads**: `$RESEARCH_HOME` and the entries in it; a repo's own `AGENTS.md` for pointers.
-- **Runs**: `git clone`/`fetch` for entries, `gh api` for package health.
-- **Writes**: only inside `$RESEARCH_HOME` — `library.py add` clones and writes a provenance file,
-  `provenance` writes that file, `update` refreshes clones; `name` and `check` write nothing, and
-  `--dry-run` prints what `add` would do. Never a symlink or a copy into a project repo.
-- **Network**: the clone URL you give; PyPI and GitHub for `package_health.py`, GitHub through your
-  own `gh` login. Nothing is uploaded.
+- **Runs**: `git clone`/`fetch`/`reset`/`tag -d`/`reflog expire`/`gc` inside library clones only,
+  and `gh api` for package health and for a repo's reported size before `add` clones it.
+- **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file, `provenance`
+  writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field.
+  `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
+  or a copy into a project repo, and nothing outside the store is ever touched.
+- **Network**: the clone URL you give; PyPI and GitHub for `package_health.py` and for the pre-clone
+  size question, GitHub through your own `gh` login. Nothing is uploaded.
 
 ## Before fetching anything from the web
 
@@ -69,18 +71,69 @@ are read-only, `add` and `provenance` write only inside `$RESEARCH_HOME`.
 
 The provenance file's shape, since `check` enforces it and a reader may need to fix one by hand:
 `url`, `kind` (`repo-clone`, `llms-txt-mirror` or `site-mirror`), `ref` (branch/tag/commit for a
-clone, fetch date for a mirror), `fetched`, and `note` only when non-obvious — e.g. docs publishing
-from a different branch or repo than the one cloned.
+clone, fetch date for a mirror), `fetched`, `depth` when the history was deliberately deepened (see
+below), and `note` only when non-obvious — e.g. docs publishing from a different branch or repo than
+the one cloned.
 
-## Updating
+**`add` asks before cloning something the host calls large**, exiting 3 with the reported figure
+rather than prompting — an interactive prompt inside an agent's Bash call hangs with nothing to type
+into. `--yes` proceeds, `--min <MB>` moves the line (default 250 MB), `--depth N` or `--full` clones
+more than one commit and records it. The check is GitHub's API, so a host it cannot ask is never a
+host it refuses to clone from.
 
-Refresh every clone under `repos/` to its default branch's latest commit — a shallow fetch and hard
-reset, since these are disposable reference clones, not working copies with local commits to
-preserve. Where the machine provides a refresher on `PATH` for this, use it (on this author's
-machine, `research-update`); otherwise loop the clones directly. That refresher and
-`library.py
-check` answer different questions and neither replaces the other: one moves every clone
+**The reported size is a trigger, never a prediction, and the warning deliberately quotes no
+estimate.** Measured 2026-09-07 against five real entries at depth 1: on-disk cost ran from 0.23×
+the reported size (`cpython`, 851 MB reported and 192 MB on disk) to 1.32× (`Roo-Code`, 359 reported
+and 473 on disk). A 5.7× spread, and not even an upper bound — a warning naming a predicted figure
+would have been wrong by 4× in the reassuring direction.
+
+## What the library costs
+
+```shell
+python3 $S/scripts/library.py size            # entries at or above 250 MB, biggest first
+python3 $S/scripts/library.py size --min 0    # everything
+```
+
+Per entry it splits `.git` from the working tree, **because they have different remedies and the
+ratio says which applies**: a large `.git` at one commit is big blobs, where the only lever is not
+keeping the clone; a large working tree at one commit is vendored directories. Measured on the worst
+entry in a real 4.8 GB library — 940 MB at **one commit**, of which a single vendored `deps/`
+directory was 675 MB, while the `src`, `lib` and `doc` a reference clone exists for totalled 34 MB.
+Depth was not the problem there and no amount of re-shallowing would have moved it.
+
+## Updating, deepening, and getting the disk back
+
+```shell
+python3 $S/scripts/library.py update                      # every clone, each at its intended depth
+python3 $S/scripts/library.py update <entry>              # just this one
+python3 $S/scripts/library.py deepen <entry> --depth 500  # more history, recorded as deliberate
+python3 $S/scripts/library.py reshallow <entry>           # back to a depth-1 footprint, disk included
+```
+
+`update` refreshes each clone to its remote's latest — a shallow fetch and hard reset, since these
+are disposable reference clones, not working copies with local commits to preserve. It and
+`library.py check` answer different questions and neither replaces the other: one moves every clone
 forward, the other says whether moving it forward can possibly do anything.
+
+**A clone deeper than one commit with nothing recorded is skipped, not truncated.** Nothing
+distinguishes a deliberate deepening from an accident, and truncating is the answer that cannot be
+undone by reading. Confirmed 2026-09-07 in a 71-entry library: exactly one entry was deep, it had
+been deepened on purpose to read a dependency's constraint history, and a loop refreshing everything
+with `fetch --depth 1` would have destroyed that in silence. Use `deepen` rather than a hand-typed
+`git fetch`, so the intent lands in the entry's `depth:` field and `update` can see it.
+
+**`reshallow` exists because re-shallowing by hand does not reclaim the disk.** Measured 2026-09-07
+on `encode/httpx`, `.git` in KB: a fresh `--depth 1` clone is 2,492; deepened by 400 commits and
+re-shallowed with `fetch --depth 1` and `reset --hard` it reports **one commit again while the disk
+does not move at all**; adding `reflog expire`, `gc --prune=now`, `repack -a -d`, `prune` and
+`gc --aggressive` reaches 4,852 and stops there. The cause is **tags** — deepening brings them, each
+pins a commit deep in history, and every object below stays reachable. Delete them and the same
+clone lands at 2,472, below where it started. The widely-published sequence omits that step, so run
+verbatim it leaves a clone permanently 95% larger and reports success. That is five commands in
+order, one of which appears in no reference material: exactly the shape that belongs in code.
+
+It refuses on a detached HEAD, where the tags may be the thing the clone exists to read; `--force`
+overrides.
 
 **An entry that looks suspiciously stale after a refresh is usually pinned**, and `check` names it:
 a clone made with an explicit `--branch <tag>` leaves `HEAD` detached and keeps tracking that one

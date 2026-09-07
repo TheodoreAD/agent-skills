@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-07
 ---
 
@@ -129,9 +129,16 @@ perfectly delegated one. Filed separately as `2026-09-07-derivable-cannot-see-a-
 ### 6. The refresher will silently destroy a deliberate divergence
 
 `aiogram` sits at 436 commits because a session deepened it on purpose to read a dependency's
-constraint history — recorded at the time as a store divergence. The next `research-update` run
-loops every entry under `repos/` with `fetch --depth 1` and truncates it back to 1, with no warning
-and nothing to notice afterwards. A live hazard in the current tooling, found by measurement.
+constraint history. `research-update` loops every entry under `repos/` with `fetch --depth 1` and
+would truncate it back to 1, with no warning and nothing to notice afterwards.
+
+**The store had already recorded the reason, and nothing was reading it.** That entry's `SOURCE.md`
+carries a `depth:` line — a whole sentence, "deepened to ~436 commits …, not the usual `--depth 1`",
+written when the divergence was made because the store's convention asks for the divergence _and_
+why. So the fix needed no new metadata and no migration: `update` reads the field that was already
+there. It is also why the field accepts prose rather than an integer — an integer-only reading would
+have treated that entry as unrecorded and truncated it. The hazard stands for the external
+`research-update`, which reads no provenance at all.
 
 ## Recommended direction
 
@@ -172,12 +179,36 @@ becoming an argument.
 cannot go stale; the host's API covers the one case measurement cannot reach, which is the moment
 before a clone exists. A hand-curated list is a third source of truth that would disagree with both.
 
-## Open questions
+## What landed
 
-[NEEDS CLARIFICATION: what is the default `--min` for the size report, and does `add` warn at the
-same number? 100 MB fires on 14 of 71 entries here, 500 MB on 3. The two thresholds may want
-different answers — a report wants to be readable, a pre-clone warning wants to fire before the
-download rather than after.]
+All five commands, with tests, and each measurement above recorded at the function that depends on
+it: `size --min`, `update`, `deepen`, `reshallow`, and `add`'s pre-clone size question. Verified end
+to end against a real deepened clone — `.git` 5,288 KB → 2,468 KB, 401 commits → 1, 15 tags → 0,
+`depth: 1` recorded — which is below the 2,492 KB a fresh `--depth 1` clone costs.
+
+`derivable` now reports 13 commands, 12 delegated, 0 derivable, against 7/6/0 before. The score did
+not move because it was already 0: the operations that had no command line at all were invisible to
+it, which is the separate finding filed as `2026-09-07-derivable-cannot-see-a-missing-command.md`.
+
+[DECISION: one threshold, 250 MB, shared by the report and the pre-clone question, moved by `--min`
+on both. 100 MB names fourteen of this library's entries and reads as a list of ordinary repos; 500
+names two. Shared rather than split because two numbers would need two justifications and the
+evidence only supports one.]
+
+[DECISION: `update` skips a clone deeper than one commit with nothing recorded, rather than
+truncating it or migrating anything. That is safe with no migration step at all — the unsafe case is
+exactly the case it declines to act on — and it turned out the real library's one deep entry already
+carried its reason in `SOURCE.md`, because the store's convention had asked for it.]
+
+[DECISION: `size` is its own command rather than a section of `check`. `check` answers "does this
+store follow its conventions" and size is not a convention violation; folding it in would have made
+one command answer two questions with one exit code.]
+
+[DECISION: `reshallow` refuses on a detached HEAD, with `--force` to override. That is the
+pinned-at-a-tag signature `check` already detects, and it is the one shape where deleting every tag
+destroys the thing the clone exists to read.]
+
+## Open questions
 
 [NEEDS CLARIFICATION: does `add` take `--sparse` at all, given finding 1 is a 6× lever and finding 2
 ruled out the safe alternative? The saving is real and the cost is that a grep silently does not see
@@ -185,23 +216,7 @@ excluded paths — silent, which is the failure mode this corpus weighs heaviest
 worth testing: allow it, record the excluded paths in `SOURCE.md`, and have `check` report any entry
 whose checkout is partial, so "the grep saw everything" is never assumed.]
 
-[NEEDS CLARIFICATION: does `update` re-shallow by default, or only when an entry has no recorded
-depth? Re-shallowing every entry every run is what destroys `aiogram`. Doing it only for entries
-without a `depth:` field is safe but means the field must exist before the first run of the new
-command, or the first run destroys the divergence it was written to protect. A one-time migration
-that records the current depth of every entry is probably the honest answer.]
-
-[NEEDS CLARIFICATION: does the size report belong in `check` or its own `size` command? `check`
-answers "does this store follow its conventions" and size is not a convention violation. Separate
-keeps each answer clean; folding it in means one call rather than two. Leaning separate, with
-`check` printing a one-line pointer when the store is above some total.]
-
 [NEEDS CLARIFICATION: what happens to the machine's `research-update` once `library.py update`
 exists? Two implementations of one guarantee is the thing worth avoiding — the wrapper should become
 a one-line call into the skill's script, which is a change in another repo and therefore filed
 rather than made from here.]
-
-[NEEDS CLARIFICATION: is the tag deletion in `reshallow` ever wrong? It is right for a disposable
-reference clone, which is what every entry here is. It would be wrong for anything where a tag is
-the thing being read — a clone made to compare release tags, say. `check` already detects the
-pinned-at-a-tag shape, so refusing to reshallow such an entry is probably the guard.]

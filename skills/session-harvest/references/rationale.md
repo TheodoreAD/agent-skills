@@ -445,6 +445,61 @@ a state file is a second thing that can be stale. `--session` stays for a harnes
 id, and the job check stays ahead of it, because a background job's environment names the parent
 session while only its `state.json` knows the job's own transcript.
 
+## What step 0 owes a reader once it has found a difference (2026-09-07)
+
+Migrated from two plans filed the same day by two other repos' sessions —
+`2026-09-07-skills-state-runs-from-the-copy-it-is-checking.md` and
+`2026-09-07-diff-skill-md-instead-of-rereading.md` — and kept apart as plans on the first one's own
+argument: one is about the check's blind spot, the other about how a reader consumes what the check
+reports. They land in one section because a reader arrives with one question, which is what to do
+with a staleness verdict once they have it.
+
+**The check runs from the copy it is judging, and no ordering fixes that.** `boundary`, `transcript`
+and `skills-state` are the three subcommands a harvest runs before it can know the install is stale,
+and all three come from the same script. Taking the boundary from the checkout would mean resolving
+the checkout first, which is `skills-state`'s own job — so some call always precedes the answer.
+Observed 2026-09-07: a harvest correctly reported its own install stale across six commits, from
+`~/.agents/skills/session-harvest/scripts/harvest.py`, one of the stale files it was reporting on.
+It was benign — every change was in `sweep`, so all three pre-check answers matched what the current
+code would have given — but the run could only learn that by diffing the two files by hand.
+
+**Rejected — re-exec from the checkout.** Self-correcting, and a bigger promise than the problem
+needs: a script that re-runs itself from a path it discovered, to remove an exposure that cannot be
+removed. What is left is to make the exposure legible, so the verdict now names which subcommands
+differ and whether the three pre-check ones are among them.
+
+**The comparison is per definition, not per file**, and that is the difference between a useful line
+and a restatement. A file-level diff answers "something changed", which the reader already knows.
+Reachability from each `cmd_*` entry point — through module-level functions **and** constants, since
+a changed pattern is the commonest way a subcommand moves while its own body stays byte-identical —
+answers "does this affect what I have already read". On the session that filed it, that prints
+`sweep` and nothing else. Two properties keep it honest: it fires only when `Path(__file__)` is
+under the installed skill, because a harvest already running from the checkout has nothing to
+re-run; and it is three-valued, so a file that will not parse says it could not tell rather than
+reporting no difference.
+
+**The other half: step 0 prescribed a diff for `scripts/` and a re-read for `SKILL.md`, and the
+asymmetry was not deliberate.** Measured 2026-09-07 on a stale harvest that diffed instead: four
+hunks, about forty lines against seven hundred, and every hunk changed what the run then did — the
+docker attribution rule in particular, since that session had run no `docker` and the sweep listed
+six images, which under the old wording invited a removal line. The re-read returns the same facts
+inside the whole file.
+
+[PITFALL: **a diff is only sound when the copy held in context is one side of it.** That holds
+whenever the skill was loaded from the installed copy in the current turn, which is the ordinary
+case, and fails for an installer that ran mid-session _after_ the load — there the held text is
+neither side, and diffing the two files on disk compares two things the reader is not holding.
+Diffing unconditionally was rejected for that case: silently wrong beats expensive. It is detectable
+rather than assumed, from the install's mtime and from the available-skills listing changing
+mid-session, which step 0 already treats as a free trigger.]
+
+**`references/` took the same argument one clause further, rather than a fourth rule.** It stays out
+of the verdict — a references-only commit must not fire the expensive branch, which is the
+2026-08-30 finding that split the three subdirectories in the first place — but a page a run
+actually opened was read from the stale copy like anything else, so that one file is diffed. Keeping
+it as a clause on the existing sentence is deliberate: the verdict's boundary and the reader's
+exposure are different questions, and a separate rule would have blurred them back together.
+
 ## Why the sweep now says who owns a process and an image (2026-09-05/06)
 
 Two findings a fortnight apart turned out to be one: **on a machine that runs parallel sessions, a

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-07
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 3ad94750-3d54-410e-9c1b-9ad44ffc7e14.jsonl
@@ -29,21 +29,30 @@ like a current one.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **which of three fixes, and the cheapest may be sufficient.** (a)
-`skills-state` re-execs itself from the checkout when it finds its own skill stale and re-prints —
-self-correcting, but a script that re-runs itself from a path it discovered is a bigger promise than
-this needs. (b) It prints one line naming which of its own subcommands differ between install and
-checkout, so the reader knows whether the answers already collected are affected — that is what the
-SKILL.md prose already asks the reader to work out by hand, and it is one `git diff --stat` away.
-(c) `SKILL.md` says plainly that the three pre-check subcommands ran from the copy under test and to
-re-run them from the checkout when `scripts/` differs, which costs nothing and is the same
-instruction the step gives for every _other_ command.]
+[DECISION: **(c) plus the reporting half of (b) — settled with the user 2026-09-07 and built the
+same day.** `SKILL.md` says the three pre-check subcommands ran from the copy under test, and
+`skills-state`'s verdict names which of its own subcommands actually differ. (a), re-execing from
+the checkout, was refused as a bigger promise than the problem needs: a script that re-runs itself
+from a path it discovered, to remove an exposure that cannot be removed anyway.
 
-[NEEDS CLARIFICATION: **is the ordering fixable at all?** The boundary has to be the first command
-of the run, and it comes from the same script. Taking it from the checkout would require resolving
-the checkout first, which is `skills-state`'s job — so some call is always made before the staleness
-answer exists. That argues for (b) or (c) over (a): the aim is to make the reader's exposure legible
-rather than to remove it.]
+**The ordering is not fixable, and that is what settles it.** The boundary is the run's first
+command and comes from the same script; taking it from the checkout means resolving the checkout
+first, which is `skills-state`'s own job. Some call always precedes the staleness answer, so the aim
+is a legible exposure rather than none.]
+
+[DECISION: **compare per definition, not per file.** A file-level diff answers "something changed",
+which is the question the reader already has. Reachability from each `cmd_*` entry point — through
+module-level functions **and** constants, since a changed pattern is the commonest way a
+subcommand's behaviour moves while its own body stays byte-identical — answers "does this affect
+what I have already read". On the session that filed this it would have printed `sweep` and nothing
+else, which is the whole finding. Three-valued like the sweep's other checks: a file that will not
+parse reports that it could not tell, never "nothing differs".]
+
+[DECISION: **the note fires only when the running script is the copy being judged.** A harvest that
+has already switched to the checkout is executing current code and has nothing to re-run, so warning
+it would be the check misreading its own situation — the shape this whole plan is about. The
+condition is `Path(__file__)` under the installed skill, which is the fact itself rather than a
+proxy for it.]
 
 ## Recommended direction
 
@@ -62,3 +71,20 @@ Distinctive phrase: _"Step 0 flags a stale install of the harvest skill itself �
 `scripts/`, which this run has already executed."_ The run then diffed both files and switched to
 the checkout for `turns`, `sweep` and `claims`, which is the manual version of the fix proposed
 above.
+
+## Migrated to
+
+- **The behaviour** — `skills/session-harvest/scripts/harvest.py`: `entry_points_differing`, its
+  `_module_definitions`/`_reachable` helpers, and `_note_own_staleness`, which appends to the
+  verdict only when the running script is the copy being judged.
+- **The rule a reader follows** — `SKILL.md` step 0, the paragraph saying the three pre-check
+  subcommands ran from the copy under test and what the verdict now tells them about it.
+- **The reasoning** — `references/rationale.md`, "What step 0 owes a reader once it has found a
+  difference (2026-09-07)", which also carries the rejected re-exec option and why the comparison is
+  per definition rather than per file. That section covers this plan and the SKILL.md diff plan
+  together, and says why the two were nonetheless kept apart as plans.
+- **Tests** — `tests/unit/test_harvest.py`: the per-definition comparison, the unparsable-file case,
+  the two verdict branches, and the harvest already running from the checkout.
+
+Not migrated: the observation that this instance was benign, which is in the rationale as the
+measurement rather than as a reassurance — the next one need not be.

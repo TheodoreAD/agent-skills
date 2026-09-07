@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-07
 source_repo: github.com-personal/invoke-stubs
 source_session: 6450239e-aad5-4861-acda-7eb9e97c15c6.jsonl
@@ -39,15 +39,21 @@ The re-read would have returned the same four facts inside ~700 lines.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: is the asymmetry deliberate? A re-read is unconditionally correct and a diff
-is correct only when the copy held in context is one side of it. That holds when the skill was
-loaded from the installed copy in the current turn, which is the ordinary case — but not if the
-installer ran mid-session _after_ the skill was loaded, when the held text is neither side. That
-case is detectable: `skills-state` already prints the install's mtime, and it can be compared
-against the moment the skill was invoked.]
+[DECISION: **the asymmetry was not deliberate — diff by default, re-read for the reinstall case.
+Settled with the user 2026-09-07 and landed the same day.** A re-read is unconditionally correct and
+a diff is correct only when the copy held in context is one side of it, which holds whenever the
+skill was loaded from the installed copy in this turn — the ordinary case. It fails for an installer
+that ran mid-session _after_ the load, when the held text is neither side, and that case is
+detectable rather than assumed: `skills-state` prints the install's mtime, and the available-skills
+listing changing mid-session is the second tell step 0 already names. Diffing unconditionally was
+refused for exactly that case, since it is silently wrong there rather than merely expensive.]
 
-[DEFERRED: if the diff is admitted, the same argument applies to `references/`, which step 0
-currently calls "read on demand and inert". It is inert only until a run actually needs one.]
+[DECISION: **`references/` gets the same treatment, in one clause rather than a fourth rule** —
+2026-09-07, closing this plan's deferral rather than carrying it. It stays out of the **verdict**: a
+references-only commit must not fire the expensive branch, which is the 2026-08-30 finding that
+split the three subdirectories in the first place. But a page this run actually opened was read from
+the stale copy like anything else, so that one file is diffed. The verdict's boundary and the
+reader's exposure are different questions and the wording now keeps them visibly apart.]
 
 ## Recommended direction
 
@@ -55,3 +61,17 @@ Offer the diff as the default for `SKILL.md` where the held copy is one side of 
 re-read for the mid-session-reinstall case, and say which. One sentence in step 0 beside the
 existing `scripts/` diff instruction, not a new paragraph — the two are the same technique and
 reading them apart is what made this run reach for the expensive one first.
+
+## Migrated to
+
+- **The rule a reader follows** — `SKILL.md` step 0: diff `SKILL.md` rather than re-reading it, with
+  the mid-session-reinstall case named as the one that still needs the full re-read, and the
+  `references/` clause that closed this plan's deferral.
+- **The reasoning** — `references/rationale.md`, "What step 0 owes a reader once it has found a
+  difference (2026-09-07)": the forty-against-seven-hundred measurement, the pitfall that a diff is
+  only sound when the held copy is one side of it, and why diffing unconditionally was rejected.
+- **The deferral** — closed rather than carried. `references/` is diffed when a run actually opened
+  a page, and stays out of the verdict.
+
+Not migrated: the four hunks themselves, which were this repo's own sweep changes and are described
+in the commits that made them.

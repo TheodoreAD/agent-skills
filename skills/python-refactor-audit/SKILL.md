@@ -65,11 +65,12 @@ Confirmed 2026-09-02: a pass wrote its counts into a plan and a skill, and left 
 in a job scratch directory that is destroyed when the job is. Put the script beside the code it
 measures, or in the skill if it generalises; a number nobody can re-derive is an assertion.
 
-Two that generalised are here, stdlib-only and taking a file path:
+Two that generalised are here, stdlib-only and taking one or more file paths — pass several to
+compare modules in one call, and each is headed by its own path:
 
 ```shell
-python3 <skill>/scripts/count_shapes.py <module.py>    # anonymous tuple returns AND parameters, dict fields/params
-python3 <skill>/scripts/find_mutations.py <module.py>  # every attribute assignment, i.e. what is actually mutated
+python3 <skill>/scripts/count_shapes.py <module.py>...    # anonymous tuple returns AND parameters, dict fields/params
+python3 <skill>/scripts/find_mutations.py <module.py>...  # every attribute assignment, i.e. what is actually mutated
 ```
 
 `find_mutations.py` is the cheaper of the two and answers a question that otherwise gets argued:

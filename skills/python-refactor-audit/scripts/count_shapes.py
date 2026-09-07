@@ -1,10 +1,12 @@
 """Count anonymous record shapes in a module: parameters as well as returns.
 
 The pilot measured returns only, which is how a tuple parameter survived the pass unseen.
+
+    python3 count_shapes.py <module.py> [<module.py> ...]
 """
 
+import argparse
 import ast
-import sys
 from pathlib import Path
 
 
@@ -33,7 +35,16 @@ def dict_annotation(node: ast.expr | None) -> bool:
 
 
 def main() -> None:
-    path = Path(sys.argv[1])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("module", type=Path, nargs="+", help="the module(s) to count shapes in")
+    modules = ap.parse_args().module
+    for path in modules:
+        if len(modules) > 1:
+            print(f"\n=== {path}")
+        count_one(path)
+
+
+def count_one(path: Path) -> None:
     tree = ast.parse(path.read_text(encoding="utf-8"))
 
     ret_hits: list[str] = []

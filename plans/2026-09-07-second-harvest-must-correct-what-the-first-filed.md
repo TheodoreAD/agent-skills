@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-07
 source_repo: github.com-personal/invoke-stubs
 source_session: 6450239e-aad5-4861-acda-7eb9e97c15c6.jsonl
@@ -42,20 +42,25 @@ edited it by hand; had the user asked for one harvest instead of two, or had the
 holding that memory, the corpus would have taken the prefix as the session's row and nobody would
 re-derive it.
 
-## Open questions
+## Resolved
 
-[NEEDS CLARIFICATION: is the fix "correct the filed row" or "do not file adherence rows until the
-session ends"? The second is cleaner and probably wrong — a harvest is invoked precisely because a
-session might end, so a row filed at the first one is better than no row if the session stops there.
-That argues for correcting, and therefore for the second harvest knowing what the first filed.]
+[DECISION: the fix is "correct the filed row", not "do not file until the session ends". A harvest
+is invoked precisely because a session might end, so a row filed at the first one is better than no
+row if the session stops there — which makes the correction the second harvest's job, and makes
+knowing what the first filed a prerequisite rather than a nicety.]
 
-[NEEDS CLARIFICATION: how does a second harvest _find_ what the first filed, rather than
-remembering? The store is a git repository, so
-`git -C $PLANS_HOME log --since=<session start>
---format=%H%x09%s` plus the session's own transcript
-would name them mechanically. That is `harvest.py`'s kind of job — the "a correction a script can
-simply not make belongs in the script" case — rather than another paragraph asking the agent to
-remember.]
+[DECISION: the finding is mechanical and lives in `harvest.py`, as the second question guessed.
+`filed` counts this session's own step-0 `boundary` calls, so being the second harvest is read
+rather than recalled; lists the plan files the session wrote with the lines in them carrying a
+number; and lists each store commit since session start, attributed by the transcript's own write
+paths. Attribution rather than a bare `--since` listing is the part the question did not anticipate:
+the store is shared, so a commit inside the window is not this session's by virtue of being there —
+the same trap the sweep's docker rows fell into on 2026-09-06.]
+
+[PITFALL: the separator carrying `--name-only`'s file list off its commit header must be asked for
+as git's own `%xNN` escape, never passed as a byte. An argv element may not contain a NUL, and the
+`ValueError` raises inside `subprocess`, so no test with a fake runner reaches it — found on the
+first live run of the new subcommand, after a green suite.]
 
 ## Recommended direction
 
@@ -66,3 +71,22 @@ the correction matters more than the delta does.
 
 If it becomes a script step, `harvest.py` already knows the session start and the store path;
 listing this session's own store commits is a few lines and removes the remembering entirely.
+
+## Migrated to
+
+- **The rule** — `skills/session-harvest/SKILL.md`, step 8, the two paragraphs following "A second
+  harvest in one session re-runs the whole sweep". They carry this plan's evidence (both rate rows,
+  and why the last third of that session differed), state that the filed artifact matters more than
+  the delta, and name the two boundaries this plan did not reach: correcting a store plan is inside
+  the procedure's write set, and one already absorbed into the repo that owns it takes a new filing
+  rather than an edit.
+- **The mechanism** — `skills/session-harvest/scripts/harvest.py`, the `filed` subcommand, whose
+  docstring keeps the 2026-09-07 evidence next to the code it justifies. Both `[DECISION:]` items
+  above landed there.
+- **The corrections made permanent** — `tests/unit/test_harvest.py`, section "what an earlier
+  harvest in this session already filed": the harvest count read from the transcript, attribution of
+  a store commit, a failing `git log` reported rather than read as "nothing was filed", and the
+  `[PITFALL:]` above.
+
+Not migrated: the plan's framing of both items as open questions, which the change answers, and its
+suggested `--format=%H%x09%s` command line, which the subcommand supersedes.

@@ -1777,6 +1777,232 @@ def test_a_depth_one_repo_survives_the_rest_of_the_depth_assumptions(loose, ws, 
 
 
 # --------------------------------------------------------------------------------------------
+# who a repo actually belongs to
+#
+# A directory name is where a clone was filed; its remote is who it belongs to. The two disagree
+# exactly where a blanket [roots] rule sweeps up one repo from somebody else's organisation — and
+# an organisation almost always has its own tracker, so a plans/ directory committed into theirs is
+# a convention nobody there agreed to. Everything below decides that from the remote.
+
+
+def set_remote(repo: Path, url: str) -> Path:
+    subprocess.run(["git", "remote", "set-url", "origin", url], cwd=repo, check=True)
+    return repo
+
+
+@pytest.mark.parametrize(
+    ("url", "host", "owner", "name"),
+    [
+        ("git@github.com:TheodoreAD/agent-skills.git", "github.com", "TheodoreAD", "agent-skills"),
+        ("https://github.com/TheodoreAD/agent-skills.git", "github.com", "TheodoreAD", "agent-skills"),
+        ("ssh://git@github.acme.example:2222/platform/api", "github.acme.example", "platform", "api"),
+        # A GitLab subgroup and an Azure DevOps project are both "everything before the last
+        # segment": collapsing either to its first segment merges two organisations into one.
+        ("https://gitlab.com/group/subgroup/api.git", "gitlab.com", "group/subgroup", "api"),
+        ("https://dev.azure.com/contoso/Platform/_git/api", "dev.azure.com", "contoso/Platform", "api"),
+        # Bitbucket Server's `/scm/` prefix names nobody and would give one project two spellings.
+        ("https://bitbucket.acme.example/scm/TEAM/api.git", "bitbucket.acme.example", "TEAM", "api"),
+        ("HTTPS://GitHub.com/Owner/Repo.git", "github.com", "Owner", "Repo"),
+    ],
+)
+def test_a_remote_url_names_its_host_and_owner(url, host, owner, name):
+    remote = plans.parse_remote(url)
+    assert (remote.host, remote.owner, remote.name) == (host, owner, name)
+    assert remote.org == f"{host}/{owner}"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "/srv/git/mirror.git",
+        "../sibling-checkout",
+        "file:///srv/git/mirror.git",
+        # `C:\src\repo` matches the scp-like shape exactly. A drive letter read as a host would make
+        # every Windows local clone a repo owned by an organisation called "C".
+        r"C:\src\repo",
+    ],
+)
+def test_a_remote_that_names_no_organisation_is_none_rather_than_an_empty_owner(url):
+    """Absence of evidence has to be distinguishable from evidence of a nameless owner: the
+    ownership check refuses to fire on the first and would fire on the second."""
+    assert plans.parse_remote(url) is None
+
+
+def test_the_remote_is_read_from_the_repo_preferring_origin(ws):
+    subprocess.run(
+        ["git", "remote", "add", "upstream", "https://github.com/upstream-org/agent-skills.git"],
+        cwd=ws.personal,
+        check=True,
+    )
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
+    assert plans.remote_of(ws.personal).org == "github.com/TheodoreAD"
+
+
+def test_an_orgs_entry_beats_the_roots_entry_the_clone_happens_to_sit_under(ws):
+    """The mistake this table exists for: one repo from somebody else's organisation filed under a
+    root routed `repo`. The root is where it was cloned to; the remote is whose it is."""
+    fork = make_repo(ws.projects / "github.com-personal" / "vendored-fork")
+    set_remote(fork, "https://github.com/acme-corp/toolkit.git")
+    write_config(
+        ws,
+        '[roots]\n"github.com-personal" = "repo"\n[orgs]\n"github.com/acme-corp" = "store"\n',
+    )
+
+    assert route(ws.personal).rule.write == "repo"
+    routing = route(fork)
+    assert routing.verdict == "ok"
+    assert routing.rule.write == "store"
+    assert routing.source == 'orgs entry "github.com/acme-corp"'
+
+
+def test_a_repos_entry_still_beats_an_orgs_one(ws):
+    set_remote(ws.personal, "https://github.com/acme-corp/agent-skills.git")
+    write_config(
+        ws,
+        '[repos]\n"github.com-personal/agent-skills" = "repo"\n[orgs]\n"github.com/acme-corp" = "store"\n',
+    )
+    assert route(ws.personal).rule.write == "repo"
+
+
+def test_a_bare_account_matches_the_same_owner_on_every_host(ws):
+    """One entry covers github.com and an enterprise instance, which is the corporate case: the
+    user's own repos sit beside the employer's on one host and are told apart by account."""
+    cfg_body = 'own_accounts = ["TheodoreAD"]\n[roots]\n"github.com-personal" = "repo"\n'
+    write_config(ws, cfg_body)
+    for url in ("git@github.com:TheodoreAD/x.git", "https://github.acme.example/TheodoreAD/x.git"):
+        set_remote(ws.personal, url)
+        assert route(ws.personal).verdict == "ok"
+
+    write_config(ws, 'own_accounts = ["github.com/TheodoreAD"]\n[roots]\n"github.com-personal" = "repo"\n')
+    set_remote(ws.personal, "https://github.acme.example/TheodoreAD/x.git")
+    assert route(ws.personal).verdict == "needs-decision", "a host-qualified entry pins that one host"
+
+
+def test_a_repo_in_an_organisation_you_have_not_decided_about_is_refused_a_plans_directory(ws, capsys):
+    write_config(ws, 'own_accounts = ["TheodoreAD"]\n[roots]\n"github.com-personal" = "repo"\n')
+    set_remote(ws.personal, "https://github.com/acme-corp/toolkit.git")
+
+    assert plans.main(["where", "--path", str(ws.personal)]) == plans.NEEDS_DECISION
+    out = capsys.readouterr().out
+    assert "github.com/acme-corp" in out
+    assert "config set orgs.github.com/acme-corp store" in out
+    # And the refusal lifts the moment the answer is recorded — for the organisation, not the repo.
+    write_config(
+        ws,
+        'own_accounts = ["TheodoreAD"]\n[roots]\n"github.com-personal" = "repo"\n'
+        '[orgs]\n"github.com/acme-corp" = "repo"\n',
+    )
+    assert plans.main(["where", "--path", str(ws.personal)]) == 0
+
+
+def test_ownership_is_not_checked_at_all_until_own_accounts_is_set(ws):
+    """With nothing to compare against every owner reads as foreign, so the check would fire on
+    every repo on the machine at once — which is how a check gets configured away rather than
+    answered. Silence here is the deliberate half of the design, not a gap."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    set_remote(ws.personal, "https://github.com/acme-corp/toolkit.git")
+    assert route(ws.personal).verdict == "ok"
+
+
+def test_a_repo_with_no_remote_is_never_called_somebody_elses(ws):
+    subprocess.run(["git", "remote", "remove", "origin"], cwd=ws.personal, check=True)
+    write_config(ws, 'own_accounts = ["TheodoreAD"]\n[roots]\n"github.com-personal" = "repo"\n')
+    routing = route(ws.personal)
+    assert routing.remote is None
+    assert routing.verdict == "ok"
+
+
+def test_a_work_device_sends_everything_to_the_store_except_your_own_accounts(ws):
+    """Stated by the user 2026-09-07: on a corporate machine everything belongs to the org, which
+    has its own tracker — so the store is the answer, and the carve-out is the user's own repos on
+    the enterprise instance rather than a host or a directory."""
+    write_config(ws, 'device = "work"\nown_accounts = ["TheodoreAD"]\n')
+
+    set_remote(ws.personal, "https://github.acme.example/platform/api.git")
+    employer = route(ws.personal)
+    assert (employer.rule.write, employer.source) == ("store", plans.WORK_DEFAULT_SOURCE)
+
+    set_remote(ws.personal, "https://github.acme.example/TheodoreAD/notes.git")
+    mine = route(ws.personal)
+    assert (mine.rule.write, mine.source) == ("repo", plans.WORK_OWN_SOURCE)
+
+
+def test_a_contractor_device_still_asks_rather_than_picking_a_side(ws):
+    """The work-device fallback is scoped to the machine where "everything belongs to the org" is
+    true by construction. Everywhere else the documented behaviour stands: no rule means ask."""
+    write_config(ws, 'own_accounts = ["TheodoreAD"]\n')
+    assert route(ws.personal).verdict == "needs-decision"
+    assert route(ws.personal).rule is None
+
+
+def test_orgs_groups_the_machine_by_owner_and_names_the_undecided_ones(ws, capsys):
+    fork = make_repo(ws.projects / "github.com-personal" / "vendored-fork")
+    set_remote(fork, "https://github.com/acme-corp/toolkit.git")
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
+    write_config(
+        ws,
+        'own_accounts = ["TheodoreAD"]\n[roots]\n"github.com-personal" = "repo"\n"client.com-bitbucket" = "store"\n',
+    )
+
+    assert plans.main(["orgs", "--path", str(ws.personal)]) == plans.NEEDS_DECISION
+    out = capsys.readouterr().out
+    assert "github.com/TheodoreAD" in out
+    assert "yours" in out
+    assert "github.com/acme-corp" in out
+    assert "FOREIGN" in out
+    assert "config set orgs.github.com/acme-corp store" in out
+    # The client repo is foreign too and is NOT raised: it is already routed to the store, so
+    # nothing would be committed into it and there is nothing to decide.
+    assert "example.com/x is not one of your accounts, 1 repo(s)" not in out
+
+
+def test_a_foreign_org_filed_under_a_shareable_root_is_reported_as_a_tier_problem(ws):
+    """The routing is correct and the filing is not: its store plans would land in the half that
+    may have a remote. Nothing else on the machine reports it."""
+    fork = make_repo(ws.projects / "github.com-personal" / "vendored-fork")
+    set_remote(fork, "https://github.com/acme-corp/toolkit.git")
+    write_config(
+        ws,
+        'own_accounts = ["TheodoreAD"]\npublic_roots = ["github.com-personal"]\n'
+        '[roots]\n"github.com-personal" = "repo"\n[orgs]\n"github.com/acme-corp" = "store"\n',
+    )
+    workspace = plans.Workspace(ws.personal)
+    reported = plans.org_problems(workspace.config, workspace.known_orgs)
+    about_acme = [problem for problem in reported if "acme" in problem]
+
+    assert not any("decide it" in problem for problem in about_acme), "the org rule already decided the route"
+    assert any("tier that may have a remote" in problem for problem in about_acme)
+
+
+def test_a_repo_at_the_projects_root_is_offered_a_repos_key_not_an_inert_roots_one(loose, ws, capsys):
+    """The tool used to propose `roots.<name>` for a depth-1 repo and then report that very entry as
+    matching nothing — proposing the mistake it goes on to diagnose."""
+    assert plans.root_config_keys(["loose-repo", "github.com-personal/agent-skills"]) == {
+        "loose-repo": "repos.loose-repo",
+        "github.com-personal": "roots.github.com-personal",
+    }
+
+    write_config(ws, "")
+    assert plans.main(["doctor", "--path", str(loose)]) == 0
+    out = capsys.readouterr().out
+    assert "config set repos.loose-repo" in out
+    assert "config set roots.loose-repo" not in out
+
+
+def test_a_config_key_arriving_already_quoted_is_unwrapped(ws):
+    """The quotes are how the key is spelled inside the TOML file and how a shell line writes it, so
+    a literal copy is the ordinary mistake — and it is silent: `"github.com/acme"` with the quotes
+    kept is well-formed TOML that matches no organisation ever."""
+    assert plans.split_config_key('orgs."github.com/acme-corp"') == ("orgs", "github.com/acme-corp")
+    assert plans.split_config_key("orgs.github.com/acme-corp") == ("orgs", "github.com/acme-corp")
+
+    write_config(ws, "")
+    assert plans.main(["config", "set", 'orgs."github.com/acme-corp"', "store", "--path", str(ws.personal)]) == 0
+    assert plans.load_config().orgs["github.com/acme-corp"].write == "store"
+
+
+# --------------------------------------------------------------------------------------------
 # the store's two tiers
 #
 # The store is two git repositories: a shareable one that may have a remote, and a sensitive one

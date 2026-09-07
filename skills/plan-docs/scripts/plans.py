@@ -33,13 +33,19 @@ constraint to be named rather than assumed; this is it.
     plans.py archive --search <words>   # a retired plan, back out of git history
     plans.py scan                       # no client's identity in a repo you publish
     plans.py repos --search auth        # what each repo is for, to route a plan by
+    plans.py orgs                       # whose repo each directory actually is, from its remote
     plans.py new <topic> --unscoped     # an idea with no repo yet
     plans.py graduate <file> --to <repo>  # ... once it has one
     plans.py doctor                     # where plans live, what is enrolled, what is broken
     plans.py install --explain          # what setup would do, and what only the user can decide
 
-Exit codes: 0 ok, 1 error, 2 argparse usage, 3 needs-decision — no rule matched the repo, so the
-agent must ask the user rather than pick a side.
+Which repo a directory *is* comes from its own remote, never from the directory name: `[orgs]` routes
+by `<host>/<owner>`, `own_accounts` names the accounts you own, and a repo belonging to an
+organisation you have not decided about is refused a `plans/` directory rather than given one —
+organisations keep their own trackers, and a commit into theirs is not a default anyone chose.
+
+Exit codes: 0 ok, 1 error, 2 argparse usage, 3 needs-decision — no rule matched the repo, or it
+belongs to an organisation nobody has decided about, so the agent must ask rather than pick a side.
 """
 
 from __future__ import annotations
@@ -60,6 +66,7 @@ from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
 from typing import NamedTuple
+from urllib.parse import urlsplit
 
 NEEDS_DECISION = 3
 
@@ -120,6 +127,22 @@ HOSTING_WORDS = frozenset(
         "projects",
     }
 )
+
+# Path segments a hosting product puts between the owner and the repository name. Azure DevOps
+# writes `<org>/<project>/_git/<repo>`; Bitbucket Server writes `/scm/<PROJECT>/<repo>`. Neither
+# names anybody, and leaving them in gives one organisation two spellings that never compare equal.
+REMOTE_PATH_NOISE = frozenset({"_git", "scm"})
+
+# `git@host:owner/repo.git` — the scp-like syntax git accepts and no URL parser recognises. The
+# `://` case is handled by `urlsplit` instead, so this only has to match a colon that is not one.
+SCP_REMOTE_RE = re.compile(r"^(?:[^@/]+@)?(?P<host>[^/:]+):(?P<path>.+)$")
+
+# Where a rule came from when nobody recorded one. `default` is a decision about the machine rather
+# than about this root, and the two work-device fallbacks are decisions about the *device* — so a
+# root reaching any of them has never been answered for, which is what `doctor` lists.
+WORK_DEFAULT_SOURCE = "work device default"
+WORK_OWN_SOURCE = "work device, your own account"
+FALLBACK_SOURCES = ("default", "no rule", WORK_DEFAULT_SOURCE, WORK_OWN_SOURCE)
 
 MODES = ("repo", "store", "both")
 TAG_NAMES = ("NEEDS CLARIFICATION", "DECISION", "PITFALL", "DEFERRED", "UNVERIFIED")
@@ -191,7 +214,7 @@ SCOPES = ("auto", "repo", "family", "unscoped")
 
 # Tables `config set` understands. A key's table is whatever precedes its first dot, but only when
 # it is one of these — a [repos] key is a path full of dots and must not be split on every one.
-CONFIG_TABLES = ("roots", "repos", "about", "private", "view")
+CONFIG_TABLES = ("roots", "repos", "orgs", "about", "private", "view")
 
 # The gates SKILL.md states in prose, as data. Everything else is a free transition.
 #
@@ -246,7 +269,21 @@ store = "~/plans"
 # No `default` on purpose: an unmatched repo makes `plans.py where` exit 3 so the agent asks,
 # instead of silently writing a plans/ directory into somebody else's repo. Set one once the
 # answer is boring — `default = "store"` is the usual choice on a machine with client work.
+#
+# A `work` device does not need one: everything on it belongs to one organisation, which has its
+# own tracker, so an unmatched repo goes to the store and only your own accounts (below) get a
+# plans/ directory. Setting `default` there overrides that.
 # default = "store"
+
+# The accounts you own, so a repo whose REMOTE points at one of them is yours to commit a plans/
+# directory into. A bare name matches that owner on any host — which is what covers the same
+# account on github.com and on a GitHub Enterprise instance — while "<host>/<owner>" pins it.
+#
+# Leave it unset and no ownership is checked at all: with nothing to compare against, every owner
+# reads as somebody else's and the check would fire on every repo on the machine. Set it and
+# `plans.py where` refuses to write into a repo belonging to an organisation you have not decided
+# about, naming the `config set orgs.…` line that records the answer.
+# own_accounts = ["your-github-username"]
 
 # Roots whose contents may be NAMED in a repo you publish. Everything under every other root —
 # the root, its projects, its repo names — is treated as confidential by `plans.py scan`.
@@ -265,6 +302,15 @@ public_roots = ["github.com-personal"]
 # A repo that has stopped storing plans inside itself: writes go to the store, the plans already
 # committed in the repo stay readable.
 # "github.com-acme/legacy-api" = { mode = "both", write = "store" }
+
+[orgs]
+# Route by the repo's REMOTE owner rather than by the directory it sits in — checked after [repos]
+# and before [roots], because a directory name is where you filed a clone while the remote says who
+# the repo belongs to. Those disagree exactly where a blanket [roots] rule sweeps up one clone from
+# somebody else's organisation, which is the mistake this table exists to catch.
+#
+# Keys are "<host>/<owner>" or a bare "<owner>"; values are the same repo | store | both as above.
+# "github.com/acme-corp" = "store"
 
 [private]
 # Anything else that must never reach a published repo and is not a directory name: work email
@@ -382,6 +428,8 @@ class Config:
     default: Rule | None
     roots: dict[str, Rule]
     repos: dict[str, Rule]
+    orgs: dict[str, Rule]
+    own_accounts: tuple[str, ...]
     public_roots: tuple[str, ...]
     shareable_roots: tuple[str, ...]
     private_extra: tuple[str, ...]
@@ -398,6 +446,24 @@ class Config:
         the tier that has no remote would strand the ideas most likely to become public work.
         """
         return self.store.path / UNSCOPED_DIR
+
+    def owns(self, remote: Remote | None) -> bool:
+        """Whether a repo's remote points at an account the user owns.
+
+        Matched on `<host>/<owner>` **and** on the bare owner, so one entry covers the same account
+        on github.com and on an enterprise instance — which is the corporate case this exists for,
+        where the user's own repos sit beside the employer's on one host. A user whose name collides
+        with somebody else's organisation pins it by writing the host.
+
+        Never inferred. With `own_accounts` empty this is False for everything, and every caller
+        treats that as "ownership was not checked" rather than as "nothing is yours" — a check
+        deriving the answer from, say, the commonest owner on the machine would be wrong precisely
+        on the machine that holds one employer's repos and two of yours.
+        """
+        if remote is None or not remote.owner:
+            return False
+        wanted = {remote.org.lower(), remote.owner.lower()}
+        return any(entry.strip().lower() in wanted for entry in self.own_accounts)
 
     def public_root_names(self) -> tuple[str, ...]:
         """Roots whose contents may be named in a published repo. Falls back to the roots configured
@@ -602,6 +668,8 @@ def load_config() -> Config:
         default=None if default is None else parse_rule(default, "default"),
         roots=_rules(raw, "roots"),
         repos=_rules(raw, "repos"),
+        orgs=_rules(raw, "orgs"),
+        own_accounts=_strings(raw.get("own_accounts"), "own_accounts"),
         public_roots=_strings(raw.get("public_roots"), "public_roots"),
         shareable_roots=_strings(raw.get("shareable_roots"), "shareable_roots"),
         private_extra=_strings(_table(raw, "private").get("extra"), "private.extra"),
@@ -660,6 +728,9 @@ class Routing:
     rule: Rule | None
     source: str
     store_dir: Path | None
+    # Who the repository belongs to, read once here so nothing downstream shells out again. None
+    # means no remote — a local clone, which is "no evidence" and never "not yours".
+    remote: Remote | None = None
 
     @property
     def repo_dir(self) -> Path | None:
@@ -813,6 +884,85 @@ def repo_root_of(start: Path) -> Path | None:
     return Path(top) if top else None
 
 
+@dataclass(frozen=True)
+class Remote:
+    """Who a repository belongs to, read from its own remote rather than from where it was filed.
+
+    A directory name is a filing convention — one person's `github.com-acme` is another's `work/` —
+    while the remote is the repository's own answer, and it is the only one that stays true when a
+    clone is moved. Everything about ownership in this file is decided from here.
+    """
+
+    url: str
+    host: str
+    owner: str
+    name: str
+
+    @property
+    def org(self) -> str:
+        """`<host>/<owner>`: the key an `[orgs]` rule and an `own_accounts` entry match on."""
+        return f"{self.host}/{self.owner}" if self.host and self.owner else ""
+
+
+def parse_remote(url: str) -> Remote | None:
+    """A remote URL split into host, owner and name — or None when it names no organisation.
+
+    Three shapes reach this, and only the first two carry ownership:
+
+        https://github.com/owner/repo.git      ssh://git@host:2222/owner/repo
+        git@github.com:owner/repo.git          the scp-like form no URL parser accepts
+        /srv/git/repo.git   ../sibling         a local path: a remote with no owner at all
+
+    The owner is every path segment *before* the last, so a GitLab subgroup
+    (`group/subgroup/repo`) and an Azure DevOps project (`org/project/_git/repo`) both come back
+    whole instead of collapsing to their first segment. A local clone returns None rather than a
+    Remote with empty fields: absence of evidence has to be distinguishable from evidence of a
+    nameless owner, because the ownership check refuses to fire on the first and would on the second.
+    """
+    text = url.strip()
+    if not text:
+        return None
+    if "://" in text:
+        parts = urlsplit(text)
+        if parts.scheme == "file" or not parts.hostname:
+            return None
+        host, path = parts.hostname, parts.path
+    else:
+        match = SCP_REMOTE_RE.match(text)
+        if match is None:
+            return None  # a local path: no colon, so nothing claims to be a host
+        host, path = match.group("host"), match.group("path")
+        # `C:\src\repo` matches the scp-like shape exactly, and a drive letter is not a hostname.
+        # One character before the colon is never a real host, so the test is exact rather than
+        # platform-dependent — a Windows path must not read as a repo owned by an org called "C".
+        if len(host) == 1:
+            return None
+    segments = [seg for seg in path.strip("/").split("/") if seg and seg not in REMOTE_PATH_NOISE]
+    if not segments:
+        return None
+    return Remote(url=text, host=host.lower(), owner="/".join(segments[:-1]), name=segments[-1].removesuffix(".git"))
+
+
+def remote_of(repo: Path) -> Remote | None:
+    """The repository's remote, `origin` for preference, in one git call.
+
+    `git config --get-regexp` rather than `git remote` followed by `git remote get-url`, because
+    `doctor` and `orgs` ask this of every repo on the machine: two subprocesses each is the
+    difference between a diagnostic that runs and one nobody waits for. A repo with no remote at all
+    answers None, which every caller reads as "no evidence" rather than as "not yours".
+    """
+    listed = git(["config", "--get-regexp", r"^remote\..*\.url$"], repo)
+    if not listed:
+        return None
+    urls: dict[str, str] = {}
+    for line in listed.splitlines():
+        key, _, url = line.partition(" ")
+        if url.strip():
+            urls[key.removeprefix("remote.").removesuffix(".url")] = url.strip()
+    chosen = urls.get("origin") or next((urls[name] for name in sorted(urls)), None)
+    return parse_remote(chosen) if chosen else None
+
+
 class RuleMatch(NamedTuple):
     """The rule that decided a repo's route, and the config entry it came from."""
 
@@ -820,11 +970,57 @@ class RuleMatch(NamedTuple):
     source: str
 
 
-def _match_rule(cfg: Config, rel: str | None) -> RuleMatch:
-    """Most specific first: an exact [repos] entry, then the longest [roots] prefix, then default."""
+def _org_rule(cfg: Config, remote: Remote | None) -> RuleMatch:
+    """An `[orgs]` entry for this repo's remote owner, `<host>/<owner>` before the bare owner."""
+    if remote is None or not remote.owner:
+        return RuleMatch(None, "no rule")
+    lowered = {name.strip().lower(): (name, rule) for name, rule in cfg.orgs.items()}
+    for key in (remote.org, remote.owner):
+        found = lowered.get(key.lower())
+        if found is not None:
+            return RuleMatch(found[1], f'orgs entry "{found[0]}"')
+    return RuleMatch(None, "no rule")
+
+
+def _device_fallback(cfg: Config, remote: Remote | None) -> RuleMatch:
+    """The answer when nothing in the config matched — which one it is depends on the machine.
+
+    A **work** device holds one organisation's repos, and an organisation almost always has its own
+    tracker: a plan belongs in the central store unless the repo is one of the user's own, which on
+    an enterprise instance is an *account* rather than a host. So the fallback there is `store`, with
+    `own_accounts` carving out the personal repos. Asked for by the user 2026-09-07.
+
+    A **contractor** device keeps the documented behaviour: no rule matched means the agent asks.
+    That is the answer that cannot write a `plans/` directory into somebody else's repository, and
+    the reason the change above is scoped to the device where "everything belongs to the org" is
+    true by construction rather than applied to every machine.
+    """
+    if cfg.device != WORK:
+        return RuleMatch(None, "no rule")
+    if cfg.owns(remote):
+        return RuleMatch(Rule(("repo",), "repo"), WORK_OWN_SOURCE)
+    return RuleMatch(Rule(("store",), "store"), WORK_DEFAULT_SOURCE)
+
+
+def match_rule(cfg: Config, rel: str | None, remote: Remote | None = None) -> RuleMatch:
+    """Most specific first: a `[repos]` entry, this remote's `[orgs]` entry, the longest `[roots]`
+    prefix, `default`, then the device's own fallback.
+
+    `[orgs]` sits above `[roots]` because the two answer different questions and only one of them is
+    about the repository: a root is the directory a clone was filed under, an org is who the clone
+    belongs to. Where they disagree — one repo from somebody else's organisation sitting under a
+    root routed `repo` — the remote is right and the directory is a coincidence.
+
+    `remote` is optional and defaults to None, which asks the same question about a *path* rather
+    than about a repository. `doctor` uses that form to say what a root's rule is, where no one repo
+    is in question; every routing decision passes the real remote.
+    """
+    if rel is not None and rel in cfg.repos:
+        return RuleMatch(cfg.repos[rel], f'repos entry "{rel}"')
+    org = _org_rule(cfg, remote)
+    if org.rule is not None:
+        return org
     if rel is not None:
-        if rel in cfg.repos:
-            return RuleMatch(cfg.repos[rel], f'repos entry "{rel}"')
         parts = rel.split("/")
         for depth in range(len(parts) - 1, 0, -1):
             prefix = "/".join(parts[:depth])
@@ -832,7 +1028,36 @@ def _match_rule(cfg: Config, rel: str | None) -> RuleMatch:
                 return RuleMatch(cfg.roots[prefix], f'roots entry "{prefix}"')
     if cfg.default is not None:
         return RuleMatch(cfg.default, "default")
-    return RuleMatch(None, "no rule")
+    return _device_fallback(cfg, remote)
+
+
+def foreign_org_refusal(cfg: Config, remote: Remote | None, rel: str | None, source: str) -> str:
+    """Why a repo belonging to somebody else's organisation may not get a `plans/` directory yet.
+
+    An organisation almost always has its own work tracker, so a `plans/` directory committed into
+    its repository is a convention nobody there agreed to — and the commit is public inside that
+    organisation the moment it is pushed. That makes it a decision rather than a default, which is
+    the whole of this check: it refuses, names the organisation, and prints the line that records
+    the answer either way.
+
+    Two things deliberately do **not** trigger it. A repo with no remote is local, so there is
+    nobody to have agreed or objected — absence of evidence is not evidence. And with
+    `own_accounts` unset every owner reads as foreign, so the check would fire on every repo on the
+    machine at once, which is how a check gets configured away rather than answered.
+
+    Returns the reason, or "" when there is nothing to refuse.
+    """
+    if not cfg.own_accounts or remote is None or not remote.owner or cfg.owns(remote):
+        return ""
+    if source.startswith(("repos entry", "orgs entry")):
+        return ""  # already decided — for this repo, or for this whole organisation
+    return (
+        f"{rel or 'this repo'} has remote {remote.url} — owner {remote.org}, which is not one of "
+        f"your own accounts ({', '.join(cfg.own_accounts)}) — and {source} would commit a plans/ "
+        f"directory into it. Organisations keep their own trackers, so this is a decision rather "
+        f"than a default: config set orgs.{remote.org} store  (or repo, if that organisation "
+        f"keeps plans in its repos)"
+    )
 
 
 def resolve(start: Path, cfg: Config) -> Routing:
@@ -857,11 +1082,17 @@ def resolve(start: Path, cfg: Config) -> Routing:
     except (ValueError, OSError):
         rel = None
 
-    rule, source = _match_rule(cfg, rel)
+    # Read from the repository, not from the checkout: every worktree of a repo shares its remote,
+    # the same reason `identity` above is the repository rather than this particular tree.
+    remote = remote_of(identity)
+    rule, source = match_rule(cfg, rel, remote)
     # The tier lookup lives here and nowhere else: every command that writes, reads, moves or
     # archives a store-held plan goes through `routing.store_dir`, so one substitution routes all of
     # them and none of them has to know a tier exists.
     store_dir = None if rel is None else cfg.store_for(rel).path / rel
+
+    if rule is not None and rule.write == "repo" and (refusal := foreign_org_refusal(cfg, remote, rel, source)):
+        return Routing("needs-decision", refusal, root, rel, rule, source, store_dir, remote)
 
     if rule is None:
         reason = (
@@ -869,14 +1100,14 @@ def resolve(start: Path, cfg: Config) -> Routing:
             if cfg.exists
             else f"no config file at {cfg.path} (write one with: plans.py config init)"
         )
-        return Routing("needs-decision", reason, root, rel, None, source, store_dir)
+        return Routing("needs-decision", reason, root, rel, None, source, store_dir, remote)
     if "store" in rule.read and rel is None:
         reason = (
             f"{root} is not under projects_root ({cfg.projects_root}), so its store path cannot be "
             f'mirrored; move the clone under it or give this repo a mode = "repo" entry'
         )
-        return Routing("needs-decision", reason, root, rel, rule, source, store_dir)
-    return Routing("ok", "", root, rel, rule, source, store_dir)
+        return Routing("needs-decision", reason, root, rel, rule, source, store_dir, remote)
+    return Routing("ok", "", root, rel, rule, source, store_dir, remote)
 
 
 def require_ok(routing: Routing) -> Routing:
@@ -1385,6 +1616,7 @@ class RepoInfo:
     route: str
     about: str
     public: bool
+    remote: Remote | None = None
 
 
 def repo_summary(path: Path) -> str:
@@ -1404,13 +1636,19 @@ def repo_summary(path: Path) -> str:
     return ""
 
 
-def known_repos(cfg: Config, repos: list[str]) -> list[RepoInfo]:
-    """Every git repo under the projects root, with its route and a one-line description."""
+def known_repos(cfg: Config, repos: list[str], remotes: dict[str, Remote | None]) -> list[RepoInfo]:
+    """Every git repo under the projects root, with its route and a one-line description.
+
+    `remotes` is passed in rather than read here so the route this reports is the one `where` would
+    give: an `[orgs]` rule beats a `[roots]` one, and a listing that answered without the remote
+    would disagree with the routing for exactly the repos the org layer exists to catch.
+    """
     public = set(cfg.public_root_names())
     found: list[RepoInfo] = []
     for rel in repos:
         path = cfg.projects_root / rel
-        rule = _match_rule(cfg, rel).rule
+        remote = remotes.get(rel)
+        rule = match_rule(cfg, rel, remote).rule
         found.append(
             RepoInfo(
                 rel=rel,
@@ -1418,8 +1656,103 @@ def known_repos(cfg: Config, repos: list[str]) -> list[RepoInfo]:
                 route=rule.write if rule else "unrouted",
                 about=cfg.about.get(rel) or repo_summary(path),
                 public=rel.split("/")[0] in public,
+                remote=remote,
             )
         )
+    return found
+
+
+class OrgInfo(NamedTuple):
+    """One remote owner on this machine, its repos, and whether anybody has decided about it."""
+
+    org: str  # "<host>/<owner>", or "(no remote)" for local clones
+    own: bool
+    rule: str
+    source: str
+    writes_into_repos: bool
+    repos: list[str]
+
+    @property
+    def decided(self) -> bool:
+        """Whether the route came from a rule naming this repo or this organisation.
+
+        A `[roots]` entry is not a decision *about the organisation* — it is a decision about a
+        directory that this repo happens to sit in, which is the mistake the org layer exists to
+        surface rather than to inherit.
+        """
+        return self.source.startswith(("orgs entry", "repos entry"))
+
+
+NO_REMOTE = "(no remote)"
+
+
+def known_orgs(cfg: Config, repos: list[str], remotes: dict[str, Remote | None]) -> list[OrgInfo]:
+    """Every remote owner the machine's repos point at, grouped, with the route its repos get.
+
+    Grouped by owner rather than listed per repo because the decision is per organisation: whether
+    that org keeps plans in its repositories is one answer covering every clone of theirs, and
+    asking it once per repo is how a walkthrough becomes unanswerable.
+    """
+    members: dict[str, list[str]] = {}
+    for rel in repos:
+        remote = remotes.get(rel)
+        members.setdefault(remote.org if remote and remote.org else NO_REMOTE, []).append(rel)
+    found: list[OrgInfo] = []
+    for org, rels in sorted(members.items()):
+        first = remotes.get(rels[0])
+        rules = [match_rule(cfg, rel, remotes.get(rel)) for rel in rels]
+        writes = [name for name, match in zip(rels, rules, strict=True) if match.rule and match.rule.write == "repo"]
+        described = sorted({match.rule.describe() if match.rule else "(no rule — asks)" for match in rules})
+        sources = sorted({match.source for match in rules})
+        found.append(
+            OrgInfo(
+                org=org,
+                own=cfg.owns(first),
+                rule=" / ".join(described),
+                source=" / ".join(sources),
+                writes_into_repos=bool(writes),
+                repos=sorted(rels),
+            )
+        )
+    return found
+
+
+def org_problems(cfg: Config, orgs: list[OrgInfo]) -> list[str]:
+    """Organisations whose repos would get a `plans/` directory without anybody having said so.
+
+    Reported rather than refused here, because `doctor` is the command that says what is wrong on a
+    machine and `where` is the one that refuses per repo. Silent while `own_accounts` is unset — the
+    single line saying so is worth more than one row per repo asserting foreignness it cannot know.
+    """
+    real = [org for org in orgs if org.org != NO_REMOTE]
+    if not cfg.own_accounts:
+        exposed = [org for org in real if org.writes_into_repos]
+        if not exposed:
+            return []
+        return [
+            f"own_accounts is unset, so none of the {len(exposed)} organisation(s) whose repos are "
+            "routed `repo` has had its ownership checked — config set own_accounts "
+            '["<your-account>"], then plans.py orgs'
+        ]
+    found = [
+        f"{org.org} is not one of your accounts, {len(org.repos)} repo(s) here, and {org.source} "
+        f"routes them `repo` — decide it: config set orgs.{org.org} store"
+        for org in real
+        if not org.own and org.writes_into_repos and not org.decided
+    ]
+    # A tier question rather than a routing one, and only a contractor device has tiers to confuse.
+    # A foreign org's plans landing in the half that may have a remote is the leak the split exists
+    # to prevent, and nothing else reports it: the routing is correct, the filing is not.
+    for org in real:
+        if org.own or not cfg.split_by_sensitivity:
+            continue
+        shareable = [rel for rel in org.repos if cfg.tier_of(rel) == SHAREABLE]
+        if shareable:
+            found.append(
+                f"{org.org} is not one of your accounts but {len(shareable)} of its repo(s) sit "
+                f"under a shareable root ({', '.join(sorted({rel.split('/')[0] for rel in shareable}))}), "
+                "so their store plans go in the tier that may have a remote"
+            )
     return found
 
 
@@ -1740,15 +2073,45 @@ class Workspace:
         return private_terms(self.config, self.repos)
 
     @cached_property
+    def remotes(self) -> dict[str, Remote | None]:
+        """Each repo's remote owner, one git call each, resolved once for the whole invocation.
+
+        The expensive property here, and the reason it is one: `doctor`, `orgs` and `repos` all want
+        it, and every routing answer they print depends on it, so re-reading per caller would be
+        both slow and a way for two of them to disagree.
+        """
+        return {rel: remote_of(self.config.projects_root / rel) for rel in self.repos}
+
+    @cached_property
     def known_repos(self) -> list[RepoInfo]:
         """Every repo under the projects root, with its route and a one-line description."""
-        return known_repos(self.config, self.repos)
+        return known_repos(self.config, self.repos, self.remotes)
+
+    @cached_property
+    def known_orgs(self) -> list[OrgInfo]:
+        """Every remote owner on this machine, with the route its repos get and who decided it."""
+        return known_orgs(self.config, self.repos, self.remotes)
 
     def require_routable(self) -> Routing:
         """The routing, or the needs-decision exit — the three-line prologue eight commands opened
         with. A method rather than a property because it can refuse, and a property that raises is a
         surprise at the point of reading an attribute."""
         return require_ok(self.routing)
+
+
+def _print_where_remote(cfg: Config, remote: Remote | None) -> None:
+    """Who this repo belongs to — and, just as important, whether that was checked at all.
+
+    Three states rather than two, because "no own_accounts is configured" and "this is not yours"
+    read identically on a line that only prints the owner, and they take opposite actions.
+    """
+    if remote is None:
+        print("remote:  (none) — nothing says who this repo belongs to, so ownership is unchecked")
+        return
+    if not cfg.own_accounts:
+        print(f"remote:  {remote.org or remote.url}  (own_accounts unset: ownership unchecked)")
+        return
+    print(f"remote:  {remote.org or remote.url}  ({'yours' if cfg.owns(remote) else 'NOT one of your accounts'})")
 
 
 def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
@@ -1762,6 +2125,16 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
             "repo_root": str(routing.repo_root) if routing.repo_root else None,
             "worktree_of": str(main) if routing.repo_root and (main := linked_worktree_of(routing.repo_root)) else None,
             "rel": routing.rel,
+            "remote": None
+            if routing.remote is None
+            else {
+                "url": routing.remote.url,
+                "host": routing.remote.host,
+                "owner": routing.remote.owner,
+                "org": routing.remote.org,
+                "own_account": cfg.owns(routing.remote),
+                "checked": bool(cfg.own_accounts),
+            },
             "rule": None if rule is None else {"read": list(rule.read), "write": rule.write},
             "source": routing.source,
             "write_dir": str(routing.write_dir) if rule and routing.verdict == "ok" else None,
@@ -1787,6 +2160,7 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
         print(f"worktree: this checkout is a linked worktree of {worktree_main}")
         print("          store plans are shared with it; a `repo` plan stays here, on this branch")
     print(f"rel:     {routing.rel or '(not under projects_root)'}")
+    _print_where_remote(cfg, routing.remote)
     if routing.rule:
         print(f"rule:    {routing.rule.describe()}  ({routing.source})")
     if routing.rel and routing.rel in cfg.roots and routing.source != f'roots entry "{routing.rel}"':
@@ -3166,7 +3540,16 @@ def cmd_repos(args: argparse.Namespace, ws: Workspace) -> int:
     if args.json:
         print(
             json.dumps(
-                [{"rel": r.rel, "route": r.route, "about": r.about, "public": r.public} for r in repos],
+                [
+                    {
+                        "rel": r.rel,
+                        "route": r.route,
+                        "about": r.about,
+                        "public": r.public,
+                        "org": r.remote.org if r.remote else None,
+                    }
+                    for r in repos
+                ],
                 indent=2,
             )
         )
@@ -3183,6 +3566,51 @@ def cmd_repos(args: argparse.Namespace, ws: Workspace) -> int:
         print("Rows marked `work` name repos that are not yours to disclose — this listing is for")
         print("choosing a destination, never for pasting into a repo you publish.")
     return 0
+
+
+def cmd_orgs(args: argparse.Namespace, ws: Workspace) -> int:
+    """Which organisation each directory on this machine actually belongs to, and who decided.
+
+    The question `repos` cannot answer: that one is "what is this repo for", asked while routing a
+    plan by topic; this one is "whose repo is it", asked before writing anything into it at all.
+    Exits 3 when a foreign organisation's repos are routed `repo` with nobody having said so — the
+    same code `where` returns, so it works as a check rather than only as a listing.
+    """
+    cfg = ws.config
+    orgs = ws.known_orgs
+    problems = org_problems(cfg, orgs)
+
+    if args.json:
+        payload = {
+            "own_accounts": list(cfg.own_accounts),
+            "checked": bool(cfg.own_accounts),
+            "orgs": [{**org._asdict(), "decided": org.decided} for org in orgs],
+            "problems": problems,
+        }
+        print(json.dumps(payload, indent=2))
+        return NEEDS_DECISION if problems and cfg.own_accounts else 0
+
+    print(f"own_accounts:  {', '.join(cfg.own_accounts) or '(unset — no ownership is checked)'}")
+    width = max((len(org.org) for org in orgs), default=0)
+    for org in orgs:
+        if org.org == NO_REMOTE:
+            mark = "local"
+        elif not cfg.own_accounts:
+            mark = "?"
+        else:
+            mark = "yours" if org.own else "FOREIGN"
+        print(f"  {org.org.ljust(width)}  {mark:<8} {org.rule:<24} {org.source:<26} {len(org.repos)} repo(s)")
+        if args.repos:
+            for rel in org.repos:
+                print(f"      {rel}")
+    if problems:
+        print(f"\nneeds a decision ({len(problems)})")
+        for problem in problems:
+            print(f"  - {problem}")
+    if any(org.org != NO_REMOTE and not org.own for org in orgs):
+        print("\nOrganisation names above are not yours to disclose — this listing is for deciding")
+        print("where plans go, never for pasting into a repo you publish.")
+    return NEEDS_DECISION if problems and cfg.own_accounts else 0
 
 
 def cmd_describe(args: argparse.Namespace, ws: Workspace) -> int:
@@ -3248,13 +3676,14 @@ class Decision:
     cost: str
 
 
-def install_decisions(cfg: Config) -> list[Decision]:
+def install_decisions(ws: Workspace) -> list[Decision]:
     """Everything `install` cannot decide on the user's behalf, with what it would guess and why.
 
     Printed rather than prompted. The script has to keep working when a human runs it by hand, and
     an interactive prompt inside an agent's Bash call hangs the session with nothing to type into —
     so the agent is the interactive surface and this is the data it asks from.
     """
+    cfg = ws.config
     unset = "(unset — the default is in use)"
     decisions = [
         # First, because it decides whether the two below are one question or two.
@@ -3305,9 +3734,27 @@ def install_decisions(cfg: Config) -> list[Decision]:
 
     decisions.append(
         Decision(
+            key="own_accounts",
+            what=(
+                "the accounts you own, matched against each repo's REMOTE. A repo pointing at one of "
+                "them is yours to commit a plans/ directory into; every other owner is an "
+                "organisation that has to be decided about. A bare name matches that account on any "
+                "host, which is what covers github.com and an enterprise instance in one entry"
+            ),
+            current=", ".join(cfg.own_accounts) or "(unset — no repo's ownership is checked at all)",
+            suggest=_suggest_own_accounts(ws),
+            cost=(
+                "leaving it unset is not neutral: nothing then stops a blanket [roots] rule "
+                "committing plans/ into a clone from somebody else's organisation. Too wide is worse "
+                "— it marks an employer's org as yours and the check passes silently"
+            ),
+        )
+    )
+    decisions.append(
+        Decision(
             key="default",
-            what="the route for a repo no [roots] or [repos] rule matches",
-            current=cfg.default.describe() if cfg.default else "(none — an unmatched repo exits 3 and asks)",
+            what="the route for a repo no [repos], [orgs] or [roots] rule matches",
+            current=cfg.default.describe() if cfg.default else _no_default_description(cfg),
             suggest="store on a machine with client work; leave unset to be asked each time",
             cost="a default of `repo` silently adds plans/ to repos you do not own",
         )
@@ -3317,19 +3764,38 @@ def install_decisions(cfg: Config) -> list[Decision]:
     # one of them has the same answer already, and asking anyway turned a six-question walkthrough
     # into a twelve-question one on this author's machine — questions the user pays for and whose
     # answer was never in doubt.
-    roots = sorted({rel.split("/")[0] for rel in repo_paths(cfg)})
-    unrouted = [name for name in roots if name not in cfg.roots]
-    if unrouted and cfg.default is None:
+    keys = root_config_keys(ws.repos)
+    roots = sorted(keys)
+    unrouted = [name for name in roots if name not in cfg.roots and name not in cfg.repos]
+    if unrouted and cfg.default is None and cfg.device != WORK:
         decisions += [
             Decision(
-                key=f"roots.{name}",
-                what=f"where plans go for every repo under {name}/",
+                key=keys[name],
+                what="where plans go for this repo"
+                if keys[name].startswith("repos.")
+                else f"where plans go for every repo under {name}/",
                 current="(no rule, and no default — these repos cannot be planned in until this is set)",
                 suggest="repo if these are yours to commit to, store if they are an employer's",
                 cost='guessing "repo" writes a plans/ directory into someone else\'s repository',
             )
             for name in unrouted
         ]
+
+    # One question per organisation whose repos a rule would write into without anybody having
+    # decided that organisation keeps plans in its repositories. Raised only once `own_accounts`
+    # says which owners are yours — before that every owner reads as foreign and this is every org
+    # on the machine, which is a walkthrough nobody finishes.
+    decisions += [
+        Decision(
+            key=f"orgs.{org.org}",
+            what=f"whether {org.org} keeps plans in its repositories ({len(org.repos)} clone(s) here)",
+            current=f"(no rule — {org.source} routes them `repo`)",
+            suggest="store: an organisation almost always has its own tracker",
+            cost="`repo` commits a plans/ directory into their repository, under a convention nobody there agreed to",
+        )
+        for org in ws.known_orgs
+        if cfg.own_accounts and org.org != NO_REMOTE and not org.own and org.writes_into_repos and not org.decided
+    ]
     decisions.append(
         Decision(
             key="public_roots",
@@ -3362,14 +3828,40 @@ def install_decisions(cfg: Config) -> list[Decision]:
     return decisions
 
 
+def _suggest_own_accounts(ws: Workspace) -> str:
+    """A suggestion built from what the machine already shows, never a value written for the user.
+
+    The commonest remote owner under a public root is usually the user's own account, and naming it
+    turns an open question into one to confirm. It stays a *suggestion* on purpose: on a corporate
+    machine the commonest owner is the employer, and a tool that recorded that answer would mark an
+    employer's organisation as the user's own and make every check downstream pass silently.
+    """
+    cfg = ws.config
+    public = set(cfg.public_root_names())
+    owners = Counter(
+        remote.owner for rel, remote in ws.remotes.items() if remote and remote.owner and rel.split("/")[0] in public
+    )
+    if not owners:
+        owners = Counter(remote.owner for remote in ws.remotes.values() if remote and remote.owner)
+    common = [name for name, _ in owners.most_common(3)]
+    return f"one of {', '.join(common)} — confirm which is yours" if common else "your account on each host you use"
+
+
+def _no_default_description(cfg: Config) -> str:
+    if cfg.device == WORK:
+        return f"(none — `{WORK_DEFAULT_SOURCE}`: the store, with own_accounts routed `repo`)"
+    return "(none — an unmatched repo exits 3 and asks)"
+
+
 def cmd_install(args: argparse.Namespace, ws: Workspace) -> int:
     if args.explain:
-        return explain_install(ws.config)
+        return explain_install(ws)
     return run_install(args, ws)
 
 
-def explain_install(cfg: Config) -> int:
+def explain_install(ws: Workspace) -> int:
     """What `install` will do, and what only the user can settle. Writes nothing."""
+    cfg = ws.config
     print("install would:")
     planned: list[tuple[str, Path, str]] = [("write" if not cfg.path.is_file() else "keep", cfg.path, "")]
     for store in cfg.stores():
@@ -3380,7 +3872,7 @@ def explain_install(cfg: Config) -> int:
         print(f"  {verb:<7}{target}{note}")
     print("  nothing else — it never edits a value you have already set")
 
-    decisions = install_decisions(cfg)
+    decisions = install_decisions(ws)
     print(f"\n{len(decisions)} decision(s) — put each to the user, then record it with `config set`:")
     for decision in decisions:
         print(f"\ndecision: {decision.key}")
@@ -3537,20 +4029,37 @@ def layout_problems(ws: Workspace, *, strict: bool = False) -> list[str]:
     shown = found if strict else [problem for problem in found if problem.kind != "no repos"]
     out = [f"{problem.where}: {problem.kind} — {problem.detail}" for problem in shown]
 
-    # A root reaching only `default` has never been decided about. Once every existing root carries
+    # A root reaching only a fallback has never been decided about. Once every existing root carries
     # an explicit rule, this list is exactly the collections that appeared since — no seen-markers,
     # no registry, just the config read as a record of what has been answered.
     known = ws.repos
-    roots = sorted({rel.split("/")[0] for rel in known})
-    undecided = [name for name in roots if _match_rule(cfg, f"{name}/x").source == "default"]
-    out += [f"{name}: no explicit rule, using `default` — config set roots.{name} <repo|store>" for name in undecided]
+    out += [
+        f"{name}: no explicit rule ({match_rule(cfg, f'{name}/x').source}) — config set {key} <repo|store>"
+        for name, key in sorted(root_config_keys(known).items())
+        if match_rule(cfg, f"{name}/x").source in FALLBACK_SOURCES
+    ]
     return out + inert_root_rules(cfg, known)
+
+
+def root_config_keys(repos: list[str]) -> dict[str, str]:
+    """Each top-level name under the projects root, and the config key that actually routes it.
+
+    A directory holding repos takes a `[roots]` entry; a repo cloned **straight into** the projects
+    root takes a `[repos]` one, because `match_rule` walks a path's *proper* prefixes and a key equal
+    to a whole repo path is never consulted. Deriving both from the same walk is the point: before
+    this, `install` and `doctor` told the user to write `roots.<name>` for such a repo, and
+    `inert_root_rules` then reported that entry as matching nothing — the tool proposing the mistake
+    it goes on to diagnose.
+    """
+    at_root = {rel for rel in repos if "/" not in rel}
+    heads = {rel.split("/")[0] for rel in repos}
+    return {head: f"repos.{head}" if head in at_root else f"roots.{head}" for head in heads}
 
 
 def inert_root_rules(cfg: Config, known: list[str]) -> list[str]:
     """`[roots]` entries that name a repo rather than a directory of repos, and so match nothing.
 
-    `_match_rule` walks a path's *proper* prefixes, so a key equal to a whole repo path is never
+    `match_rule` walks a path's *proper* prefixes, so a key equal to a whole repo path is never
     consulted and the repo falls through to `default` — reported by `where` as `(default)` while an
     entry naming that exact repo sits in the config, unread. Reproduced 2026-08-29 against a scratch
     root with a repo cloned straight into it, which is where a one-segment path makes the prefix walk
@@ -3569,9 +4078,14 @@ def inert_root_rules(cfg: Config, known: list[str]) -> list[str]:
 
 
 def _all_problems(ws: Workspace, unrouted: list[str], *, strict: bool = False) -> list[str]:
-    """Everything wrong, in one list: the store, the tree's shape, and unrouted repos holding plans."""
+    """Everything wrong, in one list: the store, the tree's shape, ownership, and unrouted repos."""
     routing = [f"{rel} holds plans but no rule routes it" for rel in unrouted]
-    return store_problems(ws.config) + layout_problems(ws, strict=strict) + routing
+    return (
+        store_problems(ws.config)
+        + layout_problems(ws, strict=strict)
+        + org_problems(ws.config, ws.known_orgs)
+        + routing
+    )
 
 
 def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
@@ -3608,7 +4122,9 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
         (RepoPlanCount(rel, counts[rel]) for rel in counts if rel != UNSCOPED_DIR and counts[rel]),
         key=lambda held: -held.plans,
     )
-    unrouted = [held.repo for held in holding if _match_rule(cfg, held.repo).source == "no rule"]
+    unrouted = [
+        held.repo for held in holding if match_rule(cfg, held.repo, ws.remotes.get(held.repo)).source == "no rule"
+    ]
 
     if args.json:
         payload = {
@@ -3632,8 +4148,8 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
             "roots": [
                 {
                     "root": name,
-                    "rule": (rule.describe() if (rule := _match_rule(cfg, f"{name}/x").rule) else "(no rule — asks)"),
-                    "source": _match_rule(cfg, f"{name}/x").source,
+                    "rule": (rule.describe() if (rule := match_rule(cfg, f"{name}/x").rule) else "(no rule — asks)"),
+                    "source": match_rule(cfg, f"{name}/x").source,
                     "tier": cfg.tier_of(name),
                     "repos": len(members),
                 }
@@ -3672,7 +4188,7 @@ def _print_doctor(
     print(f"\nenrolled ({len(roots)} root(s), {sum(len(m) for m in roots.values())} repo(s))")
     width = max((len(name) for name in roots), default=0)
     for name, members in sorted(roots.items()):
-        rule, source = _match_rule(cfg, f"{name}/x")
+        rule, source = match_rule(cfg, f"{name}/x")
         described = rule.describe() if rule else "(no rule — asks)"
         with_plans = sum(1 for rel in members if counts.get(rel))
         tier = cfg.tier_of(name)
@@ -3787,9 +4303,17 @@ def split_config_key(key: str) -> ConfigKey:
 
     Split on the first dot only, and only when what precedes it is a known table: a repo key is a
     path full of dots, and naively splitting on every dot turns one entry into a nested table.
+
+    A name arriving already wrapped in quotes is unwrapped, because that mistake is silent: the
+    quotes are how a `[repos]` or `[orgs]` key is spelled *inside* the TOML file, so an agent
+    copying one out of the config — or out of a shell line where the shell would have stripped them
+    — writes a key whose literal first character is `"`, which is well-formed TOML and matches no
+    repo or organisation ever.
     """
     table, _, rest = key.partition(".")
     if rest and table in CONFIG_TABLES:
+        if len(rest) > 1 and rest[0] == rest[-1] and rest[0] in "\"'":
+            rest = rest[1:-1]
         return ConfigKey(table, rest)
     return ConfigKey("", key)
 
@@ -3920,8 +4444,9 @@ def show_config(cfg: Config) -> int:
     print(f"public_roots:  {', '.join(cfg.public_root_names()) or '(none)'}")
     fallback = "" if cfg.shareable_roots else "  (unset — falls back to public_roots)"
     print(f"shareable:     {', '.join(cfg.shareable_root_names()) or '(none)'}{fallback}")
-    print(f"default:       {cfg.default.describe() if cfg.default else '(none — unmatched repos exit 3)'}")
-    for section, rules in (("roots", cfg.roots), ("repos", cfg.repos)):
+    print(f"own_accounts:  {', '.join(cfg.own_accounts) or '(unset — no ownership is checked)'}")
+    print(f"default:       {cfg.default.describe() if cfg.default else _no_default_description(cfg)}")
+    for section, rules in (("roots", cfg.roots), ("repos", cfg.repos), ("orgs", cfg.orgs)):
         for key, rule in sorted(rules.items()):
             print(f"{section:<6} {key}: {rule.describe()}")
     return 0
@@ -4029,6 +4554,11 @@ def build_parser() -> argparse.ArgumentParser:
     repos.add_argument("--limit", type=int, default=40)
     repos.add_argument("--json", action="store_true")
     repos.set_defaults(func=cmd_repos)
+
+    orgs = add("orgs", "which organisation each repo's remote belongs to, and who decided its route")
+    orgs.add_argument("--repos", action="store_true", help="list each organisation's repos")
+    orgs.add_argument("--json", action="store_true")
+    orgs.set_defaults(func=cmd_orgs)
 
     describe = add("describe", "record what a repo is for, in the config")
     describe.add_argument("repo", help="path relative to projects_root, e.g. github.com-personal/agent-skills")

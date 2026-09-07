@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-06
+updated: 2026-09-08
 source_repo: ingesta
 source_session: 0228a2e1-95e6-403c-b639-ad0d853eeb74.jsonl
 source_moment: 2026-09-02T20:46:18Z
@@ -148,6 +148,54 @@ which no transcript write-path set will ever contain. What the session _does_ kn
 the correction check. So "attribute rather than remove" survives as the principle while the
 mechanism has to differ per check, which is an argument against a single shared helper.]
 
+## A third sweep check, and the prediction coming true (2026-09-07)
+
+Merged from `2026-09-07-sweep-attributes-research-entries-it-cannot-attribute.md`, filed by a
+`repo-tasks` session. The section above predicted where else to look — "anything in the sweep whose
+wording says 'this session' while its computation says 'since the boundary'" — and this is that
+search returning a hit, which is why it belongs here rather than in a file of its own.
+
+The research-store section lists every entry under `$RESEARCH_HOME/repos/` whose mtime moved after
+session start, under the heading `changed_since_session_start`. On a machine where a refresher runs
+across the whole library, or where a parallel session is cloning, that is a list of everything the
+machine did presented as a list of what this session did.
+
+Session `52905ee0-50ff-4376-bd19-5ab4d9ca0a24`, boundary `2026-09-07T19:12:55+03:00`, reported **30
+entries**, among them `cpython`, `node`, `ansible`, `git`, `zed`, `chezmoi`, `home-manager`, `stow`,
+`yadm` and `rcm`. **Five were that session's**, and they are checkable from its own transcript: it
+ran `library.py add` exactly five times, for a coupling-tool survey — `import-linter`, `grimp`,
+`tach`, `deptry`, `FawltyDeps`. The dotfile-manager cluster is visibly somebody else's research
+topic. Five attributable of thirty is the shape that makes the bug visible; a harvest reading its
+own output would report "this session touched thirty reference clones", which is specific,
+plausible, and wrong in the direction nobody re-checks.
+
+**This is the instance where the fix is already written down**, since the docker section was
+corrected on 2026-09-06 with exactly the guard this one needs: zero `docker` calls means nothing is
+attributable whatever the timestamps say, and the unattributable rows print under their own heading.
+The research section got no such treatment and reads with the same false authority the docker one
+used to.
+
+[NEEDS CLARIFICATION: is the cross-check the same shape as docker's? The equivalent is "did the
+session run `library.py add`/`update`, or write under `$RESEARCH_HOME`", which the transcript
+answers — but a session can legitimately `git -C $RESEARCH_HOME/repos/<entry> fetch --deepen`
+without going through the script (the skill documents that case, and the 2026-08-30 deepened-clone
+finding came from it), so a script-only check would under-attribute where the docker one does not.]
+
+[NEEDS CLARIFICATION: should the section report anything at all for unattributable entries? The
+docker fix keeps them under their own heading because the sizes are worth seeing whoever made them.
+Twenty-five refreshed clones are not — a refresher moving every mtime is the store working as
+designed. A count with no list may be the whole answer: "25 entries refreshed by something else".]
+
+The valuable half of that section is unaffected either way: the _convention_ checks the skill
+actually cares about — a clone without its `SOURCE.md`, an entry deepened away from `--depth 1` —
+are per-entry facts that do not depend on who made them.
+
+[PITFALL: **the pairing signal missed this one, and that is itself evidence.** `absorb` reports a
+pair when one plan links the other; this plan and the merged one share a root cause and a fix shape
+while citing only the _skill_, so the store offered no hint and the merge happened because both were
+read. See `2026-09-03-two-plans-one-subject-absorb-cannot-pair.md`, which owns that gap — this is a
+worked instance of it.]
+
 ## Recommended direction
 
 1. Gate `_correction_overlap` on the repo having been written to by this session, or intersect with
@@ -156,7 +204,11 @@ mechanism has to differ per check, which is an argument against a single shared 
    above**, so it is a partial fix rather than the fix.
 1. For the disk step, gate "new this session" on the session having run `docker` at all, and
    otherwise report the images as new **since the boundary** without claiming whose they are. Same
-   principle as 2 below: say what was measured.
+   principle as 2 below: say what was measured. **Done 2026-09-06**, and it is the template the
+   research-store section still needs.
+1. For the research-store step, apply that same template: attribute from the session's own
+   `library.py` calls and writes under `$RESEARCH_HOME`, and put what cannot be attributed under its
+   own heading or behind a bare count. Verify against 5 attributable of 30.
 1. Until then, give the line the same parallel-session caveat its neighbour has, so a reader is not
    handed a correction alarm with no way to tell whose work it describes.
 1. A test with two authors' commits on one upstream branch since the boundary, asserting the flag

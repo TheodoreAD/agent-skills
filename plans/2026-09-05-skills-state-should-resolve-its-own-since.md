@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-06
+updated: 2026-09-08
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 156d723c-4e21-41ef-aac9-bfd6c05b681c.jsonl
 source_moment: 2026-09-05T19:40:00+03:00
@@ -59,6 +59,74 @@ all predated the session, so nothing downstream would have revealed the mistake.
 is not only a number reading high: **a clean skill can be routed into the staleness branch, and the
 routing is silent.** Consistent with the decision above; it raises what that decision is worth, not
 what it should be.
+
+## A fourth instance, and it is the first to err the _other_ way
+
+Merged from `2026-09-07-skills-state-since-is-a-guess-the-script-could-compute.md`, filed by a
+`power-user-linux-setup` harvest on 2026-09-07 that could not edit this file, and which said in its
+own opening line that it was evidence for this plan rather than a second topic. Its distinctive
+transcript phrase: "`--since` guessed late hid four of eight commits — including the one whose
+instruction I followed."
+
+Every instance above over-counted. **This one under-counted, and by half.** Session
+`11ef513d-37c0-4bc6-ba25-dd40d8551940` passed `--since 2026-09-07T13:00:00+03:00` against a
+transcript starting `2026-09-07T08:18:30.693Z`, about three hours earlier, and `skills-state`
+reported **4** commits to `session-harvest`'s `SKILL.md` where there were **8** — `6aa620e`,
+`c0a2beb`, `5e2d8b5` and `39d569a` were all hidden.
+
+**The two directions are not symmetric, and this is the dangerous one.** An over-count sends the
+reader down the staleness branch unnecessarily: expensive, and self-correcting the moment they look.
+An under-count argues for **doing nothing**, and shortens the very judgement step 0 makes the list
+the input to — "re-read it from whichever side is ahead, unless every one of those commits is this
+session's own". A short list makes "this session's own" easier to conclude and offers no signal that
+anything is missing, because every row it _does_ print is true.
+
+Sharper still: two of the four hidden commits were ones that run then depended on. `5e2d8b5` is the
+instruction to **diff** a stale `SKILL.md` rather than re-read it, which the run followed, and
+`39d569a` is `skills-state` learning to report its own blind spot, which told the run which earlier
+answers to re-run. Both reached it through the diff rather than the commit list — which is why the
+under-count did no damage there, and exactly why it would on the branch where the list _is_ the
+evidence.
+
+## The default may not be session start at all, for one row
+
+A fifth instance, from the same filing. Session `9164dacd` passed
+`--since
+2026-09-07T15:00:00+03:00` — a guess, close enough to the transcript's `14:55:16Z` that the
+count was right — and still produced a false alarm, for a reason no earlier instance reaches: **the
+harvest was invoked in the session's last minutes, so `session-harvest`'s own body was loaded
+_after_ the three commits the check reported.** The warning said the held copy might be superseded;
+the held copy was the newest text on the machine.
+
+So the instant that matters is **when the skill was loaded, not when the session began**, and for a
+skill invoked late those differ by hours. Session start is right for a skill the session has been
+leaning on throughout — `plan-docs` there, loaded at 18:40 and genuinely four commits stale by the
+end — and wrong for the skill doing the asking, which is loaded last by construction. A run treating
+them alike gets a false positive on itself every time, in the step whose whole purpose is deciding
+whether to trust its own instructions.
+
+Cheap version if per-skill load times are not recoverable: exempt the harvest's own skill from the
+warning, or label that row. The transcript does record when a skill's body entered context, so the
+precise version is available.
+
+[NEEDS CLARIFICATION: does the load-time adjustment change the `[DECISION:]` above, or sit on top of
+it as a per-row refinement? They are compatible — compute the transcript start as decided, then
+adjust per skill by load time — but only if load time is actually cheap to read.]
+
+[DECISION: **print the value used**, whichever way the default goes — a
+`# since: <instant>
+(transcript start | supplied)` line. Folded in from the merged plan, and it is
+the only part of this a default alone does not cover: the specific harm was never the wrong window
+but that the wrong window was indistinguishable from the right one in the output, so nothing
+prompted a second look. An operator who passes `--since` explicitly can still pass a wrong one.]
+
+[PITFALL: **the merged plan was filed as a standalone proposal and rewritten as evidence minutes
+later, inside the same harvest.** The session filed it without checking whether the topic was
+already owned — which `session-harvest`'s own step 2 requires, in the bullet immediately after the
+one that told it to file — and found this plan only while double-checking something else. The check
+is cheap (`ls` the store directory the filing went into, `rg -l` the target repo's `plans/`). Worth
+knowing that the rule's placement, file first and report second, reads as urgency, and urgency is
+what skipped the lookup.]
 
 ## Open questions
 

@@ -972,6 +972,56 @@ def test_paths_written_into_files_that_do_not_exist_are_reported(tmp_path, monke
     assert harvest.promised_paths(entries) == ["~/.agents/skills/demo/scripts/gone.py"]
 
 
+def test_a_path_invented_inside_a_scratch_file_is_a_fixture_not_an_instruction(tmp_path, monkeypatch):
+    """Confirmed 2026-09-07: a harvest reported `~/work/ops/deploy.sh` as a machine-wide instruction
+    pointing at a missing file. It was an invented path inside a throwaway `SKILL.md` written into
+    the session's scratchpad, to audit a portability tool against a synthetic corpus — the same
+    fixture case a test file already gets exempted for, since a scratch file instructs nobody."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    def wrote_into(path: str) -> list[dict[str, object]]:
+        block = {
+            "type": "tool_use",
+            "id": "a",
+            "name": "Write",
+            "input": {"file_path": path, "content": "Run the deploy from ~/work/ops/deploy.sh"},
+        }
+        return [blocks_entry("assistant", [block])]
+
+    scratch = "/tmp/claude-1000/session/scratchpad/other-user/skills/demo/SKILL.md"
+    assert harvest.promised_paths(wrote_into(scratch)) == []
+
+    # The control is a plain instructions file — and deliberately not `tmp_path`, which is itself
+    # under the temp root and would be exempt for the right reason.
+    assert harvest.promised_paths(wrote_into("/home/someone/repo/AGENTS.md")) == ["~/work/ops/deploy.sh"]
+
+    # A repo's own `tmp/` is part of that repo; only the temp root and a scratch segment are exempt.
+    assert harvest.promised_paths(wrote_into("/home/someone/repo/tmp/AGENTS.md")) == ["~/work/ops/deploy.sh"]
+
+
+def test_a_path_edited_away_later_in_the_session_is_no_longer_reported(tmp_path):
+    """The check reads the session's writes, so a line revised later is still in the transcript. The
+    finding is "a future session is told to run this", which a revised file no longer says.
+    Confirmed 2026-09-07: the run that added the scratch exemption spelled a missing path in full in
+    a docstring, shortened it in the next edit, and the check went on reporting the first version.
+
+    The predicate is exercised directly rather than through `promised_paths`, because every file
+    pytest hands out lives under the temp root and is therefore exempt one rule earlier — which is
+    the scratch exemption doing its job, not a gap.
+    """
+    doc = tmp_path / "notes.md"
+    doc.write_text("the path was shortened away\n", encoding="utf-8")
+    assert harvest._still_written("~/gone/script.py", str(doc)) is False
+
+    doc.write_text("see ~/gone/script.py for the check\n", encoding="utf-8")
+    assert harvest._still_written("~/gone/script.py", str(doc)) is True
+
+    # A target that cannot be read is kept: an unreadable file is not evidence of absence.
+    assert harvest._still_written("~/gone/script.py", str(tmp_path / "deleted.md")) is True
+    assert harvest._still_written("~/gone/script.py", "") is True
+
+
 def test_a_store_entry_without_provenance_is_found_one_level_down(tmp_path):
     """The buckets are not entries. Treating them as such reported the whole library as three
     unprovenanced entries — true of nothing, and it buries the one entry that really is missing."""

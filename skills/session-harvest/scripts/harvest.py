@@ -1885,8 +1885,26 @@ HOME_PATH_RE = re.compile(r"(?:~|/home/[\w.-]+)/[\w./@-]+")
 TEST_PATH_RE = re.compile(r"(^|/)(tests?|conftest)(/|\.py$)|(^|/)test_[\w-]+\.py$|_test\.py$")
 
 
+# Anchored at the temp *root*, not at any `tmp` segment: a repo's own `tmp/` directory is part of
+# that repo and a file in it instructs its readers like any other.
+SCRATCH_PATH_RE = re.compile(r"^/(tmp|var/tmp)/|(^|/)(scratchpad|scratch)(/|$)", re.IGNORECASE)
+
+
 def _is_test_path(path: str) -> bool:
-    return bool(path) and bool(TEST_PATH_RE.search(path))
+    """A file whose contents are fixtures rather than instructions to anybody.
+
+    Two kinds, one rule: a test, and a file under a scratch or temp directory. The second was added
+    2026-09-07 after this check reported two invented `~/work/ops/...` paths as machine-wide
+    instructions pointing at missing files — they were inside a throwaway `SKILL.md` written into
+    the session's scratchpad to audit a portability tool against a synthetic corpus. Nothing will
+    ever read that file, which is the same reason a test fixture is exempt: the finding is a path a
+    *future session* is told to run, and a scratch file tells nobody anything.
+
+    The paths are named in shortened form here on purpose. Spelled in full, this docstring is itself
+    a non-test file naming a path that does not exist, and the check reports its own explanation —
+    which it did, on the first run after the fix landed.
+    """
+    return bool(path) and bool(TEST_PATH_RE.search(path) or SCRATCH_PATH_RE.search(path))
 
 
 def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
@@ -1899,7 +1917,7 @@ def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
     so a machine-wide rule instructed every future session to run a file that did not exist. The
     checkout worked perfectly throughout, which is why nothing surfaced it.
     """
-    missing: dict[str, None] = {}
+    missing: dict[str, str] = {}
     for _, block in iter_blocks(entries):
         if block.get("type") != "tool_use" or block.get("name") not in ("Edit", "Write"):
             continue
@@ -1910,7 +1928,8 @@ def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
         # frequently the whole point of the test. Confirmed 2026-09-02 by this check reporting
         # `~/.agents/skills/demo/scripts/gone.py` — the literal argument of the test that pins this
         # very function — as a machine-wide instruction pointing at a missing file.
-        if _is_test_path(str(payload.get("file_path", ""))):
+        target = str(payload.get("file_path", ""))
+        if _is_test_path(target):
             continue
         body = " ".join(str(payload.get(key, "")) for key in ("new_string", "content"))
         for match in HOME_PATH_RE.finditer(body):
@@ -1918,8 +1937,26 @@ def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
             if "<" in candidate or "*" in candidate or "." not in Path(candidate).name:
                 continue
             if not Path(candidate).expanduser().exists():
-                missing[candidate] = None
-    return sorted(missing)
+                missing[candidate] = target
+    return sorted(path for path, target in missing.items() if _still_written(path, target))
+
+
+def _still_written(candidate: str, target: str) -> bool:
+    """Whether the path is still in the file the session wrote it into.
+
+    The check reads the session's **writes**, so a line edited away later is still in the transcript
+    and still reported — and the finding is "a future session is told to run this", which a revised
+    file no longer says. Confirmed 2026-09-07 in the run that added the scratch exemption above: the
+    first version of that docstring spelled a missing path in full, the second did not, and the
+    check went on reporting the first. A target that cannot be read is kept rather than dropped, on
+    the same rule as everywhere else here — an unreadable file is not evidence of absence.
+    """
+    if not target:
+        return True
+    try:
+        return candidate in Path(target).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
 
 
 def _touched_repos(runner: Runner, extra: Sequence[str], entries: Sequence[dict[str, Any]]) -> list[Path]:

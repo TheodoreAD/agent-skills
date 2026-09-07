@@ -66,6 +66,19 @@ option is often guarded on a harness variable (on this author's machine `~/.zshe
 when `CLAUDECODE` is), so it can be in force for agent shells and absent everywhere else on the same
 box.
 
+**`session-harvest`'s `claims` counts the same-named row differently, and the two numbers are both
+wrong in opposite directions.** `harvest.py`'s `EXIT_MASKED_RE` matches the raw command, so it
+counts a pipeline written inside a quoted string or a heredoc body as a real one; `audit.py` strips
+both, so it misses nothing quoted but did, until 2026-09-06, drop every command _after_ a heredoc.
+Of 390 calls in the week to that date which `claims` tagged and `audit.py` did not, **388 were that
+heredoc bug** and 2 were genuine quoted mentions. The bug is fixed and the quoted over-count is not,
+so a reader comparing the two today should expect `claims` to be the higher of the two by a small
+margin — 7 against 4 on one session the same day, all three extras being `2>&1` inside a
+`python3 - <<'PY'` probe body. Sharing the strippers across the two skills is
+`plans/2026-09-03-skill-dependencies-and-bundling.md`'s question, since they install independently
+and cannot import each other; until then, **the difference is expected and neither number is the
+other's check**.
+
 The row stays, and stays **unjudged** by `EXPECTATIONS`, for two reasons that pull the same way. The
 guard means the identical command still loses its status in cron, in CI, in a container and on any
 machine without that snippet — a session that learns the shape is harmless here writes it into a

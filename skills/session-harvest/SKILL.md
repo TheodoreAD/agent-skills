@@ -600,6 +600,14 @@ What the script cannot do is decide what a finding means. That is this list:
   numbers**, one line: "6% during the work, 14% including this sweep." The first is the session; the
   second is the honesty.
 
+  **`claims` and `audit.py` count `exit-masked` differently, and a mismatch between them is
+  expected.** `claims` matches the raw command, so a pipeline quoted inside a string or a heredoc
+  body counts; `audit.py` strips quoted spans and heredoc bodies, so it does not. Measured over the
+  week to 2026-09-06: of 390 calls `claims` tagged and `audit.py` did not, 388 were a bug in
+  `audit.py` (since fixed) and 2 were `claims` counting quoted prose. Expect `claims` to run
+  slightly higher now, and **do not read either number as the other's check** — 7 against 4 on one
+  session, the three extras all `2>&1` inside a probe's heredoc body.
+
   **Read the gate/listing split before reasoning about any of this.** The audit line prints
   `exit-masked = n  m wrapped a gate, k a listing`, and **when `m` is zero the greens were never at
   risk**, whatever the shell does: no claim rested on a masked exit code, because no masked call was

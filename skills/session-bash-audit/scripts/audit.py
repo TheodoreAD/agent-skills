@@ -81,6 +81,11 @@ HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2
 SEPARATOR_RE = re.compile(r"&&|\|\||[;|\n]")
 
 
+# The Bash tool's own prefix on a non-zero result. Anchored at the start, because a command whose
+# *output* contains the words is not a command that exited with them.
+EXIT_CODE_RE = re.compile(r"\s*Exit code (\d+)", re.IGNORECASE)
+
+
 @dataclass
 class Call:
     cmd: str
@@ -97,6 +102,33 @@ class Call:
     def denied(self) -> bool:
         low = self.result.lower()
         return self.error and ("denied" in low or "doesn't want to proceed" in low or "rejected" in low)
+
+    @property
+    def exit_code(self) -> int | None:
+        """The status the harness reported, from the result's own opening line, or None.
+
+        The Bash tool prefixes a non-zero result with `Exit code N`, so the number the transcript
+        could never give — what a call actually returned — is in a field this parser already keeps.
+        """
+        match = EXIT_CODE_RE.match(self.result)
+        return int(match.group(1)) if match else None
+
+    @property
+    def truncated(self) -> bool:
+        """Whether this call's own output was **cut**, as opposed to merely filtered.
+
+        Two statuses say so and nothing else does. `141` is death by SIGPIPE — the reader closed the
+        pipe while the writer was still writing. `120` is a Python process failing to flush stdout
+        at shutdown for the same reason, which is what every script in this repo did before it
+        handled SIGPIPE. Both are unambiguous: the data was lost.
+
+        **Deliberately not "non-zero exit on a piped call".** Under `pipefail` a failing gate behind
+        `| tail` also returns non-zero, and that is the gate failing rather than the output being
+        cut; counting it here would merge the two numbers this row exists to separate. `rg` with
+        more matches than shown returns 1, which is indistinguishable from "no matches" — so it is
+        left out too, and the row under-counts rather than guesses.
+        """
+        return self.exit_code in (141, 120)
 
 
 def strip_heredoc(cmd: str) -> str:
@@ -283,7 +315,9 @@ def _rx_unquoted(pattern: str) -> Predicate:
 PATTERNS: dict[str, tuple[Predicate, str]] = {
     "head/tail": (
         _rx_unquoted(r"\|\s*(head|tail)\b"),
-        "truncates tool output the harness would have kept whole; forces re-runs and hides failures",
+        "truncates tool output the harness would have kept whole; the measured cost is the re-run, "
+        "not lost bytes — 9 of 9,224 such calls over the 30 days to 2026-09-08 actually cut output "
+        "(the count printed beside this row), so read it as a habit rather than as data loss",
     ),
     "exit-masked": (
         _rx_unquoted(r"2>&1\s*\|\s*(tail|head|grep|rg)\b"),
@@ -1038,6 +1072,27 @@ def masked_gate(calls: list[Call]) -> list[Call]:
     return [c for c in calls if "exit-masked" in c.tags and GATE_RE.search(strip_quoted(c.cmd))]
 
 
+def truncation_events(calls: list[Call]) -> list[Call]:
+    """Calls whose output was actually cut — the number this audit has never had.
+
+    Every other row here counts a **shape**: how often a session composed a call that *could* lose
+    data. This counts the loss. The two are different questions and the corpus has only ever been
+    able to answer the first, which is why `head/tail` is scored on the habit rather than on harm.
+
+    It became answerable on this machine for one reason: the agent shell sets `pipefail`, so a
+    pipeline reports the rightmost non-zero status instead of the filter's zero, and a writer killed
+    by SIGPIPE now reaches the transcript as `Exit code 141`. Before that the same event returned 0
+    and was indistinguishable from a clean run — the audit could not have counted this at any
+    sampling rate.
+
+    Expect it to be much smaller than `head/tail`, and that is the finding rather than a
+    disappointment: most truncation is of output that fitted in the pipe buffer anyway, so nothing
+    was lost and the habit cost only the re-run. A session where the two numbers are close is one
+    that was reading real answers through a filter.
+    """
+    return [call for call in calls if call.truncated]
+
+
 def rg_replace_flags(calls: list[Call]) -> Counter[str]:
     """Which `rg` flag spelling each `rg-replace` hit used — `-rn` and `-ril` are different failures.
 
@@ -1065,12 +1120,17 @@ def _print_session_rows(calls: list[Call]) -> None:
     counts = Counter(t for c in calls for t in c.tags)
     counts["chain"] = sum(counts[f"chain{i}"] for i in range(2, 6))
     gates = len(masked_gate(calls))
+    cut = len(truncation_events(calls))
     flags = rg_replace_flags(calls)
     print(f"\n== this session, {n} calls ==")
     for row in SESSION_ROWS:
         hits = counts[row]
         note = ""
-        if row == "exit-masked" and hits:
+        if row == "head/tail" and hits:
+            # Beside the shape it belongs to, not as a row of its own: a new `SESSION_ROWS` entry
+            # would be absent from every stored baseline and read as a regression on first compare.
+            note = f"   {cut} actually cut output (exit 141/120)"
+        elif row == "exit-masked" and hits:
             note = f"   {gates} wrapped a gate, {hits - gates} a listing"
         elif row == "rg-replace" and flags:
             note = "   " + ", ".join(f"{flag} x {k}" for flag, k in flags.most_common())

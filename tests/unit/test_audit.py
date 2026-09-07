@@ -337,12 +337,60 @@ def test_no_checkout_means_no_instrument_rather_than_a_wrong_one(monkeypatch, tm
 # the session view: one row per line, count first, and every row printed
 
 
-def _call(cmd: str) -> object:
+def _call(cmd: str, result: str = ""):
     call = audit.Call(
-        cmd=cmd, model="m", project="p", session="s", subagent=False, timestamp="", error=False, result=""
+        cmd=cmd, model="m", project="p", session="s", subagent=False, timestamp="", error=False, result=result
     )
     audit.classify(call)
     return call
+
+
+# --------------------------------------------------------------------------------------------
+# truncation events: the shape versus the harm
+#
+# Every other row counts how often a session composed a call that *could* lose data. This counts
+# the loss, and it only became answerable because the agent shell sets `pipefail`: before that a
+# writer killed by SIGPIPE returned 0 through the filter and was indistinguishable from a clean run.
+
+
+def test_only_the_two_statuses_that_mean_cut_are_counted():
+    """`141` is death by SIGPIPE and `120` a Python process failing to flush stdout at shutdown for
+    the same reason — the shape every script in this repo had before it handled SIGPIPE. Both are
+    unambiguous. A failing gate behind a filter also returns non-zero under `pipefail`, and that is
+    the gate failing rather than the output being cut; merging them would destroy the distinction
+    this row exists to make."""
+    cut = audit.truncation_events(
+        [
+            _call("inv quality.precommit 2>&1 | head -20", "Exit code 120\nsome output"),
+            _call("git log | head -5", "Exit code 141"),
+            _call("pytest 2>&1 | tail -5", "Exit code 1\nFAILED test_x"),
+            _call("rg pattern | head", "Exit code 1"),
+            _call("ls | head", ""),
+        ]
+    )
+    assert [c.exit_code for c in cut] == [120, 141]
+
+
+def test_an_exit_code_in_the_output_is_not_the_calls_own():
+    """Anchored at the start, because a command whose *output* discusses exit codes is not a command
+    that exited with one — `rg 'Exit code 141' transcript.jsonl` is the obvious way to hit this."""
+    assert _call("rg 'exit'", "Exit code 0\nthe docs say Exit code 141 means SIGPIPE").exit_code == 0
+    assert _call("rg 'exit'", "the docs say Exit code 141 means SIGPIPE").exit_code is None
+
+
+def test_the_cut_count_prints_beside_the_shape_it_belongs_to(capsys):
+    """Measured 2026-09-08 over 30 days: 9,224 calls tagged `head/tail`, **9** of which actually cut
+    output — 0.10%. So the habit's cost is overwhelmingly the re-run and the masked exit, not lost
+    bytes, and the two numbers have to be readable together or the row's own "hides failures" claim
+    reads as the common case.
+
+    Beside the row rather than as a new `SESSION_ROWS` entry: a new row is absent from every stored
+    baseline and reads as a regression on the first `--compare`.
+    """
+    calls = [_call("git log | head -5", "Exit code 141"), *(_call("ls | head") for _ in range(9))]
+    audit._print_session_rows(calls)
+    row = next(line for line in capsys.readouterr().out.splitlines() if "head/tail" in line)
+    assert "1 actually cut output" in row
 
 
 def test_the_session_view_prints_every_row_including_the_zeros(capsys):

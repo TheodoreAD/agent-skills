@@ -950,3 +950,40 @@ anyway. Authoring a rule is not evidence of following it; measuring one is not e
 it either. And **every session-scale number quoted before the morning of 2026-09-06 is a floor**:
 `strip_heredoc` was dropping each command after a heredoc until that day, so the rounding counts
 above were re-taken after the fix and the earlier ones were not.
+
+## The habit is 9,224 calls; the harm is 9 (2026-09-08)
+
+Every row in this instrument counts a **shape** — how often a session composed a call that could
+lose data. None of them has ever counted the loss. `head/tail`'s own description asserted that it
+"forces re-runs and hides failures", and only the first half had a number behind it.
+
+It became measurable for one reason: layer 1 of `2026-09-05-a-piped-gate-that-cannot-lie.md`. With
+`pipefail` set in the agent shell a pipeline reports the rightmost non-zero status instead of the
+filter's zero, so a writer killed by SIGPIPE reaches the transcript as `Exit code 141`. Before that
+the same event returned 0 and could not be distinguished from a clean run at any sampling rate.
+
+Over the 30 days to 2026-09-08, 35,517 Bash calls:
+
+|                                     |           |
+| ----------------------------------- | --------- |
+| calls tagged `head/tail`            | 9,224     |
+| … whose output was **actually cut** | **9**     |
+| share                               | **0.10%** |
+
+Two statuses count and nothing else does. **141** is death by SIGPIPE; **120** is a Python process
+failing to flush stdout at shutdown for the same reason — the shape every script in this repo had
+until it handled SIGPIPE the same day. A failing gate behind a filter also returns non-zero under
+`pipefail`, and that is the gate failing rather than the output being cut; merging the two would
+destroy the distinction the row exists to make. `rg` with more matches than shown returns 1, which
+is indistinguishable from "no matches", so it is left out and the row under-counts rather than
+guesses.
+
+**What this settles and what it does not.** The cost of the habit is the re-run and the masked exit
+code, not lost bytes — so a session reading `head/tail=35%` should read a re-run tax, not a hole in
+what it saw. It does not make the habit harmless: two of the nine are
+`inv quality.precommit 2>&1 | head -20` at exit 120, which is a **gate** run whose output was cut,
+and that is precisely the call whose verdict a reader acts on. Nine events across thirty days, with
+two of them landing on the one command where it matters, is the honest shape of it.
+
+Printed beside `head/tail` in the session view rather than as a row of its own: a new row is absent
+from every stored baseline and would read as a regression on the first `--compare`.

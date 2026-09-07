@@ -782,10 +782,20 @@ it badly: the calls concentrate in the sessions that drive edits through scripts
 correction reached **+12pp** — one session's `exit-masked` moved 26% -> 39%, another 20% -> 32%.
 
 **One of the understated sessions is a published corpus row.** Sample 6 of
-`power-user-linux-setup`'s adherence corpus is recorded at 27% `exit-masked` against a real 37%, and
-it is the row the gate-versus-listing argument leans on hardest — "the cleanest possible case of a
-high rate that means nothing". Any row of that corpus taken from a heredoc-heavy session is
+`power-user-linux-setup`'s adherence corpus is recorded at 27% `exit-masked` against a real **38%**,
+and it is the row the gate-versus-listing argument leans on hardest — "the cleanest possible case of
+a high rate that means nothing". Any row of that corpus taken from a heredoc-heavy session is
 understated by the same mechanism, which is a correction to the reasoning and not only to a cell.
+
+[PITFALL: **that 38% was published here as 37%, because a re-score has to use the row's own
+boundary.** The corpus's rows are `--until` measurements, and only three of the twelve record the
+boundary they used; the rest record the session start. Re-measured 2026-09-07 at sample 6's recorded
+boundary the denominator reproduces exactly — 216 calls, the row's own `calls` figure — and the rate
+is 38%. The 37% first published here is the **whole transcript**, 252 calls, which is a different
+measurement wearing the same row number. Sample 1 shows how far that can go: whole-transcript it is
+384 calls against the row's 331, and its `exit-masked` comes out **lower** than the published figure
+(18% against 19%), so a whole-corpus re-score would print an improvement that no session made. A
+corrected row needs the boundary, not just the transcript.]
 
 The finding arrived sideways, which is the part worth keeping: `session-harvest`'s `claims` uses its
 own copy of the `exit-masked` regex against the **raw** command, so the two skills disagreed. 390

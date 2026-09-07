@@ -1,6 +1,6 @@
 ---
-status: in-progress
-updated: 2026-09-06
+status: landed
+updated: 2026-09-07
 ---
 
 # `strip_heredoc` truncates the command, not the heredoc body — every pattern under-counts
@@ -70,10 +70,12 @@ per session the correction is an order of magnitude larger.
 [PITFALL: **the last row is sample 6 of the published adherence corpus**, recorded in
 `power-user-linux-setup`'s `plans/2026-09-02-agents-md-adherence-sample-corpus.md` at 27% and cited
 by the gate-versus-listing argument, now in `skills/session-bash-audit/references/research.md` under
-"One rate over two outcomes". Its real rate is 37%. That sample is the one the argument leans on
-hardest — "the cleanest possible case of a high rate that means nothing" — so a correction to it is
-a correction to the reasoning built on it, not just to a cell. Any row of that corpus taken from a
-session that wrote patch heredocs is understated by the same mechanism.]
+"One rate over two outcomes". Its real rate is 37% over the whole transcript and **38% at the row's
+own `--until` boundary**, which is the figure that corrects the cell — see the 2026-09-07 decision
+below. That sample is the one the argument leans on hardest — "the cleanest possible case of a high
+rate that means nothing" — so a correction to it is a correction to the reasoning built on it, not
+just to a cell. Any row of that corpus taken from a session that wrote patch heredocs is understated
+by the same mechanism.]
 
 The two instruments' disagreement, which is what surfaced this: `harvest.py`'s `EXIT_MASKED_RE`
 matches the raw command, so it sees these calls and `audit.py` does not. Of 390 calls in the week
@@ -99,11 +101,21 @@ defence, because `strip_heredoc` runs before `strip_quoted`. So the unterminated
 unreachable in a week of real transcripts and is kept for the truncated-entry case rather than for
 an observed one.]
 
-[NEEDS CLARIFICATION: **does the corpus get re-scored, or annotated?** Three of the seven sample
-transcripts expire around 2026-10-02, so a re-score is possible now and not later. Re-scoring
-changes published numbers in another repo's plan; annotating leaves them wrong but traceable. This
-plan can only fix the instrument — the corpus lives in `power-user-linux-setup` and is that repo's
-to change, per the cross-repo rule.]
+[DECISION: **re-score the rows whose boundary is recorded, annotate the rest — settled with the user
+2026-09-07.** The question was filed as re-score-versus-annotate for the whole corpus and the
+measurement split it: the corpus's rows are `--until` measurements and **only three of the twelve
+record the boundary they used**, so only those three can be re-scored into the same denominator. Run
+at their recorded boundaries the calls column reproduces exactly — 216, 129, 228 — and `exit-masked`
+moves 27% → 38%, 22% → 28%, 7% → 12%. The rest are annotated as floors rather than re-measured,
+because a whole-transcript re-score changes the denominator silently: sample 1 comes out at 384
+calls against the row's 331 and its rate **falls** 19% → 18%, an improvement no session made, after
+a fix that can only raise the count.
+
+Also settled by measurement: **nothing has expired yet.** All eleven recorded transcripts were on
+disk 2026-09-07; row 4's id was never written down, so it is the one row no deadline threatens and
+none can fix. The corpus is `power-user-linux-setup`'s file, so the decision and the three re-scored
+rows were **filed there**, not applied —
+`2026-09-07-adherence-corpus-rescore-decision-and-boundary-numbers.md`, store commit `2829651`.]
 
 ## What landed, 2026-09-06
 
@@ -126,13 +138,11 @@ regression, because the instrument changed and no session did.
 
 ## What is left
 
-1. **The corpus question above** is the one open `NEEDS CLARIFICATION`, and it cannot be answered
-   from here: the corpus lives in `power-user-linux-setup` and is that repo's to change. **Filed
-   there 2026-09-06** as `2026-09-06-adherence-corpus-rows-understated-by-the-heredoc-bug.md` — in
-   the store mirror, not that repo's tree, commit `3186660` in `~/plans`. It carries the affected
-   rows, the re-score-versus-annotate question, and the deadline: three of the seven sample
-   transcripts expire around 2026-10-02, sample 6's among them. Nothing further to do from this
-   repo.
+1. ~~The corpus question~~ — **decided with the user 2026-09-07 and filed for the repo that owns the
+   corpus**, per the DECISION above. The first filing (`3186660`, since absorbed into that repo)
+   carried the question; the second (`2829651`) carries the answer, the three boundary re-scores and
+   the transcript-availability check. Nothing further to do from this repo, and this time that is
+   because the work is done rather than because it could not start.
 2. `harvest.py`'s `EXIT_MASKED_RE` keeps its own defect — it counts quoted mentions, the two the
    week's divergence turned up. Fixing it means sharing `strip_quoted`/`strip_heredoc` across two
    skills that install independently and cannot import each other, which is
@@ -146,3 +156,30 @@ regression, because the instrument changed and no session did.
    rather than the quoted half, which is the commoner one in practice and was not what the original
    pair of examples showed. Small and harmless here, and it is the shape that makes a reader trust
    whichever number they saw first.
+
+   **Stated in both skills 2026-09-07**, which is all this repo owed: `session-bash-audit`'s
+   `SKILL.md` beside the `exit-masked` limitation and `session-harvest`'s step 5 beside the
+   gate/listing split, each saying which direction its own number errs in and that neither is the
+   other's check.
+
+## Migrated to
+
+- **The behaviour** — `skills/session-bash-audit/scripts/audit.py`: `strip_heredoc` resuming after
+  the terminator, `HEREDOC_RE` capturing the delimiter word and excluding `<<<`, with five tests in
+  `tests/unit/test_audit.py` (four confirmed failing against the previous script).
+- **The reasoning** — that skill's `references/research.md`, "A heredoc hid every command that
+  followed it (2026-09-06)": the 1,267 newly-visible hits, the strict-versus-loose terminator
+  decision, the single unterminated call in a week, the two-instruments-over-one-corpus lesson, and
+  the pitfall that a baseline saved before the fix cannot be compared with one saved after. Extended
+  2026-09-07 with the boundary pitfall — a re-score needs the row's own `--until`, or the
+  denominator moves and a corrected row can read as an improvement.
+- **The divergence between the two instruments** — stated in both `SKILL.md`s (`session-bash-audit`
+  beside the `exit-masked` limitation, `session-harvest` in step 5), each naming the direction its
+  own number errs in and saying neither is the other's check.
+- **The corpus decision and its numbers** — filed for the repo that owns them,
+  `2026-09-07-adherence-corpus-rescore-decision-and-boundary-numbers.md`, store commit `2829651`.
+
+Not migrated: the per-session before/after table, whose value was making the case for the fix that
+has since landed — the corpus-wide figures and the one published row that was wrong are in
+`research.md`, and the other four sessions are not cited anywhere. Nor the earlier filing's text: it
+was absorbed into `power-user-linux-setup` and is that repo's file now.

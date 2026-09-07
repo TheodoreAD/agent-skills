@@ -56,7 +56,7 @@ python3 $H turns                                        # step 4
 python3 $H skills-state --since <session start>         # step 0 — needs a checkout, see below
 python3 $H sweep --boundary <instant>                   # step 5
 python3 $H claims --until <instant>                     # step 5, the exit-masked rule
-python3 $H filed --until <instant>                      # step 8, on a second harvest in one session
+python3 $H filed --until <instant>                      # step 8, every harvest — see below
 ```
 
 **The bare `turns`, `sweep` and `claims` lines resolve the transcript from
@@ -942,15 +942,24 @@ more than the phase before it. Ordinary, and it will recur. Nothing prompted the
 second harvest happened to remember it had filed the row, and had the user asked for one harvest
 instead of two, the corpus would have taken the prefix as the session's row.
 
-**`python3 $H filed --until <the boundary>` is what replaces the remembering.** It counts this
-session's own step-0 `boundary` calls, so "this is harvest #2" is read rather than recalled; lists
-the plan files this session wrote, each with the lines in it that carry a number; and lists every
-plans-store commit since session start, attributed to this session or explicitly not — the store is
-shared, so a commit inside the window is not yours by virtue of being there, and a row marked
-`(another session)` is reported, never edited. Re-derive each measurement it prints and **edit the
-file**, then write the delta. Correcting a plan in the store is inside the write set at the top of
-this procedure, one filed `--for` another repo included; a row marked `MISSING` has been absorbed
-into the repo that owns it, and there the correction is a new filing rather than an edit.
+**`python3 $H filed --until <the boundary>` is what replaces the remembering, and it runs on every
+harvest rather than only a second one.** It counts this session's own step-0 `boundary` calls, so
+"this is harvest #2" is read rather than recalled; lists the plan files this session wrote, each
+with the lines in it that carry a number; and lists every plans-store commit since session start,
+attributed to this session or explicitly not — the store is shared, so a commit inside the window is
+not yours by virtue of being there, and a row marked `(another session)` is reported, never edited.
+
+**On a first harvest it answers the report's opening groups instead**, which is why the command
+block does not gate it on a second run. Those groups are "where did everything go", and assembling
+them from the session's own memory is the mistake this step already warns about one paragraph down:
+confirm the file is still there before naming it. Confirmed 2026-09-07 on the first harvest to have
+the subcommand — it listed five plan files written that session, correctly marked the one that had
+been retired as `MISSING`, and reported **0 store commits this session against 18 from elsewhere**,
+a ratio no participant would have guessed and which decided whether an edit to a shared store plan
+was safe to make at all. Re-derive each measurement it prints and **edit the file**, then write the
+delta. Correcting a plan in the store is inside the write set at the top of this procedure, one
+filed `--for` another repo included; a row marked `MISSING` has been absorbed into the repo that
+owns it, and there the correction is a new filing rather than an edit.
 
 **Open with where everything went**, as four groups, because "did this land somewhere durable, or is
 it still only in the chat?" is the question the whole report exists to answer:

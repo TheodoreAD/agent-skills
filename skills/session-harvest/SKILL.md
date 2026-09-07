@@ -209,6 +209,16 @@ read on demand and is inert. Confirmed 2026-08-30: a directory-scoped query fire
 re-read-and-audit branch on a commit that touched only a `references/` page, and the audit was empty
 because the held wording had never changed.
 
+**`boundary`, `transcript` and `skills-state` all ran from the copy under test, and no ordering
+fixes that** — resolving the checkout is `skills-state`'s own job, so some call is always made
+before the staleness answer exists. The subcommand therefore reports its own exposure: when the
+stale script is the one executing, its verdict names which of its subcommands actually differ
+between install and checkout, and says whether the three above are among them. Usually they are not
+— confirmed 2026-09-07, six commits stale with every change in `sweep`, so all three pre-check
+answers were current and only a hand-written diff could show it. When they _are_ among them, re-run
+them from the checkout before trusting what you already collected; when the two copies cannot be
+compared at all, the verdict says that instead of reporting no difference.
+
 **When the checkout is ahead, its push state decides what may be offered as the remedy.** The
 installer clones from the remote, so a re-install cannot deliver a commit that has not been pushed —
 it reinstalls the identical stale copy, in a report that has just told the user re-installing is

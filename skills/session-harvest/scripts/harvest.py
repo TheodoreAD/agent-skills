@@ -43,6 +43,7 @@ Exit codes: 0 ok, 1 error, 2 argparse usage.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -1092,6 +1093,86 @@ def _tracked_files(root: Path) -> dict[str, Path]:
     }
 
 
+PRE_CHECK_COMMANDS = ("boundary", "transcript", "skills-state")
+
+
+def _module_definitions(text: str) -> dict[str, str] | None:
+    """Every module-level name and the source that defines it. None when the file will not parse.
+
+    Assignments are included alongside functions because a pattern this script branches on is
+    usually a module constant — a changed `GREEN_CLAIM_RE` changes what `claims` reports while every
+    function around it is byte-identical.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    lines = text.splitlines()
+    out: dict[str, str] = {}
+    for node in tree.body:
+        source = "\n".join(lines[node.lineno - 1 : node.end_lineno])
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            out[node.name] = source
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    out[target.id] = source
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            out[node.target.id] = source
+    return out
+
+
+def _reachable(name: str, defs: dict[str, str], seen: set[str] | None = None) -> set[str]:
+    """`name` plus every module-level definition reachable from it, by name reference."""
+    seen = set() if seen is None else seen
+    if name in seen or name not in defs:
+        return seen
+    seen.add(name)
+    try:
+        tree = ast.parse(defs[name])
+    except SyntaxError:
+        return seen
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in defs:
+            _reachable(node.id, defs, seen)
+    return seen
+
+
+def entry_points_differing(installed_script: Path, checkout_script: Path) -> list[str] | None:
+    """Which subcommands of this script differ between the two copies. None when it cannot tell.
+
+    `skills-state` answers the staleness question from inside the copy under test: on a stale
+    install the three subcommands a harvest has already run — `boundary`, `transcript` and
+    `skills-state` itself — came from the old code, and no ordering fixes that, because resolving
+    the checkout is `skills-state`'s own job. So the exposure is reported rather than removed:
+    naming the subcommands whose code actually differs turns "some of what you have already read may
+    be stale" into a list, usually an empty one.
+
+    Comparison is per definition rather than per file, because a `harvest.py` diff is nearly always
+    somewhere else — observed 2026-09-07, six commits stale, every one of them in `sweep`, so all
+    three pre-check answers were current and the run had no way to know it.
+
+    None means the question was not answered — a file that would not parse or a subcommand that
+    exists on neither side — and must never be read as "nothing differs".
+    """
+    try:
+        left, right = installed_script.read_text("utf-8"), checkout_script.read_text("utf-8")
+    except OSError:
+        return None
+    old, new = _module_definitions(left), _module_definitions(right)
+    if old is None or new is None:
+        return None
+    differing: list[str] = []
+    for command in sorted({n[4:].replace("_", "-") for n in {*old, *new} if n.startswith("cmd_")}):
+        entry = f"cmd_{command.replace('-', '_')}"
+        names = _reachable(entry, old) | _reachable(entry, new)
+        if not names:
+            return None
+        if any(old.get(n) != new.get(n) for n in names):
+            differing.append(command)
+    return differing
+
+
 def skill_state(runner: Runner, name: str, checkout: Path, installed_root: Path, since: str | None) -> dict[str, Any]:
     source = checkout / "skills" / name
     installed = installed_root / name
@@ -1166,7 +1247,40 @@ def skill_state(runner: Runner, name: str, checkout: Path, installed_root: Path,
         # Said separately because the remedy differs: a stale SKILL.md can be re-read from whichever
         # side is ahead, and a stale script cannot — the run executes it.
         state["verdict"] += "; the stale part includes scripts/, which this session EXECUTES rather than reads"
+        _note_own_staleness(state, installed, source)
     return _with_move_check(state, runner, checkout, rel, since, last)
+
+
+def _note_own_staleness(state: dict[str, Any], installed: Path, source: Path) -> None:
+    """When the stale script is the one running, say which of its subcommands that actually affects.
+
+    Only fires when this process was launched from the installed copy being judged: a harvest that
+    already runs `harvest.py` from the checkout is using current code and has nothing to re-run.
+    """
+    running = Path(__file__).resolve()
+    if not running.is_relative_to(installed.resolve()):
+        return
+    differing = entry_points_differing(running, source / "scripts" / running.name)
+    state["entry_points_differing"] = differing
+    if differing is None:
+        state["verdict"] += (
+            "; this script IS the stale copy and the two could not be compared — re-run "
+            f"{', '.join(PRE_CHECK_COMMANDS)} from the checkout before trusting their answers"
+        )
+        return
+    already_run = [c for c in PRE_CHECK_COMMANDS if c in differing]
+    if already_run:
+        state["verdict"] += (
+            f"; this script IS the stale copy and {', '.join(already_run)} differ — those answers came "
+            "from the old code, so re-run them from the checkout"
+        )
+    else:
+        state["verdict"] += (
+            f"; this script IS the stale copy, but none of {', '.join(PRE_CHECK_COMMANDS)} differ, so the "
+            "answers already collected match what the checkout would have given"
+        )
+    if differing:
+        state["verdict"] += f" (differing: {', '.join(differing)})"
 
 
 def _with_move_check(

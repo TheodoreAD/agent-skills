@@ -607,6 +607,87 @@ def test_a_changed_script_is_not_an_install_that_matches(tmp_path):
     assert "EXECUTES" in state["verdict"], "a stale script cannot be re-read into correctness"
 
 
+OLD_SCRIPT = """
+PATTERN = "old"
+
+
+def helper():
+    return PATTERN
+
+
+def cmd_sweep(args):
+    return helper()
+
+
+def cmd_boundary(args):
+    return 1
+
+
+def cmd_skills_state(args):
+    return 2
+"""
+
+
+def test_which_subcommands_differ_is_read_per_definition_not_per_file(tmp_path):
+    """A `harvest.py` diff is nearly always somewhere else. Observed 2026-09-07: six commits stale,
+    every one of them in `sweep`, so all three pre-check answers were current and the run had no way
+    to know it — it diffed the whole file by hand instead."""
+    old, new = tmp_path / "old.py", tmp_path / "new.py"
+    old.write_text(OLD_SCRIPT)
+    new.write_text(OLD_SCRIPT.replace('PATTERN = "old"', 'PATTERN = "new"'))
+
+    # `sweep` reaches PATTERN through `helper`; the other two do not touch it.
+    assert harvest.entry_points_differing(old, new) == ["sweep"]
+    assert harvest.entry_points_differing(old, old) == []
+
+
+def test_a_file_that_will_not_parse_answers_none_rather_than_nothing_differs(tmp_path):
+    """An absent measurement must not read as a measured zero — the same rule the processes step
+    follows when `ps` does not run."""
+    old, new = tmp_path / "old.py", tmp_path / "new.py"
+    old.write_text(OLD_SCRIPT)
+    new.write_text("def cmd_sweep(:\n")
+    assert harvest.entry_points_differing(old, new) is None
+
+
+def test_a_stale_script_says_whether_the_answers_already_collected_are_affected(tmp_path, monkeypatch):
+    """`skills-state` answers the staleness question from inside the copy under test: on a stale
+    install `boundary`, `transcript` and `skills-state` itself have already run from the old code,
+    and no ordering fixes that, because resolving the checkout is `skills-state`'s own job. Reported
+    rather than removed, per the 2026-09-07 plan that found it benign by luck."""
+    checkout, installed_root = tmp_path / "checkout", tmp_path / "installed"
+    source = make_skill(checkout, "session-harvest", "same\n", script=OLD_SCRIPT)
+    installed = make_installed(installed_root, "session-harvest", "same\n", script=OLD_SCRIPT)
+    running = installed / "scripts" / "x.py"
+    monkeypatch.setattr(harvest, "__file__", str(running))
+
+    # Only `sweep` differs: the answers this run already collected are current.
+    (source / "scripts" / "x.py").write_text(OLD_SCRIPT.replace('PATTERN = "old"', 'PATTERN = "new"'))
+    state = harvest.skill_state(FakeRunner(), "session-harvest", checkout, installed_root, since=None)
+    assert state["entry_points_differing"] == ["sweep"]
+    assert "none of boundary, transcript, skills-state differ" in state["verdict"]
+
+    # Now the check itself differs, so its own answer came from the old code.
+    (source / "scripts" / "x.py").write_text(OLD_SCRIPT.replace("return 2", "return 3"))
+    state = harvest.skill_state(FakeRunner(), "session-harvest", checkout, installed_root, since=None)
+    assert state["entry_points_differing"] == ["skills-state"]
+    assert "re-run them from the checkout" in state["verdict"]
+
+
+def test_a_harvest_already_running_from_the_checkout_is_not_warned_about_itself(tmp_path, monkeypatch):
+    """The note is about executing the copy under test. A run that has already switched to the
+    checkout is using current code and has nothing to re-run."""
+    checkout, installed_root = tmp_path / "checkout", tmp_path / "installed"
+    source = make_skill(checkout, "session-harvest", "same\n", script=OLD_SCRIPT)
+    make_installed(installed_root, "session-harvest", "same\n", script=OLD_SCRIPT.replace("return 2", "return 3"))
+    monkeypatch.setattr(harvest, "__file__", str(source / "scripts" / "x.py"))
+
+    state = harvest.skill_state(FakeRunner(), "session-harvest", checkout, installed_root, since=None)
+
+    assert "entry_points_differing" not in state
+    assert "IS the stale copy" not in state["verdict"]
+
+
 def test_a_references_only_difference_is_not_a_stale_install(tmp_path):
     """`references/` is read on demand and inert, so a difference there changes no run. Counting it
     as staleness is how a check with three honest branches becomes one nobody reads — the same

@@ -76,6 +76,9 @@ def test_a_non_bash_rule_is_not_a_bash_rule():
 
 
 def test_read_grants_become_directory_roots(monkeypatch, tmp_path):
+    """This one failed on the Windows leg the hour it was written, and the bug was the module's: the
+    glob tail was stripped by a `/`-anchored regex *after* `expanduser`, so an expanded home kept
+    its `\\**` suffix and the grant scoped a directory nothing is under."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     roots = prompts._read_roots(["Read(//srv/data/**)", "Read(~/notes/**)", "Bash(ls:*)"])

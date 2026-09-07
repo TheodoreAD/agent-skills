@@ -63,15 +63,25 @@ Rules = tuple[list[tuple[str, re.Pattern[str]]], list[tuple[str, re.Pattern[str]
 
 def _read_roots(rules: list[str]) -> list[str]:
     """Directory roots granted by `Read(//abs/**)` / `Read(~/rel/**)` rules — a read-only Bash
-    command whose path argument sits under one of these doesn't prompt (probed 2026-08-25)."""
+    command whose path argument sits under one of these doesn't prompt (probed 2026-08-25).
+
+    The glob tail is stripped **before** `expanduser`, not after. A rule is written with forward
+    slashes on every platform, while an expanded home is `C:\\Users\\…` on Windows — so a
+    `/`-anchored strip ran after expansion left `…\\notes\\**` as the root, a directory nothing is
+    ever under, and every `Read(~/...)` grant silently scoped nothing. Caught by the Windows CI leg
+    2026-09-07, within the hour of this module getting its first tests.
+    """
     roots = []
     for rule in rules:
         m = re.fullmatch(r"Read\((.*)\)", rule)
         if not m:
             continue
-        path = m.group(1)
-        path = path[1:] if path.startswith("//") else str(Path(path).expanduser()) if path.startswith("~") else path
-        roots.append(re.sub(r"/\*\*?$", "", path))
+        path = re.sub(r"/\*\*?$", "", m.group(1))
+        if path.startswith("//"):
+            path = path[1:]
+        elif path.startswith("~"):
+            path = str(Path(path).expanduser())
+        roots.append(path)
     return roots
 
 

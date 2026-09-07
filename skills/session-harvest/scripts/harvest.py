@@ -1666,6 +1666,23 @@ DOCKER_CALL_RE = re.compile(r"(?:^|[|;&]|\bsudo(?:\s+-A)?\s+)\s*docker\b", re.MU
 QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
 
 
+def bare_commands(entries: Iterable[dict[str, Any]]) -> list[str]:
+    """This session's Bash commands with quoted spans blanked — the input every attribution reads.
+
+    **A quoted span is where a name appears without being used**, and blanking it is not a detail:
+    `rg "docker"` searches for the word, `git commit -m "absorbed <file>"` names a file in a
+    sentence, `--expect "library.py add"` quotes a command it is looking for. Skipping this was a
+    false positive on the very first live run of the docker check, 2026-09-06 — `rg -n "def
+    sweep|docker|listener" harvest.py` matched, because an alternation inside a quoted search
+    pattern is a pipe followed by the word, which is command position by every rule a regex knows.
+
+    Searching for a name is the single most likely way it appears in a session that never ran it,
+    which is exactly the session these checks exist to protect. Shared rather than repeated so the
+    next check cannot be written without it.
+    """
+    return [QUOTED_SPAN_RE.sub(" ", command) for _, command in bash_calls(entries)]
+
+
 def invoked_docker(entries: Iterable[dict[str, Any]]) -> bool:
     """Whether the session ran `docker` at all — the cross-check that turns a timestamp into an
     attribution.
@@ -1673,15 +1690,56 @@ def invoked_docker(entries: Iterable[dict[str, Any]]) -> bool:
     Matched at command position, so a `rg docker` or a sentence naming it is not an invocation.
     A form this misses (an env-assignment prefix, a wrapper script) costs an image reported as
     unattributed, which is the direction that cannot make a false claim.
-
-    **Quoted spans are removed first, and skipping that was a false positive on the very first live
-    run of this check, 2026-09-06**: `rg -n "def sweep|docker|listener" harvest.py` matched, because
-    an alternation inside a quoted search pattern is a pipe followed by the word — command position
-    by every rule the regex knows. A search for the word is the single most likely way `docker`
-    appears in a session that never ran it, which is exactly the session this check exists to
-    protect.
     """
-    return any(DOCKER_CALL_RE.search(QUOTED_SPAN_RE.sub(" ", command)) for _, command in bash_calls(entries))
+    return any(DOCKER_CALL_RE.search(command) for command in bare_commands(entries))
+
+
+def entry_needles(name: str) -> tuple[str, ...]:
+    """The spellings a transcript would name one research-library entry by.
+
+    `github.com--seddonym--import-linter` is reached two ways in practice, and only one of them is
+    the directory name. A session that *reads* an entry names the directory — an `rg` over the
+    clone, `library.py update <entry>`. A session that *adds* one names a URL, and the entry's own
+    name is derived from it afterwards, so `<owner>/<repo>` is what sits in argv and the directory
+    name appears nowhere.
+
+    Matching the directory name alone therefore attributes every entry a session read and none it
+    added, which is exactly backwards: an add is the event worth attributing, and a read leaves the
+    mtime alone anyway.
+    """
+    parts = name.split("--")
+    return (name, "/".join(parts[1:])) if len(parts) >= 3 else (name,)
+
+
+def attributable_entries(changed: Sequence[str], entries: Sequence[dict[str, Any]]) -> list[str]:
+    """Which of the changed library entries this session can be *shown* to have touched.
+
+    An mtime inside the session window is not an attribution. The library is refreshed wholesale by
+    `library.py update` and cloned into by any parallel session, so the window catches the machine's
+    work and the report presents it as this session's.
+
+    Confirmed 2026-09-07: a sweep reported **30 entries** as changed — `cpython`, `node`, `ansible`,
+    `git`, and a whole dotfile-manager cluster that was visibly another session's research topic.
+    **Five were this session's**, and its own transcript said which: it ran `library.py add` exactly
+    five times, for a coupling-tool survey. A harvest reading that output would have reported
+    touching thirty reference clones, which is specific, plausible, and wrong in the direction
+    nobody re-checks.
+
+    **It under-attributes when a script does the work, and the session that wrote this check is the
+    example.** 2026-09-08: a retrofit re-cloned seven entries from a `retrofit.py` holding the names
+    in a list, so argv named two of the seven and the other five came back unattributed — this
+    session's own work, filed under "something else". That is the conservative direction and it is
+    the intended one, since the alternative is claiming a refresher's work; but it is the same blind
+    spot the outside-any-repo check has, one door along, and the report has to say so rather than
+    let a low count read as a small session. See
+    `plans/2026-09-05-sweep-misses-a-file-a-subprocess-wrote.md`.
+    """
+    haystack = [*bare_commands(entries), *(str(path) for path in written_paths(entries))]
+    return [
+        item
+        for item in changed
+        if any(needle in text for needle in entry_needles(Path(item).name) for text in haystack)
+    ]
 
 
 def disk(runner: Runner, since: str | None, ran_docker: bool | None = None) -> dict[str, Any]:
@@ -1726,13 +1784,20 @@ def disk(runner: Runner, since: str | None, ran_docker: bool | None = None) -> d
     return out
 
 
-def store_state(runner: Runner, name: str, path: Path, since: str | None) -> dict[str, Any]:
+def store_state(
+    runner: Runner, name: str, path: Path, since: str | None, entries: Sequence[dict[str, Any]] = ()
+) -> dict[str, Any]:
     """A store outside every working tree. Two of them fail differently, so both are checked.
 
     The plans store is a git repository, so its failure is an *uncommitted* plan: not a commit, so
     no ahead-count anywhere sees it, and nothing walks to a directory outside every working tree.
     The research library is not version-controlled at all, so its failure is a half-finished entry —
     a clone without its metadata file, or one that failed partway.
+
+    `entries` is this session's transcript, and it is what keeps the library half from reading a
+    time window as an attribution — the same defect the disk section's image rows had, fixed the
+    same way. Without a transcript the rows are still reported and no claim is made about whose
+    they are.
     """
     if not path.is_dir():
         return {"store": name, "path": str(path), "present": False}
@@ -1747,17 +1812,30 @@ def store_state(runner: Runner, name: str, path: Path, since: str | None) -> dic
             state["note"] = why + " (the sensitive tier deliberately has no remote)"
     else:
         cutoff = as_instant(since) if since else None
-        entries = _library_entries(path)
-        state["changed_since_session_start"] = [
-            str(entry.relative_to(path))
-            for entry in entries
-            if cutoff is not None and datetime.fromtimestamp(entry.stat().st_mtime, UTC) > cutoff
+        library = _library_entries(path)
+        changed = [
+            str(item.relative_to(path))
+            for item in library
+            if cutoff is not None and datetime.fromtimestamp(item.stat().st_mtime, UTC) > cutoff
         ]
+        attributed = attributable_entries(changed, entries) if entries else []
+        state["changed_by_this_session"] = attributed
+        # Kept as a list in the payload and printed as a bare count: a refresher moving every mtime
+        # is the store working as designed, so twenty-five names are noise, while a reader who wants
+        # to check the split should not have to re-derive it.
+        state["changed_by_something_else"] = [item for item in changed if item not in set(attributed)]
+        state["changed_attribution"] = (
+            f"{len(attributed)} of {len(changed)} named in this session's own commands"
+            if entries
+            else "no transcript to check this session's commands against"
+        )
         # A half-finished entry is this store's characteristic failure: a clone without its
         # provenance file, or one that failed partway. Nothing else on the machine can see it,
-        # because the store is not version-controlled at all.
+        # because the store is not version-controlled at all. Deliberately *not* attributed — it is
+        # a per-entry fact that does not depend on who made it, and it is the check this section is
+        # actually for.
         state["entries_without_provenance"] = [
-            entry.relative_to(path).as_posix() for entry in entries if not _has_provenance(entry)
+            item.relative_to(path).as_posix() for item in library if not _has_provenance(item)
         ][:20]
     return state
 
@@ -2026,7 +2104,7 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         "disk": lambda: {"disk": disk(runner, since, ran_docker)},
         "repos": lambda: {"repos": [asdict(state) for state in states]},
         "ci": lambda: {"ci": {s.path: ci_runs(runner, Path(s.path), s.branch, since) for s in states}},
-        "stores": lambda: _sweep_stores(runner, args.checkout, repos, since),
+        "stores": lambda: _sweep_stores(runner, args.checkout, repos, since, entries),
         "plans": lambda: {"depends_on": {str(path): depends_on(path) for path in repos}},
         "paths": lambda: _sweep_loose_files(runner, entries) if entries else {},
     }
@@ -2046,10 +2124,16 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     return payload
 
 
-def _sweep_stores(runner: Runner, checkout: str | None, repos: Sequence[Path], since: str | None) -> dict[str, Any]:
+def _sweep_stores(
+    runner: Runner,
+    checkout: str | None,
+    repos: Sequence[Path],
+    since: str | None,
+    entries: Sequence[dict[str, Any]] = (),
+) -> dict[str, Any]:
     plans_py = find_plans_py(_checkout_or_none(checkout))
     return {
-        "stores": [store_state(runner, name, path, since) for name, path in _stores()],
+        "stores": [store_state(runner, name, path, since, entries) for name, path in _stores()],
         "absorb": {str(path): absorb_queue(runner, plans_py, path) for path in repos},
     }
 
@@ -2224,9 +2308,21 @@ def _print_store(state: dict[str, Any]) -> None:
     if not state.get("present"):
         print("  not present")
         return
-    for key in ("dirty", "unpushed", "changed_since_session_start", "entries_without_provenance"):
+    for key in ("dirty", "unpushed", "changed_by_this_session", "entries_without_provenance"):
         for line in state.get(key, []):
             print(f"  {key}: {line}")
+    others = state.get("changed_by_something_else") or []
+    if others:
+        # A count, not a list. A refresher moving every entry's mtime is the store working as
+        # designed, and printing twenty-five names buries the handful that are this session's.
+        print(f"  changed_by_something_else: {len(others)} entr(ies) — a refresher, a parallel session, or a script")
+    if state.get("changed_attribution"):
+        print(f"  attribution: {state['changed_attribution']}")
+    if others:
+        # The check's own limit, printed next to its result. Attribution is by name-in-argv, so work
+        # done inside a script that holds the names itself lands here — under-reported, not absent.
+        print("    ^ by name in this session's own commands, so entries a script named only")
+        print("      internally are under-reported here. Check before reporting a low count as a small session")
     if state.get("note"):
         print(f"  note: {state['note']}")
 
@@ -2424,14 +2520,39 @@ def filed_plans(entries: Iterable[dict[str, Any]], repos: Sequence[Path]) -> lis
     return found
 
 
-def store_commits(runner: Runner, name: str, path: Path, since: str | None, written: Sequence[Path]) -> dict[str, Any]:
+def store_commits(
+    runner: Runner,
+    name: str,
+    path: Path,
+    since: str | None,
+    written: Sequence[Path],
+    entries: Sequence[dict[str, Any]] = (),
+) -> dict[str, Any]:
     """The store's own commits since this session began, each attributed or explicitly not.
 
     The store is shared, so a commit inside the window is not this session's by virtue of being
-    there — the same trap the disk bullet's image rows fell into. A commit counts as this session's
-    when it touches a path the transcript shows this session writing; everything else is listed
-    under its own heading and never proposed for correction, because it is another session's work
-    and possibly a live one's.
+    there — the same trap the disk bullet's image rows fell into. Everything it cannot attribute is
+    listed under its own heading and never proposed for correction.
+
+    **Written paths alone cannot see a deletion, and a deletion is the commonest way any session
+    commits here.** `plans.py absorb --apply` *moves* a plan out of the store into a repo: the
+    session writes nothing at the store path, so no `Write` or `Edit` call names it, so a purely
+    conservative reading calls the session's own removal commit somebody else's. Confirmed
+    2026-09-07 — a session absorbed three plans, committed each removal minutes later, and `filed`
+    reported `0 commit(s) this session, 20 from elsewhere` with all three of its own listed under
+    `(another session)`.
+
+    That is the one direction the conservative reading was argued to be safe in, and it is worse
+    than a mislabelled row: step 8 gives the label authority over what the harvest may then do —
+    "a row marked `(another session)` is reported, never edited" — so a harvest following the
+    procedure correctly declines to correct its own filings. It is self-concealing in the usual way,
+    since `0 commit(s) this session` is a plausible number for a session that did no store work.
+
+    So argv is read as well as write paths: a commit whose file this session *named* in a command —
+    `plans.py commit <file>`, `plans.py absorb --only <file>`, a `git rm` — is this session's, with
+    no timestamp heuristic and no new parallel-session risk. What still cannot be matched is
+    reported as unattributed rather than as another session's, because that is the only claim the
+    evidence supports.
     """
     state: dict[str, Any] = {"store": name, "path": str(path)}
     if not path.is_dir() or not (path / ".git").exists():
@@ -2446,6 +2567,8 @@ def store_commits(runner: Runner, name: str, path: Path, since: str | None, writ
         state["error"] = ran.err.strip() or f"git log exited {ran.code}"
         return state
     mine = {os.path.normpath(str(p)) for p in written}
+    # Paired with their instants, because naming a file is not enough — see `_named_before`.
+    named = [(as_instant(stamp), QUOTED_SPAN_RE.sub(" ", command)) for stamp, command in bash_calls(entries)]
     commits: list[dict[str, Any]] = []
     for chunk in ran.out.split(COMMIT_RECORD):
         lines = [line for line in chunk.splitlines() if line.strip()]
@@ -2456,6 +2579,8 @@ def store_commits(runner: Runner, name: str, path: Path, since: str | None, writ
             continue
         sha, when, author, subject = header
         files = lines[1:]
+        wrote = any(os.path.normpath(str(path / f)) in mine for f in files)
+        mentioned = _named_before(files, when, named)
         commits.append(
             {
                 "sha": sha[:9],
@@ -2463,11 +2588,46 @@ def store_commits(runner: Runner, name: str, path: Path, since: str | None, writ
                 "author": author,
                 "subject": subject,
                 "files": files,
-                "this_session": any(os.path.normpath(str(path / f)) in mine for f in files),
+                "this_session": wrote or mentioned,
+                "evidence": "wrote a file in it" if wrote else "named a file in a command" if mentioned else "",
             }
         )
     state["commits"] = commits
+    state["attribution"] = (
+        "a commit is this session's when this session wrote or named one of its files"
+        if entries
+        else "no transcript: nothing here is attributable, whatever the timestamps say"
+    )
     return state
+
+
+def _named_before(files: Sequence[str], when: str, commands: Sequence[tuple[datetime | None, str]]) -> bool:
+    """Whether this session named one of a commit's files in a command that ran *before* it.
+
+    **The ordering is the whole check, and leaving it out was a false positive on this function's
+    own first live run, 2026-09-08.** A bare name match attributed two commits a parallel session
+    made at 00:18 and 00:20 to this session, because this session ran `absorb --only <file>` on the
+    same filenames at 00:45. Both sessions legitimately name the same plan; only one of them made
+    each commit, and a command cannot have caused a commit that already existed when it ran.
+
+    That is the exact error the write-path-only version was guarding against, arriving through the
+    door opened to fix its opposite — so the two evidence sources are not interchangeable and this
+    one needs the timestamp the other never did.
+
+    Unparseable on either side means no attribution, which keeps the original conservative default
+    where the ordering cannot be established.
+    """
+    stamp = as_instant(when)
+    if stamp is None:
+        return False
+    names = [Path(f).name for f in files if Path(f).name]
+    # The basename rather than the full path: a plan filename carries its own date and topic
+    # (`2026-09-07-stub-authoring-skill.md`), so a substring hit is evidence, and it matches however
+    # the command spelled the directory in front of it.
+    return any(
+        moment is not None and moment <= stamp and any(name in command for name in names)
+        for moment, command in commands
+    )
 
 
 def cmd_filed(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
@@ -2487,7 +2647,11 @@ def cmd_filed(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     written = written_paths(entries)
     runs = harvest_runs(entries, args.until)
     plans = filed_plans(entries, repos)
-    stores = [store_commits(runner, name, path, since, written) for name, path in _stores() if name.startswith("plans")]
+    stores = [
+        store_commits(runner, name, path, since, written, entries)
+        for name, path in _stores()
+        if name.startswith("plans")
+    ]
 
     payload = {
         "transcript": transcript.as_dict(),
@@ -2541,13 +2705,21 @@ def _print_store_commits(state: dict[str, Any]) -> None:
     commits = state.get("commits") or []
     ours = [c for c in commits if c["this_session"]]
     theirs = [c for c in commits if not c["this_session"]]
-    print(f"    {len(ours)} commit(s) this session, {len(theirs)} from elsewhere, since session start")
+    print(f"    {len(ours)} commit(s) this session, {len(theirs)} not attributable, since session start")
+    if state.get("attribution"):
+        print(f"    ^ {state['attribution']}")
     for commit in ours:
         print(f"    {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
+        if commit.get("evidence"):
+            print(f"        ^ this session {commit['evidence']}")
     for commit in theirs:
-        print(f"    (another session) {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
+        print(f"    (not attributed) {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
     if theirs:
-        print("    rows marked (another session) are not yours to correct — report them, do not edit them")
+        # Deliberately not "(another session)". The evidence establishes only that nothing tied the
+        # commit to this session, and the two readings — somebody else's work, versus this session's
+        # through a door the check cannot see — call for opposite next steps.
+        print("    rows marked (not attributed) may be another session's live work: report, do not edit.")
+        print("    If one is yours through a path this check cannot see, say so rather than assuming either way")
 
 
 # --------------------------------------------------------------------------------------------

@@ -1034,6 +1034,73 @@ def test_a_store_entry_without_provenance_is_found_one_level_down(tmp_path):
 
 
 # --------------------------------------------------------------------------------------------
+# attribution: a time window is not evidence of who did the thing
+#
+# Four checks in this file have made the same mistake, and the corpus now treats it as one defect
+# with per-check mechanisms rather than four coincidences. `_correction_overlap` and the docker
+# rows were fixed first; the two below are the same root in the library and the plans store.
+
+
+def test_a_library_entry_a_refresher_touched_is_not_this_sessions(tmp_path):
+    """Confirmed 2026-09-07: a sweep reported **30** entries changed since session start, including
+    `cpython`, `node`, `git` and a dotfile-manager cluster that was visibly another session's
+    research topic. **Five were this session's** — it ran `library.py add` exactly five times — and
+    its own transcript said which. A harvest reading that output would report touching thirty
+    reference clones: specific, plausible, and wrong in the direction nobody re-checks."""
+    library = tmp_path / "research"
+    for name in ("github.com--seddonym--import-linter", "github.com--python--cpython", "github.com--twpayne--chezmoi"):
+        (library / "repos" / name).mkdir(parents=True)
+    entries = [bash_entry("python3 library.py add https://github.com/seddonym/import-linter")]
+
+    state = harvest.store_state(FakeRunner(), "research", library, "2000-01-01T00:00:00Z", entries)
+    assert state["changed_by_this_session"] == ["repos/github.com--seddonym--import-linter"]
+    assert sorted(state["changed_by_something_else"]) == [
+        "repos/github.com--python--cpython",
+        "repos/github.com--twpayne--chezmoi",
+    ]
+    assert state["changed_attribution"] == "1 of 3 named in this session's own commands"
+
+
+def test_an_entry_is_matched_by_the_url_that_made_it_and_not_only_its_directory_name():
+    """The two spellings are not interchangeable and only one of them is the directory. A session
+    that *reads* an entry names the directory; a session that *adds* one names a URL, and the entry
+    name is derived from it afterwards. Matching the directory alone attributes every entry a
+    session read and none it added — backwards, since an add is the event worth attributing and a
+    read does not move an mtime at all."""
+    assert harvest.entry_needles("github.com--seddonym--import-linter") == (
+        "github.com--seddonym--import-linter",
+        "seddonym/import-linter",
+    )
+    # A flat name has no owner/repo tail to derive, and must not grow a bogus one.
+    assert harvest.entry_needles("skillsbench-2026.pdf") == ("skillsbench-2026.pdf",)
+
+
+def test_searching_for_an_entrys_name_is_not_touching_it(tmp_path):
+    """The lesson the docker check paid for on its first live run, applied before this one has a
+    chance to repeat it: a quoted span is where a name appears without being used. Grepping the
+    corpus for an entry name is the single most likely way it shows up in a session that never went
+    near the library."""
+    library = tmp_path / "research"
+    (library / "repos" / "github.com--block--goose").mkdir(parents=True)
+    entries = [bash_entry('rg -n "github.com--block--goose" ~/notes.md')]
+
+    state = harvest.store_state(FakeRunner(), "research", library, "2000-01-01T00:00:00Z", entries)
+    assert state["changed_by_this_session"] == []
+
+
+def test_without_a_transcript_no_library_entry_is_claimed(tmp_path):
+    """The same shape as the docker rows: the entries are still reported, and no claim is made about
+    whose they are. An empty attributed list plus a count is the honest answer, not silence."""
+    library = tmp_path / "research"
+    (library / "repos" / "github.com--a--b").mkdir(parents=True)
+
+    state = harvest.store_state(FakeRunner(), "research", library, "2000-01-01T00:00:00Z")
+    assert state["changed_by_this_session"] == []
+    assert state["changed_by_something_else"] == ["repos/github.com--a--b"]
+    assert "no transcript" in state["changed_attribution"]
+
+
+# --------------------------------------------------------------------------------------------
 # the claims count
 # --------------------------------------------------------------------------------------------
 
@@ -1168,6 +1235,98 @@ def test_a_store_commit_from_another_session_is_not_this_sessions_to_correct(tmp
     state = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [mine])
     assert [c["subject"] for c in state["commits"] if c["this_session"]] == ["power-user-linux-setup: an adherence row"]
     assert [c["subject"] for c in state["commits"] if not c["this_session"]] == ["repo-tasks: somebody else's plan"]
+
+
+def test_a_store_commit_that_only_deletes_is_still_this_sessions(tmp_path, monkeypatch):
+    """The conservative reading's one false claim, and it fires on the commonest store commit there
+    is. `plans.py absorb --apply` *moves* a plan out of the store, so the session writes nothing at
+    the store path and no Write or Edit call names it.
+
+    Confirmed 2026-09-07: a session absorbed three plans, committed each removal minutes later, and
+    `filed` reported `0 commit(s) this session, 20 from elsewhere` with all three of its own among
+    the strangers. Worse than a mislabelled row, because step 8 gives the label authority — "a row
+    marked (another session) is reported, never edited" — so a harvest following the procedure
+    correctly declines to correct its own filings.
+    """
+    store = tmp_path / "plans"
+    (store / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    log = (
+        "\x1e719a495a2\x1f2026-09-07T15:08:41+03:00\x1fT\x1fpower-user-linux-setup: absorbed, take invoke-stubs\n"
+        "power-user-linux-setup/2026-09-07-take-invoke-stubs-0-2-0.md\n"
+    )
+    runner = FakeRunner({f"git -C {store} log": (0, log, "")})
+    entries = [bash_entry("python3 plans.py absorb --apply --only 2026-09-07-take-invoke-stubs-0-2-0.md")]
+
+    # Written paths alone: the file was deleted, so nothing this session wrote names it.
+    blind = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [])
+    assert [c["this_session"] for c in blind["commits"]] == [False]
+
+    seeing = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [], entries)
+    (commit,) = seeing["commits"]
+    assert commit["this_session"] is True
+    assert commit["evidence"] == "named a file in a command"
+
+
+def test_naming_a_file_after_a_commit_does_not_make_that_commit_yours(tmp_path, monkeypatch):
+    """The false positive reading argv opened, caught on this check's own first live run 2026-09-08.
+
+    A parallel session committed to two plans at 00:18 and 00:20; this session ran
+    `absorb --only <file>` on the same filenames at 00:45, and a bare name match called both commits
+    its own. Both sessions legitimately name the same plan — a command simply cannot have caused a
+    commit that already existed when it ran, which is the one thing that separates them.
+
+    That is the exact error the write-path-only version was guarding against, arriving through the
+    door opened to fix its opposite. So the two evidence sources are not interchangeable, and this
+    one needs a timestamp the other never did.
+    """
+    store = tmp_path / "plans"
+    (store / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    log = (
+        "\x1etheirs001\x1f2026-09-08T00:18:16+03:00\x1fT\x1fagent-skills: the ratio moved inside its own window\n"
+        "github.com-personal/agent-skills/2026-09-07-web-fetch.md\n"
+        "\x1emine00001\x1f2026-09-08T00:45:32+03:00\x1fT\x1fagent-skills: absorbed seven\n"
+        "github.com-personal/agent-skills/2026-09-07-web-fetch.md\n"
+    )
+    runner = FakeRunner({f"git -C {store} log": (0, log, "")})
+    entries = [bash_entry("plans.py absorb --apply --only 2026-09-07-web-fetch.md", "2026-09-07T21:45:00.000Z")]
+
+    state = harvest.store_commits(runner, "plans", store, "2026-09-07T20:00:00+03:00", [], entries)
+    attributed = {c["sha"]: c["this_session"] for c in state["commits"]}
+    assert attributed == {"theirs001": False, "mine00001": True}
+
+
+def test_an_unattributable_commit_time_is_not_attributed(tmp_path, monkeypatch):
+    """Where the ordering cannot be established the original conservative default stands, rather
+    than the check falling back to the name match that has a known false positive."""
+    store = tmp_path / "plans"
+    (store / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    log = "\x1enodate001\x1fnot-a-timestamp\x1fT\x1fagent-skills: something\nagent-skills/2026-09-07-thing.md\n"
+    runner = FakeRunner({f"git -C {store} log": (0, log, "")})
+    entries = [bash_entry("plans.py commit 2026-09-07-thing.md")]
+
+    state = harvest.store_commits(runner, "plans", store, "2026-09-07T20:00:00+03:00", [], entries)
+    assert [c["this_session"] for c in state["commits"]] == [False]
+
+
+def test_an_unmatched_store_commit_is_not_asserted_to_be_another_sessions(tmp_path, monkeypatch, capsys):
+    """The heading is the finding. Nothing here establishes that a commit belongs to somebody else —
+    only that this session's transcript did not tie it to this one, and the two readings call for
+    opposite next steps. A row the check simply cannot see must not read as a stranger's."""
+    store = tmp_path / "plans"
+    (store / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    log = "\x1eccccccccc\x1f2026-09-07T09:02:00+03:00\x1fT\x1frepo-tasks: somebody's plan\nrepo-tasks/x.md\n"
+    runner = FakeRunner({f"git -C {store} log": (0, log, "")})
+
+    state = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [], [bash_entry("ls")])
+    harvest._print_store_commits(state)
+    out = capsys.readouterr().out
+    assert "1 not attributable" in out
+    assert "(not attributed)" in out
+    assert "(another session)" not in out
 
 
 def test_the_commit_separator_is_asked_for_rather_than_passed_as_a_byte(tmp_path, monkeypatch):

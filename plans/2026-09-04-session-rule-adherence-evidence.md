@@ -257,6 +257,40 @@ separately as `2026-09-05-store-commit-has-no-multi-file-form.md`, because it is
 around" shape rather than a rate: `plan-docs` justifies its `commit` command by a mechanism, and a
 mechanism can be argued with when following it literally costs eleven commits.
 
+## A fifth sample, 2026-09-06/07, a two-day session in this repo
+
+Audited at its harvest boundary against `2026-09-06-zero-on-count.json` (n=304, `pipefail` live):
+
+| pattern               | this session | vs baseline |
+| --------------------- | ------------ | ----------: |
+| chain                 | 29%          |    -18pp OK |
+| head/tail             | 19%          |     -9pp OK |
+| exit-masked           | 13%          |           — |
+| sed-n                 | 0% (1 call)  |     -5pp OK |
+| cd-own-repo           | 1 call       |    **MISS** |
+| git-mutating-in-chain | 1%           |     -5pp OK |
+
+**12 of 13 expectations met**, and the single miss is the instrument disagreeing with the rule
+rather than the session breaking it — the same conflict the fourth sample recorded and this one
+confirms as recurring. The one `cd-own-repo` call is `cd <session repo> && rg …`, taken immediately
+after a scratchpad `cd` had moved the working directory, which is the recovery shape `~/AGENTS.md`
+prescribes in those words. **The row cannot tell a prescribed recovery from an unnecessary `cd`**,
+so it will keep scoring the documented remedy as a miss for as long as a session ever leaves its own
+repo.
+
+Two things this sample adds to the corpus:
+
+- **`exit-masked` at 13% with the gate/listing split live: 7 of 39 wrapped a gate.** The shell
+  answered `pipefail`, so no re-run was owed and the five green claims stood — the branch the split
+  was built for, on a session where `m` was above zero rather than the zero case the first
+  confirmation had.
+- **`claims` counted a heredoc body as a masked call.** One of the 40 hits is a
+  `cat >> plan.md
+  <<'EOF'` whose _body_ quotes `inv quality.precommit 2>&1 | tail -25` as prose.
+  That is the documented `claims`-versus-`audit.py` divergence, observed live on the same day it was
+  written into both skills: `audit.py` strips heredoc bodies and counted 39, `claims` does not and
+  counted 40.
+
 ## Open questions
 
 [DECISION: the propagation failure in §1 stays here, apart from the hand-editing plan. Settled

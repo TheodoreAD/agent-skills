@@ -201,6 +201,69 @@ snippet and reaches everything today; layer 3 is a one-line change per script pl
 layer 2 is a real change to a shared package. A baseline is saved after layer 1 lands and again
 before layer 2, so each layer's effect is measured on its own rather than as one delta.]
 
+## Layer 3, landed 2026-09-08
+
+**SIGPIPE, at ten entry points rather than the five this plan named.** `count_shapes.py`,
+`find_mutations.py`, `package_health.py`, `prompts.py` and `library.py` are entry points too; the
+set is the set. `signal.signal(signal.SIGPIPE, signal.SIG_DFL)` inside each `__main__` guard —
+**inside**, because the disposition is process-wide and every one of these modules is loaded by path
+in the test suite, where changing it would make pytest's own output die silently on a cut pipe.
+Guarded on `hasattr`, since Windows has no `SIGPIPE` and this repo has a Windows CI leg.
+
+Verified with a control, because the obvious check proves nothing. `audit.py --days 30 --samples 40`
+is the one command here whose output exceeds the 64 KB pipe buffer, so it is the only one that can
+be cut at all:
+
+| run                        | exit    | stderr                                                         |
+| -------------------------- | ------- | -------------------------------------------------------------- |
+| guard bypassed (as before) | **120** | `Exception ignored while flushing sys.stdout: BrokenPipeError` |
+| with the guard             | **141** | clean                                                          |
+
+[PITFALL: **the first verification script reported six clean rows and tested nothing.** It wrote
+`2>&1 >/dev/null`, which sends stderr into the pipe and stdout to `/dev/null` — so the data never
+reached `head`, no SIGPIPE was ever delivered, and every row read `exit=0` whatever the code did.
+The failure looked exactly like success, on a check whose entire purpose is distinguishing those.
+The tell was uniformity: six different scripts cannot all be immune. Three of them still cannot be
+tested this way, because their output fits in the buffer.]
+
+### The measurement layer 1 made possible
+
+The audit gained the number it has never had: not how often a session composed a call that _could_
+lose data, but how often data was lost. It is answerable only because `pipefail` carries a SIGPIPE
+death through the filter as `Exit code 141`; before layer 1 the same event returned 0 and could not
+be told from a clean run at any sampling rate.
+
+**Over the 30 days to 2026-09-08: 9,224 calls tagged `head/tail`, 9 of which actually cut output —
+0.10%.** So the habit's cost is the re-run and the masked exit, not lost bytes, and `head/tail`'s
+own description has been corrected: it claimed to "hide failures" with no number behind that half.
+
+It does not make the habit harmless, and the two exceptions are the point: **two of the nine are
+`inv quality.precommit 2>&1 | head -20` at exit 120** — a gate run whose output was cut, which is
+precisely the call whose verdict a reader acts on. Nine events in thirty days with two landing on
+the one command where it matters is the honest shape.
+
+Counted from two statuses and no others: 141 (SIGPIPE) and 120 (a Python process failing to flush at
+shutdown). A failing gate behind a filter also returns non-zero under `pipefail`, and that is the
+gate failing rather than the output being cut; `rg` with more matches than shown returns 1, which is
+indistinguishable from "no matches". The row under-counts rather than guesses.
+
+[DECISION: **`exit-masked` keeps its name.** This plan offered "rename or re-describe"; the
+re-description already landed 2026-09-06 and the row's `why` now carries the pipefail caveat in
+full. A rename is absent from every stored baseline and reads as a regression on the first
+`--compare`, which buys a better label at the cost of the comparison the plan's own verification
+depends on. Same reasoning put the truncation count beside `head/tail` rather than in
+`SESSION_ROWS`.]
+
+[DECISION: **`plans.py` output volume is not changed here.** This plan asked to "read what `scan`
+and `new` print on the common path before deciding", which is a judgement it deliberately left open,
+and the volume half is a separate change from the correctness half that layer 3 is. Left open rather
+than decided in passing.]
+
+Filed for another repo, since a session here does not write to it:
+`2026-09-08-agents-md-120-is-now-141-for-these-scripts.md` — `~/AGENTS.md` documents 120 as what a
+cut Python script returns, which stays true for `inv` and every other Python on the machine and is
+now false for these ten.
+
 ## Files touched
 
 - `power-user-linux-setup`: `setup.toml` (`[packages.claude-code]` gains a `zshenv` snippet),

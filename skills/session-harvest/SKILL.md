@@ -778,6 +778,16 @@ What the script cannot do is decide what a finding means. That is this list:
   dependency's constraint history, which was the right call and left the store holding one entry
   that silently no longer matched its own convention. Record the divergence and why, in whatever
   file that store uses for per-entry metadata.
+
+  **A changed mtime is not this session's work, and this bullet is where that mistake is easiest to
+  make**, because the library is refreshed wholesale by one command and cloned into by any parallel
+  session. The sweep attributes each changed entry from this session's own commands — the entry's
+  directory name, or the `<owner>/<repo>` the URL that created it carried — and prints the rest as a
+  bare count. Confirmed 2026-09-07: a sweep called **30 entries** changed, including a whole
+  dotfile-manager cluster that was another session's research topic; **five** were this session's,
+  and its transcript said which. Do not report a count from this bullet as work the session did —
+  the number that matters is the attributed one, and the convention checks above are the part that
+  is true whoever made the entry.
 - **The plans store, `$PLANS_HOME` — a separate bullet, for a different reason.** Set by the
   `plan-docs` skill and absent if you do not use it, in which case the sweep skips this and says so.
   The sweep reports its dirty state and its unpushed commits, and runs `plans.py absorb` read-only.
@@ -947,19 +957,34 @@ harvest rather than only a second one.** It counts this session's own step-0 `bo
 "this is harvest #2" is read rather than recalled; lists the plan files this session wrote, each
 with the lines in it that carry a number; and lists every plans-store commit since session start,
 attributed to this session or explicitly not — the store is shared, so a commit inside the window is
-not yours by virtue of being there, and a row marked `(another session)` is reported, never edited.
+not yours by virtue of being there, and a row marked `(not attributed)` is reported, never edited.
+
+**That row says the check could not tie the commit to this session, and no more than that.** It used
+to read `(another session)`, which asserted something the evidence never established and was wrong
+in the one direction the conservative reading was argued to be safe in: `plans.py absorb --apply`
+_moves_ a plan out of the store, so the session writes nothing at the store path and a write-path
+test calls its own removal commit a stranger's. Confirmed 2026-09-07 — a session absorbed three
+plans, committed each removal minutes later, and `filed` reported
+`0 commit(s) this session, 20 from
+elsewhere` with all three of its own among the twenty. The check
+now reads the session's own commands as well as its writes, so a commit whose file this session
+_named_ is attributed. **If a row is yours through a door the check cannot see, say so in the report
+rather than assuming either way** — and treat a `0 this session` with the same suspicion as any
+other plausible number nobody can falsify.
 
 **On a first harvest it answers the report's opening groups instead**, which is why the command
 block does not gate it on a second run. Those groups are "where did everything go", and assembling
 them from the session's own memory is the mistake this step already warns about one paragraph down:
 confirm the file is still there before naming it. Confirmed 2026-09-07 on the first harvest to have
 the subcommand — it listed five plan files written that session, correctly marked the one that had
-been retired as `MISSING`, and reported **0 store commits this session against 18 from elsewhere**,
-a ratio no participant would have guessed and which decided whether an edit to a shared store plan
-was safe to make at all. Re-derive each measurement it prints and **edit the file**, then write the
-delta. Correcting a plan in the store is inside the write set at the top of this procedure, one
-filed `--for` another repo included; a row marked `MISSING` has been absorbed into the repo that
-owns it, and there the correction is a new filing rather than an edit.
+been retired as `MISSING`, and reported **0 store commits this session against 18 unattributed**, a
+ratio no participant would have guessed and which decided whether an edit to a shared store plan was
+safe to make at all. That run predates the deletion fix above, so its `0` is a floor rather than a
+count; the argument it settled does not turn on which way it moves. Re-derive each measurement it
+prints and **edit the file**, then write the delta. Correcting a plan in the store is inside the
+write set at the top of this procedure, one filed `--for` another repo included; a row marked
+`MISSING` has been absorbed into the repo that owns it, and there the correction is a new filing
+rather than an edit.
 
 **Open with where everything went**, as four groups, because "did this land somewhere durable, or is
 it still only in the chat?" is the question the whole report exists to answer:

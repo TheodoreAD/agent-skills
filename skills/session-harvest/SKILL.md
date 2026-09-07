@@ -217,7 +217,10 @@ at family scope only, while the checkout ran it at every scope; the re-run came 
 what a benign instance looks like, and a note alone would have left that unknown. `references/` is
 read on demand and is inert. Confirmed 2026-08-30: a directory-scoped query fired the
 re-read-and-audit branch on a commit that touched only a `references/` page, and the audit was empty
-because the held wording had never changed.
+because the held wording had never changed. **It stays inert for the verdict, and stops being inert
+for a page this run actually opened** — the difference changes nothing about the install's state, so
+it must not move the verdict, but a reference read from a stale copy was read stale like anything
+else. Diff that one file, the same as the other two.
 
 **`boundary`, `transcript` and `skills-state` all ran from the copy under test, and no ordering
 fixes that** — resolving the checkout is `skills-state`'s own job, so some call is always made

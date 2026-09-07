@@ -701,6 +701,57 @@ def test_size_reports_only_what_is_at_or_above_the_minimum(tmp_path, capsys):
     assert "2 entries" in out, "the total still counts everything"
 
 
+def test_ungreppable_is_measured_by_content_and_never_by_extension(tmp_path):
+    """Deliberately a different rule from the exclusion patterns, so the report can contradict them.
+
+    Extensions are what an exclusion can express; content is what is there. Measured 2026-09-08 over
+    the real library: 620 files and 16 MB carry no extension at all and are binary — 1.25% of the
+    ungreppable weight, which no pattern can reach. Small enough to be the answer rather than a
+    reason for a second, size-based filter, and visible only because this measure ignores the list.
+    """
+    store = make_store(tmp_path)
+    entry = make_clone(store, "github.com--a--b")
+    (entry / "notes.md").write_bytes(b"plain text, greppable\n" * 100)
+    (entry / "photo.png").write_bytes(b"this png is somehow pure text\n" * 100)
+    (entry / "a.out").write_bytes(b"\x7fELF\x00" + b"x" * 4096)
+    (entry / ".git" / "pack").write_bytes(b"\x00" * (2 * library.MB))
+
+    dark = library.ungreppable_bytes(entry)
+    assert dark == (entry / "a.out").stat().st_size, "extensionless binary counts, text-in-a-png does not"
+
+
+def test_size_leaves_the_ungreppable_column_out_unless_it_is_asked_for(tmp_path, capsys):
+    """It reads every file in the store — 184,279 files in 2.9s warm on a 3 GB library, measured
+    2026-09-08 — which is cheap enough to offer and not cheap enough to always charge for."""
+    store = make_store(tmp_path)
+    entry = make_clone(store, "github.com--a--b")
+    fill(entry, "blob.png", 3 * library.MB)
+    git = FakeGit({"rev-list --count HEAD": (0, "1\n", "")})
+
+    plain = library.cmd_size(library.build_parser().parse_args(["size", "--root", str(store), "--min", "0"]), git)
+    assert "ungreppable_mb" not in plain
+    assert "ungreppable_mb" not in plain["over_min"][0]
+
+    argv = ["size", "--root", str(store), "--min", "0", "--ungreppable"]
+    measured = library.cmd_size(library.build_parser().parse_args(argv), git)
+    assert measured["over_min"][0]["ungreppable_mb"] == 0, "a file of `x` bytes is greppable whatever it is called"
+    capsys.readouterr()
+
+
+def test_the_ungreppable_share_is_taken_against_the_working_trees(tmp_path, capsys):
+    """`.git` is ungreppable in its entirety and is outside the numerator by design, so dividing by
+    a store total that includes it would report the saving as smaller than it is."""
+    store = make_store(tmp_path)
+    entry = make_clone(store, "github.com--a--b")
+    (entry / "asset.png").write_bytes(b"\x00" * (3 * library.MB))
+    fill(entry / ".git", "pack", 9 * library.MB)
+    argv = ["size", "--root", str(store), "--min", "0", "--ungreppable"]
+
+    library.cmd_size(library.build_parser().parse_args(argv), FakeGit({"rev-list --count HEAD": (0, "1\n", "")}))
+    out = capsys.readouterr().out
+    assert "3 MB of 3 MB of working tree (100%)" in out
+
+
 def test_tree_size_does_not_follow_a_symlink_out_of_the_store(tmp_path):
     """A library entry linking somewhere else would otherwise bill that directory to the store, and
     a link into a parent would recurse."""

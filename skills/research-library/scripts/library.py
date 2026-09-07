@@ -15,7 +15,7 @@ it.
     library.py add https://github.com/encode/httpx --dry-run
     library.py provenance docs/uv.pdf --url <url> --kind site-mirror --ref 2026-09-02
     library.py check --strict                              # every entry against the convention
-    library.py size --min 250                              # what the library costs, biggest first
+    library.py size --min 250 --ungreppable                # what the library costs, biggest first
     library.py update                                      # refresh, each entry at its own depth
     library.py deepen <entry> --depth 500                  # more history, recorded as deliberate
     library.py reshallow <entry>                           # back to a depth-1 footprint, disk included
@@ -381,6 +381,47 @@ def recorded_text_only(entry: Path) -> bool:
     return value.strip().lower() in ("yes", "true", "1")
 
 
+def is_ungreppable(path: Path) -> bool:
+    """Ripgrep's own rule, and the reason the extension list above is safe: a NUL byte in the first
+    block means every text search on this machine skips the file."""
+    try:
+        with path.open("rb") as handle:
+            return b"\0" in handle.read(8192)
+    except OSError:
+        return False
+
+
+def ungreppable_bytes(entry: Path) -> int:
+    """What a text search cannot read in this entry, by content rather than by extension.
+
+    Deliberately not derived from `UNGREPPABLE_EXTENSIONS`: patterns are what the *exclusion* can
+    express, and content is what is actually there, so measuring by content is the only way the
+    report can contradict the patterns. It is how the extensionless residue stays visible — 620
+    files and 16 MB library-wide, 1.25% of the ungreppable weight, which no extension pattern can
+    reach and which is small enough to be the answer rather than a second filter.
+
+    `.git` is skipped: its packs are binary by nature and nobody greps them. Cost measured
+    2026-09-08 on a 79-entry, 3 GB library: 184,279 files in 2.9s warm, which is why it is a flag on
+    `size` rather than a column that is always paid for.
+    """
+    total = 0
+    stack = [entry]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as items:
+                for item in items:
+                    if item.is_symlink():
+                        continue
+                    if item.is_dir(follow_symlinks=False):
+                        if item.name != ".git":
+                            stack.append(Path(item.path))
+                    elif is_ungreppable(Path(item.path)):
+                        total += item.stat(follow_symlinks=False).st_size
+        except OSError:
+            continue
+    return total
+
+
 # --------------------------------------------------------------------------------------------
 # add
 
@@ -625,6 +666,8 @@ class EntrySize:
     git: int
     commits: int | None
     depth: str
+    # None when nobody asked, which is not the same as zero and must not print as it.
+    ungreppable: int | None = None
 
     @property
     def worktree(self) -> int:
@@ -635,7 +678,7 @@ class EntrySize:
         return self.commits is not None and self.commits > 1
 
 
-def entry_size(runner: Runner, root: Path, entry: Path) -> EntrySize:
+def entry_size(runner: Runner, root: Path, entry: Path, ungreppable: bool = False) -> EntrySize:
     git_dir = entry / ".git"
     return EntrySize(
         entry=entry.relative_to(root).as_posix(),
@@ -643,6 +686,7 @@ def entry_size(runner: Runner, root: Path, entry: Path) -> EntrySize:
         git=tree_size(git_dir) if git_dir.is_dir() else 0,
         commits=commit_count(runner, entry) if git_dir.exists() else None,
         depth=recorded_depth(entry),
+        ungreppable=(ungreppable_bytes(entry) if entry.is_dir() else 0) if ungreppable else None,
     )
 
 
@@ -651,13 +695,21 @@ def mb(value: int) -> int:
 
 
 def cmd_size(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
-    """What the library costs, biggest first, with a minimum worth reporting on."""
+    """What the library costs, biggest first, with a minimum worth reporting on.
+
+    `--ungreppable` adds the column that makes retrofitting an existing entry concrete rather than
+    rhetorical: how much of this entry no text search can read, so `add --text-only` on a re-clone
+    has a number attached to it rather than a principle.
+    """
     root = store_root(args.root)
-    rows = sorted((entry_size(runner, root, e) for e in iter_entries(root)), key=lambda r: -r.total)
+    rows = sorted(
+        (entry_size(runner, root, e, ungreppable=args.ungreppable) for e in iter_entries(root)), key=lambda r: -r.total
+    )
     floor = args.min * MB
     over = [row for row in rows if row.total >= floor]
     total = sum(row.total for row in rows)
-    payload = {
+    dark = sum(row.ungreppable or 0 for row in rows)
+    payload: dict[str, Any] = {
         "root": str(root),
         "entries": len(rows),
         "total_mb": mb(total),
@@ -670,14 +722,27 @@ def cmd_size(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
                 "worktree_mb": mb(row.worktree),
                 "commits": row.commits,
                 "depth": row.depth,
+                **({"ungreppable_mb": mb(row.ungreppable)} if row.ungreppable is not None else {}),
             }
             for row in over
         ],
         "over_min_mb": mb(sum(row.total for row in over)),
     }
+    # Against the working trees, never against the store total: `.git` is ungreppable in its
+    # entirety and is deliberately outside the numerator, so dividing by a total that includes it
+    # would report a number the reader has no use for and would read as smaller than it is.
+    trees = sum(row.worktree for row in rows)
+    if args.ungreppable:
+        payload |= {"ungreppable_mb": mb(dark), "worktree_mb": mb(trees)}
     if args.json:
         return payload
     print(f"{root}: {len(rows)} entries, {mb(total)} MB")
+    if args.ungreppable:
+        share = round(100 * dark / trees) if trees else 0
+        print(
+            f"  {mb(dark)} MB of {mb(trees)} MB of working tree ({share}%) is ungreppable — "
+            "no text search on this machine reads it"
+        )
     if not over:
         print(f"  nothing at or above {args.min} MB")
         return payload
@@ -688,7 +753,11 @@ def cmd_size(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     for row in over:
         note = f"  {row.commits} commits" if row.deepened else ""
         note += f"  depth: {row.depth}" if row.depth else ""
-        print(f"  {row.entry.ljust(width)}  {mb(row.total):>5} MB  (.git {mb(row.git)}, tree {mb(row.worktree)}){note}")
+        dark_note = f", ungreppable {mb(row.ungreppable)}" if row.ungreppable is not None else ""
+        print(
+            f"  {row.entry.ljust(width)}  {mb(row.total):>5} MB  "
+            f"(.git {mb(row.git)}, tree {mb(row.worktree)}{dark_note}){note}"
+        )
     return payload
 
 
@@ -1095,6 +1164,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=PROBLEMATIC_MB,
         metavar="MB",
         help=f"report entries at or above this (default: {PROBLEMATIC_MB}; 0 for all)",
+    )
+    size.add_argument(
+        "--ungreppable",
+        action="store_true",
+        help="also measure what no text search can read (reads every file; ~3s on a 3 GB library)",
     )
 
     update = subparsers.add_parser("update", parents=[common], help="refresh clones at their intended depth")

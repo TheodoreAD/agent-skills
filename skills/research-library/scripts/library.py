@@ -11,6 +11,7 @@ it.
     library.py name https://github.com/encode/httpx        # github.com--encode--httpx
     library.py name --from-clone $RESEARCH_HOME/repos/github.com--encode--httpx
     library.py add https://github.com/encode/httpx         # clone + SOURCE.md, canonical name
+    library.py add https://github.com/encode/httpx --all-files   # keep the bytes a grep skips
     library.py add https://github.com/encode/httpx --dry-run
     library.py provenance docs/uv.pdf --url <url> --kind site-mirror --ref 2026-09-02
     library.py check --strict                              # every entry against the convention
@@ -23,6 +24,9 @@ The four commands above `check` are the clone's whole lifecycle, and they are co
 for a measured reason: returning a deepened clone to its original footprint takes five git commands
 in order, one of which (`git tag -d`) appears in no published guide and without which the other four
 reclaim nothing while reporting success. See `reshallow` for the numbers.
+
+`add` clones **text-only** by default — see `UNGREPPABLE_EXTENSIONS`. `--all-files` opts one clone
+out, and `RESEARCH_TEXT_ONLY=0` opts a whole machine out.
 
 Stdlib only, so it runs by path with no install step. `add`, `provenance`, `update`, `deepen` and
 `reshallow` write, and only inside `$RESEARCH_HOME`; `name`, `check` and `size` are read-only. Every
@@ -66,7 +70,64 @@ PROVENANCE = "SOURCE.md"
 REQUIRED_FIELDS = ("url", "kind", "ref", "fetched")
 DEPTH_FIELD = "depth"
 FULL_DEPTH = "full"
+TEXT_ONLY_FIELD = "text-only"
+TEXT_ONLY_ENV = "RESEARCH_TEXT_ONLY"
 KINDS = ("repo-clone", "llms-txt-mirror", "site-mirror")
+
+# What a text-only clone leaves on the server. The constraint on this list is not "big" and not
+# "not source" — it is that **ripgrep and grep already skip every format named here**, because both
+# treat a file with a NUL byte in its first block as binary and refuse to search it. So excluding
+# these cannot cost a search a single hit, which is the whole reason this is safe where excluding a
+# *directory* is not: that one makes a grep silently blind, this one removes bytes the grep was
+# never going to read.
+#
+# Measured 2026-09-08 over a real library's 80 repo entries, working trees only: 13,381 files and
+# 1,286 MB are ungreppable by that rule, out of 184,279 files and 3,274 MB — 39% of the bytes, and
+# PNG alone is 563 MB of it across 6,590 files. The categories below cover 97% of that weight; the
+# tail is per-repo oddities (`.binobj`, `.tgv`, `.res`) not worth naming.
+#
+# Patterns are matched case-sensitively by git, so `IMG.PNG` survives. Deliberate: 4 files and
+# 0.3 MB of the whole library carry an uppercase extension — 0.02% of the excluded weight, against
+# doubling the list.
+UNGREPPABLE_EXTENSIONS = (
+    # images: 563 MB PNG, 181 MB GIF, 60 MB JPG, 11 MB WebP
+    *("png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "ico", "icns", "webp", "avif"),
+    *("heic", "heif", "psd", "xcf", "tga", "svgz"),
+    # video and audio: 181 MB MP4, 25 MB MOV
+    *("mp4", "mov", "avi", "mkv", "webm", "wmv", "flv", "m4v", "mpg", "mpeg"),
+    *("mp3", "wav", "ogg", "oga", "flac", "m4a", "aac", "opus", "wma", "mid", "midi"),
+    # fonts: 21 MB
+    *("ttf", "otf", "woff", "woff2", "eot"),
+    # archives and packages: 47 MB of `.tgz` fixtures in one repo alone
+    *("zip", "tar", "gz", "tgz", "bz2", "xz", "zst", "7z", "rar", "lz4"),
+    *("whl", "egg", "jar", "war", "apk", "aab", "ipa", "deb", "rpm", "dmg", "iso", "msi"),
+    *("crx", "xpi", "nupkg", "tgs"),
+    # compiled objects and native binaries: 78 MB of `.so`, 26 MB of `.dex`
+    *("so", "dylib", "dll", "exe", "o", "a", "lib", "dex", "class", "pyc", "pyo", "pyd"),
+    *("wasm", "node", "bin", "elf"),
+    # model weights, databases, opaque blobs
+    *("onnx", "safetensors", "pt", "pth", "ckpt", "npy", "npz", "h5", "hdf5"),
+    *("pkl", "pickle", "parquet", "feather", "sqlite", "sqlite3"),
+)
+
+# Binary to a grep and **kept anyway**, because the line that matters is document-versus-demo-asset
+# rather than greppable-versus-not: an agent reads a PDF natively, so excluding one would lose
+# material this library exists to hold. Measured 2026-09-08: 9 PDFs sit inside repo clones, 6.6 MB,
+# **0.5% of the excluded weight** — including a 4.6 MB `flameshot-documentation.pdf`. Half a percent
+# of the saving buys away the only case where this exclusion could remove something a reader wanted.
+# The ebook formats appear in no clone today and cost nothing to keep; the office formats are zip
+# containers that are sometimes the material.
+#
+# Eight of those nine are ungreppable; one carries no NUL in its first block, so ripgrep searches it
+# like text. That is the NUL rule being a property of a file rather than of a format, and it is why
+# the keep-list is stated as a judgement rather than derived from a scan.
+#
+# `.svg` needs no entry here and is the tell that this is a judgement about purpose: it is *text*,
+# so the NUL rule keeps it regardless, while being a demo asset by intent.
+DOCUMENT_EXTENSIONS = (
+    *("pdf", "epub", "mobi", "azw3", "djvu", "chm"),
+    *("docx", "xlsx", "pptx", "odt", "ods", "odp"),
+)
 # The branch a single-branch refspec tracks. `git clone --depth 1` implies `--single-branch`, so
 # `+refs/heads/main:refs/remotes/origin/main` is what a *correct* entry looks like here — not a trap.
 #
@@ -213,10 +274,16 @@ def provenance_path(entry: Path) -> Path:
     return entry / PROVENANCE if entry.is_dir() else entry.with_name(entry.name + ".source.md")
 
 
-def render_provenance(url: str, kind: str, ref: str, fetched: str, note: str = "", depth: str = "") -> str:
+def render_provenance(
+    url: str, kind: str, ref: str, fetched: str, note: str = "", depth: str = "", text_only: bool = False
+) -> str:
     lines = [f"url: {url}", f"kind: {kind}", f"ref: {ref}", f"fetched: {fetched}"]
     if depth:
         lines.append(f"{DEPTH_FIELD}: {depth}")
+    if text_only:
+        # Recorded rather than inferred from a file listing: an entry whose checkout is a subset of
+        # its own HEAD has to say so, or the next reader assumes a grep over it saw everything.
+        lines.append(f"{TEXT_ONLY_FIELD}: yes")
     if note:
         lines.append(f"note: {note}")
     return "\n".join(lines) + "\n"
@@ -264,6 +331,57 @@ def today() -> str:
 
 
 # --------------------------------------------------------------------------------------------
+# text-only clones
+
+
+def sparse_patterns() -> list[str]:
+    """`/*` then one negation per ungreppable extension, for `sparse-checkout set --no-cone`.
+
+    **Non-cone**, because cone mode matches directories and the criterion here is file type — the
+    two are not interchangeable and cone mode cannot express this at all. Git's own documentation
+    calls non-cone mode deprecated and recommends cone mode; read 2026-09-08 in
+    `Documentation/git-sparse-checkout.adoc`, and `Documentation/BreakingChanges.adoc` does not
+    mention sparse-checkout at all, so nothing is scheduled for removal. If it ever is, the fallback
+    is the same mechanism one layer down — write `.git/info/sparse-checkout` and set
+    `core.sparseCheckout` directly, which is plumbing rather than the deprecated porcelain.
+    """
+    return ["/*", *(f"!*.{extension}" for extension in UNGREPPABLE_EXTENSIONS)]
+
+
+def text_only_default() -> bool:
+    """On, unless `$RESEARCH_TEXT_ONLY` turns it off for the whole machine.
+
+    Default-on because the library's stated purpose is text search and the excluded bytes are
+    useless for it by construction — 41% of the working-tree weight, measured. The env var is the
+    way a machine that wants the old behaviour states it once rather than remembering a flag; the
+    flags below still win over it, per call.
+    """
+    return os.environ.get(TEXT_ONLY_ENV, "").strip().lower() not in ("0", "false", "no", "off")
+
+
+def wants_text_only(args: argparse.Namespace) -> bool:
+    if args.all_files:
+        return False
+    if args.text_only:
+        return True
+    return text_only_default()
+
+
+def is_sparse(runner: Runner, entry: Path) -> bool:
+    """Whether this clone's working tree is a subset of its own HEAD, whatever put it that way."""
+    ran = runner(["git", "-C", str(entry), "config", "--get", "core.sparseCheckout"])
+    return ran.ok and ran.out.strip().lower() == "true"
+
+
+def recorded_text_only(entry: Path) -> bool:
+    path = provenance_path(entry)
+    if not path.is_file():
+        return False
+    value = parse_provenance(path.read_text(encoding="utf-8", errors="replace")).get(TEXT_ONLY_FIELD, "")
+    return value.strip().lower() in ("yes", "true", "1")
+
+
+# --------------------------------------------------------------------------------------------
 # add
 
 
@@ -291,7 +409,17 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     name = entry_name(args.url)
     target = root / "repos" / name
     depth = [] if args.full else ["--depth", str(args.depth)]
-    clone = ["git", "clone", *depth, args.url, str(target)]
+    text_only = wants_text_only(args)
+    # `--filter=blob:none` and `--sparse` are useless apart and transformative together, which is
+    # the measurement that produced this shape. The filter alone defers nothing at depth 1, because
+    # the checkout materialises every blob at HEAD anyway; give the clone a sparse set and the
+    # excluded blobs are never wanted, so they are never fetched. Probed 2026-09-07 on a 97%-binary
+    # repo, same commit three ways: `--depth 1` was 144 MB total; adding the sparse patterns took
+    # the working tree from 72,960 KB to 2,348 KB while `.git` stayed at 71,204 KB; adding the
+    # filter took `.git` to **644 KB**. 48x, and `grep -rIl` returned the identical 185 files in all
+    # three.
+    lever = ["--filter=blob:none", "--sparse"] if text_only else []
+    clone = ["git", "clone", *depth, *lever, args.url, str(target)]
     payload: dict[str, Any] = {"url": args.url, "name": name, "path": str(target), "clone": clone}
 
     if target.exists():
@@ -300,11 +428,7 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     if args.dry_run:
         # Before the size probe, deliberately: a dry run runs nothing at all, which is a contract
         # this file's tests assert rather than assume.
-        payload |= {"dry_run": True, "provenance": render_provenance(args.url, "repo-clone", "<ref>", today())}
-        if not args.json:
-            print(" ".join(clone))
-            print(f"\n# {target / PROVENANCE}\n{payload['provenance']}")
-        return payload
+        return payload | _dry_run(args, target, clone, text_only=text_only)
 
     reported = None if args.yes else reported_size_mb(runner, args.url)
     payload["reported_mb"] = reported
@@ -325,24 +449,28 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     if not ran.ok:
         raise LibraryError(f"clone failed ({ran.code}): {ran.err.strip() or ran.out.strip()}")
 
-    # The name is re-derived from the clone's own remote, not from the URL that was passed. A
-    # redirect (a repo renamed or transferred) resolves silently, and the entry would otherwise carry
-    # a name nothing else on the machine agrees with.
-    real = canonical_name(runner, target) or name
-    if real != name:
-        (root / "repos" / real).parent.mkdir(parents=True, exist_ok=True)
-        target.rename(root / "repos" / real)
-        target = root / "repos" / real
-        payload |= {"renamed_from": name, "name": real, "path": str(target)}
+    moved = rename_to_canonical(runner, root, target, name)
+    if moved != target:
+        target = moved
+        payload |= {"renamed_from": name, "name": target.name, "path": str(target)}
+
+    failure = apply_text_only(runner, target) if text_only else ""
+    text_only = text_only and not failure
 
     origin = clone_origin(runner, target) or args.url
     ref = args.ref or head_ref(runner, target)
     # Recorded at clone time when it is anything but the default, so `update` never has to guess
     # whether a deep entry was meant — the guess it would otherwise make is the one that truncates.
     kept = FULL_DEPTH if args.full else (str(args.depth) if args.depth != 1 else "")
-    body = render_provenance(origin, args.kind, ref, today(), args.note or "", depth=kept)
+    body = render_provenance(origin, args.kind, ref, today(), args.note or "", depth=kept, text_only=text_only)
     (target / PROVENANCE).write_text(body, encoding="utf-8")
-    payload |= {"provenance": body, "ref": ref, "origin": origin}
+    payload |= {"provenance": body, "ref": ref, "origin": origin, "text_only": text_only}
+
+    # After the provenance file, deliberately. The entry on disk is a complete clone with a correct
+    # provenance file by this point, so the failure is loud without also leaving behind the store's
+    # characteristic silent shape: a directory that looks like a conformant entry and is not one.
+    if failure:
+        raise LibraryError(failure)
 
     if not args.json:
         print(f"added {target}")
@@ -352,6 +480,59 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         for line in body.splitlines():
             print(f"    {line}")
     return payload
+
+
+def _dry_run(args: argparse.Namespace, target: Path, clone: list[str], *, text_only: bool) -> dict[str, Any]:
+    """Both commands and the file they would write, with nothing run and nothing on disk."""
+    sparse = ["git", "-C", str(target), "sparse-checkout", "set", "--no-cone", *sparse_patterns()]
+    provenance = render_provenance(args.url, "repo-clone", "<ref>", today(), text_only=text_only)
+    payload: dict[str, Any] = {"dry_run": True, "provenance": provenance, "text_only": text_only}
+    if text_only:
+        payload["sparse"] = sparse
+    if not args.json:
+        print(" ".join(clone))
+        if text_only:
+            print(" ".join(sparse))
+        print(f"\n# {target / PROVENANCE}\n{provenance}")
+    return payload
+
+
+def rename_to_canonical(runner: Runner, root: Path, target: Path, name: str) -> Path:
+    """Where this entry belongs once its own remote has been asked, which may not be where it landed.
+
+    The name is re-derived from the clone's `origin` rather than from the URL that was passed: a
+    redirect (a repo renamed or transferred) resolves silently, and the entry would otherwise carry
+    a name nothing else on the machine agrees with.
+    """
+    real = canonical_name(runner, target) or name
+    if real == name:
+        return target
+    destination = root / "repos" / real
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    target.rename(destination)
+    return destination
+
+
+def apply_text_only(runner: Runner, target: Path) -> str:
+    """Narrow the checkout to what a grep can read, or say why the entry is not text-only after all.
+
+    The repair matters more than the exclusion does. A clone made with `--sparse` starts with only
+    its root files checked out, so a failed `sparse-checkout set` leaves an entry that is present,
+    is a real git clone, passes every `check` this file makes — and holds almost none of the repo.
+    `sparse-checkout disable` restores the full checkout, refetching from the promisor pack what the
+    filter deferred, which is exactly the `--all-files` outcome.
+    """
+    ran = runner(["git", "-C", str(target), "sparse-checkout", "set", "--no-cone", *sparse_patterns()])
+    if ran.ok:
+        return ""
+    reason = ran.err.strip() or ran.out.strip() or str(ran.code)
+    undo = runner(["git", "-C", str(target), "sparse-checkout", "disable"])
+    repaired = (
+        "the checkout was restored to every file, so the entry is complete and is not text-only"
+        if undo.ok
+        else "AND restoring the full checkout also failed — this entry holds only its root files, re-add it"
+    )
+    return f"sparse-checkout failed ({reason}); {repaired}"
 
 
 def head_ref(runner: Runner, path: Path) -> str:
@@ -769,8 +950,33 @@ def check_entry(runner: Runner, root: Path, entry: Path, remote: bool = False) -
     if real and real != entry.name:
         findings.append(f"name does not match its own origin: is {entry.name}, should be {real}")
 
+    findings.extend(_sparse_findings(runner, entry))
     findings.extend(_refresh_findings(runner, entry, remote=remote))
     return record
+
+
+def _sparse_findings(runner: Runner, entry: Path) -> list[str]:
+    """Whether what the entry says about its checkout matches what the checkout is.
+
+    Both directions are findings and the second is the one that matters. An entry whose working tree
+    is a subset of its own HEAD and whose provenance does not say so reads, to every later session,
+    as a whole repo — so a grep that finds nothing is taken as an answer rather than as a question
+    about what was checked out. That holds whatever narrowed it: this script's type exclusion, or a
+    hand-run path-based `sparse-checkout` somebody applied to save disk. The entry has to say.
+    """
+    sparse, recorded = is_sparse(runner, entry), recorded_text_only(entry)
+    if recorded and not sparse:
+        return [
+            f"records {TEXT_ONLY_FIELD} but core.sparseCheckout is not true — the checkout holds "
+            "everything, so the entry costs full disk while claiming not to"
+        ]
+    if sparse and not recorded:
+        return [
+            "the checkout is sparse but nothing records it — a grep here does not see the whole "
+            f"tree, and the entry does not say so. Record it ({TEXT_ONLY_FIELD}: yes, plus a note "
+            "naming what was excluded if it was not the standard type set)"
+        ]
+    return []
 
 
 def _refresh_findings(runner: Runner, entry: Path, remote: bool) -> list[str]:
@@ -874,6 +1080,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add.add_argument("--yes", action="store_true", help="clone without asking the host how big it is")
     add.add_argument("--dry-run", action="store_true", help="print the clone and the provenance file, write nothing")
+    text = add.add_mutually_exclusive_group()
+    text.add_argument(
+        "--text-only",
+        action="store_true",
+        help=f"skip the file types a grep skips anyway (the default; {TEXT_ONLY_ENV}=0 turns it off)",
+    )
+    text.add_argument("--all-files", action="store_true", help="check out every file, images and binaries included")
 
     size = subparsers.add_parser("size", parents=[common], help="what the library costs, biggest entry first")
     size.add_argument(

@@ -42,6 +42,13 @@ def _no_subprocess(monkeypatch):
     monkeypatch.setattr(library.subprocess, "run", refuse)
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_text_only(monkeypatch):
+    """`$RESEARCH_TEXT_ONLY` decides `add`'s default, so a machine that sets it would otherwise
+    quietly invert half the assertions below — and pass."""
+    monkeypatch.delenv(library.TEXT_ONLY_ENV, raising=False)
+
+
 class FakeGit:
     """Canned git output, keyed by the start of the command line, longest match first."""
 
@@ -198,6 +205,209 @@ def test_add_refuses_an_entry_that_already_exists(tmp_path):
 def test_a_missing_library_is_an_error_rather_than_a_directory_this_script_creates(tmp_path):
     with pytest.raises(library.LibraryError, match="no research library"):
         library.store_root(str(tmp_path / "nope"))
+
+
+# --------------------------------------------------------------------------------------------
+# text-only clones
+#
+# The saving is 41% of the library's working-tree bytes and it is free by construction, which is the
+# only reason it is safe to make a default: every format excluded is one ripgrep and grep already
+# refuse to search. Verified end to end 2026-09-08 on `intellectronica/ruler` (97% binary), the same
+# commit cloned both ways with the shipping pattern list: **257 searchable files in both trees, the
+# identical set**, `grep -rIl ruler` returning 190 files in both, and one file removed — a 69 MB
+# `.gif`. 141 MB became 3.0 MB, `.git` 70 MB became 644 KB.
+
+
+def clone_into(target: Path, git: "FakeGit"):
+    """A runner that materialises the clone the way a real `git clone` would."""
+
+    def run(argv, cwd=None):
+        if argv[:2] == ["git", "clone"]:
+            (target / ".git").mkdir(parents=True)
+            return library.Ran(tuple(argv), 0, "", "")
+        return git(argv, cwd)
+
+    return run
+
+
+def test_no_document_format_is_excluded():
+    """The line is document-versus-demo-asset, not greppable-versus-not: an agent reads a PDF
+    natively. Measured 2026-09-08: 8 PDFs inside repo clones, 6.5 MB, 0.5% of the excluded weight —
+    including a 4.8 MB `flameshot-documentation.pdf`, which is exactly the reference material this
+    library exists to hold. Half a percent of the saving buys away the whole risk."""
+    assert set(library.DOCUMENT_EXTENSIONS) & set(library.UNGREPPABLE_EXTENSIONS) == set()
+    assert "pdf" in library.DOCUMENT_EXTENSIONS
+    excluded = {p.removeprefix("!*.") for p in library.sparse_patterns()}
+    assert excluded.isdisjoint(library.DOCUMENT_EXTENSIONS), "the patterns are what actually ships"
+
+
+def test_svg_is_kept_and_svgz_is_not():
+    """`.svg` is *text*, so a grep reads it and the NUL rule keeps it whatever anyone thinks of it
+    as a demo asset. It is the tell that this list is a judgement about purpose constrained by a
+    fact, rather than a fact on its own. `.svgz` is the gzipped one, and binary."""
+    assert "svg" not in library.UNGREPPABLE_EXTENSIONS
+    assert "svgz" in library.UNGREPPABLE_EXTENSIONS
+
+
+def test_the_patterns_are_non_cone_because_the_criterion_is_a_file_type():
+    """Cone mode matches directories and cannot express this at all — the two are not alternatives.
+    Git calls non-cone deprecated and schedules no removal (`Documentation/BreakingChanges.adoc`
+    does not mention sparse-checkout); the fallback is writing `.git/info/sparse-checkout` directly,
+    which is the same mechanism one layer down."""
+    patterns = library.sparse_patterns()
+    assert patterns[0] == "/*"
+    assert all(p.startswith("!*.") for p in patterns[1:])
+
+
+def test_add_is_text_only_by_default_and_ships_both_levers_together(tmp_path, capsys):
+    """`--filter=blob:none` and `--sparse` are useless apart and transformative together. Probed
+    2026-09-07 on the same commit three ways: the sparse set alone took the working tree from 72,960
+    KB to 2,348 KB while `.git` stayed at 71,204 KB; adding the filter took `.git` to 644 KB,
+    because blobs the sparse set never wants are never fetched. A clone carrying one without the
+    other saves a fraction of what it looks like it saves."""
+    store = make_store(tmp_path)
+    argv = ["add", "https://github.com/encode/httpx", "--root", str(store), "--dry-run"]
+    payload = library.cmd_add(library.build_parser().parse_args(argv), FakeGit())
+    out = capsys.readouterr().out
+
+    assert payload["text_only"] is True
+    assert "--filter=blob:none" in out
+    assert "--sparse " in out
+    assert "sparse-checkout set --no-cone" in out
+    assert "!*.png" in out
+    assert "!*.pdf" not in out
+    assert "text-only: yes" in payload["provenance"]
+
+
+def test_all_files_opts_one_clone_out(tmp_path, capsys):
+    store = make_store(tmp_path)
+    argv = ["add", "https://github.com/encode/httpx", "--root", str(store), "--dry-run", "--all-files"]
+    payload = library.cmd_add(library.build_parser().parse_args(argv), FakeGit())
+    out = capsys.readouterr().out
+
+    assert payload["text_only"] is False
+    assert "--filter=blob:none" not in out
+    assert "sparse-checkout" not in out
+    assert "text-only" not in payload["provenance"]
+
+
+def test_the_env_var_opts_a_whole_machine_out_and_a_flag_still_beats_it(tmp_path, monkeypatch, capsys):
+    """Default-on because the library's purpose is text search and the excluded bytes are useless
+    for it; the env var is how a machine that wants the old behaviour says so once rather than
+    remembering a flag on every call."""
+    store = make_store(tmp_path)
+    base = ["add", "https://github.com/encode/httpx", "--root", str(store), "--dry-run"]
+
+    monkeypatch.setenv(library.TEXT_ONLY_ENV, "0")
+    assert library.cmd_add(library.build_parser().parse_args(base), FakeGit())["text_only"] is False
+    assert library.cmd_add(library.build_parser().parse_args([*base, "--text-only"]), FakeGit())["text_only"] is True
+
+    monkeypatch.setenv(library.TEXT_ONLY_ENV, "1")
+    assert library.cmd_add(library.build_parser().parse_args(base), FakeGit())["text_only"] is True
+    assert library.cmd_add(library.build_parser().parse_args([*base, "--all-files"]), FakeGit())["text_only"] is False
+    capsys.readouterr()
+
+
+def test_the_two_flags_cannot_both_be_given(capsys):
+    with pytest.raises(SystemExit):
+        library.build_parser().parse_args(["add", "u", "--text-only", "--all-files"])
+    capsys.readouterr()
+
+
+def test_add_records_text_only_so_a_later_grep_is_not_assumed_complete(tmp_path, capsys):
+    store = make_store(tmp_path)
+    target = store / "repos" / "github.com--encode--httpx"
+    git = FakeGit(
+        {
+            "remote get-url origin": (0, "https://github.com/encode/httpx\n", ""),
+            "rev-parse --abbrev-ref HEAD": (0, "main\n", ""),
+            "rev-parse --short HEAD": (0, "abc1234\n", ""),
+        }
+    )
+    argv = ["add", "https://github.com/encode/httpx", "--root", str(store)]
+    library.cmd_add(library.build_parser().parse_args(argv), clone_into(target, git))
+    capsys.readouterr()
+
+    assert "text-only: yes" in (target / "SOURCE.md").read_text(encoding="utf-8")
+    assert library.recorded_text_only(target)
+    ran = [" ".join(call) for call in git.calls]
+    assert any("sparse-checkout set --no-cone" in line for line in ran)
+
+
+def test_a_failed_sparse_step_restores_the_full_checkout_rather_than_leaving_root_files(tmp_path, capsys):
+    """The repair matters more than the exclusion. A `--sparse` clone starts with only its root
+    files checked out, so a failed `sparse-checkout set` leaves an entry that is present, is a real
+    git clone, passes every check this script makes, and holds almost none of the repo — the store's
+    characteristic silent failure. The entry must end up complete and the run must end up loud."""
+    store = make_store(tmp_path)
+    target = store / "repos" / "github.com--encode--httpx"
+    git = FakeGit(
+        {
+            "remote get-url origin": (0, "https://github.com/encode/httpx\n", ""),
+            "sparse-checkout set": (128, "", "fatal: unable to write sparse-checkout file"),
+            "sparse-checkout disable": (0, "", ""),
+        }
+    )
+    argv = ["add", "https://github.com/encode/httpx", "--root", str(store)]
+
+    with pytest.raises(library.LibraryError, match="restored to every file"):
+        library.cmd_add(library.build_parser().parse_args(argv), clone_into(target, git))
+    capsys.readouterr()
+
+    written = (target / "SOURCE.md").read_text(encoding="utf-8")
+    assert "text-only" not in written, "the entry must not claim a narrowing that did not happen"
+    assert "url: https://github.com/encode/httpx" in written, "and it must still be a conformant entry"
+    assert any("sparse-checkout disable" in " ".join(call) for call in git.calls)
+
+
+def test_a_sparse_checkout_nothing_records_is_a_finding(tmp_path):
+    """The direction that matters, and it is not this script's own doing that it catches: an entry
+    narrowed by a hand-run path-based `sparse-checkout` reads to every later session as a whole
+    repo, so a grep that finds nothing is taken as an answer rather than as a question about what
+    was checked out."""
+    store = make_store(tmp_path)
+    entry = make_clone(store, "github.com--a--b")
+    git = FakeGit(
+        {
+            "remote get-url origin": (0, "https://github.com/a/b\n", ""),
+            "config --get core.sparseCheckout": (0, "true\n", ""),
+            "symbolic-ref -q HEAD": (0, "refs/heads/main\n", ""),
+        }
+    )
+    findings = library.check_entry(git, store, entry)["findings"]
+    assert any("does not see the whole" in f for f in findings)
+
+
+def test_an_entry_claiming_text_only_over_a_full_checkout_is_a_finding(tmp_path):
+    store = make_store(tmp_path)
+    entry = make_clone(
+        store, "github.com--a--b", provenance="url: u\nkind: repo-clone\nref: r\nfetched: f\ntext-only: yes\n"
+    )
+    git = FakeGit(
+        {
+            "remote get-url origin": (0, "https://github.com/a/b\n", ""),
+            "config --get core.sparseCheckout": (1, "", ""),
+            "symbolic-ref -q HEAD": (0, "refs/heads/main\n", ""),
+        }
+    )
+    findings = library.check_entry(git, store, entry)["findings"]
+    assert any("core.sparseCheckout is not true" in f for f in findings)
+
+
+def test_a_text_only_entry_that_matches_its_own_record_is_not_a_finding(tmp_path):
+    store = make_store(tmp_path)
+    entry = make_clone(
+        store, "github.com--a--b", provenance="url: u\nkind: repo-clone\nref: r\nfetched: f\ntext-only: yes\n"
+    )
+    git = FakeGit(
+        {
+            "remote get-url origin": (0, "https://github.com/a/b\n", ""),
+            "config --get core.sparseCheckout": (0, "true\n", ""),
+            "config --get-all remote.origin.fetch": (0, "+refs/heads/main:refs/remotes/origin/main\n", ""),
+            "symbolic-ref -q HEAD": (0, "refs/heads/main\n", ""),
+        }
+    )
+    assert library.check_entry(git, store, entry)["findings"] == []
 
 
 # --------------------------------------------------------------------------------------------

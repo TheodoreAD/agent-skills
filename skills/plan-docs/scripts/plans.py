@@ -55,6 +55,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -4624,4 +4625,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # A cut pipe is the reader's decision, not this script's error: die on SIGPIPE (exit 141)
+    # rather than print a BrokenPipeError traceback that reads as a crash. Inside the guard because
+    # the disposition is process-wide and the tests load this module by path.
+    if hasattr(signal, "SIGPIPE"):  # absent on Windows
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     raise SystemExit(main())

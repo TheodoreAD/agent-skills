@@ -7,6 +7,7 @@ The pilot measured returns only, which is how a tuple parameter survived the pas
 
 import argparse
 import ast
+import signal
 from pathlib import Path
 
 
@@ -77,4 +78,9 @@ def count_one(path: Path) -> None:
 
 
 if __name__ == "__main__":
+    # A cut pipe is the reader's decision, not this script's error: die on SIGPIPE (exit 141)
+    # rather than print a BrokenPipeError traceback that reads as a crash. Inside the guard because
+    # the disposition is process-wide and the tests load this module by path.
+    if hasattr(signal, "SIGPIPE"):  # absent on Windows
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     main()

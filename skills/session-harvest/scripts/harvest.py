@@ -15,6 +15,7 @@ every time drifts, and its answers stop being comparable across runs.
     harvest.py skills-state --since <session start>
     harvest.py sweep --boundary <instant>
     harvest.py claims --until <instant>
+    harvest.py filed --until <instant>       # a second harvest: what the first one already filed
 
 The transcript resolves, in order, from `--session <id|path>`, a background job's `state.json`
 (`$CLAUDE_JOB_DIR`), Claude Code's own `$CLAUDE_CODE_SESSION_ID` (exported into every Bash call, so
@@ -2338,6 +2339,218 @@ def _claim_line(text: str, index: int) -> str:
 
 
 # --------------------------------------------------------------------------------------------
+# subcommand: filed
+# --------------------------------------------------------------------------------------------
+
+
+# `boundary` is step 0 of every run, so counting those calls counts the harvests. `$H` is the alias
+# the skill's own command block uses and a session that copied that block types it literally.
+BOUNDARY_CALL_RE = re.compile(r"(?:harvest\.py|\$H)\b[^|;&\n]*\bboundary\b")
+
+# What a filed measurement looks like in a plan: a rate, a labelled count, or a counted noun.
+# Deliberately broad, the same choice `GREEN_CLAIM_RE` makes — an extra line is one the agent reads
+# and discards, while a missed one is a number left standing at the value the first harvest took.
+MEASUREMENT_RE = re.compile(
+    r"\b\d+(?:\.\d+)?\s?%"
+    r"|\b[a-z][\w./-]*\s?=\s?\d+"
+    r"|\b\d+\s+(?:calls|commits|files|plans|sessions|tests|errors|warnings|lines|rows|hits|images)\b",
+    re.IGNORECASE,
+)
+
+# One record per commit, so `--name-only`'s file list can be split back off its own header. The
+# separators are asked for as git's own `%xNN` escapes rather than passed as bytes: an argv element
+# may not contain a NUL at all (`ValueError: embedded null byte`, and no test with a fake runner can
+# see it), and the ASCII record/unit separators cannot occur in a subject or an author name.
+COMMIT_RECORD = "\x1e"
+COMMIT_FIELD = "\x1f"
+COMMIT_FORMAT = "--format=%x1e%H%x1f%aI%x1f%an%x1f%s"
+
+
+def harvest_runs(entries: Iterable[dict[str, Any]], until: str | None = None) -> list[str]:
+    """When this session ran a harvest, from its own `boundary` calls.
+
+    Whether a run is the second harvest of a session is a fact about the transcript, not something
+    the agent has to still be holding: the evidence for this whole subcommand is a session whose
+    second harvest corrected the first's filed row only because it happened to remember filing it.
+    """
+    return [
+        stamp for stamp, command in bash_calls(entries) if BOUNDARY_CALL_RE.search(command) and before(stamp, until)
+    ]
+
+
+def plan_roots(repos: Sequence[Path]) -> list[Path]:
+    """Every directory a plan can be filed into: both plans stores, and each repo's own `plans/`.
+
+    A path test against these roots rather than a `plans` component anywhere in the path — the
+    stores are named by config and a repo directory called `plans-something` is not one of them.
+    """
+    return [path for name, path in _stores() if name.startswith("plans")] + [repo / "plans" for repo in repos]
+
+
+def _under(path: Path, root: Path) -> bool:
+    try:
+        return path.expanduser().is_relative_to(root)
+    except ValueError:
+        return False
+
+
+def measurement_lines(path: Path, limit: int = 6) -> list[str]:
+    """The lines in a filed plan that carry a number this session could have re-derived since."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [line.strip()[:200] for line in text.splitlines() if MEASUREMENT_RE.search(line)][:limit]
+
+
+def filed_plans(entries: Iterable[dict[str, Any]], repos: Sequence[Path]) -> list[dict[str, Any]]:
+    """Plan files this session wrote, wherever they landed, each with its measurement lines."""
+    roots = plan_roots(repos)
+    found: list[dict[str, Any]] = []
+    for path in written_paths(entries):
+        if path.suffix != ".md":
+            continue
+        root = next((r for r in roots if _under(path, r)), None)
+        if root is None:
+            continue
+        found.append(
+            {
+                "path": str(path),
+                "root": str(root),
+                "exists": path.exists(),
+                "measurements": measurement_lines(path),
+            }
+        )
+    return found
+
+
+def store_commits(runner: Runner, name: str, path: Path, since: str | None, written: Sequence[Path]) -> dict[str, Any]:
+    """The store's own commits since this session began, each attributed or explicitly not.
+
+    The store is shared, so a commit inside the window is not this session's by virtue of being
+    there — the same trap the disk bullet's image rows fell into. A commit counts as this session's
+    when it touches a path the transcript shows this session writing; everything else is listed
+    under its own heading and never proposed for correction, because it is another session's work
+    and possibly a live one's.
+    """
+    state: dict[str, Any] = {"store": name, "path": str(path)}
+    if not path.is_dir() or not (path / ".git").exists():
+        state["present"] = False
+        return state
+    state["present"] = True
+    if not since:
+        state["note"] = "no session start: pass --since, or a transcript the script can date"
+        return state
+    ran = runner(["git", "-C", str(path), "log", f"--since={since}", "--name-only", COMMIT_FORMAT])
+    if not ran.ok:
+        state["error"] = ran.err.strip() or f"git log exited {ran.code}"
+        return state
+    mine = {os.path.normpath(str(p)) for p in written}
+    commits: list[dict[str, Any]] = []
+    for chunk in ran.out.split(COMMIT_RECORD):
+        lines = [line for line in chunk.splitlines() if line.strip()]
+        if not lines:
+            continue
+        header = lines[0].split(COMMIT_FIELD)
+        if len(header) != 4:
+            continue
+        sha, when, author, subject = header
+        files = lines[1:]
+        commits.append(
+            {
+                "sha": sha[:9],
+                "when": when,
+                "author": author,
+                "subject": subject,
+                "files": files,
+                "this_session": any(os.path.normpath(str(path / f)) in mine for f in files),
+            }
+        )
+    state["commits"] = commits
+    return state
+
+
+def cmd_filed(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
+    """What this session has already written into a plans store, and how many harvests wrote it.
+
+    A harvest's report dies with the terminal; the plans it filed do not. So a second harvest owes
+    the first one's artifacts a correction, and this is where it finds them rather than remembering
+    them. Confirmed 2026-09-07: two harvests of one session 2h40m apart, the first filing an
+    adherence row of `n=211 chain=36% head/tail=20%` that the whole session measured at
+    `n=306 chain=44% head/tail=27%` — every rate moved, because a mid-session row is a *prefix* of
+    the session and the last third was a different kind of work.
+    """
+    transcript = resolve_transcript(args.session, args.job, args.expect, Path.cwd())
+    entries = transcript.entries
+    since = args.since or transcript.started
+    repos = _touched_repos(runner, args.repo, entries)
+    written = written_paths(entries)
+    runs = harvest_runs(entries, args.until)
+    plans = filed_plans(entries, repos)
+    stores = [store_commits(runner, name, path, since, written) for name, path in _stores() if name.startswith("plans")]
+
+    payload = {
+        "transcript": transcript.as_dict(),
+        "session_started": since,
+        "harvest_runs": runs,
+        "plans_written": plans,
+        "stores": stores,
+    }
+    if args.json:
+        return payload
+    _print_filed(payload)
+    return payload
+
+
+def _print_filed(payload: dict[str, Any]) -> None:
+    transcript = payload.get("transcript", {})
+    print(f"# transcript: {transcript.get('path')}")
+    print(f"# session started: {payload.get('session_started')}")
+    runs = payload.get("harvest_runs") or []
+    if not runs:
+        print("# no `boundary` call in this transcript — step 0 has not run, or it has not flushed yet")
+    else:
+        print(f"# harvest #{len(runs)} of this session; step-0 boundaries at: {', '.join(runs)}")
+    if len(runs) > 1:
+        print(
+            "# an earlier harvest filed the artifacts below. A measurement taken then is a PREFIX of\n"
+            "# this session, not a smaller version of it — re-derive each figure and correct the file\n"
+            "# before writing the delta report. The report is the cheap half; the file is the durable one."
+        )
+
+    plans = payload.get("plans_written") or []
+    print(f"\n## plan files this session wrote ({len(plans)})")
+    for plan in plans:
+        mark = "" if plan.get("exists") else "  MISSING (absorbed, or moved)"
+        print(f"    {plan['path']}{mark}")
+        for line in plan.get("measurements") or []:
+            print(f"        {line}")
+
+    for state in payload.get("stores") or []:
+        _print_store_commits(state)
+
+
+def _print_store_commits(state: dict[str, Any]) -> None:
+    print(f"\n## store {state['store']}: {state['path']}")
+    if not state.get("present"):
+        print("    not present")
+        return
+    for key in ("note", "error"):
+        if state.get(key):
+            print(f"    {key}: {state[key]}")
+    commits = state.get("commits") or []
+    ours = [c for c in commits if c["this_session"]]
+    theirs = [c for c in commits if not c["this_session"]]
+    print(f"    {len(ours)} commit(s) this session, {len(theirs)} from elsewhere, since session start")
+    for commit in ours:
+        print(f"    {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
+    for commit in theirs:
+        print(f"    (another session) {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
+    if theirs:
+        print("    rows marked (another session) are not yours to correct — report them, do not edit them")
+
+
+# --------------------------------------------------------------------------------------------
 # cli
 # --------------------------------------------------------------------------------------------
 
@@ -2411,6 +2624,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_transcript_flags(claims)
     claims.add_argument("--until", help="ignore anything at or after this instant (the boundary)")
     claims.add_argument("--samples", type=int, default=8, help="masked commands to print (default 8)")
+
+    filed = subparsers.add_parser(
+        "filed", parents=[common], help="what an earlier harvest in this session already filed, and where"
+    )
+    _add_transcript_flags(filed)
+    filed.add_argument("--since", help="session start (default: the transcript's first timestamp)")
+    filed.add_argument("--until", help="ignore harvest runs at or after this instant (the boundary)")
+    filed.add_argument("--repo", action="append", default=[], help="add a repo the transcript cannot show")
     return parser
 
 
@@ -2421,6 +2642,7 @@ COMMANDS = {
     "skills-state": cmd_skills_state,
     "sweep": cmd_sweep,
     "claims": cmd_claims,
+    "filed": cmd_filed,
 }
 
 

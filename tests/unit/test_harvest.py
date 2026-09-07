@@ -1094,6 +1094,111 @@ def test_a_claim_made_inside_a_question_is_still_a_claim():
     assert "Gate green, scan clean. Push?" in texts
 
 
+# --------------------------------------------------------------------------------------------
+# what an earlier harvest in this session already filed
+# --------------------------------------------------------------------------------------------
+
+
+def write_entry(path: str, timestamp: str = "2026-09-07T08:20:00.000Z") -> dict[str, object]:
+    block = {"type": "tool_use", "id": "w", "name": "Write", "input": {"file_path": path}}
+    return blocks_entry("assistant", [block], timestamp=timestamp)
+
+
+def test_a_second_harvest_is_counted_from_the_transcript_not_remembered():
+    """Confirmed 2026-09-07: a second harvest corrected the row the first had filed only because it
+    happened to still be holding the memory of filing it. Whether a run is the second harvest of a
+    session is a fact about the transcript — `boundary` is step 0 of every run, so the calls are
+    there to be counted, and the skill's own `$H` alias is one of the spellings they arrive in."""
+    entries = [
+        bash_entry("python3 ~/.agents/skills/session-harvest/scripts/harvest.py boundary", "2026-09-07T08:12:00.000Z"),
+        bash_entry("python3 $H boundary", "2026-09-07T10:55:00.000Z"),
+        bash_entry("git status --short", "2026-09-07T10:56:00.000Z"),
+    ]
+    assert harvest.harvest_runs(entries) == ["2026-09-07T08:12:00.000Z", "2026-09-07T10:55:00.000Z"]
+    assert harvest.harvest_runs(entries, until="2026-09-07T09:00:00Z") == ["2026-09-07T08:12:00.000Z"]
+
+
+def test_a_filed_plan_carries_the_measurements_a_second_harvest_must_re_derive(tmp_path, monkeypatch):
+    """The row this rule exists for: `n=211 chain=36% head/tail=20%`, filed 2h40m before the session
+    ended and wrong by every rate once it had. The prose lines around it are not the finding, so a
+    plan is reported by the lines carrying a number rather than in full."""
+    store = tmp_path / "plans"
+    (store / "power-user-linux-setup").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    plan = store / "power-user-linux-setup" / "2026-09-07-adherence-row.md"
+    plan.write_text(
+        "# a row\n\nn=211  chain=36%  head/tail=20%  sed-n=0%(1)\n\nprose carrying no measurement\n",
+        encoding="utf-8",
+    )
+
+    (row,) = harvest.filed_plans([write_entry(str(plan))], repos=[])
+    assert row["exists"]
+    assert row["measurements"] == ["n=211  chain=36%  head/tail=20%  sed-n=0%(1)"]
+
+
+def test_a_markdown_file_outside_every_plan_root_is_not_a_filing(tmp_path, monkeypatch):
+    """`plans` as a path component is not the test — the stores are named by config, and a repo may
+    hold a `plans-archive/` that nothing files into."""
+    monkeypatch.setenv("PLANS_HOME", str(tmp_path / "plans"))
+    repo = tmp_path / "repo"
+    (repo / "plans").mkdir(parents=True)
+    entries = [
+        write_entry(str(repo / "AGENTS.md")),
+        write_entry(str(repo / "plans" / "2026-09-07-thing.md")),
+    ]
+    assert [Path(row["path"]).name for row in harvest.filed_plans(entries, repos=[repo])] == ["2026-09-07-thing.md"]
+
+
+def test_a_store_commit_from_another_session_is_not_this_sessions_to_correct(tmp_path, monkeypatch):
+    """The store is shared, so a commit inside the window is not this session's by virtue of being
+    there — the same trap the disk bullet's image rows fell into on 2026-09-06. Attribution is the
+    transcript's own write paths, and an unattributable row is listed rather than dropped."""
+    store = tmp_path / "plans"
+    (store / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    mine = store / "power-user-linux-setup" / "2026-09-07-adherence-row.md"
+    log = (
+        "\x1eaaaaaaaaaaaa\x1f2026-09-07T08:30:00+03:00\x1fT\x1fpower-user-linux-setup: an adherence row\n"
+        "power-user-linux-setup/2026-09-07-adherence-row.md\n"
+        "\x1ebbbbbbbbbbbb\x1f2026-09-07T09:02:00+03:00\x1fT\x1frepo-tasks: somebody else's plan\n"
+        "repo-tasks/2026-09-07-other.md\n"
+    )
+    runner = FakeRunner({f"git -C {store} log": (0, log, "")})
+
+    state = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [mine])
+    assert [c["subject"] for c in state["commits"] if c["this_session"]] == ["power-user-linux-setup: an adherence row"]
+    assert [c["subject"] for c in state["commits"] if not c["this_session"]] == ["repo-tasks: somebody else's plan"]
+
+
+def test_the_commit_separator_is_asked_for_rather_than_passed_as_a_byte(tmp_path, monkeypatch):
+    """Found live 2026-09-07, on the first real run of this subcommand, and invisible to every test
+    around it: a `--format` built with a real NUL raises `ValueError: embedded null byte` inside
+    `subprocess.run`, which a fake runner never reaches. git's own `%xNN` escape keeps the argv
+    ASCII and still separates the output."""
+    store = tmp_path / "plans"
+    (store / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    runner = FakeRunner()
+
+    harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [])
+    (call,) = runner.calls
+    assert all("\x00" not in part for part in call), "an argv element may not contain a NUL"
+    assert "--format=%x1e" in " ".join(call)
+
+
+def test_a_store_git_log_that_fails_is_reported_rather_than_read_as_nothing_filed(tmp_path, monkeypatch):
+    """The same failure the ahead-count had: a non-zero exit read as an empty answer says "the first
+    harvest filed nothing", which is the one wrong answer this subcommand can give silently."""
+    store = tmp_path / "plans"
+    (store / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    runner = FakeRunner({f"git -C {store} log": (128, "", "fatal: bad revision")})
+
+    state = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [])
+    assert "commits" not in state
+    assert state["error"] == "fatal: bad revision"
+
+
 def test_a_reference_clone_is_not_a_repo_this_session_owns(tmp_path, monkeypatch):
     """One `cd` into a vendor clone to read its refspec pulled it into the sweep, which then
     fetched a stranger's remote and reported eight of that project's CI runs as findings."""
@@ -1190,7 +1295,7 @@ def test_a_missing_binary_is_an_exit_code_not_a_crash(monkeypatch):
 def test_every_subcommand_accepts_the_shared_flags_after_its_name():
     """`harvest.py turns --json` has to work: declared only above the subcommand, argparse takes
     the flag only *before* it, which reads as the flag having been ignored."""
-    for command in ("boundary", "transcript", "turns", "skills-state", "sweep", "claims"):
+    for command in ("boundary", "transcript", "turns", "skills-state", "sweep", "claims", "filed"):
         args = harvest.build_parser().parse_args([command, "--json"])
         assert args.json is True
         assert args.command == command

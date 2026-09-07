@@ -196,6 +196,27 @@ while citing only the _skill_, so the store offered no hint and the merge happen
 read. See `2026-09-03-two-plans-one-subject-absorb-cannot-pair.md`, which owns that gap — this is a
 worked instance of it.]
 
+### Fixed 2026-09-08
+
+`store_state` now attributes each changed entry from this session's own commands and prints the rest
+as a bare count, with `changed_since_session_start` renamed to `changed_by_this_session` so the key
+stops asserting what it never measured.
+
+**Two spellings are matched, and needing both is the non-obvious part.** A session that _reads_ an
+entry names its directory (`library.py update <entry>`, an `rg` over the clone); a session that
+_adds_ one names a **URL**, and the entry's name is derived from it afterwards, so `<owner>/<repo>`
+is what sits in argv and the directory name appears nowhere. Matching the directory alone attributes
+every entry a session read and none it added — backwards, since an add is the event worth
+attributing and a read does not move an mtime at all.
+
+[PITFALL: **it under-attributes when a script does the work, and the session that wrote the fix is
+the example.** A retrofit re-cloned seven entries from a `retrofit.py` holding the names in a list,
+so argv named two of the seven and the other five came back under "something else" — this session's
+own work. The conservative direction, and the intended one, since the alternative is claiming a
+refresher's; but it is the same blind spot `2026-09-05-sweep-misses-a-file-a-subprocess-wrote.md`
+describes one door along, and the two are now known to be one gap rather than two. The report prints
+the limit next to the count for that reason: a low number here must not read as a small session.]
+
 ## Recommended direction
 
 1. Gate `_correction_overlap` on the repo having been written to by this session, or intersect with

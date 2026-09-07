@@ -77,6 +77,18 @@ Three shapes, none obviously right, and the choice decides whether this is worth
 - **Say the check's own limit in the report**, and stop claiming coverage it does not have.
   Cheapest, honest, and leaves the finding to the session's own memory — which is what failed here.]
 
+## A second check with the same blind spot, 2026-09-08
+
+The research-store attribution added on 2026-09-08 reads argv rather than write paths, and hits this
+gap from the other side: a retrofit re-cloned seven library entries from a `retrofit.py` holding the
+names in a list, so argv named two of the seven and the other five were reported as somebody else's.
+Same root — **which door the work went through decides whether the sweep can see it** — and it now
+has two independent instances rather than one, in checks that read different evidence.
+
+That is an argument for recommendation 1 below being the general answer rather than this one check's
+consolation prize: neither check can be made complete, and both can be made to say what they saw.
+The research one now prints its own limit next to its count for exactly that reason.
+
 ## Recommended direction
 
 1. **At minimum, make the report say what the check saw**, rather than printing an empty list that

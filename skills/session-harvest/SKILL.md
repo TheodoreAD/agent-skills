@@ -109,10 +109,13 @@ The running skill is a file copy dropped at install time, so a harvest can silen
 version older than the source — skipping exactly the checks most recently added, and reporting a
 clean run because it never looked. `python3 $H skills-state --since <session start>` compares the
 installed copy against the checkout for this skill and the others a harvest leans on; add
-`--skill <name>` for anything else this run used. If they differ, say so; a stale harvest is worse
-than no harvest, because its report reads identical. Added 2026-08-29 after the user asked for a
-harvest "with the latest versions" — behaviour the skill did not have, and could not have confirmed
-if asked.
+`--skill <name>` for anything else this run used. **In a checkout holding none of those three — any
+skills repo but this one's — it reports that checkout's own skills instead, and prints a `scope:`
+line saying so**, because the default's whole purpose is that naming another skill cannot drop this
+one, and where this one is absent there is nothing to protect. If they differ, say so; a stale
+harvest is worse than no harvest, because its report reads identical. Added 2026-08-29 after the
+user asked for a harvest "with the latest versions" — behaviour the skill did not have, and could
+not have confirmed if asked.
 
 **A difference has four causes, and only one of them is the stale install this step assumes.** The
 subcommand prints the verdict; what matters is that you act on the right one:

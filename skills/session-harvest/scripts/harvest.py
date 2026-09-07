@@ -1319,8 +1319,20 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
     # after session start with two unpushed commits — the finding step 0 exists for. `--all` is the
     # replace-everything case and stays one.
     names = list(DEFAULT_SKILLS) + [s for s in (args.skill or []) if s not in DEFAULT_SKILLS]
+    source = checkout / "skills"
+    held = sorted(p.name for p in source.iterdir() if p.is_dir()) if source.is_dir() else []
+    # `DEFAULT_SKILLS` is this skill's own family, and in a checkout that holds none of them the
+    # default is three "no such skill in the checkout" rows and no measurement — which is what a
+    # reader running this against their own skills repo sees on their first call. The defaults exist
+    # so naming another skill cannot drop this one (see above); where this one is not there to drop,
+    # there is nothing for them to protect, so the checkout's own skills are the answer. Said out
+    # loud rather than swapped silently: a scope that changes without a line is the shape this
+    # script's own step 0 is about.
+    note = ""
+    if not args.all and held and not any(name in held for name in DEFAULT_SKILLS):
+        names, note = held, f"none of {', '.join(DEFAULT_SKILLS)} are in this checkout — reporting its own {len(held)}"
     if args.all:
-        names = sorted(p.name for p in (checkout / "skills").iterdir() if p.is_dir())
+        names = held
     installed_root = Path(args.installed).expanduser() if args.installed else INSTALLED_SKILLS
     states = [skill_state(runner, name, checkout, installed_root, args.since) for name in names]
     main = worktree_main(checkout)
@@ -1333,6 +1345,7 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
         "worktree_of": str(main) if main else None,
         "installed_root": str(installed_root),
         "file_a_fix": filing,
+        "scope_note": note,
         "skills": states,
     }
     if not args.json:
@@ -1348,6 +1361,8 @@ def _print_skills_state(payload: dict[str, Any], since_given: bool) -> None:
         print("  nothing until this branch is merged — offer that, not a re-install")
     if payload["file_a_fix"]:
         print(f"file a fix from another repo: {payload['file_a_fix']}")
+    if payload.get("scope_note"):
+        print(f"scope: {payload['scope_note']}")
     if not since_given:
         print("note: --since <session start> adds the moved-after-this-session-began check")
     for state in payload["skills"]:

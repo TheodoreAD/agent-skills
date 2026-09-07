@@ -591,6 +591,64 @@ EXPECTATIONS: dict[str, str] = {
 }
 
 
+def config_dir(skill: str = "session-bash-audit") -> Path:
+    """Where this skill looks for expectations the reader wrote — `$XDG_CONFIG_HOME/<skill>/`.
+
+    Config, not state, and the pair is deliberate: `state_dir` above keeps what happened on this
+    machine and must not roam, while a set of expectations is a decision about how you want to work
+    and should follow you to the next machine. That is why the Windows default here is `%APPDATA%`
+    and there `%LOCALAPPDATA%`.
+    """
+    base = os.environ.get("XDG_CONFIG_HOME")
+    if base:
+        return Path(base).expanduser() / skill
+    if WINDOWS:
+        roaming = os.environ.get("APPDATA")
+        return (Path(roaming) if roaming else Path.home() / "AppData" / "Roaming") / skill
+    return Path.home() / ".config" / skill
+
+
+VERDICT_KINDS = ("down", "zero")
+
+
+def load_expectations(explicit: Path | None) -> tuple[dict[str, str], str]:
+    """The expectations to score against, and where they came from.
+
+    **`EXPECTATIONS` above is one author's rule set, not a fact about Bash.** Every entry is a
+    reading of one machine's `~/AGENTS.md`: `find-not-fd` is `down` because that file prefers `fd`,
+    `cd-own-repo` is `zero` because it bans the shape outright. A reader whose instructions say
+    something else gets rows that are still true and a verdict that scores them against rules they
+    never adopted — and cannot retune it, because editing an installed skill is what
+    `skill-authoring` forbids. So the set is replaceable from a file the reader owns.
+
+    **The file replaces the set wholesale rather than patching it.** A merge would leave a verdict
+    attributable to two documents at once, and no way to read either and know what was scored;
+    restating a dozen lines is the smaller cost. The provenance string is returned with it and
+    printed beside the verdict for the same reason.
+    """
+    path = explicit or (config_dir() / "expectations.json")
+    if not path.exists():
+        if explicit is not None:
+            raise SystemExit(f"no expectations file at {path}")
+        return dict(EXPECTATIONS), "shipped — one author's rules; see the skill for how to use your own"
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"{path}: not valid JSON — {error}") from error
+    if not isinstance(loaded, dict) or not loaded:
+        raise SystemExit(f'{path}: expected a non-empty object of {{"<row>": "down"|"zero"}}')
+    known = set(SESSION_ROWS)
+    for row, want in loaded.items():
+        # Both halves fail loudly. A row nothing computes is the defect this file already carries a
+        # comment about — `EXPECTATIONS` judged `find-not-fd` while `rates()` did not compute it, and
+        # `compare` skipped it silently every run for weeks.
+        if row not in known:
+            raise SystemExit(f"{path}: no such row {row!r} — known rows: {', '.join(sorted(known))}")
+        if want not in VERDICT_KINDS:
+            raise SystemExit(f"{path}: {row!r} wants {want!r}; only {' and '.join(VERDICT_KINDS)} are verdicts")
+    return dict(loaded), f"{path} — your own"
+
+
 def rates(calls: list[Call]) -> dict[str, float]:
     """Share of `calls` carrying each tag, plus the aggregate chain rate.
 
@@ -711,12 +769,13 @@ def dump_json(calls: list[Call], path: Path) -> None:
     print(f"\nwrote {path}")
 
 
-def compare(calls: list[Call], baseline_path: Path) -> None:
+def compare(calls: list[Call], baseline_path: Path, expectations: dict[str, str], source: str) -> None:
     """Per model present in both runs: delta in percentage points against the baseline, with a
-    verdict for every tag EXPECTATIONS names. A model with under 50 calls in either run is shown
+    verdict for every tag the expectations name. A model with under 50 calls in either run is shown
     but not judged — the rates are too noisy to call."""
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     print(f"\n== vs baseline {baseline_path.name} ({baseline.get('saved')}, {baseline.get('note', '')}) ==")
+    print(f"   expectations: {source}")
     now = rates_by_model(calls)
     verdicts: list[bool] = []
     for label, cur in sorted(now.items(), key=lambda kv: -int(kv[1]["n"])):
@@ -726,7 +785,7 @@ def compare(calls: list[Call], baseline_path: Path) -> None:
             continue
         judge = min(int(cur["n"]), int(old["n"])) >= 50
         cells = []
-        for tag, want in EXPECTATIONS.items():
+        for tag, want in expectations.items():
             after = float(cur.get(tag, 0.0))
             if tag not in old and want != "zero":
                 # A "down" expectation on a pattern added since this baseline was saved has nothing
@@ -829,7 +888,12 @@ def _group(calls: list[Call], key: Callable[[Call], str]) -> dict[str, list[Call
     return groups
 
 
-def report(calls: list[Call], samples: int, compare_with: Path | None = None) -> None:
+def report(
+    calls: list[Call],
+    samples: int,
+    compare_with: Path | None = None,
+    expectations: tuple[dict[str, str], str] | None = None,
+) -> None:
     random.seed(1)
     print(f"Bash calls: {len(calls)}  (subagent: {sum(c.subagent for c in calls)})")
 
@@ -842,7 +906,8 @@ def report(calls: list[Call], samples: int, compare_with: Path | None = None) ->
     # the answer. See report_session's note: a run piped through `head -12` lost the comparison
     # entirely when it printed last, and reported the rates as though they were the finding.
     if compare_with:
-        compare(calls, compare_with)
+        wanted, source = expectations or load_expectations(None)
+        compare(calls, compare_with, wanted, source)
 
     print("\n== pattern totals ==")
     totals = Counter(t for c in calls for t in c.tags)
@@ -1039,7 +1104,8 @@ def report_session(args: argparse.Namespace) -> list[Call]:
     # it. The rule against piping is what should have prevented it and the ordering is what makes
     # the failure survivable, so both exist.
     if args.compare:
-        compare(calls, args.compare)
+        wanted, source = load_expectations(args.expectations)
+        compare(calls, args.compare, wanted, source)
     else:
         print("\nCompare against the baseline with --compare; a rate worse than it is the finding,")
         print("and authoring a rule is not evidence of following it.")
@@ -1055,6 +1121,12 @@ def main() -> None:
     ap.add_argument("--samples", type=int, default=8, help="samples to print per pattern (0 = none)")
     ap.add_argument("--json", type=Path, help="also dump every call with its tags to this JSON file")
     ap.add_argument("--compare", type=Path, help="baseline JSON to diff the per-model rates against, with verdicts")
+    ap.add_argument(
+        "--expectations",
+        type=Path,
+        help="JSON of {row: down|zero} to score against, replacing the shipped set "
+        "(default: $XDG_CONFIG_HOME/session-bash-audit/expectations.json when it exists)",
+    )
     ap.add_argument(
         "--save-baseline",
         nargs="?",
@@ -1099,7 +1171,7 @@ def main() -> None:
     if not calls:
         print("no Bash calls found — check --days / --project / --until")
         return
-    report(calls, args.samples, args.compare)
+    report(calls, args.samples, args.compare, load_expectations(args.expectations) if args.compare else None)
     if args.save_baseline is not False:
         default = state_dir() / f"{time.strftime('%Y-%m-%d', time.gmtime())}.json"
         save_baseline(calls, args.save_baseline or default, args.days, args.note, args.force)

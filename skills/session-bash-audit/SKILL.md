@@ -89,7 +89,9 @@ habit instead, from output loss, which holds everywhere.
 ## What this skill reads, runs and writes
 
 - **Reads**: `~/.claude/projects/*.jsonl` and `~/.claude/settings.json`, Claude Code's own files,
-  read-only.
+  read-only; and, if it is there, your own expectations at
+  `$XDG_CONFIG_HOME/session-bash-audit/expectations.json` (`%APPDATA%\…` on Windows) or wherever
+  `--expectations <path>` names.
 - **Runs**: three read-only `git` commands against its own directory, and only while writing a
   baseline — `ls-files`, `rev-parse HEAD` and `status --porcelain` on `audit.py` itself, to record
   which version of the instrument produced that measurement. Nothing else: `prompts.py` replays the
@@ -220,6 +222,23 @@ Prints each model's current rates next to the baseline as percentage-point delta
 per expectation (`EXPECTATIONS` in the script: chaining, head/tail, sed -n, cat, heredoc and
 git-in-chain should be _down_; own-repo `cd` and `git -C` mutations, and a bundled `rg -r`, at
 zero). Models with fewer than 50 calls in either run are shown as `?`, not judged.
+
+**Those expectations are one author's rule set, not a fact about Bash — score against your own
+instead.** Every entry is a reading of one machine's `~/AGENTS.md`: `find-not-fd` is `down` because
+that file prefers `fd`, `cd-own-repo` is `zero` because it bans the shape outright. Your rows stay
+true whatever your instructions say; only the verdict is borrowed. Write your own as JSON of
+`{"<row>": "down"|"zero"}` and pass `--expectations <path>`, or put it at
+`$XDG_CONFIG_HOME/session-bash-audit/expectations.json` (`~/.config/…` by default, `%APPDATA%\…` on
+Windows) and it is found with nothing passed:
+
+```json
+{ "chain": "down", "head/tail": "down", "cd-own-repo": "zero" }
+```
+
+The file **replaces** the shipped set rather than patching it — a verdict attributable to two
+documents at once is one nobody can read back — so restate every row you want scored. An unknown row
+name or a verdict other than `down`/`zero` is an error naming the valid ones, never a row that
+silently scores nothing, and the comparison header prints which document it used.
 
 **A `zero` expectation is judged on the count, and its cell prints that count with no delta.** It
 was a rate band (`<= 2%`) until 2026-09-06, which is not a definition of zero at any scale and hid

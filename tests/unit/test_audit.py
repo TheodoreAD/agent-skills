@@ -249,7 +249,7 @@ def test_a_zero_expectation_is_judged_on_the_count(tmp_path, capsys):
     baseline = tmp_path / "b.json"
     audit.save_baseline(calls, baseline, days=7.0, note="")
 
-    audit.compare(calls, baseline)
+    audit.compare(calls, baseline, audit.EXPECTATIONS, "shipped")
 
     line = next(ln for ln in capsys.readouterr().out.splitlines() if "rg-replace-bundle" in ln)
     assert "rg-replace-bundle=1(MISS)" in line, "one instance in 200 calls is 0.5%, which the old band passed"
@@ -264,7 +264,7 @@ def test_a_zero_row_shows_no_delta_because_the_test_is_absolute(tmp_path, capsys
     baseline = tmp_path / "b.json"
     audit.save_baseline([_call("rg -rn cd src"), *clean], baseline, days=7.0, note="")
 
-    audit.compare(clean, baseline)
+    audit.compare(clean, baseline, audit.EXPECTATIONS, "shipped")
 
     line = next(ln for ln in capsys.readouterr().out.splitlines() if "rg-replace-bundle" in ln)
     assert "rg-replace-bundle=0(OK)" in line
@@ -428,6 +428,45 @@ def test_every_judged_row_is_a_row_that_gets_computed():
     computed is the same defect as a computed row that is never displayed."""
     computed = audit.rates([_call("ls")])
     assert not [tag for tag in audit.EXPECTATIONS if tag not in computed]
+
+
+def test_a_reader_can_score_against_their_own_expectations(tmp_path, monkeypatch):
+    """The shipped set is one author's reading of one `~/AGENTS.md` — `find-not-fd` is `down`
+    because that file prefers `fd`. A reader whose instructions differ gets rows that are still true
+    and a verdict scoring them against rules they never adopted, and cannot retune it without
+    forking, because editing an installed skill is what `skill-authoring` forbids."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    shipped, source = audit.load_expectations(None)
+    assert shipped == audit.EXPECTATIONS
+    assert "shipped" in source
+
+    theirs = tmp_path / "expectations.json"
+    theirs.write_text('{"chain": "down"}', encoding="utf-8")
+    loaded, source = audit.load_expectations(theirs)
+    assert loaded == {"chain": "down"}, "the file replaces the set rather than patching it"
+    assert str(theirs) in source, "the verdict has to say which document it was scored against"
+
+    # And the same file found by its documented location, with nothing passed.
+    (tmp_path / "config" / "session-bash-audit").mkdir(parents=True)
+    (tmp_path / "config" / "session-bash-audit" / "expectations.json").write_text('{"heredoc": "down"}')
+    assert audit.load_expectations(None)[0] == {"heredoc": "down"}
+
+
+def test_an_expectations_file_fails_loudly_rather_than_scoring_nothing(tmp_path):
+    """A row nothing computes is the defect this script already carries a comment about: `find-not-fd`
+    was judged and never computed, and `compare` skipped it silently every run for weeks."""
+    bad_row = tmp_path / "row.json"
+    bad_row.write_text('{"chian": "down"}', encoding="utf-8")
+    with pytest.raises(SystemExit, match="no such row"):
+        audit.load_expectations(bad_row)
+
+    bad_verdict = tmp_path / "verdict.json"
+    bad_verdict.write_text('{"chain": "sideways"}', encoding="utf-8")
+    with pytest.raises(SystemExit, match="only down and zero"):
+        audit.load_expectations(bad_verdict)
+
+    with pytest.raises(SystemExit, match="no expectations file"):
+        audit.load_expectations(tmp_path / "absent.json")
 
 
 def test_the_replace_row_names_the_spelling_that_produced_it():

@@ -393,6 +393,58 @@ print the `[repos]` spelling that works. Worth knowing because the flat `~/proje
 is the more common one in the wild — the `<host>-<org>/<repo>` shape this skill was written against
 is the unusual one, so this was a portability defect in a published skill rather than a local quirk.
 
+### Why ownership is read from the remote, and where `[orgs]` sits (2026-09-07)
+
+Asked for by the user: _"a repo in an org that is not the user should be confirmed whether to have a
+plans/ directory, since orgs almost always have their own work trackers"_ — with the evaluations in
+the script and deterministic, and config keyed on organisations so a mistake is caught early and put
+to the user as a decision rather than inferred.
+
+Four choices were settled in building it.
+
+**The remote, not the directory.** Everything else in this convention keys off the path under
+`projects_root`, which is a filing convention: one person's `github.com-acme` is another's `work/`.
+A remote is the repository's own answer, and it is the only one that survives a clone being moved.
+The two disagree exactly where it matters — one fork from somebody else's organisation filed under a
+root routed `repo` — and that clone is invisible to every path-based rule the machine has.
+
+**`[orgs]` beats `[roots]` and loses to `[repos]`.** The precedence question is "which of these is
+about the repository", and only two of them are: `[repos]` names one, `[orgs]` names who owns it,
+while `[roots]` names a directory it happens to sit in. Putting the org layer below the root layer
+would have left the disagreement above unresolvable except per repo, which is the entry the user
+would have to write once per clone rather than once per organisation.
+
+**The refusal is silent until `own_accounts` is set, and that is the design rather than a gap.**
+With nothing to compare against, every owner reads as foreign — so the check would fire on every
+`repo`-routed repository on the machine the moment it shipped, which is how a check gets configured
+away instead of answered. A repo with **no remote** does not trigger it either: it is local, nobody
+could have agreed or objected, and absence of evidence is not evidence.
+
+**And `own_accounts` is never derived.** `install --explain` suggests the commonest remote owner
+under a public root, because turning an open question into one to confirm is most of the value — but
+recording that answer automatically would be wrong precisely on the machine this feature is for. On
+a corporate box the commonest owner is the employer, and marking their organisation as the user's
+own makes every check downstream pass silently, which is worse than having no check.
+
+### Why a work device defaults to the store, and a contractor device still asks (2026-09-07)
+
+The same request continued: _"for corporate contexts where everything is owned by a corp, the
+default should be all plans go to the central store except for the ones that belong to the user's
+personal repos on the GitHub Enterprise instance, if not using github.com."_
+
+The device axis already existed for the store split, and it carries this cleanly: on a `work` device
+"everything belongs to one organisation" is true by construction, that organisation has a tracker,
+and so the answer for an unmatched repo is the store. The carve-out cannot be a host or a directory
+— on an enterprise instance the user's repos and the employer's share a hostname — so it is
+`own_accounts`, matched on the bare account name, which is the one thing that differs.
+
+Scoping it to `work` is deliberate and is the reason this is not a change to the documented default.
+A contractor device keeps "no rule matched means ask": it is the answer that cannot write a `plans/`
+directory into somebody else's repository, and on a machine holding several parties' work there is
+no single organisation for a fallback to be about. `where` prints which fallback it used
+(`work device default`, `work device, your own account`) so a routed-without-a-rule answer is never
+silent, and `doctor` lists a root reaching either of them as still awaiting a decision.
+
 ### Why an unmatched repo asks instead of defaulting
 
 Decided with the user 2026-08-28: with no matching rule and no `default`, `plans.py where` exits 3

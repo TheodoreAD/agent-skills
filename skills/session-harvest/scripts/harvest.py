@@ -1814,8 +1814,12 @@ def store_state(
     else:
         cutoff = as_instant(since) if since else None
         library = _library_entries(path)
+        # `as_posix()`, matching `entries_without_provenance` below rather than the `str()` this line
+        # used to carry. On Windows `str()` yields `repos\github.com--a--b`, so the two lists in one
+        # payload disagreed about their own separator — and no test covered this key until the
+        # attribution split added one, which is how a Windows CI leg caught it on the first push.
         changed = [
-            str(item.relative_to(path))
+            item.relative_to(path).as_posix()
             for item in library
             if cutoff is not None and datetime.fromtimestamp(item.stat().st_mtime, UTC) > cutoff
         ]

@@ -996,7 +996,7 @@ def iter_entries(root: Path) -> list[Path]:
 def check_entry(runner: Runner, root: Path, entry: Path, remote: bool = False) -> dict[str, Any]:
     """Every way an entry can silently stop matching the store's own convention."""
     findings: list[str] = []
-    record: dict[str, Any] = {"entry": str(entry.relative_to(root)), "findings": findings}
+    record: dict[str, Any] = {"entry": entry.relative_to(root).as_posix(), "findings": findings}
 
     provenance = provenance_path(entry)
     if not provenance.is_file():

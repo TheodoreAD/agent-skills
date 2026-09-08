@@ -20,6 +20,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -829,6 +830,65 @@ def test_a_skill_that_moved_after_the_session_began_is_named(tmp_path):
     state = harvest.skill_state(runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z")
     assert state["moved_since_session_start"] is True
     assert "re-read" in state["verdict"]
+    assert state["move_baseline"] == {"instant": "2026-09-02T09:00:00Z", "is": "this session began"}
+
+
+def test_the_move_baseline_is_named_in_the_verdict_it_produced(tmp_path):
+    """Session start is the wrong instant for the skill doing the asking. Confirmed 2026-09-07: a
+    harvest invoked in a session's last minutes had its own body enter context *after* the three
+    commits the check reported, so the warning said the held copy might be superseded when it was
+    the newest text on the machine — a false positive every harvest gets on itself.
+
+    The baseline is therefore per skill, and the verdict names which one it used: a baseline that
+    changes silently is the same defect one level up from the one it fixes.
+    """
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    make_skill(checkout, "demo", "same\n")
+    make_installed(installed_root, "demo", "same\n")
+    runner = FakeRunner(
+        {
+            f"git -C {checkout} log -1 --format=%cI": (0, "2026-09-02T15:00:00+03:00\n", ""),
+            f"git -C {checkout} log --since=": (0, "abc123 Me a later edit\n", ""),
+        }
+    )
+    state = harvest.skill_state(
+        runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z", baseline="this skill entered context"
+    )
+    assert "moved after this skill entered context" in state["verdict"]
+    assert "moved after this session began" not in state["verdict"]
+
+
+def test_a_skills_load_instant_comes_from_the_sessions_own_skill_calls(monkeypatch):
+    """The instant that matters for "did this move under me" is when the text was read. It is in the
+    transcript: a `Skill` tool call names the skill and carries a timestamp."""
+
+    entries = [
+        blocks_entry(
+            "assistant",
+            [{"type": "tool_use", "id": "a", "name": "Skill", "input": {"skill": "plan-docs"}}],
+            timestamp="2026-09-08T09:06:44.390Z",
+        ),
+        blocks_entry(
+            "assistant",
+            [{"type": "tool_use", "id": "b", "name": "Skill", "input": {"skill": "plan-docs"}}],
+            timestamp="2026-09-08T11:00:00.000Z",
+        ),
+        blocks_entry(
+            "assistant",
+            [{"type": "tool_use", "id": "c", "name": "Bash", "input": {"command": "ls"}}],
+            timestamp="2026-09-08T12:00:00.000Z",
+        ),
+    ]
+    monkeypatch.setattr(harvest, "resolve_transcript", lambda *a, **k: SimpleNamespace(entries=entries))
+    args = argparse.Namespace(since=None, session=None, job=None, expect=None)
+
+    # The earliest call wins: a skill re-invoked later was already in context.
+    assert harvest._skill_load_instants(args) == {"plan-docs": "2026-09-08T09:06:44.390Z"}
+
+    # An explicit --since is the override, and overriding every row's baseline is legitimate.
+    supplied = argparse.Namespace(since="2026-01-01T00:00:00Z", session=None, job=None, expect=None)
+    assert harvest._skill_load_instants(supplied) == {}
 
 
 # --------------------------------------------------------------------------------------------

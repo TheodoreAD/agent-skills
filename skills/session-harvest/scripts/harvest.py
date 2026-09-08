@@ -1175,7 +1175,15 @@ def entry_points_differing(installed_script: Path, checkout_script: Path) -> lis
     return differing
 
 
-def skill_state(runner: Runner, name: str, checkout: Path, installed_root: Path, since: str | None) -> dict[str, Any]:
+def skill_state(
+    runner: Runner,
+    name: str,
+    checkout: Path,
+    installed_root: Path,
+    since: str | None,
+    *,
+    baseline: str = "this session began",
+) -> dict[str, Any]:
     source = checkout / "skills" / name
     installed = installed_root / name
     rel = f"skills/{name}"
@@ -1226,7 +1234,7 @@ def skill_state(runner: Runner, name: str, checkout: Path, installed_root: Path,
             if not subdirs
             else "installed copy matches, except references/ — read on demand and inert, so nothing to do"
         )
-        return _with_move_check(state, runner, checkout, rel, since, last)
+        return _with_move_check(state, runner, checkout, rel, since, last, baseline)
 
     # The three causes of a difference, which the diff alone cannot tell apart. Confirmed both ways
     # a day apart in 2026-08-30/29: the same non-empty diff meant "re-install" on a clean, level
@@ -1250,7 +1258,7 @@ def skill_state(runner: Runner, name: str, checkout: Path, installed_root: Path,
         # side is ahead, and a stale script cannot — the run executes it.
         state["verdict"] += "; the stale part includes scripts/, which this session EXECUTES rather than reads"
         _note_own_staleness(state, installed, source)
-    return _with_move_check(state, runner, checkout, rel, since, last)
+    return _with_move_check(state, runner, checkout, rel, since, last, baseline)
 
 
 def _note_own_staleness(state: dict[str, Any], installed: Path, source: Path) -> None:
@@ -1286,16 +1294,31 @@ def _note_own_staleness(state: dict[str, Any], installed: Path, source: Path) ->
 
 
 def _with_move_check(
-    state: dict[str, Any], runner: Runner, checkout: Path, rel: str, since: str | None, last: str
+    state: dict[str, Any],
+    runner: Runner,
+    checkout: Path,
+    rel: str,
+    since: str | None,
+    last: str,
+    baseline: str = "this session began",
 ) -> dict[str, Any]:
-    """The moved-after-this-session-began note, appended to whatever verdict was reached.
+    """The moved-after-the-baseline note, appended to whatever verdict was reached.
 
     Split out when the verdict grew an early return, so the note cannot be reached by one branch and
     missed by another — which is the shape of the defect the early return exists to fix.
+
+    **`baseline` is per skill, because session start is the wrong instant for the skill doing the
+    asking.** Confirmed 2026-09-07, session `9164dacd`: the harvest was invoked in the session's last
+    minutes, so `session-harvest`'s own body entered context *after* the three commits the check
+    reported, and the warning said the held copy might be superseded when it was the newest text on
+    the machine. Session start is right for a skill the session leaned on throughout and wrong for
+    the one loaded last by construction — which is every harvest, on itself, in the step whose whole
+    purpose is deciding whether to trust its own instructions.
     """
     if since and last:
         moved = as_instant(last) is not None and as_instant(since) is not None and as_instant(last) > as_instant(since)
         state["moved_since_session_start"] = moved
+        state["move_baseline"] = {"instant": since, "is": baseline}
         if moved:
             moves = runner(
                 ["git", "-C", str(checkout), "log", f"--since={since}", "--format=%h %an %s", "--", rel]
@@ -1306,7 +1329,7 @@ def _with_move_check(
             # expensive branch fires on the case it was never about (confirmed 2026-09-02, four
             # skills, all four moved by the session's own commits).
             state["verdict"] += (
-                f"; SKILL.md moved after this session began ({len(moves)} commit(s)) — re-read it from "
+                f"; SKILL.md moved after {baseline} ({len(moves)} commit(s)) — re-read it from "
                 "whichever side is ahead, unless every one of those commits is this session's own"
             )
     return state
@@ -1337,7 +1360,18 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
         names = held
     installed_root = Path(args.installed).expanduser() if args.installed else INSTALLED_SKILLS
     since, since_from = _resolve_since(args)
-    states = [skill_state(runner, name, checkout, installed_root, since) for name in names]
+    loads = _skill_load_instants(args)
+    states = [
+        skill_state(
+            runner,
+            name,
+            checkout,
+            installed_root,
+            loads.get(name, since),
+            baseline=("this skill entered context" if name in loads else "this session began"),
+        )
+        for name in names
+    ]
     main = worktree_main(checkout)
     plans_py = find_plans_py(checkout)
     # The command step 6 runs to file a skill fix from any other repo. Printed here, with the
@@ -1395,6 +1429,39 @@ def _resolve_since(args: argparse.Namespace) -> tuple[str | None, str]:
         # moved, which is what a silent `None` would have looked like.
         return None, "no session resolved — 'moved since start' unavailable"
     return transcript.started, f"transcript start ({transcript.path.stem[:8]})"
+
+
+def _skill_load_instants(args: argparse.Namespace) -> dict[str, str]:
+    """When each skill's body entered context, from this session's own `Skill` tool calls.
+
+    The instant that matters for "did this move under me" is when the text was **read**, not when
+    the session began, and for a skill invoked late those differ by hours. A harvest is loaded last
+    by construction, so session start gives it a false positive on itself every time — in the step
+    whose whole purpose is deciding whether to trust its own instructions.
+
+    An explicit `--since` still wins: it is the override, and overriding the baseline for every row
+    is a legitimate thing to want. A skill with no load entry — never invoked this session, or a
+    harness that records invocations differently — falls back to session start and the report says
+    which of the two each row used, because a baseline that changes silently is the defect one level
+    up from the one this fixes.
+    """
+    if args.since:
+        return {}
+    try:
+        entries = resolve_transcript(args.session, args.job, args.expect, Path.cwd()).entries
+    except HarvestError:
+        return {}
+    loads: dict[str, str] = {}
+    for entry, block in iter_blocks(entries):
+        if block.get("type") != "tool_use" or block.get("name") != "Skill":
+            continue
+        payload = block.get("input")
+        name = str(payload.get("skill", "")) if isinstance(payload, dict) else ""
+        stamp = str(entry.get("timestamp", ""))
+        # The earliest load is the one to keep: a skill re-invoked later was already in context.
+        if name and stamp and name not in loads:
+            loads[name] = stamp
+    return loads
 
 
 def _supplied_note(args: argparse.Namespace) -> str:

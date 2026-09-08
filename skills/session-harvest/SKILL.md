@@ -77,7 +77,18 @@ step on evidence that does not support it; **too late drops a genuinely supersed
 the window and fails closed behind a clean report**. The flag remains, as an override for a harness
 exporting no id or to audit a window that is not this session's — and the `since:` line says which
 it used either way, because the harm was never the wrong window but that a wrong one was
-indistinguishable from a right one.
+indistinguishable from a right one. A supplied value now also says how far it sits from the real
+start and which way the window moved, since a guess and a deliberate audit look identical until the
+two instants are printed side by side.
+
+**The moved-since check baselines each skill on when its own body entered context, not on session
+start.** Those differ by hours for a skill invoked late, and a harvest is loaded last by
+construction — so session start gives this skill a false positive on itself every run, in the step
+whose whole purpose is deciding whether to trust its own instructions. Confirmed 2026-09-07: a
+harvest invoked in a session's last minutes was told its held copy might be superseded by three
+commits that landed before the copy was ever read. The load instant comes from the session's own
+`Skill` calls; a skill with no such call falls back to session start, and each row says which of the
+two it used.
 
 **`skills-state` compares the install against a checkout, and finds the checkout itself.** In order:
 `--checkout <path>`, `$SESSION_HARVEST_CHECKOUT`, the repo above the script it is running from, and

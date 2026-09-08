@@ -217,6 +217,28 @@ refresher's; but it is the same blind spot `2026-09-05-sweep-misses-a-file-a-sub
 describes one door along, and the two are now known to be one gap rather than two. The report prints
 the limit next to the count for that reason: a low number here must not read as a small session.]
 
+## What the store-commit fix established for the sites still open (2026-09-08)
+
+`2026-09-07-harvest-cannot-attribute-a-commit-that-only-deletes.md` — retired 2026-09-08, readable
+through `plans.py archive --show` — was this defect's mirror image: `store_commits` calling _this_
+session's commits somebody else's, where `_correction_overlap` calls somebody else's _this_ one's.
+Same subject, opposite direction, different function. Its fix is the template recommendations 1 and
+3 below reach for, so what it measured is a constraint on them rather than a confirmation.
+
+**Argv attribution without an ordering test is a false positive, measured on that fix's own first
+live run.** A bare name match gave this session two commits a parallel session had made at 00:18 and
+00:20, because this session named the same plan files at 00:45. Both sessions legitimately name one
+file; what separates them is that a command cannot have caused a commit that already existed when it
+ran — so `_named_before` requires the command's instant to be at or before the commit's, and
+declines to attribute when either instant is unparseable. Recommendation 3 carries the same hazard:
+two sessions naming one library entry is ordinary, and an entry's mtime is the instant to compare
+against.
+
+That plan predicted the argv route would need "no timestamp heuristic and no new parallel-session
+risk" and was refuted by its own first run, in the direction that would have shipped it unguarded.
+Which is the argument for one attribution helper serving every site rather than a fourth
+hand-written one here.
+
 ## Recommended direction
 
 1. Gate `_correction_overlap` on the repo having been written to by this session, or intersect with

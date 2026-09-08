@@ -103,6 +103,27 @@ correction is left visible here rather than quietly rewritten. See "What landed"
 Whatever the mechanism, the docstring's claim needs correcting in the same commit — "the direction
 that cannot make a false claim" is what made this look safe, and it is only true for additions.
 
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "Why the sweep now says who owns a process,
+  an image and a store commit" — the rejected alternative (the write-path-only reading, argued as
+  the direction that cannot make a false claim) and the pattern the three attribution sites make
+  together, which existed in no single plan: conservative is a direction rather than a safety
+  property, every fix was a second evidence source rather than a tighter filter, and every added
+  source arrived with a failure of its own.
+- **`plans/2026-09-02-correction-overlap-attributes-parallel-sessions.md`**, which stays open — the
+  ordering constraint as a constraint on _its_ recommendations 1 and 3, since those propose argv
+  attribution for two sites that do not have it yet, and the case for one attribution helper rather
+  than a fourth hand-written one.
+- **`skills/session-harvest/scripts/harvest.py`** already held the mechanism: `_named_before`'s
+  docstring carries the ordering constraint and the refuted prediction, and `store_commits`' carries
+  the deletion case and the 2026-09-07 incident. Its stale claim of "no timestamp heuristic and no
+  new parallel-session risk" was corrected during this retirement rather than migrated.
+- **`skills/session-harvest/SKILL.md`** step 8 already held the operative rule and the incident.
+
+Not migrated: the `## Evidence` transcript pointers below, which name a session whose transcript
+expires, and the verification transcript, which is a log rather than a decision.
+
 ## Evidence
 
 Distinctive phrase from the source session, for the transcript: "The `filed` output marked my own

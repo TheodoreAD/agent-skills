@@ -500,7 +500,7 @@ actually opened was read from the stale copy like anything else, so that one fil
 it as a clause on the existing sentence is deliberate: the verdict's boundary and the reader's
 exposure are different questions, and a separate rule would have blurred them back together.
 
-## Why the sweep now says who owns a process and an image (2026-09-05/06)
+## Why the sweep now says who owns a process, an image and a store commit (2026-09-05/08)
 
 Two findings a fortnight apart turned out to be one: **on a machine that runs parallel sessions, a
 timestamp inside the session window is not an attribution, and the sweep was making that inference
@@ -557,6 +557,37 @@ for it in two manual calls; the parallel-sessions caveat was written for git in 
 reached the two checks that needed it. That is the same argument as "a correction a script can
 simply not make does not belong in prose at all", one step further out: a rule whose evidence the
 tool does not print is a rule the next run re-derives, differently.
+
+**The store-commit case, 2026-09-07, is the same question with the sign flipped — and it is the one
+that shows what the other two got away with.** `filed`'s `store_commits` asked whether a commit
+touched a path the transcript shows this session _writing_, and its docstring argued that
+unattributed "is the direction that cannot make a false claim". For a deletion it makes exactly that
+claim: `plans.py absorb --apply` moves a plan out of the store, so no `Write` or `Edit` call ever
+names the store path, so a session's own removal commit is filed under somebody else's name — and a
+pure deletion is the commonest way any session commits there. The incident and the fix are in
+`SKILL.md` step 8 and in `store_commits`' own docstring; what belongs here is the pattern the three
+cases make together.
+
+**Conservative is a direction, not a safety property, and each site proved it in its own currency.**
+Docker and the listener over-claimed: a row inside the window was called this session's. The store
+check under-claimed: this session's own work was called a stranger's. Both are false statements
+about ownership, and the second is worse in the one way the first never is, because the label
+carries authority over what the harvest may then do — a row it does not own is reported, never
+edited — so the harvest declined to correct its own filings while following the procedure exactly. A
+check that fails safe in one direction has not been shown to fail safe; it has been shown to fail in
+a direction nobody measured.
+
+**The fix at every site was a second evidence source, never a tighter filter — and every added
+source arrived with a failure of its own.** Docker gained "did this session invoke `docker` at all",
+and its first run counted the word inside a quoted `rg` pattern, because a regex over command text
+is not reading a shell. The store check gained argv, and its first run attributed a parallel
+session's 00:18 and 00:20 commits to a command this session ran at 00:45, because both sessions
+legitimately name the same plan file; the repair is that a command cannot have caused a commit that
+already existed when it ran. **So the evidence sources are not interchangeable: argv needs an
+ordering constraint that write paths never did, and a new source is not the old one with better
+coverage.** The filed plan predicted the argv route would carry "no timestamp heuristic and no new
+parallel-session risk" — wrong in the direction that would have shipped it unguarded, which is why
+the prediction is recorded here rather than quietly dropped.
 
 ## Why the write set is stated positively, and why narrowing it cost nothing (2026-09-03/05)
 

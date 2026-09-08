@@ -1484,15 +1484,28 @@ def _skill_load_instants(args: argparse.Namespace) -> dict[str, str]:
     except HarvestError:
         return {}
     loads: dict[str, str] = {}
-    for entry, block in iter_blocks(entries):
-        if block.get("type") != "tool_use" or block.get("name") != "Skill":
-            continue
-        payload = block.get("input")
-        name = str(payload.get("skill", "")) if isinstance(payload, dict) else ""
-        stamp = str(entry.get("timestamp", ""))
+
+    def record(name: str, stamp: str) -> None:
         # The earliest load is the one to keep: a skill re-invoked later was already in context.
         if name and stamp and name not in loads:
             loads[name] = stamp
+
+    for entry, block in iter_blocks(entries):
+        if block.get("type") == "tool_use" and block.get("name") == "Skill":
+            payload = block.get("input")
+            name = str(payload.get("skill", "")) if isinstance(payload, dict) else ""
+            record(name, str(entry.get("timestamp", "")))
+    for entry in entries:
+        # A user-typed `/<skill>` is not a `Skill` tool call — the harness records it as a
+        # `<command-name>` inside a *user* message — so reading tool calls alone misses the
+        # invocation path this skill's own description calls the one to rely on. Confirmed
+        # 2026-09-08 on the first real `/session-harvest` run after the load-instant check landed:
+        # it fell back to session start and produced exactly the eleven-commit false positive the
+        # check exists to remove.
+        content = entry.get("message", {}).get("content") if isinstance(entry.get("message"), dict) else None
+        if entry.get("type") == "user" and isinstance(content, str):
+            for match in COMMAND_NAME_RE.finditer(content):
+                record(match.group(1), str(entry.get("timestamp", "")))
     return loads
 
 
@@ -2167,7 +2180,12 @@ def consumer_candidates(root: Path, repos: Sequence[Path], depth: int = 3) -> li
     """
     found: list[dict[str, Any]] = []
     others = checkouts(root, depth)
+    stores = {path.resolve() for _, path in _stores()}
     for repo in repos:
+        # A plans store is written to by every session and installed by nobody — it is a store, not
+        # a distributable, so asking who consumes it can only produce noise.
+        if repo.resolve() in stores:
+            continue
         name = repo.name
         consumers = [str(other) for other in others if other.resolve() != repo.resolve() and _installs(other, name)]
         docs = [doc for doc in CONSUMER_DOCS if (repo / doc).is_file()]
@@ -2175,6 +2193,8 @@ def consumer_candidates(root: Path, repos: Sequence[Path], depth: int = 3) -> li
             found.append({"repo": str(repo), "consumers": consumers, "docs": docs})
     return found
 
+
+COMMAND_NAME_RE = re.compile(r"<command-name>/([\w-]+)</command-name>")
 
 OPEN_PLAN_STATUSES = ("idea", "planned", "in-progress", "blocked")
 
@@ -2236,14 +2256,24 @@ def _plan_frontmatter(text: str) -> tuple[str, str]:
 
 
 def _installs(candidate: Path, name: str) -> bool:
+    """Whether this checkout's manifests declare `name` — reading declarations, not commentary.
+
+    **Comment lines are stripped, and that is not tidiness.** A manifest comment citing the repo's
+    own `plans/` directory matched the plans store by its basename, so a sweep reported the store as
+    "installed by" three repos that merely mention the word. Confirmed 2026-09-08 by this check's
+    own first real run. A consumer relationship is declared in configuration; a repo that only talks
+    about something in a comment is not installing it.
+    """
     manifests = [candidate / manifest for manifest in CONSUMER_MANIFESTS]
     manifests += [path for pattern in CONSUMER_MANIFEST_GLOBS for path in candidate.glob(pattern)]
     for manifest in manifests:
         try:
-            if name in manifest.read_text(encoding="utf-8", errors="replace"):
-                return True
+            text = manifest.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        declared = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+        if name in declared:
+            return True
     return False
 
 
@@ -2990,7 +3020,15 @@ def _claim_line(text: str, index: int) -> str:
 
 # `boundary` is step 0 of every run, so counting those calls counts the harvests. `$H` is the alias
 # the skill's own command block uses and a session that copied that block types it literally.
-BOUNDARY_CALL_RE = re.compile(r"(?:harvest\.py|\$H)\b[^|;&\n]*\bboundary\b")
+#
+# **`(?<!-)` is the whole correctness of this pattern**, because `sweep --boundary <instant>` and
+# `claims --until` carry the same word as a *flag*, and `\b` matches happily after a hyphen. Without
+# it every sweep counted as a harvest: confirmed 2026-09-08, a session's first real harvest reported
+# `harvest #10` off nine `sweep --boundary` calls, and printed the "an earlier harvest filed the
+# artifacts below, re-derive each figure" block for eight harvests that never happened. The wrong
+# count is the benign half; the instruction it triggers sends a reader looking for filings nobody
+# made.
+BOUNDARY_CALL_RE = re.compile(r"(?:harvest\.py|\$H)\b[^|;&\n]*(?<!-)\bboundary\b")
 
 # What a filed measurement looks like in a plan: a rate, a labelled count, or a counted noun.
 # Deliberately broad, the same choice `GREEN_CLAIM_RE` makes — an extra line is one the agent reads

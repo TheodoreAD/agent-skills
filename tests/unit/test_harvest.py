@@ -891,6 +891,49 @@ def test_a_skills_load_instant_comes_from_the_sessions_own_skill_calls(monkeypat
     assert harvest._skill_load_instants(supplied) == {}
 
 
+def test_a_slash_command_invocation_is_a_load_too(monkeypatch):
+    """A user-typed `/<skill>` is not a `Skill` tool call — the harness records it as a
+    `<command-name>` in a *user* message. Reading tool calls alone therefore missed the invocation
+    path this skill's own description calls the one to rely on.
+
+    Confirmed 2026-09-08 on the first real `/session-harvest` run after the load baseline landed: it
+    fell back to session start and produced exactly the false positive the baseline exists to
+    remove — eleven commits reported as possibly superseding a copy that had been read after all of
+    them.
+    """
+    typed = "<command-message>session-harvest</command-message>\n<command-name>/session-harvest</command-name>"
+    entries = [{"type": "user", "timestamp": "2026-09-08T14:05:55.319Z", "message": {"content": typed}}]
+    monkeypatch.setattr(harvest, "resolve_transcript", lambda *a, **k: SimpleNamespace(entries=entries))
+    args = argparse.Namespace(since=None, session=None, job=None, expect=None)
+
+    assert harvest._skill_load_instants(args) == {"session-harvest": "2026-09-08T14:05:55.319Z"}
+
+
+def test_a_boundary_flag_is_not_a_boundary_call():
+    """`sweep --boundary` and `boundary` carry the same word, and `\\b` matches after a hyphen. Every
+    sweep therefore counted as a harvest: confirmed 2026-09-08, a session's first real harvest
+    reported `harvest #10` off nine `sweep --boundary` calls and printed the "an earlier harvest
+    filed the artifacts below" instruction for eight harvests that never happened."""
+    assert harvest.BOUNDARY_CALL_RE.search("python3 $H boundary")
+    assert harvest.BOUNDARY_CALL_RE.search("python3 ~/.agents/skills/session-harvest/scripts/harvest.py boundary")
+    assert not harvest.BOUNDARY_CALL_RE.search("python3 $H sweep --boundary 2026-09-08T17:06:03+03:00")
+    assert not harvest.BOUNDARY_CALL_RE.search("python3 $H claims --until X --boundary Y")
+
+
+def test_a_manifest_comment_does_not_make_a_consumer(tmp_path):
+    """A manifest comment citing the repo's own `plans/` directory matched the plans store by its
+    basename, so a sweep reported the store as installed by three repos that merely mention the
+    word. Confirmed 2026-09-08 by the check's own first real run. A consumer relationship is
+    declared in configuration; commentary is not a declaration."""
+    candidate = tmp_path / "a-repo"
+    candidate.mkdir()
+    (candidate / "pyproject.toml").write_text("# see plans/2026-08-27-survey.md for why\ndependencies = []\n")
+    assert not harvest._installs(candidate, "plans")
+
+    (candidate / "pyproject.toml").write_text('dependencies = ["plans @ git+ssh://x/plans"]\n')
+    assert harvest._installs(candidate, "plans")
+
+
 # --------------------------------------------------------------------------------------------
 # the sweep's parsers
 # --------------------------------------------------------------------------------------------

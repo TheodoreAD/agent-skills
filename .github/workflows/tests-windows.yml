@@ -28,7 +28,7 @@ jobs:
       # directory.
       - run: git config --global core.autocrlf false
       - run: git config --global core.longpaths true
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v9.0.0

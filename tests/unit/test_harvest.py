@@ -1062,11 +1062,22 @@ def test_skills_state_resolves_its_own_since_and_says_which_it_used(tmp_path, mo
     monkeypatch.setattr(harvest, "resolve_transcript", lambda *a, **k: FakeTranscript())
     assert harvest._resolve_since(args) == ("2026-09-07T21:03:53.947Z", "transcript start (d6cb66aa)")
 
-    # The override still wins, and still says so.
-    assert harvest._resolve_since(argparse.Namespace(since="2026-01-01T00:00:00Z")) == (
-        "2026-01-01T00:00:00Z",
-        "supplied",
-    )
+    # The override still wins, and now says how it sits against the real start. A supplied value is
+    # never rejected — auditing a wider window is the flag's own second purpose — but a guess and a
+    # deliberate audit are indistinguishable until the two instants are printed side by side, and a
+    # guess is what all six instances were.
+    early = argparse.Namespace(since="2026-09-07T19:33:53.947Z", session=None, job=None, expect=None)
+    value, why = harvest._resolve_since(early)
+    assert value == "2026-09-07T19:33:53.947Z"
+    assert "90 min before this session's start" in why
+    assert "wider" in why
+
+    exact = argparse.Namespace(since=FakeTranscript.started, session=None, job=None, expect=None)
+    assert "this session's own start" in harvest._resolve_since(exact)[1]
+
+    late = argparse.Namespace(since="2026-09-07T21:33:53.947Z", session=None, job=None, expect=None)
+    assert "30 min after" in harvest._resolve_since(late)[1]
+    assert "narrower" in harvest._resolve_since(late)[1]
 
     # No transcript is the reader's ordinary case: the comparison still runs and only this half goes
     # unanswered. A silent None would have read as "nothing moved".

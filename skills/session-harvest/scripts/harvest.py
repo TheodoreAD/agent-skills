@@ -1376,9 +1376,17 @@ def _resolve_since(args: argparse.Namespace) -> tuple[str | None, str]:
 
     The flag stays as an override for a harness that exports no id, and for auditing a window that
     is not this session's — the same shape `--session` already has.
+
+    **A supplied value earlier than the resolved session start is reported, never rejected.** The
+    plan that asked this called such a value always a mistake, since no session began before it
+    began — but that premise contradicts the flag's own second purpose: auditing a wider window is
+    exactly what an earlier instant is for, and refusing it would remove the capability to fix a
+    typo. What the note catches is the case the six instances actually were: a guess, which is
+    silently indistinguishable from a deliberate audit until the value and the real start are
+    printed side by side.
     """
     if args.since:
-        return args.since, "supplied"
+        return args.since, _supplied_note(args)
     try:
         transcript = resolve_transcript(args.session, args.job, args.expect, Path.cwd())
     except HarvestError:
@@ -1387,6 +1395,23 @@ def _resolve_since(args: argparse.Namespace) -> tuple[str | None, str]:
         # moved, which is what a silent `None` would have looked like.
         return None, "no session resolved — 'moved since start' unavailable"
     return transcript.started, f"transcript start ({transcript.path.stem[:8]})"
+
+
+def _supplied_note(args: argparse.Namespace) -> str:
+    """`supplied`, plus how it sits against this session's real start when one can be resolved."""
+    try:
+        started = resolve_transcript(args.session, args.job, args.expect, Path.cwd()).started
+    except HarvestError:
+        return "supplied — no session to compare it against"
+    given, real = as_instant(args.since), as_instant(started or "")
+    if given is None or real is None:
+        return "supplied"
+    minutes = round((given - real).total_seconds() / 60)
+    if minutes == 0:
+        return f"supplied — this session's own start, {started}"
+    where = "before" if minutes < 0 else "after"
+    wider = "wider" if minutes < 0 else "narrower"
+    return f"supplied — {abs(minutes)} min {where} this session's start of {started}, so the window is {wider}"
 
 
 def _print_skills_state(payload: dict[str, Any], since_given: bool) -> None:

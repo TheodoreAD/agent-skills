@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-05
+status: landed
+updated: 2026-09-08
 source_repo: github.com-personal/repo-tasks
 source_session: bb66cbe5-7369-4f49-a8e7-7949db5ff99a.jsonl
 source_moment: 2026-09-05T09:09:33Z
@@ -34,22 +34,35 @@ followed, so the fix is measurement or a mechanism rather than a rewording.
 - The harvest session's distinctive phrase to search for: the user answering "i don't want to do
   releases yet, those would need actual artifact stores to work with".
 
-## Open questions
+## What the measurement said, and what landed 2026-09-08
 
-[NEEDS CLARIFICATION: is there a cheap detector? A plan names files, tasks and commits in prose; a
-check that a plan's `updated:` predates the last commit touching any `src/` path the plan names
-would flag both instances above and is a grep plus `git log -1 --format=%cd -- <path>` per name.
-Against: prose names are noisy (a plan citing `quality.py` as context is not stale when `quality.py`
-changes), so this may only work as a hint in `list`, never as a gate.]
+The recommendation was to measure before choosing between a line in `plan-docs` and a `list` hint.
+Measured across 8 repos and 167 open plans:
 
-[NEEDS CLARIFICATION: or is the fix on the landing side — `session-harvest`'s loose-ends pass asking
-"did this session land something a plan designed, and does that plan say so?" That is where the
-session with the knowledge is. The harvest already checks plan status for work the session finished;
-the miss here is that the landing session apparently did not harvest at all, so a harvest step
-cannot reach it.]
+| signal                                                              | count | share |
+| ------------------------------------------------------------------- | ----- | ----- |
+| open plans naming a source file that moved after their `updated:`   | 72    | 43%   |
+| …restricted to files named three or more times (the plan's subject) | 23    | 14%   |
 
-## Recommended direction
+[DECISION: **neither branch of the recommendation — the cheap detector does not exist, and the
+landing-side check does.** 43% is not a hint, it is a property of every open plan; the first
+question predicted exactly this ("a plan citing `quality.py` as context is not stale when
+`quality.py` changes") and the number confirms it. The subject proxy brings it to 14%, and what
+remains is structural rather than tunable: **a session that edits a file makes every plan about that
+file look stale**, and no signal available to a script separates a design that landed from a subject
+that merely moved. So nothing was added to `plan-docs`' `list`, where a hint firing on one open plan
+in seven would be read once and then ignored.]
 
-Measure first: across the family, how many plans in `idea`/`planned` name a task or module that
-landed after the plan's `updated:`. If it is rare, a line in `plan-docs`' "Promoting a plan" is
-enough; if it is common, the `list` hint is worth building.
+[DECISION: **the second question's answer — the fix is on the landing side, in the sweep.** That is
+where the session with the knowledge is. `sweep` now lists this repo's open plans that name a source
+file the session wrote, three times or more, and that were last touched before the session began,
+and asks whether the session landed what any of them designed. It says its own measured rate beside
+the rows, and `set-status` remains the only thing that changes a status.
+
+The question's own objection to this — "the landing session apparently did not harvest at all, so a
+harvest step cannot reach it" — is right and is why the check is worth having anyway rather than why
+it is not: it converts a miss that no session catches into one that any _subsequent_ harvest in that
+repo catches, since the plan stays open until somebody bumps it.
+
+Verified on the session that built it: three candidates, one of them a plan whose pattern change
+that same session had landed an hour earlier and left at `idea`.]

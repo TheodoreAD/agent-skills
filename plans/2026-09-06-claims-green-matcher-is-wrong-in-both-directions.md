@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-06
+status: landed
+updated: 2026-09-08
 ---
 
 # `claims`' green-claim matcher is wrong in both directions
@@ -164,50 +164,76 @@ obviously wrong on sight — each contains "the gate" and reads as gate-related 
 to re-run a gate for reasons that do not exist. The tolerance was priced against noise, and this is
 plausible noise.]
 
-## Open questions
+## What landed, 2026-09-08 — measured first, over 1,201 transcripts
 
-[NEEDS CLARIFICATION: **widen the alternation, or match on the claim rather than the subject?**
-Adding `ci|workflow|run|check run|actions` to the second group is one line and covers the observed
-phrasing. Against it: the pattern is already four alternations of subject-plus-adjective, and each
-new subject is another guess at how a sentence will be worded. The alternative is to invert it —
-match a green adjective near any of a small set of _result_ words — which is broader in the
-direction the comment says it wants, at the cost of more over-counting. The comment already says an
-over-count is a footnote, so the trade is pre-decided if anyone applies it — but the denial
-false-positives above are the case that says it is not, so decide this one against both directions
-rather than against the miss alone.]
+The recommendation was to decide the CI question first and write the test before the pattern change.
+Both done, and the corpus measurement changed the answers.
 
-[NEEDS CLARIFICATION: **should a CI claim count the same as a gate claim at all?** They fail
-differently. A masked local gate means the session could not see the result it reported. A CI claim
-is read from `gh run list --json`, which the sweep deliberately reads as JSON precisely so no pipe
-can eat the exit code — so a CI green claim is not usually resting on masked evidence even in a
-session with a high `exit-masked`. Counting them together would inflate the number that pairs with
-the masked count and weaken the sentence it exists to produce. Possibly two counts, reported
-separately.]
+**The under-count is the bigger defect and nobody had sized it: 329 sentences.** More than the whole
+bare-exit-code alternation, and it is the phrasing this skill's own step 5 leads a harvest to write,
+so the two halves of one step disagreed at scale rather than anecdotally.
 
-[NEEDS CLARIFICATION: is negation worth detecting at all, or is `clean machine` simply the wrong
-noun to match near `gate`? A stop-list (`clean machine`, `clean checkout`, `clean tree`) is one line
-and is aimed at the observed collision. General negation handling in a regex is not, and the second
-question above may make the whole pattern narrower anyway.]
+[DECISION: **two counts, not a widening.** A CI conclusion is read from `gh run list --json`, which
+has no exit code for a pipe to eat, so a CI green is not usually resting on the filtered evidence
+the gate pairing is about. Folding 329 into the number that pairs with `exit_masked` would have
+inflated it by roughly half and weakened the one sentence the check exists to produce. The CI count
+prints beside the gate count with a line saying what it does earn — was the run on the commit
+actually pushed, and was it read as JSON rather than watched through a filter.]
 
-[NEEDS CLARIFICATION: **does the fourth alternation earn its place at all?** It is the only one with
-no subject term, it produced two of the three confirmed false positives, and every true positive in
-both samples was caught by one of the other three. The candidate the filing proposed is to require a
-gate-shaped subject near the exit-code words — a gate, a suite, a test count, CI — which keeps every
-true positive in its sample and drops both confirmed false ones. Deleting the alternation outright
-is the cheaper version of the same idea and needs one counter-example to rule out: a real green
-claim phrased only as a bare exit code. Independent of the negation work above, and narrower.]
+[DECISION: **the fourth alternation keeps its place and gains a subject.** The question above asked
+whether it earns its place at all and named deletion as the cheaper version. Deletion is wrong:
+measured, it matches 303 sentences, of which a gate-shaped subject beside it keeps **158** and drops
+**145** — and the kept half contains real claims no other alternation reaches, such as "Gate re-run
+unpiped at harvest time: exit 0, 402 tests". The dropped half is what this plan predicted: a
+`git fetch` that exited 0, a dry-run that exited 0, an explanation of `gh run list` returning an
+empty array and exiting 0.
 
-[UNVERIFIED: whether the over-count rate generalises. Two sessions now sit at a similar rate from
-unrelated causes — three false positives each — but neither is a corpus-wide count, and the
-2026-09-08 session's subject was unusually exit-code-heavy: a packaging probe whose finding was
-literally that a command exits 0 and does nothing. The corpus is greppable; a count over every
-transcript would settle it before any pattern is touched.]
+`re-run` is in the subject list on that evidence and plain `run` is deliberately not, because it
+readmits the `git fetch` line. The one measured cost of the narrowing is a handful of sentences of
+the shape "Unpiped re-run exits 0, so all five hold", which `re-run` recovers.]
 
-The corpus's rule is that a regex is tested against hand-written cases, and **the test's cases are
-no longer hypothetical** — one real transcript supplies both directions. A test here wants the
-phrasings that must match and at least one that must not, since a matcher that becomes a matcher for
-anything would pass a positive-only suite, the same failure already recorded for `--expect`'s quote
-handling.
+[DECISION: **negation is not detected, and the false positive is pinned as a test instead.** General
+negation handling in a regex is not a one-line change, and the stop-list version aims at one
+observed collision. `no test anywhere runs the gate on a clean machine` still matches, and a test
+now says so — so the next editor meets the known limit rather than rediscovering it and reaching for
+the same two options.]
+
+The tests carry the verbatim must-match and must-not-match sentences from both measured sessions. A
+positive-only suite would pass for a matcher that matches everything, which is the failure already
+recorded for `--expect`'s quote handling.
+
+## What the corpus measurement settled
+
+The four questions this plan carried were answered together, as it argued they had to be, and a
+measurement decided three of them. Over 1,201 transcripts, 2026-09-08:
+
+| shape                            | count | note                                                      |
+| -------------------------------- | ----- | --------------------------------------------------------- |
+| CI claims matched by nothing     | 329   | the under-count, larger than the whole fourth alternation |
+| bare exit-code matches           | 303   | kept by a gate-shaped subject: 158; dropped: 145          |
+| gate+adjective (1st alternation) | 587   | the workhorse, unchanged                                  |
+
+**Widen or invert was the wrong axis.** The answer is neither: the pattern keeps
+subject-plus-adjective and gains a _separate_ CI counter, so nothing about the gate count's meaning
+changes while the missing vocabulary stops being missing. Inverting to match a green adjective near
+any result word was rejected on the evidence that killed the bare alternation — a subject-free match
+is exactly what produced the 145.
+
+**Two counts is decided by a magnitude the question could only guess at**: 329 folded into the
+number that pairs with `exit_masked` would have inflated it by about half.
+
+**The fourth alternation survives, narrowed.** Deleting it was named as the cheaper version and
+needed one counter-example to rule out; the corpus supplies several, and they are real gate claims
+no other alternation reaches.
+
+**Negation is not detected and is pinned as a test instead** — general negation in a regex is not a
+one-line change, and a stop-list aims at one observed collision. The known false positive is now a
+test rather than a note, so the next editor meets it rather than rediscovering it.
+
+**The over-count rate does generalise**, and the two hand-read sessions were not flukes: 145 of 303
+bare-alternation matches corpus-wide are not gate claims, against the three-of-six and
+three-of-three that prompted this. What the corpus adds is that the _under_-count is the larger of
+the two defects, which neither sample could have shown.
 
 ## Recommended direction
 

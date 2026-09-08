@@ -1341,6 +1341,55 @@ def test_green_claims_are_counted_against_the_masked_exits(tmp_path, monkeypatch
     assert [claim["line"] for claim in payload["green_claims"]] == ["Gate green, committing now."]
 
 
+def test_a_bare_exit_code_needs_a_gate_shaped_subject_beside_it():
+    """Measured 2026-09-08 over 1,201 transcripts: the subject-less alternation matched 303
+    sentences, of which a gate-shaped subject keeps 158 and drops 145. The must-not-match cases are
+    verbatim from that corpus; deleting the alternation outright was the cheaper fix and would have
+    lost the must-match ones, which no other alternation reaches.
+
+    A positive-only suite would pass for a matcher that matches everything, which is the failure
+    already recorded for `--expect`'s quote handling.
+    """
+    must_match = [
+        "- Gate re-run unpiped at harvest time: **exit 0, 402 tests**.",
+        "Gate exits 0 unpiped — all five green claims hold.",
+        "- Gate re-run **unpiped: exit 0**, 452 passed, ruff/dprint/basedpyright/zizmor clean.",
+    ]
+    must_not_match = [
+        "`git fetch` run unpiped, **exit 0** — so the sync numbers are computed against a fresh ref.",
+        "Dry-run against that exact file version: exit 0, zero private terms left.",
+        "`gh run list --commit` matches only the full 40-char SHA, so a short SHA returns `[]` and exits 0.",
+        # The 2026-09-08 session whose subject was a packaging probe: prose about a probe's result.
+        "Non-editable fails silently — exit 0, found nothing.",
+        "The plain install succeeds, exits 0, and silently finds nothing.",
+    ]
+    for sentence in must_match:
+        assert harvest.GREEN_CLAIM_RE.search(sentence), sentence
+    for sentence in must_not_match:
+        assert not harvest.GREEN_CLAIM_RE.search(sentence), sentence
+
+
+def test_a_denial_that_a_gate_ran_is_still_counted_and_is_a_known_limit():
+    """Pinned rather than fixed. The first alternation matches `no test anywhere runs the gate on a
+    clean machine`, and general negation handling in a regex is not a one-line change. Recorded as a
+    test so the next editor meets the known false positive instead of rediscovering it."""
+    assert harvest.GREEN_CLAIM_RE.search("no test anywhere runs the gate on a clean machine")
+
+
+def test_ci_greens_are_counted_apart_from_gate_greens():
+    """The pattern had no term for CI at all, so `Both CI legs green` matched nothing — 329 sentences
+    corpus-wide, more than the whole bare-exit-code alternation, and the phrasing this skill's own
+    step 5 leads a harvest to write.
+
+    Separate rather than folded in: a CI conclusion is read from `gh run list --json`, which has no
+    exit code for a pipe to eat, so it is not usually resting on the filtered evidence the gate
+    pairing is about. Folding 329 in would have inflated that paired number by half.
+    """
+    for sentence in ["Both CI legs green (CI 23s, Windows 1m42s).", "CI green including the final push."]:
+        assert harvest.GREEN_CI_RE.search(sentence), sentence
+        assert not harvest.GREEN_CLAIM_RE.search(sentence), f"still counted as a gate claim: {sentence}"
+
+
 def test_a_claim_made_inside_a_question_is_still_a_claim():
     """An `AskUserQuestion`'s wording is a sentence the user reads and decides on.
 

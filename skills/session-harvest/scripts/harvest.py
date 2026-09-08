@@ -103,14 +103,42 @@ LOOPBACK = ("127.0.0.1", "::1", "[::1]", "localhost")
 # directories and an import across them breaks whenever one is installed and the other is not.
 EXIT_MASKED_RE = re.compile(r"2>&1\s*\|\s*(tail|head|grep|rg)\b")
 
-# Sentences that tell the user a gate passed. Deliberately broad: an over-count is a footnote the
-# agent reads and discards, while a miss is the failure this whole check exists to prevent.
+# Sentences that tell the user a gate passed. Broad by design — a miss is the failure this check
+# exists to prevent — but broad *within a subject*, which is the correction measured 2026-09-08 over
+# 1,201 transcripts.
+#
+# The fourth alternation used to be a bare exit-code phrase with no subject term in it at all, so it
+# matched any sentence containing the words: 303 hits corpus-wide, of which a gate-shaped subject
+# beside them keeps 158 and drops 145 — a `git fetch` that exited 0, a dry-run that exited 0, and an
+# explanation of `gh run list` returning an empty array and exiting 0. Deleting the alternation was
+# the cheaper fix and is wrong: the kept half contains real claims no other alternation reaches
+# ("Gate re-run unpiped at harvest time: exit 0, 402 tests"). `re-run` earns its place in the subject
+# list on the same evidence, and plain `run` is excluded because it readmits the `git fetch` line.
+EXIT_CODE = r"(0 errors|exits? 0|exit code 0)"
+GATE_SUBJECT = r"(gate|suite|pytest|precommit|pre-commit|quality\.\w+|re-run|tests?|checks?|workflow)"
 GREEN_CLAIM_RE = re.compile(
     r"gate[^.\n]{0,40}\b(green|clean|pass(?:es|ed)?)\b"
     r"|\b(precommit|pre-commit|quality\.(?:check|precommit)|pytest|test suite|suite)\b[^.\n]{0,40}"
     r"\b(green|clean|pass(?:es|ed)?|all good)\b"
     r"|\ball (?:tests|checks)\b[^.\n]{0,20}\bpass(?:es|ed)?\b"
-    r"|\b(0 errors|exits? 0|exit code 0)\b",
+    rf"|\b{GATE_SUBJECT}\b[^.\n]{{0,40}}\b{EXIT_CODE}\b"
+    rf"|\b{EXIT_CODE}\b[^.\n]{{0,40}}\b{GATE_SUBJECT}\b",
+    re.IGNORECASE,
+)
+
+# Green claims about **CI**, counted separately rather than folded in. The pattern above has no term
+# for CI at all, so "Both CI legs green" matched nothing — 329 sentences corpus-wide, more than the
+# whole bare-exit-code alternation, and the phrasing this skill's own step 5 leads a harvest to write.
+#
+# Separate because the two fail differently and only one pairs with the masked-exit count. A masked
+# local gate means the session could not see the result it reported; a CI conclusion is read from
+# `gh run list --json`, which has no exit code for a pipe to eat, so a CI green is not usually
+# resting on filtered evidence even in a session with a high `exit-masked`. Folding 329 into the
+# paired number would have inflated it by half and weakened the one sentence the check exists to
+# produce.
+GREEN_CI_RE = re.compile(
+    r"\b(ci|workflow|check run|actions?)\b[^.\n]{0,40}\b(green|clean|pass(?:es|ed)?|success(?:ful)?)\b"
+    r"|\b(green|clean|pass(?:es|ed)?)\b[^.\n]{0,25}\b(ci|workflow|check run)\b",
     re.IGNORECASE,
 )
 
@@ -2801,23 +2829,14 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     ]
     # Every match, not the first per message: a message often makes the claim twice, and an
     # undercount here is the same failure the rule exists to prevent, one level up.
-    seen: set[tuple[str, str]] = set()
-    claims: list[dict[str, str]] = []
-    for stamp, text in assistant_text(transcript.entries):
-        if not before(stamp, args.until):
-            continue
-        for match in GREEN_CLAIM_RE.finditer(text):
-            line = _claim_line(text, match.start())
-            if (stamp, line) in seen:
-                continue
-            seen.add((stamp, line))
-            claims.append({"timestamp": stamp, "text": match.group(0), "line": line})
+    claims, ci_claims = _green_claims(transcript.entries, args.until)
     total_bash = len(bash_calls(transcript.entries))
     payload = {
         "transcript": transcript.as_dict(),
         "bash_calls": total_bash,
         "exit_masked": len(masked),
         "green_claims": claims,
+        "green_ci_claims": ci_claims,
         "masked_calls": masked[: args.samples],
     }
     if args.json:
@@ -2826,6 +2845,11 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     print(f"# {len(masked)} of {total_bash} Bash calls masked their exit code behind a filter")
     print(f"# {len(claims)} message(s) told the user a gate or suite was green")
     for claim in claims:
+        print(f"    {claim['timestamp']}  {claim['line']}")
+    # Reported beside the gate count and never added to it: a CI conclusion is read as JSON, so it
+    # is not usually resting on the filtered evidence the pairing above is about.
+    print(f"# {len(ci_claims)} message(s) told the user CI was green — counted apart, see below")
+    for claim in ci_claims:
         print(f"    {claim['timestamp']}  {claim['line']}")
     for call in payload["masked_calls"]:
         print(f"    masked: {call['command'][:160]}")
@@ -2841,7 +2865,39 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         )
     elif not masked:
         print("\nno masked exits: the session's own green results stand on unfiltered evidence")
+    if ci_claims:
+        print(
+            "\nThe CI count is separate on purpose and does not pair with the masked-exit number: a CI\n"
+            "conclusion read from `gh run list --json` has no exit code for a pipe to eat. It earns its own\n"
+            "check — was the run on the commit you actually pushed, and was it read as JSON rather than\n"
+            "watched through a filter."
+        )
     return payload
+
+
+def _green_claims(
+    entries: Sequence[dict[str, Any]], until: str | None
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Gate claims and CI claims, kept apart, each sentence counted once.
+
+    Every match rather than the first per message: a message often makes the claim twice, and an
+    undercount here is the same failure the check exists to prevent, one level up. One `seen` set
+    across both patterns, so a sentence that satisfies each is attributed to the gate count alone
+    rather than inflating both.
+    """
+    seen: set[tuple[str, str]] = set()
+    found: tuple[list[dict[str, str]], list[dict[str, str]]] = ([], [])
+    for stamp, text in assistant_text(entries):
+        if not before(stamp, until):
+            continue
+        for pattern, into in ((GREEN_CLAIM_RE, found[0]), (GREEN_CI_RE, found[1])):
+            for match in pattern.finditer(text):
+                line = _claim_line(text, match.start())
+                if (stamp, line) in seen:
+                    continue
+                seen.add((stamp, line))
+                into.append({"timestamp": stamp, "text": match.group(0), "line": line})
+    return found
 
 
 def _claim_line(text: str, index: int) -> str:

@@ -69,7 +69,10 @@ checkout materialises every blob at HEAD anyway, so the filter has nothing left 
 conclusion.** Give the clone a sparse set and the excluded blobs are never wanted, so they are never
 fetched — `.git` on a real 97%-binary repo went 71,204 KB → **644 KB** with the same patterns
 applied. The two are useless separately and transformative together, which is exactly the shape a
-settled-looking negative result hides. See `2026-09-07-research-library-text-only-clones.md`.
+settled-looking negative result hides. It shipped: `skills/research-library/SKILL.md`, "Clones hold
+text, because that is all anyone searches", carries the correction and the numbers. The plan that
+measured it, `2026-09-07-research-library-text-only-clones.md`, is **retired** — `plans.py archive`
+reads it back.
 
 ### 3. Re-shallowing reclaims nothing — until the tags go
 
@@ -223,12 +226,15 @@ almost disjoint set of entries. A middle answer worth testing: allow it, record 
 in `SOURCE.md`, and have `check` report any entry whose checkout is partial, so "the grep saw
 everything" is never assumed.]
 
-[DECISION: the **type**-based half of this split off into
-`2026-09-07-research-library-text-only-clones.md` on the user's reframing — exclude what a grep
+[DECISION: the **type**-based half of this split off on the user's reframing — exclude what a grep
 skips anyway, since the library exists to search text and never to run anything. Measured at 41% of
 the library's working-tree bytes, and safe in a way path exclusion is not, so deciding the two
 together because both are spelled `sparse-checkout` would have held the safe one hostage to the
-risky one.]
+risky one. **It landed 2026-09-08 and its plan, `2026-09-07-research-library-text-only-clones.md`,
+is retired**: the mechanism is in `SKILL.md` and `library.py`, the retrofit's own lessons in
+`references/rationale.md`. What it hands this plan is that `check` now reports any sparse checkout
+nothing records, whatever narrowed it — the "so the grep saw everything is never assumed" half named
+below.]
 
 [NEEDS CLARIFICATION: what happens to the machine's `research-update` once `library.py update`
 exists? Two implementations of one guarantee is the thing worth avoiding — the wrapper should become

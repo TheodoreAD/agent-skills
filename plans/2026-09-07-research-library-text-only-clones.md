@@ -252,6 +252,29 @@ particular upstream state on purpose — are a judgement per entry rather than a
 --ungreppable` supplies the ranking, and a session that wants this runs the loop with the
 ranking in front of it, as this one did.]
 
+## Migrated to
+
+- **`skills/research-library/references/rationale.md`**, "Text-only clones: what the retrofit
+  settled, and why there is no command for it" — the rejected `--retrofit`, the entry that every
+  size heuristic selects and no threshold may re-clone, the provenance-restore shape a hand-run
+  needs, the `git ls-files -t` verification that beats any size comparison, and the default-on
+  decision together with the condition that would reopen it.
+- **`skills/research-library/SKILL.md`**, "Clones hold text, because that is all anyone searches"
+  and "What the library costs" — the mechanism, the end-to-end verification, the document keep-list,
+  the drift reporting, and the correction to the earlier plan's "`blob:none` saves nothing".
+- **`skills/research-library/scripts/library.py`** already held the decisions that constrain the
+  code: the non-cone deprecation and its fallback in `sparse_patterns()`, the disable-then-raise on
+  a failed `sparse-checkout set`, the category-organised pattern list, the case-sensitivity
+  measurement, the NUL-rule-is-a-property-of-a-file finding beside `DOCUMENT_EXTENSIONS`, and the
+  extensionless residue in `cmd_size`. Each was verified present during this retirement rather than
+  assumed.
+- **`plans/2026-09-07-research-library-clone-size.md`**, which stays open — the path-exclusion half,
+  which was never this plan's, and the one thing this work hands it.
+
+Not migrated: the measurement tables. The library moves, so the numbers are evidence for decisions
+that have now been taken rather than facts worth keeping current; the ones that still do work are
+quoted at the decisions they support.
+
 ## What is still deliberately not done
 
 **Path exclusion.** A different lever on an almost disjoint set of entries, and the unsafe one:

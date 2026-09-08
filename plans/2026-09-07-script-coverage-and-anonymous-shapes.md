@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # What the Python-code audit found in this repo's own scripts
@@ -16,61 +16,90 @@ decision rather than a fix.
 
 ## Coverage, after the `prompts.py` gap was closed
 
-| script              | stmts |   cover |
-| ------------------- | ----: | ------: |
-| `plans.py`          |  2024 | **93%** |
-| `package_health.py` |   356 |     88% |
-| `library.py`        |   270 |     81% |
-| `audit.py`          |   468 |     71% |
-| `harvest.py`        |  1216 |     71% |
-| `prompts.py`        |   162 |     74% |
-| `fitness.py`        |   881 | **62%** |
-| `trigger.py`        |   256 | **20%** |
+Re-measured 2026-09-08, after the `harvest.py` rewrite. The 2026-09-07 column is kept because the
+movement is the finding: two scripts grew by a third or more, and only one of them brought its
+tests.
 
-`trigger.py` is the outlier and the reason it is one is legible: it shells out to `claude -p`, so
-the half that runs a request cannot be unit-tested cheaply. But 20% means the parsing and scoring
-halves are not covered either, and those are pure functions — the same shape `prompts.py` turned out
-to be.
+| script              | stmts 09-07 | stmts 09-08 | cover 09-07 | cover 09-08 |
+| ------------------- | ----------: | ----------: | ----------: | ----------: |
+| `plans.py`          |        2024 |        2216 |         93% |     **93%** |
+| `package_health.py` |         356 |         359 |         88% |         87% |
+| `library.py`        |         270 |         603 |         81% |         78% |
+| `audit.py`          |         468 |         484 |         71% |         71% |
+| `harvest.py`        |        1216 |        1588 |         71% |         75% |
+| `prompts.py`        |         162 |         168 |         74% |         74% |
+| `fitness.py`        |         881 |         884 |         62% |     **62%** |
+| `trigger.py`        |         256 |         259 |         20% |     **20%** |
 
-[NEEDS CLARIFICATION: **how much of `trigger.py` is actually untestable?** The answer is a reading
-of which statements are inside the subprocess path and which are not, and it decides whether 20% is
-a gap or a ceiling. `--cov-report=term-missing` names the lines; nobody has looked.]
+`harvest.py` took 372 more statements and its coverage went **up**, which is the shape to want and
+the reason it is not on the list below. `library.py` more than doubled and lost three points, so its
+new half is thinner than its old one — worth a look on its own terms, and not something the
+2026-09-07 pass could have seen.
+
+[DECISION: **`trigger.py`'s 20% is a gap, not a ceiling.** Measured 2026-09-08 with
+`--cov-report=term-missing` plus a `coverage json` split of the missing lines against the two
+subprocess-bound functions: of 207 uncovered statements, **66 are inside `run_query` or `execute`
+and 141 are not**. The untestable half caps the file at roughly 75%, not at 20%. Everything else
+missing is pure — `Result`'s methods, the whole `_StreamState` stream parser, `write_candidate`,
+`write_proposal`, `load_cases`, `summarise`'s scoring, `_foreign_expectations`, `_refuse`,
+`_dry_run` and `main`'s argparse. Same shape `prompts.py` turned out to be, and the same size of
+win.]
 
 ## Anonymous record shapes
 
-`count_shapes.py` over the four large scripts:
+`count_shapes.py` over the four large scripts, both dates:
 
-| script       | tuple returns | tuple params | dict params | dict fields |
-| ------------ | ------------: | -----------: | ----------: | ----------: |
-| `harvest.py` |        **11** |            0 |          13 |          13 |
-| `fitness.py` |             6 |            1 |          12 |          14 |
-| `plans.py`   |             1 |            0 |          10 |          12 |
-| `audit.py`   |             1 |            0 |           2 |           6 |
+| script       | tuple returns 09-07 | tuple returns 09-08 | dict params 09-07 | dict params 09-08 |
+| ------------ | ------------------: | ------------------: | ----------------: | ----------------: |
+| `harvest.py` |              **11** |              **14** |                13 |                15 |
+| `fitness.py` |                   6 |                   6 |                12 |                12 |
+| `plans.py`   |                   1 |                   1 |                10 |                12 |
+| `audit.py`   |                   1 |                   1 |                 2 |                 2 |
 
-`harvest.py`'s eleven are the standout: `upstream_of -> tuple[str | None, str]`,
-`_sweep_transcript -> tuple[Transcript | None, str]`, `queued_messages -> tuple[list[Turn], int]`,
-`answers -> tuple[list[Turn], int]` and seven more. Its thirteen `dict[str, Any]` parameters are
-almost all the `_print_*(payload)` renderers, which is a different thing — a printer taking the
-payload it prints is not an anonymous record threaded through a call chain.
+Tuple parameters are unchanged: one in `harvest.py` (`_named_before`), one in `fitness.py`
+(`_is_owned`), none elsewhere.
 
-[NEEDS CLARIFICATION: **is a two-element return worth a name here?** The skill's own case for
-counting them is a 47-signature module where state was threaded through tuples nobody could follow.
-These are mostly `(value, why)` pairs returned to one caller and unpacked immediately, which is the
-shape a `NamedTuple` improves least. The honest test is whether any of the eleven is unpacked in
-more than one place, or passed on as a tuple — that is a grep, not a judgement.]
+The rewrite moved `harvest.py` in the wrong direction — three more anonymous returns
+(`_explicit_session`, `_resolve_since`, `_green_claims`) and two more `dict[str, Any]` parameters.
+That is worth stating plainly, because the same rewrite improved coverage: the two measurements
+disagree about whether it went well, and only one of them was being watched.
 
-[NEEDS CLARIFICATION: **do the `_print_*` renderers want a typed payload?** Thirteen functions take
-`dict[str, Any]` produced by one function each. A dataclass per section would type them, and would
-also mean the `--json` output and the printer stop being the same object — which is currently a
-feature, since the JSON is the payload verbatim.]
+Its `dict[str, Any]` parameters are still almost all the `_print_*(payload)` renderers, which is a
+different thing — a printer taking the payload it prints is not an anonymous record threaded through
+a call chain.
 
-`find_mutations.py` is the reassuring half: 15 attribute assignments across all eight scripts, so
-these are near-stateless by construction. Two are worth a look on their own — `fitness.py:1810` and
-`1815` write `args.ref_label` and `args.root` back into the argparse `Namespace`, which makes the
-parsed arguments a mutable carrier rather than a record of what was asked for.
+[DECISION: **the tuple finding is not real, by this plan's own test.** Ran 2026-09-08 over all
+fourteen: every one is destructured at the call site, and **not one is passed on as a tuple**. Ten
+have a single call site. The multi-site ones are `iter_blocks` (8), `bash_calls` (5) and `_stores`
+(5) — all returning `Iterator`/`list` **of** pairs, unpacked in a `for` header, which is a
+collection and not a record. `upstream_of` is the only genuine `(value, why)` shape with more than
+one caller (3, one of which discards the `why`). Naming these buys nothing; the skill's own case for
+counting them was a module where state was threaded through tuples nobody could follow, and this is
+not that. **Leave them.**]
+
+[NEEDS CLARIFICATION: **do the `_print_*` renderers want a typed payload?** Now fifteen functions
+taking `dict[str, Any]` produced by one function each. A dataclass per section would type them, and
+would also mean the `--json` output and the printer stop being the same object — which is currently
+a feature, since the JSON is the payload verbatim.]
+
+`find_mutations.py` is still the reassuring half: 16 attribute assignments across all eight scripts
+(was 15), so these are near-stateless by construction. The two worth a look are unchanged in
+substance and have moved by a line — `fitness.py:1811` and `1816` write `args.ref_label` and
+`args.root` back into the argparse `Namespace`, which makes the parsed arguments a mutable carrier
+rather than a record of what was asked for.
 
 ## Recommended direction
 
-Take the two `NEEDS CLARIFICATION` greps first — they are minutes and they decide whether the tuple
-finding is real. The `trigger.py` coverage question is the one with a clear payoff: if most of the
-uncovered half is pure, it is the same win `prompts.py` just was.
+Both 2026-09-07 greps are now answered, and they split cleanly: the tuple half is closed, the
+coverage half is open with a measured payoff. So there is one thing left worth doing and one thing
+worth watching.
+
+1. **`trigger.py`'s pure half.** 141 uncovered statements that are not subprocess-bound, in a file
+   whose parsing and scoring are exactly the shape `prompts.py` was. Clear payoff, no design
+   question in the way.
+2. **`library.py` grew 270 -> 603 statements and lost coverage.** Not visible on 2026-09-07 and not
+   investigated; find out what the new half is before deciding whether it matters.
+3. **Watch the shape counts alongside coverage, not instead of it.** The `harvest.py` rewrite is the
+   evidence: coverage said it went well, `count_shapes.py` said it drifted, and nothing was
+   comparing the second one. Same argument `fitness.py derivable --compare <baseline>` already wins
+   for a different metric — a baseline in `tests/fixtures/` is the shape, if this is worth gating.

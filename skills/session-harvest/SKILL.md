@@ -593,6 +593,15 @@ What the script cannot do is decide what a finding means. That is this list:
   protect. The edit was correct and user-approved, which is what makes it the right instance:
   nothing went wrong and the sweep still could not see it, so a wrong edit would have been equally
   invisible.
+
+  **This check and its neighbour — paths written into files that do not exist — read nothing but the
+  transcript, so both print `none` or `skipped` and never nothing at all.** Until 2026-09-08 they
+  vanished from the report whenever no transcript resolved: absent rather than empty, in a report
+  whose every other section printed normally, so there was no gap for a reader to notice. Confirmed
+  twice — 2026-09-03, where the same session's degraded run covered one repo against the resolved
+  run's three and produced no `CORRECTION?` lines at all; and 2026-09-04, by a harvest that read the
+  whole sweep, moved on, and found the hole only when re-reading this file for a later step. The
+  header now also says when the repo set collapsed to the working directory for the same reason.
 - **This session's own rule adherence**, which nothing else in the sweep reaches:
 
   ```shell

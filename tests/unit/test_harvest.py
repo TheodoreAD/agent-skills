@@ -1451,6 +1451,66 @@ def test_a_reference_clone_outside_research_home_is_excluded_too(tmp_path):
     assert not harvest._is_library_entry(sourced)
 
 
+def test_a_skipped_loose_files_check_says_so_rather_than_vanishing(capsys):
+    """Both transcript-derived checks used to disappear from the report when no transcript resolved —
+    absent, not empty — so a reader scanning a full-looking report had no gap to notice. Confirmed
+    2026-09-03 and again 2026-09-04, the second time by a harvest that read the whole sweep and found
+    the hole only when re-reading the skill for a later step."""
+    harvest._print_loose_files(harvest._sweep_loose_files(FakeRunner(), [], have_transcript=False))
+    out = capsys.readouterr().out
+
+    assert "== files written outside every repository ==" in out
+    assert "== paths this session wrote into files that do not exist ==" in out
+    assert out.count("skipped: no transcript") == 2
+    assert "none" not in out, "a check that did not run must not read as a check that found nothing"
+
+
+def test_a_loose_files_check_that_ran_and_found_nothing_says_none(capsys):
+    """The other half of the same distinction, and the reason `skipped` is not enough on its own: a
+    resolved run with no findings also printed nothing at all, so the two silences were identical."""
+    harvest._print_loose_files(harvest._sweep_loose_files(FakeRunner(), [], have_transcript=True))
+    out = capsys.readouterr().out
+
+    assert out.count("none") == 2
+    assert "skipped" not in out
+
+
+def test_a_sweep_with_no_transcript_declares_its_narrowed_repo_scope(monkeypatch, capsys):
+    """The repo set comes from the transcript's own write paths and shell targets, so without one it
+    collapses to the working directory. Measured 2026-09-03: one repo where the resolved run of the
+    same session covered three, in a report that read as complete."""
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    args = argparse.Namespace(
+        boundary="2026-09-08T12:00:00+03:00",
+        since=None,
+        session=None,
+        job=None,
+        expect=None,
+        repo=[],
+        only=["paths"],
+        no_fetch=True,
+        checkout=None,
+        json=False,
+    )
+    payload = harvest.cmd_sweep(args, FakeRunner())
+
+    assert "with no transcript the session's repo set is unknown" in payload["repo_scope"]
+    assert "# repos swept:" in capsys.readouterr().out
+
+
+def test_children_are_unknown_rather_than_zero_when_no_harness_is_found(capsys):
+    """`session_children` is derived by walking up to the harness process. When that walk finds no
+    harness the set was never established, and a printed `0` is a measured zero's twin — the one
+    thing this sweep exists not to produce."""
+    harvest._print_processes(
+        {"available": True, "harness_pid": None, "session_children": [], "watchers_and_servers": []}
+    )
+    out = capsys.readouterr().out
+
+    assert "surviving children: unknown" in out
+    assert "surviving children: 0" not in out
+
+
 def test_a_path_inside_a_test_file_is_a_fixture_not_an_instruction():
     entries = [
         blocks_entry(

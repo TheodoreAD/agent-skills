@@ -2169,7 +2169,7 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         "ci": lambda: {"ci": {s.path: ci_runs(runner, Path(s.path), s.branch, since) for s in states}},
         "stores": lambda: _sweep_stores(runner, args.checkout, repos, since, entries),
         "plans": lambda: {"depends_on": {str(path): depends_on(path) for path in repos}},
-        "paths": lambda: _sweep_loose_files(runner, entries) if entries else {},
+        "paths": lambda: _sweep_loose_files(runner, entries, transcript is not None),
     }
 
     payload: dict[str, Any] = {
@@ -2177,6 +2177,11 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         "session_started": since,
         "transcript": transcript.as_dict() if transcript else {"note": transcript_note},
     }
+    if transcript is None:
+        # The repo set comes from the transcript's own write paths and shell targets, so without one
+        # it collapses to the working directory — which is a narrower sweep wearing a complete
+        # report's clothes. Measured 2026-09-03: one repo where the resolved run covered three.
+        payload["repo_scope"] = "the working directory only — with no transcript the session's repo set is unknown"
     for name, produce in producers.items():
         if wanted(name):
             payload |= produce()
@@ -2201,8 +2206,25 @@ def _sweep_stores(
     }
 
 
-def _sweep_loose_files(runner: Runner, entries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def _sweep_loose_files(runner: Runner, entries: Sequence[dict[str, Any]], have_transcript: bool) -> dict[str, Any]:
+    """The two checks that read nothing but this session's own writes — and say when they could not.
+
+    Both are named in step 5 as findings no other check reaches, and both used to vanish from the
+    report when no transcript resolved: not empty, **absent**. A reader scanning a full-looking
+    report has no gap to notice, because every other section prints normally and the sections that
+    did not run leave no heading behind. Confirmed twice, 2026-09-03 and 2026-09-04, the second time
+    by a harvest that read the whole sweep, moved on, and found the hole only when re-reading the
+    skill for a later step.
+
+    So availability is reported rather than implied, and it is reported the same way whether the
+    answer is a finding, none, or "this did not run" — the distinction a clean-looking report
+    otherwise destroys.
+    """
+    if not have_transcript:
+        why = "no transcript — both checks read this session's own writes"
+        return {"loose_files": {"available": False, "why": why}}
     return {
+        "loose_files": {"available": True},
         "written_outside_any_repo": [
             str(p) for p in written_paths(entries) if git_root(runner, p) is None and p.exists()
         ],
@@ -2238,6 +2260,8 @@ def _print_sweep(payload: dict[str, Any]) -> None:
     print(f"# session started: {payload.get('session_started')}")
     transcript = payload.get("transcript", {})
     print(f"# transcript: {transcript.get('path', transcript.get('note'))}")
+    if payload.get("repo_scope"):
+        print(f"# repos swept: {payload['repo_scope']}")
     _print_processes(payload.get("processes"))
     _print_sockets(payload.get("sockets"))
     _print_disk(payload.get("disk"))
@@ -2262,7 +2286,13 @@ def _print_processes(procs: dict[str, Any] | None) -> None:
         print(f"  unavailable: {procs.get('why')}")
         return
     children = procs["session_children"]
-    print(f"  this session's surviving children: {len(children)}")
+    if procs.get("harness_pid") is None:
+        # The listing ran, but no harness process was found in this process's ancestry, so the set
+        # of this session's descendants was never established. Printing 0 there would be a measured
+        # zero's twin, which is the one thing this sweep must not produce.
+        print("  this session's surviving children: unknown — no harness process in this call's ancestry")
+    else:
+        print(f"  this session's surviving children: {len(children)}")
     for row in children[:15]:
         print(f"    pid {row['pid']:>7} {row['stat']:<4} {row['etimes']:>7}s  {row['args']}")
         print(f"      {_holder(row)}")
@@ -2413,16 +2443,27 @@ def _print_depends_on(repo: str, tagged: list[dict[str, Any]]) -> None:
 
 
 def _print_loose_files(payload: dict[str, Any]) -> None:
-    outside = payload.get("written_outside_any_repo")
-    if outside:
-        print("\n== files written outside every repository ==")
-        for path in outside:
-            print(f"    {path}   (no diff, no history — say what would recover it)")
-    missing = payload.get("paths_named_but_missing")
-    if missing:
-        print("\n== paths this session wrote into files that do not exist ==")
-        for path in missing:
-            print(f"    {path}")
+    """Both headings always print, so "none" and "never looked" stop reading the same."""
+    state = payload.get("loose_files")
+    if state is None:
+        return  # the section was not requested at all
+    skipped = None if state.get("available") else f"  skipped: {state.get('why')}"
+
+    def section(heading: str, rows: list[str], suffix: str = "") -> None:
+        print(f"\n== {heading} ==")
+        if skipped:
+            print(skipped)
+        elif not rows:
+            print("  none")
+        for path in rows:
+            print(f"    {path}{suffix}")
+
+    section(
+        "files written outside every repository",
+        payload.get("written_outside_any_repo") or [],
+        "   (no diff, no history — say what would recover it)",
+    )
+    section("paths this session wrote into files that do not exist", payload.get("paths_named_but_missing") or [])
 
 
 # --------------------------------------------------------------------------------------------

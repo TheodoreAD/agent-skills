@@ -15,6 +15,7 @@ the fix being re-lost the next time somebody rewrites the paragraph.
 # annotation. Structural, so suppressed for the file rather than at every call site.
 # pyright: reportAny=false
 
+import argparse
 import importlib.util
 import json
 import sys
@@ -1039,6 +1040,43 @@ def test_a_store_entry_without_provenance_is_found_one_level_down(tmp_path):
 # Four checks in this file have made the same mistake, and the corpus now treats it as one defect
 # with per-check mechanisms rather than four coincidences. `_correction_overlap` and the docker
 # rows were fixed first; the two below are the same root in the library and the plans store.
+
+
+def test_skills_state_resolves_its_own_since_and_says_which_it_used(tmp_path, monkeypatch, capsys):
+    """`--since <session start>` was a placeholder with no stated source, so six harvests guessed
+    it. One guessed ninety minutes early and got the right verdict anyway, which is how a
+    placeholder survives: the wrong input produced the right answer. Too early fires the procedure's
+    most expensive step on evidence that does not support it; too late drops a superseding commit
+    out of the window and fails closed behind a clean report.
+
+    The printed value is the other half. The harm was never the wrong window but that a wrong one
+    was indistinguishable from a right one in the output, so nothing prompted a second look — and an
+    operator passing the override can still pass it wrongly.
+    """
+    args = argparse.Namespace(since=None, session=None, job=None, expect=None)
+
+    class FakeTranscript:
+        started: str = "2026-09-07T21:03:53.947Z"
+        path: Path = Path("/x/d6cb66aa-0a0b-4ed2-8219-786174c4904a.jsonl")
+
+    monkeypatch.setattr(harvest, "resolve_transcript", lambda *a, **k: FakeTranscript())
+    assert harvest._resolve_since(args) == ("2026-09-07T21:03:53.947Z", "transcript start (d6cb66aa)")
+
+    # The override still wins, and still says so.
+    assert harvest._resolve_since(argparse.Namespace(since="2026-01-01T00:00:00Z")) == (
+        "2026-01-01T00:00:00Z",
+        "supplied",
+    )
+
+    # No transcript is the reader's ordinary case: the comparison still runs and only this half goes
+    # unanswered. A silent None would have read as "nothing moved".
+    def refuse(*_args, **_kwargs):
+        raise harvest.HarvestError("no transcript")
+
+    monkeypatch.setattr(harvest, "resolve_transcript", refuse)
+    value, why = harvest._resolve_since(args)
+    assert value is None
+    assert "unavailable" in why
 
 
 def test_a_library_entry_a_refresher_touched_is_not_this_sessions(tmp_path):

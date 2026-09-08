@@ -1336,7 +1336,8 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
     if args.all:
         names = held
     installed_root = Path(args.installed).expanduser() if args.installed else INSTALLED_SKILLS
-    states = [skill_state(runner, name, checkout, installed_root, args.since) for name in names]
+    since, since_from = _resolve_since(args)
+    states = [skill_state(runner, name, checkout, installed_root, since) for name in names]
     main = worktree_main(checkout)
     plans_py = find_plans_py(checkout)
     # The command step 6 runs to file a skill fix from any other repo. Printed here, with the
@@ -1348,11 +1349,44 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
         "installed_root": str(installed_root),
         "file_a_fix": filing,
         "scope_note": note,
+        "since": since,
+        "since_from": since_from,
         "skills": states,
     }
     if not args.json:
-        _print_skills_state(payload, bool(args.since))
+        _print_skills_state(payload, bool(since))
     return payload
+
+
+def _resolve_since(args: argparse.Namespace) -> tuple[str | None, str]:
+    """The instant this session began, resolved the way every other subcommand resolves its session.
+
+    **`--since` was a placeholder with no stated source, and that is what made guessing it the
+    natural move.** The value exists — `transcript` prints it as `started:` — but step 0's command
+    block never said to take it from there, and the two commands are independent, so a session
+    batching its tool calls has to supply `--since` before `transcript` has answered.
+
+    Six instances by 2026-09-08, and they err in both directions. Too early widens the window, so
+    commits predating the session are reported as having moved under it and the verdict prescribes a
+    re-read the evidence does not support — the most expensive step in the procedure, fired on the
+    case the skill warns it should not fire on. Too late narrows it and a genuinely superseding
+    commit lands outside, which is the failure the whole branch exists to catch, failing closed
+    behind a clean report. One harvest guessed ninety minutes early and got the right verdict
+    anyway, which is how a placeholder survives: the wrong input produced the right answer.
+
+    The flag stays as an override for a harness that exports no id, and for auditing a window that
+    is not this session's — the same shape `--session` already has.
+    """
+    if args.since:
+        return args.since, "supplied"
+    try:
+        transcript = resolve_transcript(args.session, args.job, args.expect, Path.cwd())
+    except HarvestError:
+        # No transcript is the reader's ordinary case, not an error here: the comparison still runs
+        # and only the moved-since-start half goes unanswered. Saying so beats reporting nothing
+        # moved, which is what a silent `None` would have looked like.
+        return None, "no session resolved — 'moved since start' unavailable"
+    return transcript.started, f"transcript start ({transcript.path.stem[:8]})"
 
 
 def _print_skills_state(payload: dict[str, Any], since_given: bool) -> None:
@@ -1365,8 +1399,13 @@ def _print_skills_state(payload: dict[str, Any], since_given: bool) -> None:
         print(f"file a fix from another repo: {payload['file_a_fix']}")
     if payload.get("scope_note"):
         print(f"scope: {payload['scope_note']}")
-    if not since_given:
-        print("note: --since <session start> adds the moved-after-this-session-began check")
+    # The value used, always — the specific harm was never the wrong window but that a wrong one was
+    # indistinguishable from a right one in the output, so nothing prompted a second look. An
+    # operator overriding the default can still override it wrongly.
+    if since_given:
+        print(f"since: {payload.get('since')}  ({payload.get('since_from')})")
+    else:
+        print(f"since: unresolved — {payload.get('since_from')}")
     for state in payload["skills"]:
         print(f"\n== {state['skill']} ==")
         print(f"  {state['verdict']}")
@@ -2778,7 +2817,12 @@ def build_parser() -> argparse.ArgumentParser:
     skills.add_argument("--all", action="store_true", help="every skill in the checkout")
     skills.add_argument("--checkout", help="path to the agent-skills checkout")
     skills.add_argument("--installed", help="installed skills root (default ~/.agents/skills)")
-    skills.add_argument("--since", help="session start, for the moved-after-this-session-began check")
+    skills.add_argument(
+        "--since",
+        help="override the session start this resolves for itself; for a harness exporting no id, "
+        "or to audit a window that is not this session's",
+    )
+    _add_transcript_flags(skills)
 
     sweep = subparsers.add_parser(
         "sweep", parents=[common], help="processes, sockets, disk, git, CI, stores — one report"

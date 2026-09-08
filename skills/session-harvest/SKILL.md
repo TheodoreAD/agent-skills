@@ -53,7 +53,7 @@ H=~/.agents/skills/session-harvest/scripts/harvest.py   # or <checkout>/skills/s
 python3 $H boundary                                     # step 0, first command of the run
 python3 $H transcript --expect '<a command this session ran>'
 python3 $H turns                                        # step 4
-python3 $H skills-state --since <session start>         # step 0 — needs a checkout, see below
+python3 $H skills-state                                 # step 0 — needs a checkout, see below
 python3 $H sweep --boundary <instant>                   # step 5
 python3 $H claims --until <instant>                     # step 5, the exit-masked rule
 python3 $H filed --until <instant>                      # step 8, every harvest — see below
@@ -66,6 +66,18 @@ transcript's own filename stem; a background job's `state.json` still takes prec
 nothing — `transcript --expect` printed the right path and the next line exited 1 with
 `no transcript resolved` — and three harvests in two days re-typed `--session` by hand before the
 script was taught to read the variable that had been in its environment all along.
+
+**`skills-state` resolves its own `--since`, and prints the value it used.** Until 2026-09-08 the
+block above read `--since <session start>` — a placeholder with no stated source. The value exists
+(`transcript`'s `started:` line) but nothing said to take it from there, and the two commands are
+independent, so a session batching its calls had to supply the flag before `transcript` had
+answered. Six harvests substituted a guess; one was ninety minutes early and got the right verdict
+anyway, which is how a placeholder survives. Too early prescribes the procedure's most expensive
+step on evidence that does not support it; **too late drops a genuinely superseding commit out of
+the window and fails closed behind a clean report**. The flag remains, as an override for a harness
+exporting no id or to audit a window that is not this session's — and the `since:` line says which
+it used either way, because the harm was never the wrong window but that a wrong one was
+indistinguishable from a right one.
 
 **`skills-state` compares the install against a checkout, and finds the checkout itself.** In order:
 `--checkout <path>`, `$SESSION_HARVEST_CHECKOUT`, the repo above the script it is running from, and
@@ -109,15 +121,15 @@ transcript, so a boundary taken later has already lost some of them.
 
 The running skill is a file copy dropped at install time, so a harvest can silently execute a
 version older than the source — skipping exactly the checks most recently added, and reporting a
-clean run because it never looked. `python3 $H skills-state --since <session start>` compares the
-installed copy against the checkout for this skill and the others a harvest leans on; add
-`--skill <name>` for anything else this run used. **In a checkout holding none of those three — any
-skills repo but this one's — it reports that checkout's own skills instead, and prints a `scope:`
-line saying so**, because the default's whole purpose is that naming another skill cannot drop this
-one, and where this one is absent there is nothing to protect. If they differ, say so; a stale
-harvest is worse than no harvest, because its report reads identical. Added 2026-08-29 after the
-user asked for a harvest "with the latest versions" — behaviour the skill did not have, and could
-not have confirmed if asked.
+clean run because it never looked. `python3 $H skills-state` compares the installed copy against the
+checkout for this skill and the others a harvest leans on; add `--skill <name>` for anything else
+this run used. **In a checkout holding none of those three — any skills repo but this one's — it
+reports that checkout's own skills instead, and prints a `scope:` line saying so**, because the
+default's whole purpose is that naming another skill cannot drop this one, and where this one is
+absent there is nothing to protect. If they differ, say so; a stale harvest is worse than no
+harvest, because its report reads identical. Added 2026-08-29 after the user asked for a harvest
+"with the latest versions" — behaviour the skill did not have, and could not have confirmed if
+asked.
 
 **A difference has four causes, and only one of them is the stale install this step assumes.** The
 subcommand prints the verdict; what matters is that you act on the right one:

@@ -116,3 +116,15 @@ mid-restructure) and stopped a re-install being offered; the `--since` re-read b
 fired on a commit that was not this session's, and diffing installed-vs-checkout `SKILL.md` was the
 cheap way to act on it; and `turns` recovered the whole brief including the answer that carried the
 run's second half.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "What the step-5 checks owed a reader, and
+  what measuring them cost the plans" — retired with eight siblings as one finding: a check has to
+  say what it did not measure, and each of the nine was a check that answered instead. That section
+  also records what this plan's own recommendation cost when measured.
+- **`skills/session-harvest/scripts/harvest.py`** and **`SKILL.md`** carry the mechanism and the
+  incident, each beside the code or the bullet it governs.
+- **`plans/2026-09-03-a-retired-plan-may-never-have-owned-what-cited-it.md`** took the `DEFERRED`
+  deletion case, which is a `refs` question rather than a sweep one and had to find an owner before
+  this file could go.

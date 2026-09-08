@@ -78,3 +78,14 @@ sentence in the skill body; the wording is a docstring on `_sweep_transcript`, a
 narrow — it says an explicit `--session`/`--job`/`--expect` that fails to resolve is an error rather
 than a degraded run, precisely so a report never describes somebody else's scope. It was never the
 blanket licence this plan feared, so nothing had to be rewritten.]
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "What the step-5 checks owed a reader, and
+  what measuring them cost the plans" — retired with eight siblings as one finding: a check has to
+  say what it did not measure, and each of the nine was a check that answered instead. That section
+  also records what this plan's own recommendation cost when measured.
+- **`skills/session-harvest/scripts/harvest.py`** and **`SKILL.md`** carry the mechanism and the
+  incident, each beside the code or the bullet it governs.
+- Not migrated: the invocation-side recommendation, overtaken by automatic session resolution before
+  this was implemented. The reading-side half is what shipped.

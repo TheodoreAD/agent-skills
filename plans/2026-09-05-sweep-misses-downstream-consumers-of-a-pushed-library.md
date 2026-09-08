@@ -103,3 +103,14 @@ already knows — "did this session push to a repo other repos install, and does
 what a consumer owes after such a push?" — and leave the action as a report line plus a
 next-session-prompt item rather than anything automated, per the second open question. Build the
 machine-wide detector only if the doc-based signal proves too rare to fire.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "What the step-5 checks owed a reader, and
+  what measuring them cost the plans" — retired with eight siblings as one finding: a check has to
+  say what it did not measure, and each of the nine was a check that answered instead. That section
+  also records what this plan's own recommendation cost when measured.
+- **`skills/session-harvest/scripts/harvest.py`** and **`SKILL.md`** carry the mechanism and the
+  incident, each beside the code or the bullet it governs.
+- Not migrated: the named consumers and the SHAs of the unswept change. The mechanism is derived
+  from the machine now, so no list needs maintaining.

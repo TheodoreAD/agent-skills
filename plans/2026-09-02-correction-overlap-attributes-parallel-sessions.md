@@ -213,9 +213,14 @@ attributing and a read does not move an mtime at all.
 the example.** A retrofit re-cloned seven entries from a `retrofit.py` holding the names in a list,
 so argv named two of the seven and the other five came back under "something else" — this session's
 own work. The conservative direction, and the intended one, since the alternative is claiming a
-refresher's; but it is the same blind spot `2026-09-05-sweep-misses-a-file-a-subprocess-wrote.md`
-describes one door along, and the two are now known to be one gap rather than two. The report prints
-the limit next to the count for that reason: a low number here must not read as a small session.]
+refresher's; but it is the same blind spot one door along — **the tool call is the seam, and
+anything a script does inside one is invisible whatever the check is looking for** — so the two are
+one gap rather than two. Settled and named `SUBPROCESS_SEAM` in `harvest.py` on 2026-09-08, after a
+third instance in a third check; the plan that established it
+(`2026-09-05-sweep-misses-a-file-a-subprocess-wrote.md`) is **retired**, and the reasoning is in
+`skills/session-harvest/references/rationale.md`, "What the step-5 checks owed a reader". The report
+prints the limit next to the count for that reason: a low number here must not read as a small
+session.]
 
 ## What the store-commit fix established for the sites still open (2026-09-08)
 

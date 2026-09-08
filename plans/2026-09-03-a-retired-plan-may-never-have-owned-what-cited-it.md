@@ -53,6 +53,20 @@ retiring plan is a claim to verify, not a path to repoint** — check the plan a
 where it did not, find that work a new owner before touching the reference. Retirement is the only
 occasion anybody re-reads these, so it is the only occasion the claim gets tested.
 
+## A second question about the same tool, inherited 2026-09-08
+
+Carried here from `2026-09-05-sweep-should-ask-what-this-session-superseded.md` when that plan was
+retired — it was the one thing that plan scoped out of itself, and it belongs with `refs` rather
+than with the sweep.
+
+[DEFERRED: **the deletion case, which basenames alone do not reach.** `session-harvest`'s sweep now
+lists plans naming a source file this session **changed**, which covers the common case. A source
+file this session **deleted** is sharper and is not covered: a plan citing `steps.py` after
+`steps.py` is gone cites nothing, and nothing surfaces that. `plan-docs`' `refs` answers exactly
+this question for a plan file and not for a source file, so the likely shape is `refs` growing a
+`--path <source file>` mode rather than `harvest.py` growing a second implementation of the same
+search. Same tool and same axis as the question below, which is why the two now sit together.]
+
 [NEEDS CLARIFICATION: whether `refs` should distinguish citation shapes. It already lists every
 inbound hit with its line, and the two shapes read differently — "see `<plan>`" is navigational,
 "belongs with `<plan>`" / "owned by `<plan>`" / "deferred to `<plan>`" asserts ownership. Flagging

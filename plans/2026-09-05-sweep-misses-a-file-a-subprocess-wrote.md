@@ -118,3 +118,16 @@ read the next row as complete.
 2. **Then decide whether a Bash-command scan earns its noise**, knowing it would not have caught the
    instance that prompted this. That is the honest bar: it catches a different, commoner case, and
    should be argued for on that rather than on this one.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "What the step-5 checks owed a reader, and
+  what measuring them cost the plans" — retired with eight siblings as one finding: a check has to
+  say what it did not measure, and each of the nine was a check that answered instead. That section
+  also records what this plan's own recommendation cost when measured.
+- **`skills/session-harvest/scripts/harvest.py`** and **`SKILL.md`** carry the mechanism and the
+  incident, each beside the code or the bullet it governs.
+- **`SUBPROCESS_SEAM` in `harvest.py`** is this plan's conclusion as a shared constant, printed by
+  every check that has the limit rather than restated per check.
+- Not migrated: the two rejected heuristics as designs. Why each was rejected is in the rationale,
+  because that is the part a later reader would otherwise re-propose.

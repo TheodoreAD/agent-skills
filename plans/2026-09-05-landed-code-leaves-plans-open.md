@@ -66,3 +66,14 @@ repo catches, since the plan stays open until somebody bumps it.
 
 Verified on the session that built it: three candidates, one of them a plan whose pattern change
 that same session had landed an hour earlier and left at `idea`.]
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "What the step-5 checks owed a reader, and
+  what measuring them cost the plans" — retired with eight siblings as one finding: a check has to
+  say what it did not measure, and each of the nine was a check that answered instead. That section
+  also records what this plan's own recommendation cost when measured.
+- **`skills/session-harvest/scripts/harvest.py`** and **`SKILL.md`** carry the mechanism and the
+  incident, each beside the code or the bullet it governs.
+- Not migrated: the two `repo-tasks` instances by SHA. The measurement that replaced them — 43% of
+  167 open plans, 14% under the subject proxy — is in the rationale.

@@ -101,3 +101,14 @@ The reporting rule, which is recommendation 1 and is correct whatever the resolu
 **Not done, and correctly so:** `SKILL.md`'s command block needed no change, because the invocation
 it documents stopped under-reporting when automatic resolution landed. The skill body gained the
 `none`-versus-`skipped` rule instead, next to the check it governs.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "What the step-5 checks owed a reader, and
+  what measuring them cost the plans" — retired with eight siblings as one finding: a check has to
+  say what it did not measure, and each of the nine was a check that answered instead. That section
+  also records what this plan's own recommendation cost when measured.
+- **`skills/session-harvest/scripts/harvest.py`** and **`SKILL.md`** carry the mechanism and the
+  incident, each beside the code or the bullet it governs.
+- Not migrated: the bare-versus-resolved output comparison, which is a verification log. The
+  headline example was wrong (see above) and the correction is kept rather than the example.

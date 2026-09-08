@@ -200,3 +200,14 @@ One resolver call in `skills-state`, the flag kept as an override, and step 0's 
 the placeholder. The other change to the same subcommand's argument handling — making `--skill`
 additive rather than replacing the defaults — has since landed and been retired, so this is now the
 last of the pair rather than half of a shared review.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "What the step-5 checks owed a reader, and
+  what measuring them cost the plans" — retired with eight siblings as one finding: a check has to
+  say what it did not measure, and each of the nine was a check that answered instead. That section
+  also records what this plan's own recommendation cost when measured.
+- **`skills/session-harvest/scripts/harvest.py`** and **`SKILL.md`** carry the mechanism and the
+  incident, each beside the code or the bullet it governs.
+- Not migrated: the six instances one by one. What survives is that they err in both directions and
+  that the printed value, not the right default, is what makes either visible.

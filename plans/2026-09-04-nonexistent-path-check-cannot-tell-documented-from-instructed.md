@@ -87,3 +87,14 @@ The narrowing is a filter on **where the path was written**, not on what it mean
 instruction written into a `README.md` or a fenced block in a docs page is now out of scope. That is
 the trade taken: the check's stated purpose has always been the always-loaded file, and ten false
 positives in one run cost more than a hypothetical miss in a file no agent loads.
+
+## Migrated to
+
+- **`skills/session-harvest/references/rationale.md`**, "What the step-5 checks owed a reader, and
+  what measuring them cost the plans" — retired with eight siblings as one finding: a check has to
+  say what it did not measure, and each of the nine was a check that answered instead. That section
+  also records what this plan's own recommendation cost when measured.
+- **`skills/session-harvest/scripts/harvest.py`** and **`SKILL.md`** carry the mechanism and the
+  incident, each beside the code or the bullet it governs.
+- Not migrated: the ten listed paths. They name another vendor's directories and are evidence for a
+  decision now taken, not a fact worth keeping current.

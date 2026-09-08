@@ -2612,10 +2612,11 @@ def store_commits(
     since `0 commit(s) this session` is a plausible number for a session that did no store work.
 
     So argv is read as well as write paths: a commit whose file this session *named* in a command —
-    `plans.py commit <file>`, `plans.py absorb --only <file>`, a `git rm` — is this session's, with
-    no timestamp heuristic and no new parallel-session risk. What still cannot be matched is
-    reported as unattributed rather than as another session's, because that is the only claim the
-    evidence supports.
+    `plans.py commit <file>`, `plans.py absorb --only <file>`, a `git rm` — is this session's,
+    provided the command ran before the commit. That proviso is not decoration: this door was
+    predicted to carry no timestamp heuristic and no new parallel-session risk, and its first live
+    run refuted both — see `_named_before`. What still cannot be matched is reported as unattributed
+    rather than as another session's, because that is the only claim the evidence supports.
     """
     state: dict[str, Any] = {"store": name, "path": str(path)}
     if not path.is_dir() or not (path / ".git").exists():

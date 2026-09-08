@@ -37,6 +37,43 @@ forward scan stopped at a `|` inside the search pattern, so every deliberate `--
 alternation had been invisible. A fifth of the row's contents changed under a nearly-flat count.
 Nothing but a per-command diff surfaces that.
 
+## It recurred on 2026-09-08, in a different instrument, exactly as predicted
+
+Three more throwaway scripts, same scratchpad shape, same outcome — results published, method gone.
+They measured `GREEN_CLAIM_RE` before changing it, and the numbers are now quoted in
+`skills/session-harvest/references/rationale.md` and in two plans:
+
+| what it measured                                            | result                                       |
+| ----------------------------------------------------------- | -------------------------------------------- |
+| which of four alternations fires, 1,201 transcripts         | 587 / 213 / 89 / 29, plus 100 multi-matching |
+| what a subject requirement keeps and drops on the bare rule | 303 total, 158 kept, 145 dropped             |
+| CI-phrased greens the pattern matched nothing at all        | 329                                          |
+| open plans naming a source file that moved after them       | 72 of 167 (43%); 23 (14%) under a 3× proxy   |
+
+**The method, so the figures are re-derivable without the scripts.** Each walked
+`~/.claude/projects/**/*.jsonl`, took `type == "assistant"` entries' `text` blocks, split them on
+sentence boundaries and newlines, and counted per compiled alternation — attributing a sentence to a
+single alternation only when exactly one matched, so overlaps land in their own bucket instead of
+double-counting. The subject-requirement figure re-ran the same walk with the candidate pattern and
+partitioned the bare-alternation hits by whether the candidate still matched. The open-plan figure
+walked every `plans/` under `projects_root`, read `status`/`updated` from frontmatter, extracted
+basenames matching a source-suffix set with generic names excluded, and compared each against
+`git log -1 --format=%cs -- '*/<name>' <name>` in that repo.
+
+**This is the second instance and it was not one instrument's accident.** The 2026-09-05 case was
+`audit.py`'s pattern layer; this one is `harvest.py`'s claim matcher, in a different skill, by a
+different session, which is what turns "a flag on `audit.py`" into the wrong shape for the fix — the
+recurring need is _measure a pattern over the transcript corpus before changing it_, and at least
+two skills' patterns want it. That is an argument for the third open question below resolving toward
+`fitness.py` or a shared place, not toward `audit.py`.
+
+[PITFALL: **the plan predicted its own recurrence in the sentence "any future pattern change owes
+the same before/after table", and the recurrence still happened** — by a session that had this plan
+in its own repo, open, three days later. Nothing surfaced it at the moment of writing the scripts;
+the sweep's outside-any-repo check named the three files only afterwards, at harvest. That is the
+gap `2026-09-08-stale-claims-in-live-plans-have-no-prompt.md` describes from the other side: the
+prompt has to reach the session _writing_ the measurement, and no check here does.]
+
 ## Open questions
 
 [NEEDS CLARIFICATION: what shape it takes. A `--patterns-from <git-ref>` flag on the existing run is

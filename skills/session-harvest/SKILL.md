@@ -785,6 +785,17 @@ What the script cannot do is decide what a finding means. That is this list:
     remote served a justification known to be wrong while its fix sat in the ahead-count alongside
     ordinary tidying. Keep it to the same-session case; "is anything this repo currently publishes
     known-wrong" is a different question no harvest can answer in bounded time.
+
+    **Read the diff before calling it a correction — the line no longer does.** It printed
+    `CORRECTION?` until 2026-09-08 and routed straight into "needs action now" on the strength of
+    two path sets. Two of its three failure shapes were fixed by narrowing: a parallel session's
+    work (gone once the check intersected with this session's own writes) and a repo this session
+    never touched. The third cannot be: "touched before a push" and "touched after it" contains
+    every file a long session keeps working on. Confirmed 2026-09-04, where all three flagged paths
+    were this session's own writes in its own repo and every one was an _addition_ to what was
+    published — a new paragraph, appended incident recording, appended assertions. The remote was
+    serving less, not serving wrong. So the line says what it measures, and the judgement that only
+    a diff can make stays yours.
   - **That the count is from now.** Re-read it at report time; one taken earlier in the session is
     the session's memory wearing a measurement's clothes. Confirmed 2026-08-30: a session reported
     the plans store as "7 unpushed commits, 4 of them other sessions'", correct when counted; at

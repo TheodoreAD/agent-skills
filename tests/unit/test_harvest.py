@@ -552,6 +552,35 @@ def test_a_path_this_session_never_wrote_is_not_a_correction():
     assert state.overlap == []
 
 
+def test_the_overlap_line_reports_what_it_measured_and_does_not_claim_a_correction(capsys):
+    """Two of this check's three failure shapes were fixed by narrowing; the third cannot be. The
+    intersection is "touched before a push" and "touched after it", which contains every file a long
+    session keeps working on. Confirmed 2026-09-04: an `ingesta` harvest flagged `AGENTS.md`,
+    `tasks/seed_database.py` and `tests/unit/test_store.py`, all three this session's own writes in
+    its own repo, all three passing every filter, and all three wrong — each later commit added to
+    what was published rather than correcting it. The remote was serving less, not serving wrong.
+
+    Correction is a property of the diff, so the line gives up the claim and keeps the finding."""
+    harvest._print_repo(
+        {
+            "path": "/repo",
+            "branch": "main",
+            "upstream": "origin/main",
+            "fetch": "ok",
+            "dirty": [],
+            "ahead": [],
+            "overlap": ["AGENTS.md"],
+            "notes": [],
+        }
+    )
+    out = capsys.readouterr().out
+
+    assert "AGENTS.md" in out
+    assert "CORRECTION" not in out, "the path sets cannot tell a correction from continued work"
+    assert "both sides of a push this session made" in out
+    assert "read the unpushed commit's diff" in out
+
+
 # --------------------------------------------------------------------------------------------
 # skills state
 # --------------------------------------------------------------------------------------------

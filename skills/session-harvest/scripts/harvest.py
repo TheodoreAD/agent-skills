@@ -810,6 +810,21 @@ def _correction_overlap(
     session correcting itself. Confirmed 2026-09-04 — a harvest pushed a 22-commit backlog it had
     not authored, and the next session's ordinary follow-up to one of those files was reported as a
     correction. A correction is only this session's if this session wrote the path, so intersect.
+
+    **What `written` cannot reach, and why the printed line stops saying `CORRECTION?`.** The
+    intersection is "touched before a push" and "touched after it", and that set holds every file a
+    long session keeps working on — which on a long session is most of them. Confirmed 2026-09-04 on
+    an `ingesta` harvest that flagged `AGENTS.md`, `tasks/seed_database.py` and
+    `tests/unit/test_store.py`: all three were this session's own writes in its own repo, all three
+    passed every filter here, and all three were wrong. Each later commit _added_ to what was
+    published rather than correcting it — a new paragraph, appended incident recording, appended
+    assertions. The remote was never serving anything false; it was serving less.
+
+    Correction is a property of what changed inside the file, and no intersection of path sets can
+    see it. So the check keeps its narrowing and gives up its claim: it reports commits on both
+    sides of a push, which is exactly what it computes, and the reader decides. Reworded 2026-09-08
+    rather than narrowed further, because a diff-shaped test (a later commit that only adds lines is
+    not correcting) is a second mechanism for a line that is already a short list to read.
     """
     if not since:
         return []
@@ -2810,7 +2825,10 @@ def _print_repo(state: dict[str, Any]) -> None:
         print("    ^ check who authored these before recommending a push: on a machine running")
         print("      parallel sessions the ahead-count is not necessarily this session's work")
     for path in state["overlap"]:
-        print(f"  CORRECTION? unpushed and already published this session: {path}")
+        print(f"  both sides of a push this session made: {path}")
+    if state["overlap"]:
+        print("    ^ a correction, or ordinary continued work on a file already published — the path")
+        print("      sets cannot tell those apart; read the unpushed commit's diff before reporting")
     for note in state["notes"]:
         print(f"  note: {note}")
 

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-08
 source_repo: github.com-personal/repo-tasks
 source_session: e0a0f092-e55e-4429-95e5-1882a6b773be.jsonl
@@ -78,25 +78,40 @@ of the change rather than trusting that line.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: does `tests-windows.yml` need anything beyond the version bump? It is the one
-workflow in the family running on a Windows runner, and the three majors' notes were all checked
-against Linux-hosted jobs. Nothing in them is platform-specific — the runner-version floor is about
-self-hosted, not about OS — but that is reasoning rather than a green run, and this is the only
-place in the family where it would show.]
+[DECISION: **`tests-windows.yml` needed nothing beyond the version bump.** The reasoning held and
+now has a green run behind it — the Windows job passed on `@v7` in run `34238932918`, 2026-09-08.]
 
-[NEEDS CLARIFICATION: plain tag or SHA pin? This repo uses plain tags today and `repo-tasks` pins
-only in `publish.yml`, where the job holds `id-token: write` against PyPI. The recorded family
-decision is that pinning everywhere without dependabot means pins that rot, and dependabot means a
-standing PR stream on repos pushed to directly — so plain tags are the default and nothing here
-argues for the exception. Confirm rather than assume, since this repo has no equivalent
-credential-bearing job to weigh.]
+[DECISION: **plain tag.** Confirmed by reading the two workflows rather than by carrying the family
+default across: neither declares `id-token`, neither is a publish job, and both checkouts already
+set `persist-credentials: false`. There is no credential-bearing job here to weigh against the
+recorded family decision that pinning without dependabot means pins that rot.]
 
-## Recommended direction
+## What happened
 
-Two one-line edits, `@v4` -> `@v7`, in `.github/workflows/ci.yml` and
-`.github/workflows/tests-windows.yml`. Run this repo's own gate, push, and confirm the deprecation
-annotation is gone from the next run — `gh run view <id>` shows annotations that a green badge
-hides, which is how the whole issue was found in the first place.
+Done 2026-09-08 in `450cf68`, exactly the two one-line edits, pushed and green on both jobs.
+`v7.0.1` was re-resolved at the time of the change and was still current.
 
-That closes the family-wide item, and `repo-tasks`' `plans/2026-08-28-node20-action-deprecation.md`
-can then drop its last blocker.
+The confirmation the plan asked for: `gh api .../annotations` on the CI job returns **0**, where the
+same query on the previous run returned the Node 20 deprecation notice. That was the whole point —
+the annotation is invisible from a pass/fail signal, so a green badge is not evidence either way.
+
+## Migrated to
+
+- **The three majors' analysis and why none of them reaches these jobs** -> the commit message of
+  `450cf68`. Deliberately not copied into a docs file: it is two lines of YAML whose reasoning is
+  about this repo's own jobs at this moment, and `git log`/`git blame` on the changed line is
+  precisely the question a future reader arrives with. In this repo family `git log` is the channel
+  rather than the convenient record, because parallel sessions share one working tree.
+- **The scope-mistake finding** — that this repo was listed as blocked on a `repo-tasks` consumer
+  sweep while not being a `repo-tasks` consumer at all, which is why nothing reached it for eleven
+  days -> `github.com-personal/repo-tasks/2026-09-08-node20-blocker-cleared-by-agent-skills.md` in
+  the store, committed `16e494e`. That is the plan that has to survive this one, because the wrong
+  status line is still written down over there.
+- **The `rg --hidden` pitfall** -> restated verbatim in that same filed plan, so it outlives this
+  file. Not migrated into a skill or `~/AGENTS.md` from here: the fd/rg hidden-path question is
+  being worked separately and elsewhere, and a second copy written from this side would read as
+  authoritative while diverging.
+
+Deliberately not migrated: the upstream SHA `3d3c42e5aac5ba805825da76410c181273ba90b1`, which is a
+code contract this repo chose not to adopt, and the `@v4`/`@v7` per-repo state table, which was true
+on 2026-09-08 and is a verification log rather than a decision.

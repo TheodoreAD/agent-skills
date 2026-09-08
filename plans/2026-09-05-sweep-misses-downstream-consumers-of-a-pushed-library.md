@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-05
+status: landed
+updated: 2026-09-08
 source_repo: github.com-personal/repo-tasks
 source_session: 92ffb648-b58c-42c8-a813-bc3782a7be4c.jsonl
 source_moment: 2026-09-05T13:39:01+03:00
@@ -54,26 +54,33 @@ same mechanism (an artefact other things install) written as a special case for 
 Nothing generalises it to the other repos on this machine that are installed rather than merely
 read: `repo-tasks` as a `uv tool`, `scaffoldapy` as a generator, `invoke-stubs` as a git dependency.
 
-## Open questions
+## What landed, 2026-09-08
 
-[NEEDS CLARIFICATION: what the cheap detector is. Two candidates. **From the pushed repo**: does it
-carry a consumer-facing doc or a bootstrap script — `contributing/consumer-sweep.md` here — whose
-own trigger conditions the session can be shown? Precise where it exists, absent everywhere else.
-**From the machine**: grep the other checkouts under the projects root for the pushed repo's name in
-`pyproject.toml`, `uv.lock` and any `bootstrap-*.sh`, which finds consumers with nothing to maintain
-and works for a repo that documents none. The second is the same "derive it from the machine" move
-`scan` already makes for private terms, and it would have named both consumers here.]
+[DECISION: **both detectors, with the machine-derived one doing the work.** The recommendation was
+to ship the bullet first and build a detector only if the doc-based signal proved too rare. Built
+now instead, because the answer is deterministic and this repo's own rule sends anything derivable
+into a script rather than into prose an agent has to remember on every run.
 
-[NEEDS CLARIFICATION: report-only, or offer the sweep? The sweep mutates another repo's tree —
-`inv deps.lock`, `configs.pull`, `venv.sync` — which `~/AGENTS.md` forbids outright from a session
-that does not belong to it. So the harvest can only ever name it, and the action belongs to a
-session in each consumer or to a filed plan there. That argues the finding's home is the report and
-the next-session prompt, not an automated step. Worth deciding before building any detector.]
+The machine-derived half is the load-bearing one, exactly as this question guessed: any checkout
+under the projects root whose own manifest or bootstrap script names the repo. The doc-based half is
+reported beside it, because where a consumer-facing doc exists it is the precise answer and the
+derived list is only a candidate.
 
-[NEEDS CLARIFICATION: whether this deserves its own step-5 bullet or belongs inside the existing
-"work the session promised but never verified" one. Against folding it in: that bullet is about
-promises _made in the conversation_, and this obligation was never spoken aloud — it existed in a
-file the session had not read, which is why nothing surfaced it.]
+**The manifest list needed two names that are not universal**, and that is worth recording rather
+than discovering: `setup.toml` and `skills-lock.json`, which are what the two installers in play
+here actually write. A list of only the standard Python and Node manifests answers "no consumers"
+for the skills repo itself — whose sole consumer declares it in a `setup.toml`. The check was
+verified against exactly that case.]
+
+[DECISION: **report-only, and not a flag away from anything else.** Sweeping a consumer means
+running its tasks in its tree, which a session that does not belong to it must not do. The finding's
+home is the report and the next-session prompt, and the printed line says so where a reader will
+meet it rather than only here.]
+
+[DECISION: **its own bullet.** The existing "promised but never verified" bullet is about promises
+made in the conversation; this obligation was never spoken aloud — it lived in a file the session
+had not read, which is precisely why nothing surfaced it. Folding it in would have filed the finding
+under a heading whose reader is looking for something else.]
 
 ## Evidence
 

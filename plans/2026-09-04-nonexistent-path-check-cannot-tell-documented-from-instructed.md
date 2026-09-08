@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-04
+status: landed
+updated: 2026-09-08
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 92f54986-8a19-49a4-b792-8ebb1d5fcf1a.jsonl
 source_moment: 2026-09-04T11:57:51+03:00
@@ -51,32 +51,39 @@ that has been all-false-positive once is one a later harvest reads faster, and t
 was built for — a machine-wide rule aimed at a file that does not exist — looks identical in the
 list to a docs table entry. The 2026-08-29 instance would have been the eleventh line here.]
 
-## Open questions
+## What landed, 2026-09-08
 
-[NEEDS CLARIFICATION: **what actually separates the two?** Candidates, roughly by cost. (a) Where
-the path was written: a fenced shell block or a rule in an instructions file is instructed, a
-markdown table cell or prose is descriptive. (b) Whether the path appears as the argument of a
-command — `python3 <path>`, `source <path>` — versus standalone. (c) Whether the containing file is
-one an agent loads unconditionally (`~/AGENTS.md`, a `SKILL.md`) versus a docs page nobody executes.
-(c) is the cheapest and probably catches the real case: the 2026-08-29 instance was in
-`~/AGENTS.md`, and every false positive above was in `docs/` or a `plans/` file.]
+[DECISION: **(c), the containing file — `AGENTS.md`, `CLAUDE.md`, `SKILL.md` and nothing else.**
+Recommendations 1 and 2 both, in one change. The filter was the cheapest candidate and it is also
+the one the check's own docstring had described from the start: "a rule written into an
+always-loaded instructions file, or a `SKILL.md` command block". The code was broader than its own
+stated purpose, and the gap between them was the whole defect — which is why this is a narrowing to
+the documented behaviour rather than a new rule.
 
-[NEEDS CLARIFICATION: should a bare directory (`~/.codex`, `~/.codex/`) be reported at all? Three of
-the ten are the same directory in three spellings, which suggests the extraction is matching path-
-shaped strings rather than references. Deduplicating by resolved path would cut the noise without
-answering the question above.]
+(a) and (b) were not needed and would have cost more. Where the path sits inside a file is a
+markdown-parsing question, and command position is the same claim about a shell that has already
+failed once in this corpus — a `docker` cross-check counted the word inside a quoted `rg` pattern.]
 
-[NEEDS CLARIFICATION: is "does not exist" even the right test for the true positive? The 2026-08-29
-case was a path that did not exist **on this machine** while existing in the checkout — so the
-finding was really "the installed copy lacks what the rule assumes", which is a staleness question
-step 0 already owns. If so the check may belong there rather than in the sweep.]
+[DECISION: **spellings collapse by expanded path.** Three of the ten hits were one directory written
+three ways, which is noise under every filter, so the row is keyed by the expanded path while the
+literal spelling is kept for display and for the still-written re-check, which greps the file for
+the text that was actually written.]
 
-## Recommended direction
+[DECISION: **a write naming no destination is kept, not dropped.** The filter exists to drop paths
+written into something demonstrably descriptive; an unknown target demonstrates nothing, and
+dropping it would be the same silent-degradation defect the sibling plans in this group are about.
+The section also prints its own limit now — which files it reads — so an empty result says what it
+looked at.]
 
-1. Try (c) first — restrict the check to paths written into files an agent loads unconditionally.
-   One filter, and it would have left this session's ten hits out while keeping the instance the
-   check exists for.
-2. Deduplicate by resolved path regardless of which filter lands; three spellings of one directory
-   is noise under every option.
-3. If the section still comes back empty on a few real sessions, consider whether the third question
-   above means it belongs in step 0 instead of step 5.
+[DECISION: **"does not exist" stays the test, and the check stays in step 5.** The third question
+asked whether the real finding was "the installed copy lacks what the rule assumes", which step 0
+owns. It is not: step 0 compares an install against a checkout, and the 2026-08-29 instance was a
+path that existed in **neither** — the rule named a `scripts/` directory the skill had not grown
+yet. A staleness check cannot see a path that was never anywhere, and this one can.]
+
+## What is deliberately not done
+
+The narrowing is a filter on **where the path was written**, not on what it means, so a genuine
+instruction written into a `README.md` or a fenced block in a docs page is now out of scope. That is
+the trade taken: the check's stated purpose has always been the always-loaded file, and ten false
+positives in one run cost more than a hypothetical miss in a file no agent loads.

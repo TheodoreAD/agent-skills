@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-08
 source_repo: github.com-personal/ingesta
 source_session: 51a36fd5-b684-4cfb-8848-a1a5937b294c.jsonl
@@ -59,23 +59,26 @@ repo's own task, the subprocess path is not an exotic case — it is the _normal
 files this check exists to catch. Anything operational enough to live outside a repo is likely
 enough to be written by the tool that owns it.]
 
-## Open questions
+## What landed, 2026-09-08
 
-[NEEDS CLARIFICATION: **How much a heuristic over Bash commands is worth here, given it cannot be
-exact.** A path appearing in an `inv` argument list is not a write, and a write can happen with no
-path on the command line at all — this session's did, since the destination is computed from
-`$INGESTA_HOME` inside the task. So a command scan would have missed this instance too.
+[DECISION: **the third shape — say the limit — and none of the heuristics.** Landed as a line the
+section prints whether or not it found anything:
+`reads this session's own edit-tool writes; a file
+a subprocess wrote is out of scope`.
 
-Three shapes, none obviously right, and the choice decides whether this is worth building:
+The two scanning options were both rejected on their own terms rather than on cost. A Bash-command
+scan **would not have caught the instance that prompted this plan**, since the destination is
+computed inside the task and appears on no command line — so it would be bought on a different,
+commoner case, and buying coverage that misses the motivating example is how a check comes to look
+more complete than it is. An mtime sweep over `~/.config` catches this instance and every unrelated
+application's writes with it, which turns a coverage gap into a noise problem — and the sibling plan
+in this group has just measured what a ten-for-ten false-positive section does to a reader.
 
-- **Scan Bash commands for home-rooted paths** and report ones outside every repo. Cheap, catches
-  the common `cp`/`sed -i`/`tee` case, and misses this one.
-- **Report by mtime**: any file outside every repo under a small set of roots (`~/.config`,
-  `~/.local
-  /state`) modified between session start and the boundary. Catches this instance and
-  every unrelated application's writes with it, which is a noise problem rather than a coverage one.
-- **Say the check's own limit in the report**, and stop claiming coverage it does not have.
-  Cheapest, honest, and leaves the finding to the session's own memory — which is what failed here.]
+What settles it is the third instance recorded above: the seam is the **tool call**, and three
+independent checks are blind at it — write paths, argv attribution, and an exit code. None is
+reachable by fixing the others, so a per-check heuristic buys one row and leaves the shape. The
+limit is now a shared constant in `harvest.py` and appears on both loose-file sections, because a
+reader who learns the seam once for one row will still read the next row as complete.]
 
 ## A second check with the same blind spot, 2026-09-08
 

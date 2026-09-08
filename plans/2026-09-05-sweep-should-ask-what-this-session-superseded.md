@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-05
+status: landed
+updated: 2026-09-08
 source_repo: github.com-personal/repo-tasks
 source_session: 86b6d25d-eb68-4751-b989-ad45931ef62a.jsonl
 source_moment: 2026-09-05T17:25:20+03:00
@@ -80,11 +80,20 @@ plan names `repo_tasks/quality.py`.
 plan naming `quality.py` may be about something else entirely. The same shape as the `depends_on`
 bullet, which lists the tagged plans and leaves the sorting to the reader for the same reason.]
 
-[NEEDS CLARIFICATION: scope of the search. Sibling repos' `plans/` plus both store tiers is the
-obvious set and is what the sensitive tier makes awkward — a `repo-tasks` session has no business
-reading a client's plans, and the shareable tier alone would have found this instance. Recommend
-shareable store plus the repos under `projects_root` that already keep `plans/`, and say so in the
-output rather than searching everything.]
+[DECISION: **the recommended scope exactly — the shareable store plus every repo under
+`projects_root` that keeps a `plans/`, with the count of locations printed.** The sensitive tier is
+not read: a session has no business opening another party's plans to answer a question about its own
+source file, and the confirmed instance sits in the shareable tier anyway.
+
+**One addition the question did not anticipate: the session's own `plans/` is excluded too**, and
+for a different reason from the sensitive tier's. A session is already reading its own plans — that
+is where the topic-already-owned check looks — so including them adds nothing and costs a great
+deal: this repo's plans name `harvest.py` constantly, so a session editing it would get a page of
+true-but-useless rows. The sibling plan in this group measured what a section like that does to a
+reader, and the blind spot this check exists for is elsewhere by construction.
+
+Verified 2026-09-08 on the session that built it: two candidates, both real, both in another repo's
+plans and the store, against a session that had rewritten `harvest.py` extensively.]
 
 [DEFERRED: the deletion case is the sharper one and is not covered by basenames alone. This session
 deleted `steps.py` outright; a plan citing it now cites nothing, and `plan-docs`' `refs` answers

@@ -893,6 +893,21 @@ What the script cannot do is decide what a finding means. That is this list:
   had already rewritten both histories, force-pushed, opened a support request for the residue, and
   written all of it into a plan. Several probing calls, and nearly a duplicate alarm, for work that
   was done.
+- **What a push here obliges elsewhere.** Every other check is about this machine's own state; this
+  is the only category a push _creates_ rather than leaves behind, and it is invisible to all of
+  them — the consumer's tree is clean and its CI is green precisely because nothing has changed
+  there **yet**. Confirmed 2026-09-05: a session changed the module every gate step in a repo now
+  calls, pushed it, and the sweep reported dirty 0, unpushed 0, CI green, nothing owed. By every
+  check the skill ran, that session was finished; it was not. That repo's bootstrap is unpinned
+  until a version tag exists, so **every consumer's next CI run installs whatever `main` is at that
+  moment**, with no consumer-side action and no notice. The trigger was written down — in a file
+  nobody had reason to open. The sweep now derives consumers from the machine, the same move `scan`
+  makes for private terms: any checkout whose own manifest or bootstrap script names the repo, plus
+  that repo's consumer-facing doc where it has one. **Reporting is the whole action** — sweeping a
+  consumer means running its tasks in its tree, which is not this session's to do, so it goes in the
+  report and the next-session prompt. The skill already knew this shape for exactly one repo, in the
+  bullet above about a skill edit reaching nothing until pushed _and_ re-installed; that was the
+  mechanism written as a special case.
 - **What this session made stale somewhere else** — the reactive bullet above turned around. Every
   other check here asks what is dangling _for_ this session; a plan in another repo describing a
   mechanism this session just replaced is the inverse, and nothing else surfaces it: not dangling,

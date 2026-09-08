@@ -937,12 +937,12 @@ def projects_root() -> Path:
     return Path(str(raw) if raw else "~/projects").expanduser()
 
 
-def skills_checkouts(name: str, root: Path, depth: int = 3) -> list[Path]:
-    """Every git checkout under the projects root that holds `skills/<name>/SKILL.md`.
+def checkouts(root: Path, depth: int = 3) -> list[Path]:
+    """Every git checkout under a root, stopping at each `.git`.
 
     A walk rather than a path: the author keeps repos as `<root>/<host>/<repo>` on one machine and
     would keep them flat as `<root>/<repo>` on another, and a reader's layout is anybody's guess.
-    Symlinks are never followed and the walk stops at each `.git`, the same shape `plans.py` uses.
+    Symlinks are never followed, the same shape `plans.py` uses.
     """
     found: list[Path] = []
 
@@ -955,8 +955,7 @@ def skills_checkouts(name: str, root: Path, depth: int = 3) -> list[Path]:
             if child.name.startswith("."):
                 continue
             if (child / ".git").exists():
-                if (child / "skills" / name / "SKILL.md").is_file():
-                    found.append(child)
+                found.append(child)
                 continue
             if remaining > 1:
                 walk(child, remaining - 1)
@@ -964,6 +963,11 @@ def skills_checkouts(name: str, root: Path, depth: int = 3) -> list[Path]:
     if root.is_dir():
         walk(root, depth)
     return found
+
+
+def skills_checkouts(name: str, root: Path, depth: int = 3) -> list[Path]:
+    """Every git checkout under the projects root that holds `skills/<name>/SKILL.md`."""
+    return [repo for repo in checkouts(root, depth) if (repo / "skills" / name / "SKILL.md").is_file()]
 
 
 def find_checkout(explicit: str | None, start: Path | None = None, name: str = "session-harvest") -> Path:
@@ -2040,26 +2044,11 @@ def changed_source_names(entries: Sequence[dict[str, Any]]) -> list[str]:
 
 def plans_directories(root: Path, exclude: Path | None, depth: int = 3) -> list[Path]:
     """Every checkout under the projects root that keeps a `plans/`, except the session's own."""
-    found: list[Path] = []
-
-    def walk(directory: Path, remaining: int) -> None:
-        try:
-            children = sorted(p for p in directory.iterdir() if p.is_dir() and not p.is_symlink())
-        except OSError:
-            return
-        for child in children:
-            if child.name.startswith("."):
-                continue
-            if (child / ".git").exists():
-                if (child / "plans").is_dir() and (exclude is None or child.resolve() != exclude):
-                    found.append(child / "plans")
-                continue
-            if remaining > 1:
-                walk(child, remaining - 1)
-
-    if root.is_dir():
-        walk(root, depth)
-    return found
+    return [
+        repo / "plans"
+        for repo in checkouts(root, depth)
+        if (repo / "plans").is_dir() and (exclude is None or repo.resolve() != exclude)
+    ]
 
 
 def superseded_candidates(entries: Sequence[dict[str, Any]], session_repo: Path | None) -> dict[str, Any]:
@@ -2106,6 +2095,68 @@ def superseded_candidates(entries: Sequence[dict[str, Any]], session_repo: Path 
             if named:
                 found.append({"plan": str(plan), "names": named})
     return {"names": names, "searched": searched, "candidates": found}
+
+
+# Where a checkout records what it installs. A repo naming another repo in one of these is a
+# consumer of it, whether or not either repo documents the relationship.
+# `setup.toml` and `skills-lock.json` are not universal names; they are what the two installers in
+# play here actually write, and a list that omitted them would have answered "no consumers" for the
+# repo whose consumers prompted the check. A reader with neither file loses nothing by their being
+# listed.
+CONSUMER_MANIFESTS = ("pyproject.toml", "uv.lock", "requirements.txt", "package.json", "setup.toml", "skills-lock.json")
+CONSUMER_MANIFEST_GLOBS = ("bootstrap-*.sh",)
+# What a repo writes down for the people who install it, if it writes anything down at all.
+CONSUMER_DOCS = ("contributing/consumer-sweep.md", "CONSUMERS.md", "docs/consumers.md")
+
+
+def consumer_candidates(root: Path, repos: Sequence[Path], depth: int = 3) -> list[dict[str, Any]]:
+    """Repos on this machine that install a repo this session changed.
+
+    **Every other check in step 5 is about this machine's own state; this one is about what a push
+    obliges elsewhere, and it is the only category a push _creates_ rather than leaves behind.**
+    Confirmed 2026-09-05: a session changed the module every gate step in a repo now calls, pushed
+    it, and the sweep reported dirty 0, unpushed 0, CI green, nothing owed. By every check the skill
+    ran, that session was finished. It was not — that repo's bootstrap is unpinned until a version
+    tag exists, so every consumer's next CI run installs whatever `main` is at that moment, with no
+    consumer-side action and no notice. Two consumers, plus every repo one of them generates, were
+    running new code in their gate path that nothing had exercised there.
+
+    The gap was never that a documented procedure was ignored. **Nothing asked**, and the harvest is
+    the step whose whole job is asking; the trigger existed only in a file nobody had reason to open.
+    The skill already recognised this shape for exactly one repo — a skill edit reaching nothing
+    until pushed *and* re-installed — written as a special case rather than as the mechanism it is.
+
+    Consumers are derived from the machine rather than from documentation, the same move `scan`
+    makes for private terms: a manifest naming the repo is evidence whether or not either side
+    documents the relationship, and it works for a repo that documents none. A consumer-facing doc,
+    where one exists, is reported beside it because it is the precise answer where the derived list
+    is only a candidate.
+
+    **Reporting is the whole action.** Sweeping a consumer means running its tasks and touching its
+    tree, which a session that does not belong to it must not do — so the finding's home is the
+    report and the next-session prompt.
+    """
+    found: list[dict[str, Any]] = []
+    others = checkouts(root, depth)
+    for repo in repos:
+        name = repo.name
+        consumers = [str(other) for other in others if other.resolve() != repo.resolve() and _installs(other, name)]
+        docs = [doc for doc in CONSUMER_DOCS if (repo / doc).is_file()]
+        if consumers or docs:
+            found.append({"repo": str(repo), "consumers": consumers, "docs": docs})
+    return found
+
+
+def _installs(candidate: Path, name: str) -> bool:
+    manifests = [candidate / manifest for manifest in CONSUMER_MANIFESTS]
+    manifests += [path for pattern in CONSUMER_MANIFEST_GLOBS for path in candidate.glob(pattern)]
+    for manifest in manifests:
+        try:
+            if name in manifest.read_text(encoding="utf-8", errors="replace"):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def depends_on(repo: Path) -> list[dict[str, Any]]:
@@ -2375,6 +2426,7 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         "plans": lambda: {
             "depends_on": {str(path): depends_on(path) for path in repos},
             "superseded": superseded_candidates(entries, git_root(runner, Path.cwd())),
+            "consumers": consumer_candidates(projects_root(), repos),
         },
         "paths": lambda: _sweep_loose_files(runner, entries, transcript is not None),
     }
@@ -2492,7 +2544,24 @@ def _print_sweep(payload: dict[str, Any]) -> None:
     for repo, tagged in (payload.get("depends_on") or {}).items():
         _print_depends_on(repo, tagged)
     _print_superseded(payload.get("superseded"))
+    _print_consumers(payload.get("consumers"))
     _print_loose_files(payload)
+
+
+def _print_consumers(rows: list[dict[str, Any]] | None) -> None:
+    if rows is None:
+        return
+    print("\n== repos on this machine that install a repo this session changed ==")
+    if not rows:
+        print("  none")
+        return
+    for row in rows:
+        print(f"    {row['repo']}")
+        for consumer in row["consumers"]:
+            print(f"      installed by: {consumer}")
+        for doc in row["docs"]:
+            print(f"      it documents what a consumer owes: {doc}")
+    print("  a push here is a deploy there — report it and file it; sweeping their tree is not yours to do")
 
 
 def _print_superseded(state: dict[str, Any] | None) -> None:

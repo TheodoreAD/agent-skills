@@ -934,6 +934,51 @@ def test_a_plan_in_another_repo_naming_a_changed_source_file_is_a_candidate(tmp_
     )
 
 
+def test_repos_that_install_a_changed_repo_are_named_from_their_own_manifests(tmp_path):
+    """Confirmed 2026-09-05: a session changed the module every gate step in a repo now calls,
+    pushed it, and the sweep reported dirty 0, unpushed 0, CI green, nothing owed. By every check
+    the skill ran that session was finished, and it was not — that repo's bootstrap is unpinned, so
+    every consumer's next CI run installs whatever `main` is at that moment.
+
+    Consumers are derived from the machine rather than from documentation, the same move `scan`
+    makes for private terms: it works for a repo that documents nothing, and a manifest naming the
+    repo is evidence whether or not either side wrote the relationship down.
+    """
+    root = tmp_path / "projects"
+    library = root / "repo-tasks"
+    consumer = root / "a-consumer"
+    stranger = root / "unrelated"
+    for repo in (library, consumer, stranger):
+        (repo / ".git").mkdir(parents=True)
+    (consumer / "pyproject.toml").write_text('dependencies = ["repo-tasks @ git+ssh://..."]\n')
+    (stranger / "pyproject.toml").write_text('dependencies = ["httpx"]\n')
+    (library / "contributing").mkdir()
+    (library / "contributing" / "consumer-sweep.md").write_text("A push to main is a deploy.\n")
+
+    found = harvest.consumer_candidates(root, [library])
+
+    assert len(found) == 1
+    assert found[0]["consumers"] == [str(consumer)]
+    assert found[0]["docs"] == ["contributing/consumer-sweep.md"]
+
+    # A repo nobody installs and that documents nothing produces no row at all.
+    assert harvest.consumer_candidates(root, [stranger]) == []
+
+
+def test_a_bootstrap_script_counts_as_a_manifest(tmp_path):
+    """The unpinned bootstrap is the mechanism that makes a push a deploy, so the file that carries
+    it has to be one of the places a consumer is recognised from."""
+    root = tmp_path / "projects"
+    library = root / "repo-tasks"
+    consumer = root / "a-consumer"
+    for repo in (library, consumer):
+        (repo / ".git").mkdir(parents=True)
+    (consumer / "bootstrap-repo-tasks.sh").write_text("uv tool install git+https://x/repo-tasks\n")
+
+    found = harvest.consumer_candidates(root, [library])
+    assert found[0]["consumers"] == [str(consumer)]
+
+
 def test_a_session_that_changed_no_source_file_searches_nothing(tmp_path, monkeypatch):
     """Documents are excluded on purpose: a plan naming another plan is a citation, which
     `plan-docs`' own `refs` answers, and searching for `.md` basenames would hit every retirement."""

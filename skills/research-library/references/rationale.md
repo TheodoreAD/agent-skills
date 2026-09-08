@@ -140,3 +140,49 @@ Sources:
 [Why Claude Code Dropped Vector DB-Based RAG (SmartScope)](https://smartscope.blog/en/ai-development/practices/rag-debate-agentic-search-code-exploration/),
 [Code Retrieval: Grep, RAG, or Both? (Medium)](https://medium.com/@jhanavibehl/code-retrieval-grep-rag-or-both-706cdefd0b70),
 [grep vs. RAG (LlamaIndex)](https://www.llamaindex.ai/blog/is-grep-all-you-need-lexical-vs-sematic-search-for-agents).
+
+## Text-only clones: what the retrofit settled, and why there is no command for it (2026-09-07/08)
+
+The mechanism lives where it can be checked against the code that implements it: the NUL rule and
+the document keep-list in `SKILL.md`, the `blob:none`-plus-sparse combination beside the numbers
+that justify it, the non-cone deprecation and its fallback in `sparse_patterns()`, the
+case-sensitivity and extensionless-residue measurements in `UNGREPPABLE_EXTENSIONS` and `cmd_size`.
+What follows is what the retrofit run established, which no design discussion would have produced —
+and a command that deliberately does not exist.
+
+**There is no `--retrofit`, because ranking by disk is a content decision wearing a disk decision's
+clothes.** Seven entries were re-cloned by hand on 2026-09-08, chosen by ungreppable **share**
+rather than total size — 1.8 GB became 150 MB, and the store went from 4,728 MB to 3,073 MB with its
+ungreppable fraction falling from 39% to 16%. An eighth entry was excluded, and it is the reason the
+loop stays a loop: a decompiled Android build, 115 MB ungreppable of a 239 MB tree, which every size
+heuristic selects and whose own provenance note says it tracks a specific shipped release.
+Re-cloning it changes _which build the entry is_. No threshold can separate that from an entry
+holding demo GIFs, so the ranking is a report and the decision is per entry. `size --ungreppable` is
+what makes it a decision with a number rather than a principle — and it earned that immediately, by
+demoting the store's fourth-largest entry, which is only 15% ungreppable and would have been picked
+by every ranking that did not have the column.
+
+**A re-clone destroys the provenance, which is where a hand-run goes wrong.** Three of the seven
+carried multi-line hand-written notes — why a decompile is tracked per release, why a candidate was
+cloned during a prior-art survey — and `add --note` would have flattened each onto one line. The
+working shape is to restore the old `SOURCE.md` whole and then rewrite only `ref`, `fetched` and
+`text-only` through `set_provenance_field`, the line editor that already exists for exactly this and
+leaves a `note: |` block untouched.
+
+**The verification that mattered was not a size comparison.** Sizes only say something got smaller,
+which is what a pattern doing something unintended also looks like. `git ls-files -t` names every
+path git actually excluded, and asserting each one's extension is in the list is the check with
+teeth: it passed on all 1,883 excluded paths across the seven entries, a far stronger statement than
+any of the megabyte figures. The same asymmetry runs through the whole feature — the end-to-end
+verification is that `grep -rIl` returns the identical file set from both clones of one commit, not
+that the text-only one is smaller.
+
+**Default-on is a decision with an expiry, so it is recorded rather than assumed.** The general rule
+is that a published tool's documented behaviour stays the default and a departure is opt-in, most
+sharply when consumers inherit the change on their next upgrade. Asked directly on 2026-09-08, the
+user's answer was that this library has no consumers but themselves across several machines, so that
+rule has nothing to protect here yet — _"we should make it default, with opt-out via command line,
+but allow configuration to flip that if needed"_. The configuration is one env var rather than a
+config file because the library already has exactly one (`RESEARCH_HOME`), and a second mechanism
+for a single boolean would be the larger change. If the library ever gains a consumer, this is the
+decision to revisit first.

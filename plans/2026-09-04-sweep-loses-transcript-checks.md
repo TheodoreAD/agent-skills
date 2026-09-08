@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-04
+status: landed
+updated: 2026-09-08
 ---
 
 # `session-harvest`'s command block makes `sweep` skip its transcript-derived checks
@@ -52,26 +52,29 @@ session — the common case, and the one where nothing in the output distinguish
 "never looked". It also means a fix cannot be validated from a background job: a run that resolves
 by `state.json` passes whether or not the block carries a selector.
 
-## Recommended direction
+## What landed, and it was neither of the two obvious fixes
 
-Carry the selector through the block, so following it verbatim cannot lose the checks:
+The recommendation was to carry the selector through the block. It was overtaken: on 2026-09-05
+`sweep` learned to resolve from `$CLAUDE_CODE_SESSION_ID`, so the block as written stopped losing
+anything in an ordinary Claude Code session and threading an id by hand would have been ceremony.
+The rejected middle option — content-based fallback — stayed rejected for the reason given here,
+that `transcript`'s discipline is a deliberate selector and a guess is what "never guess an id"
+exists to prevent.
 
-```shell
-python3 $H transcript --expect '<a command this session ran>'   # prints the session id
-python3 $H sweep --boundary <instant> --session <that id>
-```
+**What was left is this plan's third option, and it is the one that mattered.** Landed 2026-09-08:
+both transcript-derived sections always print a heading, with `none` or
+`skipped: no transcript — both checks read this session's own writes` in place of nothing at all.
+That fixes the reading failure rather than the invocation, which is what the PITFALL above describes
+and what no amount of correct invocation would have addressed — a resolved run finding nothing was
+just as silent as a run that never looked.
 
-Two smaller options worth weighing against it:
+Merged with `2026-09-03-harvest-sweep-degrades-silently-without-a-transcript.md`'s evidence at
+implementation time: the two are one defect from opposite ends, that plan holding the measurement of
+what a degraded run loses and this one the measurement of when it fires. Neither was filed as a
+duplicate of the other, and reading them together is what showed the fix belonged in the printer.
 
-- Have `sweep` fall back to the same content-selection `transcript` uses, so no id has to be
-  threaded. Against: `transcript`'s whole discipline is that a selector is supplied deliberately,
-  and a fallback that guesses is what the "never guess an id" warning exists to prevent.
-- Have `sweep` print the two skipped sections as explicit `skipped — no transcript` headings rather
-  than omitting them. This is the smallest change and fixes the reading failure rather than the
-  invocation, so it composes with either of the above.
-
-[NEEDS CLARIFICATION: is the "degrades quietly by design" line in the skill's script section
-describing _this_, or something narrower? It currently reads as covering the whole subcommand, which
-makes a reader treat the missing sections as intended. If the design intent is only that a missing
-`gh`, a non-Linux socket check, or an unreachable remote should not abort the sweep, then the
-transcript case is a different thing wearing the same label, and the sentence should say so.]
+[DECISION: there is no "degrades quietly by design" line to disambiguate. The question assumed a
+sentence in the skill body; the wording is a docstring on `_sweep_transcript`, and it is already
+narrow — it says an explicit `--session`/`--job`/`--expect` that fails to resolve is an error rather
+than a degraded run, precisely so a report never describes somebody else's scope. It was never the
+blanket licence this plan feared, so nothing had to be rewritten.]

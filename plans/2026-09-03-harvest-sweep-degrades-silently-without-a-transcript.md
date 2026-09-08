@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-03
+status: landed
+updated: 2026-09-08
 source_repo: github.com-personal/power-user-linux-setup
 source_session: cd4f9f9e-379a-4bb2-986c-1a99e0f84ac0.jsonl
 source_moment: 2026-09-03T10:16:02+03:00
@@ -61,28 +61,43 @@ first gets a loud error, supplies `--session`, and never learns that `sweep` wou
 quietly — because by then the habit of passing `--session` has been established by the subcommand
 that insisted. This run hit it in the other order.]
 
-## Open questions
+## Resolved questions
 
-[NEEDS CLARIFICATION: **persist the resolution, or make `sweep` refuse?** Persisting (the
-`transcript` call writes the resolved path somewhere the later subcommands read) matches what
-`SKILL.md` and the design plan already describe, and keeps the documented command block honest.
-Refusing is smaller, needs no state, and follows the script's own principle that nothing should
-report a clean result it did not measure — but it makes the documented bare invocations an error
-that every run has to route around. A third option is both: refuse by default, with the resolution
-cached so the bare form usually works.]
+[DECISION: **neither persistence nor refusal — automatic resolution, which landed first and made the
+question moot.** Since 2026-09-05 `turns`, `sweep` and `claims` resolve the transcript from
+`$CLAUDE_CODE_SESSION_ID`, which Claude Code exports into every Bash call and which is the
+transcript's own filename stem. So the documented bare block is honest in an ordinary session, and
+neither a cache nor an error was needed. What survives the change is the reporting half below, which
+is what happens on a harness that exports no id — the case that used to be indistinguishable from a
+clean run and is now the only case left.]
 
-[NEEDS CLARIFICATION: **are there other silent degradations of the same shape?** `sweep` is the
-subcommand with the most inputs, so it is the most likely, but the question is whether any other
-subcommand answers with data it does not have when an input is missing. Worth one pass over the
-script asking, per section, "what does this print when its source is empty — a finding, or a
-falsely-clean one?"]
+[DECISION: **the per-section pass was run 2026-09-08, and the shape was already handled in two of
+the five places it could occur.** `stores` prints "no transcript: nothing here is attributable,
+whatever the timestamps say", and `disk` carries a three-valued `images_attribution` that
+distinguishes "this session ran docker" from "no transcript to check against". The three that did
+not: the two loose-file checks, the repo set, and the process section. All three are fixed below,
+and the two that were already right are the reason the fix took the shape it did rather than
+inventing a convention.]
 
-## Recommended direction
+## What landed, 2026-09-08
 
-1. Fix the reporting first, whichever mechanism wins: **no section may print a definite answer from
-   an input it does not have.** `surviving children: 0` becomes `unknown — no transcript`, and the
-   sections that cannot run say they did not run. That is correct under either resolution.
-2. Then decide persistence versus refusal, and make `SKILL.md`'s command block match whichever wins
-   — the block currently documents an invocation that silently under-reports.
-3. Add a test that runs `sweep` with no resolvable transcript and asserts the output contains no
-   definite per-session claim. It is the shape a unit test can hold and prose cannot.
+The reporting rule, which is recommendation 1 and is correct whatever the resolution does:
+
+- **Both loose-file checks always print a heading** — the findings, `none`, or
+  `skipped: no transcript`. They used to be absent rather than empty, which is the whole defect: a
+  section that is missing leaves no gap a reader can see. Two tests pin `none` and `skipped` apart,
+  because a fix that printed only `skipped` would have left the resolved-but-empty run just as
+  silent as before.
+- **The header says when the repo set collapsed to the working directory**, which is the second
+  bullet of the evidence above — the one-repo-against-three narrowing, now stated rather than
+  inferred.
+- **The process section stops printing `0` surviving children when no harness process is in its own
+  ancestry.** This is a correction to this plan's own headline example: `session_children` is
+  derived by walking the process tree, not from the transcript, so a transcript-less run's `0` is
+  genuinely measured and the plan was wrong to call it a claim the sweep could not make. The
+  unmeasured case is the narrower one — the listing ran and the harness walk found nothing — and
+  that is what now prints `unknown`.
+
+**Not done, and correctly so:** `SKILL.md`'s command block needed no change, because the invocation
+it documents stopped under-reporting when automatic resolution landed. The skill body gained the
+`none`-versus-`skipped` rule instead, next to the check it governs.

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-08
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 156d723c-4e21-41ef-aac9-bfd6c05b681c.jsonl
@@ -109,9 +109,15 @@ Cheap version if per-skill load times are not recoverable: exempt the harvest's 
 warning, or label that row. The transcript does record when a skill's body entered context, so the
 precise version is available.
 
-[NEEDS CLARIFICATION: does the load-time adjustment change the `[DECISION:]` above, or sit on top of
-it as a per-row refinement? They are compatible — compute the transcript start as decided, then
-adjust per skill by load time — but only if load time is actually cheap to read.]
+[DECISION: **on top of it, as a per-row refinement — and load time was cheap, so the exemption was
+not needed.** Landed 2026-09-08. A skill's body entering context is a `Skill` tool call in the
+transcript, carrying the skill name and a timestamp, read by the same `iter_blocks` walk everything
+else here uses; the earliest call per skill wins, since a re-invocation was already in context. So
+the resolution decided above computes the session-wide default and each row then baselines on its
+own load instant where one exists. A skill never invoked this session falls back to session start,
+`--since` still overrides every row, and `move_baseline` records which of the two each row used —
+the point being that a baseline changing silently per row would be this plan's own defect one level
+up.]
 
 [DECISION: **print the value used**, whichever way the default goes — a
 `# since: <instant>
@@ -154,22 +160,39 @@ reader holds a timestamp from the very first call and it is the wrong one for th
 is "now", `--since` wants "when this session began". Using it would narrow the window to nothing and
 report that no skill had moved: the failure that looks most like success.]
 
-[NEEDS CLARIFICATION: should a `--since` that predates the resolved session start be rejected, or
-reported? It is always a mistake — no session began before it began — so the script can detect that
-particular error with no new information. Whether it is worth a check depends on whether the flag
-survives the `[DECISION:]` above at all.]
+[DECISION: **reported, never rejected — and the question's premise was wrong.** It called an
+earlier-than-start value always a mistake, since no session began before it began. But the flag's
+own second purpose is auditing a window that is not this session's, and an earlier instant is
+exactly what that takes; rejecting it would also remove the way to correct a typo. So
+`_supplied_note` names the gap in minutes and which way the window moved, which is what separates a
+guess from a deliberate audit — indistinguishable until the two instants are printed side by side.
+Verified on the session that made the change: a value 92 minutes early reported four skill commits
+moved where the real start reported three, and nothing but the note made that difference visible.]
 
 This does not reopen the decision; it is the strongest argument yet for it. Documenting the source
 in prose is the alternative the filing considered and rejected: it explains the placeholder where
 defaulting deletes it, and makes the common invocation `skills-state` with no arguments.
 
-## Open questions
+## Resolved questions
 
-[NEEDS CLARIFICATION: what the default should be when no session resolves — a harness that exports
-no id, or a `--checkout`-only invocation outside a session. Reporting every commit ever is useless
-noise; erroring turns a currently-working invocation into a failure. Probably: keep the current
-behaviour of requiring the flag in that case, and default only when a transcript was resolved, so
-the change is additive.]
+[DECISION: **when no session resolves, the comparison still runs and only the moved-since-start half
+goes unanswered** — the guess in the original question, and better than the "keep requiring the
+flag" it hedged toward. `since: unresolved — no session resolved` prints in place of a value, so the
+reader's ordinary case (an installed copy, no harness id) is a stated gap rather than an error or a
+silent `None`. A silent `None` would have read as "nothing moved", which is the failure the whole
+plan is about, one level down.]
+
+## What landed, 2026-09-08
+
+Exactly the recommended direction: one resolver call, the flag kept as an override, the placeholder
+gone from step 0's block. `skills-state` now resolves the session the way `turns`, `sweep` and
+`claims` already do, so the common invocation takes no arguments at all.
+
+**And it prints the value it used, every time**, which is the half the plan's own evidence argued
+for without naming: the harm across all six instances was never the wrong window but that a wrong
+one was indistinguishable from a right one in the output, so nothing prompted a second look. That
+holds for an operator passing the override too, which is what the supplied-value note above exists
+for.
 
 ## Recommended direction
 

@@ -2082,6 +2082,16 @@ def _still_written(candidate: str, target: str) -> bool:
         return True
 
 
+def _is_library_entry(root: Path) -> bool:
+    """A research-library clone, recognised by the store's own convention rather than by its path.
+
+    Both halves are needed. `SOURCE.md` alone would exclude any project that happens to ship one;
+    a `repos/` parent alone would exclude a legitimate checkout in a directory of that name. Together
+    they are the entry shape `library.py` creates and `check` enforces.
+    """
+    return root.parent.name == "repos" and (root / "SOURCE.md").is_file()
+
+
 def _touched_repos(runner: Runner, extra: Sequence[str], entries: Sequence[dict[str, Any]]) -> list[Path]:
     """The repos to sweep: every git root the session wrote into or pointed a command at, plus
     `--repo`, and the current one when the transcript shows nothing.
@@ -2094,13 +2104,22 @@ def _touched_repos(runner: Runner, extra: Sequence[str], entries: Sequence[dict[
     2026-09-02: one `cd` into a clone to read its refspec pulled `astral-sh/uv` into the sweep, which
     then reported eight of that project's own CI runs and an untracked `SOURCE.md` (which every
     conformant entry has) as findings.
+
+    **That exclusion keyed on `$RESEARCH_HOME`, and the identical failure recurred one path away.**
+    Confirmed 2026-09-08: a session probing text-only clones built a second library under its own
+    scratchpad, and the sweep fetched that clone's remote, read its CI, and reported the untracked
+    `SOURCE.md` as dirt — the same two symptoms, in a tree the location test could not see. A
+    library is recognisable by its **shape**, so that is what is matched now: an entry directory
+    holding a `SOURCE.md`, sitting directly under a `repos/` bucket. Both halves are the store's own
+    convention rather than a path, so a library anywhere is excluded and an ordinary project that
+    happens to carry a `SOURCE.md` is not.
     """
     library = Path(os.environ.get("RESEARCH_HOME", str(Path.home() / "research"))).expanduser()
     repos: dict[str, Path] = {}
     candidates = [*(Path(p).expanduser() for p in extra), *written_paths(entries), *shell_targets(entries)]
     for raw in candidates or [Path.cwd()]:
         root = git_root(runner, raw)
-        if root is not None and not root.is_relative_to(library):
+        if root is not None and not root.is_relative_to(library) and not _is_library_entry(root):
             repos[str(root)] = root
     if not repos:
         root = git_root(runner, Path.cwd())

@@ -1425,6 +1425,32 @@ def test_a_reference_clone_is_not_a_repo_this_session_owns(tmp_path, monkeypatch
     assert not any("github.com--astral-sh--uv" in str(p) for p in swept)
 
 
+def test_a_reference_clone_outside_research_home_is_excluded_too(tmp_path):
+    """The 2026-09-02 exclusion keyed on `$RESEARCH_HOME`, and the identical failure recurred one
+    path away on 2026-09-08: a session probing text-only clones built a second library under its own
+    scratchpad, and the sweep fetched that clone's remote, read its CI, and reported the untracked
+    `SOURCE.md` as dirt — the same two symptoms in a tree the location test could not see.
+
+    A library is recognisable by shape, so that is what is matched: a `SOURCE.md` under a `repos/`
+    bucket. Both halves are needed — `SOURCE.md` alone would exclude any project shipping one, and a
+    `repos/` parent alone would exclude a legitimate checkout in a directory of that name.
+    """
+    entry = tmp_path / "scratch" / "store" / "repos" / "github.com--intellectronica--ruler"
+    entry.mkdir(parents=True)
+    (entry / "SOURCE.md").write_text("url: x\n", encoding="utf-8")
+    assert harvest._is_library_entry(entry)
+
+    # Neither half on its own.
+    plain = tmp_path / "repos" / "an-actual-project"
+    plain.mkdir(parents=True)
+    assert not harvest._is_library_entry(plain), "a checkout under a repos/ directory is still a checkout"
+
+    sourced = tmp_path / "projects" / "ships-a-source-md"
+    sourced.mkdir(parents=True)
+    (sourced / "SOURCE.md").write_text("not a library entry\n", encoding="utf-8")
+    assert not harvest._is_library_entry(sourced)
+
+
 def test_a_path_inside_a_test_file_is_a_fixture_not_an_instruction():
     entries = [
         blocks_entry(

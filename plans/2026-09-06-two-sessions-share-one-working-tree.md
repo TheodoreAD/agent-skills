@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-06
+updated: 2026-09-08
 ---
 
 # Two sessions in one working tree, which no filing convention can fix
@@ -74,15 +74,55 @@ them from a parallel session's by content, so this needs the session to record w
 which is state.]
 
 [NEEDS CLARIFICATION: **whether `session-harvest`'s sweep should report it at all.** It already
-reports the ahead-count and already had a false positive from exactly this cause
-(`2026-09-02-correction-overlap-attributes-parallel-sessions.md`, where `published this session`
-meant "published by anybody today"). That plan is the evidence that a naive parallel-session signal
-misattributes; it is also evidence the data is right there. Decide that plan first — this one may
-turn out to be its general case rather than a separate build.]
+reports the ahead-count and already had a false positive from exactly this cause — the
+correction-overlap plan, retired 2026-09-08 and readable through `plans.py archive`, where
+`published this session` meant "published by anybody today". That plan is the evidence that a naive
+parallel-session signal misattributes; it is also evidence the data is right there.]
+
+## What the correction-overlap plan answered, 2026-09-08
+
+That plan is now landed and retired, and this one was waiting on it, so the answer belongs here
+rather than in a history nobody will think to read.
+
+**It needed no shared primitive, and that is the finding.** This plan's direction was that if the
+fix required a session to know which of the commits in front of it are its own, that primitive
+should land once and serve both. It did not. Four sweep checks made the same mistake — a time window
+read as an attribution — and **every repair was per-site, with a different evidence source each
+time**: the transcript's write paths for the correction check, "did this session run `docker` at
+all" for the disk step, the session's own `library.py` argv for the research store, and argv plus an
+ordering test for store commits. The one thing closest to a shared helper, `_named_before`, arrived
+from the store-commit fix and carries an ordering constraint the write-path route never needed.
+
+**And the fourth site could not be finished by attribution at all.** What survives every filter
+there is a set that honestly contains most of a long session's files, so the repair was the label:
+the line now reports commits on both sides of a push rather than claiming a correction. A check
+whose label its evidence cannot support has two repairs, and only one of them is always available.
+
+So the general-case build this plan was holding out for does not exist in the shape it expected.
+What the four cases share is a reading habit, not a mechanism.
 
 ## Recommended direction
 
-Do nothing mechanical yet. Resolve `2026-09-02-correction-overlap-attributes-parallel-sessions.md`
-first, since it is the same question with a concrete instrument attached and a measured false
-positive to test against. If its fix needs a session to know which commits are its own, that is the
-primitive this plan wants, and the two should land together rather than as two designs for one fact.
+**Rules-only, and the open question is now whether anything measures adherence to them.** The
+per-site outcome above is the argument the parent plan already made from the other end — filing
+conventions cannot fix concurrent edits, and neither can one attribution helper. Every survival on
+the measured evening came from a rule an agent remembered: commit by pathspec, undo by SHA,
+`plans.py commit`'s private index, `git log origin/<branch>..HEAD` before pushing.
+
+That leaves one thing worth building and it is not a signal. `session-bash-audit` already measures
+whether this machine's Bash rules are followed, and **none of the four is in its pattern set** —
+checked 2026-09-08 against `PATTERNS` in `audit.py`: no row matches `git add -A`, a relative-ref
+`reset`, an `origin/<branch>..HEAD` read before a push, or a `git -C <store> commit` where
+`plans.py commit` was owed. The nearest are `git-mutating` and `git-C-mutating`, which ask whether a
+verb was ask-gated rather than whether it was safe here. Each of the four has the shape the audit
+measures well — a literal command form, present or absent in a transcript — so measuring them would
+say whether the rules-only answer is holding, which is the question this plan has actually been
+asking since the condition it inherited was met.
+
+[PITFALL: `git-mutating` fires on `git add` and `git commit` alike, so a run of it is not evidence
+about pathspec discipline in either direction. A rate read off that row would say the rules are
+being followed while `git add -A` sat inside it uncounted.]
+
+Still open, and unaffected: whether a cheap read-time signal would help or only add noise. Prefer
+measurement first — a signal built before anyone knows the rules are being missed is a guess with a
+maintenance cost.

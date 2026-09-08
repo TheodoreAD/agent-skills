@@ -979,6 +979,45 @@ def test_a_bootstrap_script_counts_as_a_manifest(tmp_path):
     assert found[0]["consumers"] == [str(consumer)]
 
 
+def test_an_open_plan_about_a_file_this_session_changed_is_offered_back(tmp_path):
+    """The case is a session that builds everything a plan designed and never touches the plan:
+    it keeps saying `idea`, `absorb` never raises it because nothing is terminal, and the next
+    session reading `list` sees live design work. Confirmed 2026-09-05, two plans in one repo.
+
+    A prompt rather than a gate, and the measurement is the reason. Family-wide 2026-09-08, 43% of
+    open plans name a source file that moved after them — noise. The three-mention subject proxy
+    puts it at 14%, and what is left is structural: a session that edits a file makes every plan
+    about that file look stale.
+    """
+    repo = tmp_path / "repo"
+    (repo / "plans").mkdir(parents=True)
+    subject = "---\nstatus: idea\nupdated: 2026-09-01\n---\n\nsteps.py, steps.py again, and steps.py once more\n"
+    (repo / "plans" / "2026-09-01-designs-steps.md").write_text(subject)
+    (repo / "plans" / "2026-09-01-mentions-once.md").write_text(
+        "---\nstatus: idea\nupdated: 2026-09-01\n---\n\nas context, steps.py exists\n"
+    )
+    (repo / "plans" / "2026-09-01-already-landed.md").write_text(
+        "---\nstatus: landed\nupdated: 2026-09-01\n---\n\nsteps.py steps.py steps.py\n"
+    )
+    (repo / "plans" / "2026-09-07-written-during.md").write_text(
+        "---\nstatus: idea\nupdated: 2026-09-07\n---\n\nsteps.py steps.py steps.py\n"
+    )
+    entries = [
+        blocks_entry(
+            "assistant",
+            [{"type": "tool_use", "id": "a", "name": "Edit", "input": {"file_path": str(repo / "steps.py")}}],
+        )
+    ]
+
+    found = harvest.plans_this_session_may_have_landed(entries, repo, "2026-09-05T09:00:00Z")
+
+    named = [row["plan"] for row in found["candidates"]]
+    assert named == ["2026-09-01-designs-steps.md"], (
+        "one mention is a citation, a terminal plan is already handled by the retirement prompt, and "
+        "a plan updated after the session began cannot have been left behind by it"
+    )
+
+
 def test_a_session_that_changed_no_source_file_searches_nothing(tmp_path, monkeypatch):
     """Documents are excluded on purpose: a plan naming another plan is a citation, which
     `plan-docs`' own `refs` answers, and searching for `.md` basenames would hit every retirement."""

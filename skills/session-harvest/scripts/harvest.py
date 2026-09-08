@@ -2175,6 +2175,65 @@ def consumer_candidates(root: Path, repos: Sequence[Path], depth: int = 3) -> li
     return found
 
 
+OPEN_PLAN_STATUSES = ("idea", "planned", "in-progress", "blocked")
+
+
+def plans_this_session_may_have_landed(
+    entries: Sequence[dict[str, Any]], session_repo: Path | None, since: str | None
+) -> dict[str, Any]:
+    """This repo's own open plans naming a source file this session wrote.
+
+    **The case is a session that builds everything a plan designed, documents it, and never touches
+    the plan.** The plan keeps saying `idea` with open questions the code has answered, `absorb`
+    never raises it because nothing is terminal, and the next session reading `list` sees live design
+    work. Confirmed 2026-09-05: two plans in one repo were answered by six commits the same evening
+    and the landing session ended without a status bump on either, so the next harvest nearly
+    proposed building what already existed.
+
+    **A prompt, never a gate, and the measurement is why.** Across 8 repos and 167 open plans,
+    2026-09-08: 43% name a source file that moved after the plan was last touched, which is noise —
+    a plan citing `plans.py` as context is not stale when `plans.py` changes. Requiring the name to
+    look like the plan's *subject* (three or more mentions) puts it at 14%, and the residue is
+    structural rather than fixable: a session that edits a file makes every plan about that file
+    look stale, and no cheap signal separates a design that landed from a subject that merely moved.
+    So this lists candidates and asks; `set-status` remains the only thing that changes a status.
+
+    The sibling check for *other* repos' plans deliberately excludes this repo. This one is its
+    complement and only reads this repo, because the failure is the opposite: there, a session
+    cannot see plans it never opens; here, it does not think to open its own.
+    """
+    names = changed_source_names(entries)
+    if not names or session_repo is None:
+        return {"names": names, "candidates": []}
+    found: list[dict[str, Any]] = []
+    for plan in sorted((session_repo / "plans").glob("*.md")):
+        try:
+            text = plan.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        status, updated = _plan_frontmatter(text)
+        if not any(status.startswith(open_status) for open_status in OPEN_PLAN_STATUSES):
+            continue
+        # Only a plan that predates this session can have been landed *by* it and left behind.
+        if since and updated and updated > since[:10]:
+            continue
+        subjects = sorted({name for name in names if text.count(name) >= 3})
+        if subjects:
+            found.append({"plan": plan.name, "status": status, "updated": updated, "names": subjects})
+    return {"names": names, "candidates": found}
+
+
+def _plan_frontmatter(text: str) -> tuple[str, str]:
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return "", ""
+    fields = {}
+    for line in parts[1].splitlines():
+        key, _, value = line.partition(":")
+        fields[key.strip()] = value.strip()
+    return fields.get("status", ""), fields.get("updated", "")
+
+
 def _installs(candidate: Path, name: str) -> bool:
     manifests = [candidate / manifest for manifest in CONSUMER_MANIFESTS]
     manifests += [path for pattern in CONSUMER_MANIFEST_GLOBS for path in candidate.glob(pattern)]
@@ -2455,6 +2514,7 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
             "depends_on": {str(path): depends_on(path) for path in repos},
             "superseded": superseded_candidates(entries, git_root(runner, Path.cwd())),
             "consumers": consumer_candidates(projects_root(), repos),
+            "may_have_landed": plans_this_session_may_have_landed(entries, git_root(runner, Path.cwd()), since),
         },
         "paths": lambda: _sweep_loose_files(runner, entries, transcript is not None),
     }
@@ -2573,7 +2633,23 @@ def _print_sweep(payload: dict[str, Any]) -> None:
         _print_depends_on(repo, tagged)
     _print_superseded(payload.get("superseded"))
     _print_consumers(payload.get("consumers"))
+    _print_may_have_landed(payload.get("may_have_landed"))
     _print_loose_files(payload)
+
+
+def _print_may_have_landed(state: dict[str, Any] | None) -> None:
+    if state is None:
+        return
+    print("\n== this repo's open plans naming a file this session changed ==")
+    rows = state.get("candidates") or []
+    if not rows:
+        print("  none")
+        return
+    for row in rows:
+        print(f"    {row['plan']}  [{row['status']}, updated {row['updated']}]")
+        print(f"      names: {', '.join(row['names'])}")
+    print("  did this session land what any of these designed? if so, bump it with set-status")
+    print("  limit: a prompt, not a verdict — measured 2026-09-08 at 14% of open plans family-wide")
 
 
 def _print_consumers(rows: list[dict[str, Any]] | None) -> None:

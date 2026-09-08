@@ -908,6 +908,18 @@ What the script cannot do is decide what a finding means. That is this list:
   report and the next-session prompt. The skill already knew this shape for exactly one repo, in the
   bullet above about a skill edit reaching nothing until pushed _and_ re-installed; that was the
   mechanism written as a special case.
+- **Whether this session landed something one of _this_ repo's open plans designed.** The failure is
+  a session that builds everything a plan specified, documents it, and never touches the plan: it
+  goes on saying `idea` with open questions the code has answered, `absorb` never raises it because
+  nothing is terminal, and the next session reading `list` sees live design work. Confirmed
+  2026-09-05: two plans were answered by six commits in one evening, the landing session ended with
+  no status bump on either, and the next harvest nearly proposed building what already existed. The
+  sweep lists this repo's open plans that name a source file this session wrote, three times or
+  more, and were last touched before the session began. **A prompt, never a gate** — measured
+  2026-09-08 across 8 repos and 167 open plans, 43% name a source file that moved after them, which
+  is noise, and the subject proxy only brings it to 14%. What is left is structural: a session that
+  edits a file makes every plan about that file look stale. `set-status` stays the only thing that
+  moves a status.
 - **What this session made stale somewhere else** — the reactive bullet above turned around. Every
   other check here asks what is dangling _for_ this session; a plan in another repo describing a
   mechanism this session just replaced is the inverse, and nothing else surfaces it: not dangling,

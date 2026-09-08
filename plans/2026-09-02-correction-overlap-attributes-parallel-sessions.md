@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-08
 source_repo: ingesta
 source_session: 0228a2e1-95e6-403c-b639-ad0d853eeb74.jsonl
@@ -74,19 +74,16 @@ already-owned finding as a discovery, citing a near-miss where a harvest was min
 alarm about work another session had finished. This defect manufactures that same alarm
 mechanically.]
 
-[NEEDS CLARIFICATION: **Whether git can answer "this session" at all, or whether the check should be
-narrowed rather than filtered.** Author is not the discriminator — every session on this machine
-commits as the same person. Candidates, none obviously right:
+[DECISION: **the first candidate, and then the third — git cannot answer "this session", and the
+transcript can only answer half of it.** Author is not the discriminator; every session on this
+machine commits as the same person. `_correction_overlap` now intersects with the paths this session
+actually wrote, which the sweep already computed for the files-outside-a-repo check. That is the
+option that makes the flag mean what its sentence said, and it removed the parallel-session shape
+and the never-touched-repo shape together, so the cheaper second candidate was never needed.
 
-- **Intersect with the paths this session actually wrote**, which the sweep already computes for the
-  files-outside-a-repo check. Precise, and it makes the flag mean what its sentence says.
-- **Restrict to repos this session wrote to**, which is cheaper and would have been enough here: the
-  harvesting session touched only `ingesta`, so `agent-skills` should never have been eligible.
-- **Keep the intersection and reword the flag** to "published by some session since this one began",
-  which is honest but pushes the judgement onto a reader who has no way to make it.
-
-The second is the smallest change that removes the false positive; the first is the one that makes
-the check correct in principle.]
+Then the third candidate as well, 2026-09-08, for the shape narrowing could not reach — see the
+section below. The two are not alternatives: the filter removed what a path set can remove, and the
+rewording gave up the claim a path set can never support.]
 
 ## A third shape, which survives the proposed fix (2026-09-04)
 
@@ -175,16 +172,20 @@ attributable whatever the timestamps say, and the unattributable rows print unde
 The research section got no such treatment and reads with the same false authority the docker one
 used to.
 
-[NEEDS CLARIFICATION: is the cross-check the same shape as docker's? The equivalent is "did the
-session run `library.py add`/`update`, or write under `$RESEARCH_HOME`", which the transcript
-answers — but a session can legitimately `git -C $RESEARCH_HOME/repos/<entry> fetch --deepen`
-without going through the script (the skill documents that case, and the 2026-08-30 deepened-clone
-finding came from it), so a script-only check would under-attribute where the docker one does not.]
+[DECISION: **same shape, and the under-attribution was accepted deliberately.** The cross-check is
+the session's own `library.py` calls, matched on two spellings — a directory name for an entry it
+read, a `<owner>/<repo>` URL for one it added — because an add is the event worth attributing and
+names no directory anywhere. It does under-attribute a clone refreshed outside the script, exactly
+as the question predicted, and that is the conservative direction: the alternative is claiming a
+refresher's work. It is also not this check's blind spot but the corpus-wide one, since a script
+doing the work inside one tool call is invisible to every check here — named `SUBPROCESS_SEAM` and
+printed beside the count for that reason.]
 
-[NEEDS CLARIFICATION: should the section report anything at all for unattributable entries? The
-docker fix keeps them under their own heading because the sizes are worth seeing whoever made them.
-Twenty-five refreshed clones are not — a refresher moving every mtime is the store working as
-designed. A count with no list may be the whole answer: "25 entries refreshed by something else".]
+[DECISION: **a bare count, no list.** The docker fix keeps unattributable rows under their own
+heading because the sizes are worth seeing whoever made them; twenty-five refreshed clones are not —
+a refresher moving every mtime is the store working as designed. The per-entry checks the skill
+actually cares about (a clone without its `SOURCE.md`, an entry deepened away from `--depth 1`) are
+facts about the entry rather than about who touched it, so they are unaffected either way.]
 
 The valuable half of that section is unaffected either way: the _convention_ checks the skill
 actually cares about — a clone without its `SOURCE.md`, an entry deepened away from `--depth 1` —
@@ -244,26 +245,53 @@ risk" and was refuted by its own first run, in the direction that would have shi
 Which is the argument for one attribution helper serving every site rather than a fourth
 hand-written one here.
 
-## Recommended direction
+## What landed
 
-1. Gate `_correction_overlap` on the repo having been written to by this session, or intersect with
-   this session's own write paths — whichever the sweep can supply cheaply, since it already tracks
-   write paths for another check. **This removes the parallel-session shape and not the third one
-   above**, so it is a partial fix rather than the fix.
-1. For the disk step, gate "new this session" on the session having run `docker` at all, and
-   otherwise report the images as new **since the boundary** without claiming whose they are. Same
-   principle as 2 below: say what was measured. **Done 2026-09-06**, and it is the template the
-   research-store section still needs.
-1. For the research-store step, apply that same template: attribute from the session's own
-   `library.py` calls and writes under `$RESEARCH_HOME`, and put what cannot be attributed under its
-   own heading or behind a bare count. Verify against 5 attributable of 30.
-1. Until then, give the line the same parallel-session caveat its neighbour has, so a reader is not
-   handed a correction alarm with no way to tell whose work it describes.
-1. A test with two authors' commits on one upstream branch since the boundary, asserting the flag
-   stays empty for a repo the session never wrote to.
-1. Decide whether the line keeps the word "CORRECTION". On the evidence so far it fires right once
-   in six; a line naming what it actually measured — commits on both sides of a push this session
-   made — needs no narrowing at all and costs a reader nothing when it fires.
+All six, across four sessions and six days. Five had shipped by 2026-09-08 without this file being
+told, which is its own small instance of the plan's subject — the work was attributed to nobody.
+
+1. **`_correction_overlap` intersects with this session's own write paths.** Its docstring carries
+   the 2026-09-04 store instance, and `test_a_path_this_session_never_wrote_is_not_a_correction`
+   holds it.
+1. **The disk step gates on the session having run `docker` at all.** Done 2026-09-06, and it became
+   the template the other sites reached for. Its own first run counted the word inside a quoted `rg`
+   pattern, so quoted spans are stripped before matching.
+1. **The research-store step attributes from the session's own `library.py` calls**, matching an
+   entry directory and an `<owner>/<repo>` URL, with the remainder as a bare count and
+   `changed_since_session_start` renamed to `changed_by_this_session`.
+1. Moot — recommendation 1 removed the shape the caveat was to cover, so the line never needed a
+   warning it would then have outgrown.
+1. **The two-author test exists**, asserting the flag stays empty for a repo the session never wrote
+   to.
+1. **The line drops "CORRECTION", 2026-09-08.** It now reads
+   `both sides of a push this session
+   made` and names the two readings underneath, held by
+   `test_the_overlap_line_reports_what_it_measured_and_does_not_claim_a_correction`.
+
+## Migrated to
+
+- **The four-site pattern, and the lesson the correction check adds to it** ->
+  `skills/session-harvest/references/rationale.md`, "Why the sweep now says who owns a process, an
+  image and a store commit". The section already held docker, the listener and the store commit; the
+  fourth site is the one that shows attribution has a floor, and that a check whose label its
+  evidence cannot support has two repairs of which only one is always available.
+- **The instruction a harvest follows** -> `session-harvest`'s step 5 git bullet, which now says to
+  read the diff before calling anything a correction and why the line stopped doing it.
+- **The three failure shapes and their evidence** -> `_correction_overlap`'s own docstring and the
+  two tests named above, which is where a reader arrives with the question.
+
+Deliberately not migrated: the per-run tallies (2 true of 4, then 3 false of 3), which were the
+argument for changing the wording and are not a fact about the code that remains. The successor
+question — whether a diff-shaped test is ever worth adding — is recorded in the docstring as the
+narrowing that was declined, not carried forward as open work.
+
+**What this plan does not close** is the general case.
+`2026-09-06-two-sessions-share-one-working-tree.md` named this file as the one to resolve first, on
+the grounds that if the fix needed a session to know which commits are its own, that primitive
+should land once. It did not need it: every repair here was per-site, and `_named_before` — the
+nearest thing to a shared primitive — arrived from the store-commit fix and needed an ordering
+constraint the write-path route never did. That is an answer to that plan's question, and it points
+away from a shared helper.
 
 ## Evidence
 

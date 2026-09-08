@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # `session-harvest` beyond Claude Code: detect the harness, then get at the transcript
@@ -42,6 +42,33 @@ Concretely, the Claude Code assumptions in `harvest.py` are narrow and already i
 
 `session-bash-audit` reads the same store and has the same dependency; anything decided here applies
 to it.
+
+### Re-checked against the 2026-09-08 rewrite
+
+`harvest.py` was rewritten heavily on 2026-09-08 — seventeen commits, 1216 -> 1588 statements. Every
+row of the table above was re-read afterwards and **all of them still hold**: `PROJECTS_DIR`,
+`project_slug`, `resolve_transcript`, `read_entries`, `$CLAUDE_CODE_SESSION_ID`, `$CLAUDE_JOB_DIR`,
+and the `bash_calls`/`written_paths`/`answers` block readers. Still seven subcommands, still the
+same four-plus-`sweep` that need a transcript, and still exactly two doors into the store. The seam
+this plan is built on was not disturbed, so nothing below needs re-deriving.
+
+One thing it changed is a real answer, and it is to the degraded-run question at the bottom of this
+plan. `_sweep_transcript` now resolves a transcript **optionally**: an explicit `--session`/`--job`/
+`--expect` that fails is still an error, because the caller named a session and quietly sweeping a
+different scope is how a report describes somebody else's work — but with none of those passed, the
+sweep runs without one and carries a note saying so. `_sweep_loose_files` is the pattern for how
+that gets reported: it emits `{"available": false, "why": ...}` rather than omitting its section,
+after two occurrences (2026-09-03, 2026-09-04) of transcript-dependent checks **vanishing** from a
+report that still read as complete.
+
+So the policy is settled and implemented, for the same reason this plan argues for it: degrade where
+the check reads machine state, error where the caller named a scope, and report unavailability in
+the same shape as a finding. What is not settled is whether the other four transcript subcommands
+follow — they still hard-error — and that is now a smaller question than it was.
+
+The other thing the rewrite changed is the cost side of the last open question. `harvest.py` at 1588
+statements is a third larger than when the "duplicate the adapter rather than import across skill
+directories" option was priced.
 
 ### Two anchors already on this machine
 
@@ -110,11 +137,11 @@ The reading half is entirely different per harness. A `transcripts/` adapter mod
 `harvest.py`, selected by the detected harness, keeps one skill; separate skills would duplicate
 ~700 lines of body text with no mechanism keeping them in step.]
 
-[NEEDS CLARIFICATION: what does a harvest do on a harness whose transcript it cannot read — refuse,
-or run degraded? Today it errors on `no transcript resolved`. A degraded run that still does step 0,
-the live-state sweep, git/CI state and the report is worth a great deal and is most of steps 5
-and 8. It must say loudly which steps did not run, since a harvest's report reads identical whether
-or not it saw the conversation — the same failure mode as a stale install.]
+[DECISION: **degrade, and report unavailability in the same shape as a finding.** Settled by the
+2026-09-08 rewrite rather than by this plan — see the re-check section above. `sweep` runs without a
+transcript and says so; an explicitly named session that fails to resolve is still an error. What
+remains open is only whether `transcript`, `turns`, `claims` and `filed` should follow, and those
+four are transcript-reading by definition, so the answer may well be that they should not.]
 
 [NEEDS CLARIFICATION: does `session-bash-audit` follow, and does it have to? It reads the same store
 for a different purpose. If the transcript reading becomes a shared adapter, the two skills would

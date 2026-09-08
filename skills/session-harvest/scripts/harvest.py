@@ -1895,8 +1895,9 @@ def attributable_entries(changed: Sequence[str], entries: Sequence[dict[str, Any
     session's own work, filed under "something else". That is the conservative direction and it is
     the intended one, since the alternative is claiming a refresher's work; but it is the same blind
     spot the outside-any-repo check has, one door along, and the report has to say so rather than
-    let a low count read as a small session. See
-    `plans/2026-09-05-sweep-misses-a-file-a-subprocess-wrote.md`.
+    let a low count read as a small session. The seam is `SUBPROCESS_SEAM`, shared with the checks
+    that print it; the three instances that made it a convention rather than a footnote are in
+    `references/rationale.md`, "What the step-5 checks owed a reader".
     """
     haystack = [*bare_commands(entries), *(str(path) for path in written_paths(entries))]
     return [

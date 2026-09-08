@@ -708,3 +708,60 @@ otherwise — the chain splits per subcommand and `git commit -F -` matches the 
 There was no guard to evade. That is deliberate, per `~/AGENTS.md`'s "Proposing an enforcement
 mechanism for agent behavior", and it means the absence of a prompt carries no information about
 whether an action was wanted.
+
+## What the step-5 checks owed a reader, and what measuring them cost the plans (2026-09-08)
+
+Nine plans retired together, filed over five days by six different sessions across four repos. They
+read as nine defects and they are one, and the one is the step-5 counterpart of "Why step 0's own
+instruments kept reporting clean" above: **a check has to say what it did not measure, and every one
+of these was a check that answered instead.**
+
+The instances, in the order a reader meets them in a sweep:
+
+- A section that **vanished** when its input was missing, rather than saying it was skipped — not
+  empty, absent, in a report whose every other section printed normally.
+- A definite `0` for a set that was never established, which is a measured zero's twin.
+- A repo set that silently narrowed to the working directory, so one repo was reported where the
+  same session's resolved run covered three.
+- A path check that read every file rather than the ones it had always said it read, producing ten
+  false positives in one run.
+- Three separate checks blind at the same seam — the tool call — each reporting a confident number
+  about a session that had done the work inside a script.
+- A green-claim count with no vocabulary for CI, reporting `0` to a session that had said CI was
+  green six times.
+- A status field trusted as fact about work, when the code had landed and nobody had bumped it.
+- A machine-only view of what a push leaves behind, with nothing asking what it **creates**
+  elsewhere.
+
+**The fix is the same sentence in every case and it is not "be more accurate".** Each check keeps
+its blind spot; what changed is that the blind spot is printed next to the number. `none` and
+`skipped` are now different strings, the seam is a shared constant named on both sections that share
+it, the CI count is separate from the gate count rather than folded in, and the two prompts that
+cannot be verdicts say their own measured false-positive rate on the row. A reader who learns a
+limit once for one row will still read the next row as complete, which is why the limit lives in the
+output and not only in this file.
+
+### The measurements overturned three of the nine plans' own recommendations
+
+Worth recording separately, because it is a fact about the method rather than about the sweep, and
+because in each case the plan's recommendation was the reasonable one to reach for.
+
+- **Deleting the subject-free alternation from the green-claim matcher** was proposed as the cheaper
+  version of narrowing it. Over 1,201 transcripts it matches 303 sentences, of which a gate-shaped
+  subject keeps 158 — real claims no other alternation reaches. Deletion would have traded an
+  over-count for a silent under-count.
+- **A `list` hint for plans whose code has landed** was to be built if the shape proved common. It
+  is common — 43% of 167 open plans name a source file that moved after them — and that is exactly
+  why the hint is worthless: a signal firing on nearly half the corpus is a property, not a finding.
+  It became a sweep prompt with its rate printed, which is the honest form of the same information.
+- **A Bash-command scan for files written outside every repo** was the obvious coverage fix, and it
+  would not have caught the instance that prompted the plan, whose destination was computed inside
+  the task and appeared on no command line. Buying coverage that misses the motivating example is
+  how a check comes to look more complete than it is.
+
+**The pattern is that a plan's recommendation is written from one incident and the corpus knows
+about the rest of them.** Two of the three plans had said so themselves, in an open question naming
+the measurement that would settle it — and in both cases the measurement was cheap, an afternoon's
+grep over transcripts already on disk. So the rule this leaves is narrow and practical: when a plan
+proposes a pattern change and names the corpus that would test it, run that first, because the
+result decides the design rather than confirming it.

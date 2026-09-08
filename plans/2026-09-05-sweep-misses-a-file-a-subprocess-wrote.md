@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-05
+updated: 2026-09-08
 source_repo: github.com-personal/ingesta
 source_session: 51a36fd5-b684-4cfb-8848-a1a5937b294c.jsonl
 source_moment: 2026-09-05T17:02:32Z
@@ -88,6 +88,24 @@ has two independent instances rather than one, in checks that read different evi
 That is an argument for recommendation 1 below being the general answer rather than this one check's
 consolation prize: neither check can be made complete, and both can be made to say what they saw.
 The research one now prints its own limit next to its count for exactly that reason.
+
+**A third instance the same day, and this one is the sharpest: the check could not see an event it
+was built that hour to count.** `audit.py`'s truncation counter reads the exit code the harness
+reports for a Bash _tool call_. The session that added it verified SIGPIPE by running
+`bash check_sigpipe.sh`, a script whose internal `audit.py … | head -c 2000` returned **141** —
+exactly the event the counter exists for. The tool call's own exit was 0, the command string held no
+pipe, so the call was tagged neither `head/tail` nor truncated, and the session's row reads
+`head/tail 64 — 0 actually cut output` on a session that demonstrably cut output.
+
+The row is not wrong about the calls it counted, which is what makes this the same defect rather
+than a different one: **the boundary is the tool call, and anything a script does inside one is
+invisible whatever the check is looking for.** Three checks now — write paths, argv attribution, and
+an exit code — each blind at the same seam, none of them reachable by fixing the others.
+
+That also prices recommendation 1 properly. "Say what the check saw" is cheap for one check and
+becomes a corpus-wide convention at three: every transcript-derived count wants a standing caveat
+that a script's interior is out of scope, because a reader who learns it once for one row will still
+read the next row as complete.
 
 ## Recommended direction
 

@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-06
+updated: 2026-09-08
 ---
 
 # `plans.py commit` takes one file, so a bulk absorption is N commits or a rule reasoned around
@@ -62,6 +62,26 @@ those commits the store simultaneously held **three unrelated deletions in anoth
 staged by a parallel session mid-absorption. A `<mirror dir>` argument would have been correct here
 because the two absorptions touched different mirrors — but the margin was one directory level, and
 nothing in the command would have said so.
+
+## A fourth occurrence, 2026-09-08, and it is the plan's own case at scale
+
+An `agent-skills` session absorbed **seven** filed plans in one pass — five moved into the repo, two
+merged into plans that already owned their subject — which leaves seven store-side removals to
+commit. `plans.py commit` takes one file, so following it meant seven commits recording one
+operation, each with the same subject.
+
+It did what the earlier sessions did, and for the same stated reason:
+`git -C <store> add -A <dir> && git -C <store> commit -m "…"`, one commit for the whole absorption.
+Then again three commits later, for a second absorption of two more. Both hits are in that session's
+`git-C-mutating` row, which is 3 of 3 — the third being the `git rm` of the two merged files.
+
+Two things this adds. **The cost the deviation avoids is now measured at seven, not two**, which is
+the largest on record and the shape a routine bulk absorb produces rather than an unusual day; the
+absorb queue reached seven because five sessions in three repos had been filing into it. And
+**`plans.py absorb --apply` prints the instruction that gets argued with** — "Commit both: this repo
+(the additions) and the store (the removals)" — where "the removals" is plural and the command it
+points at is singular. The friction is not only in the rule's wording; the tool that creates the
+work states it in the plural one line above the command that cannot do it.
 
 ## Open questions
 

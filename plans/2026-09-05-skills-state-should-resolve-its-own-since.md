@@ -128,6 +128,41 @@ is cheap (`ls` the store directory the filing went into, `rg -l` the target repo
 knowing that the rule's placement, file first and report second, reads as urgency, and urgency is
 what skipped the lookup.]
 
+## A sixth instance, and it names the cause the other five described around
+
+Merged from `2026-09-08-skills-state-since-has-an-unstated-source.md`, filed by a `repo-tasks`
+harvest. Every instance above is a session substituting a value; this one says **why the
+substitution is the natural move**: `<session start>` is a placeholder with **no stated source**.
+The value exists — `transcript` prints it as `started:` — but nothing in step 0's command block or
+its prose says to take it from there, and the two commands are independent, so a session batching
+its tool calls runs them in parallel and must supply `--since` before `transcript` has answered.
+
+That harvest ran both in one message and guessed `2026-09-07T18:00:00+03:00` against a real start of
+`19:27:31+03:00` — ninety minutes early. **The verdict was correct anyway**, because the install was
+genuinely stale by five commits and the widened window changed nothing. Luck rather than robustness,
+and the shape that keeps a placeholder unnoticed: the wrong input produced the right answer.
+
+The error is directional and silent both ways, which the earlier instances only half stated. **Too
+early** widens the window, so commits predating the session are listed as having moved under it and
+the verdict prescribes a re-read on evidence that does not support one — the most expensive step in
+the procedure, fired on the case the skill already warns it should not fire on. **Too late** narrows
+it, and a genuinely superseding commit lands outside; that is the failure the whole branch exists to
+catch, failing closed behind a clean-looking report.
+
+[PITFALL: **`boundary` is documented as the first command and does not print session start.** So the
+reader holds a timestamp from the very first call and it is the wrong one for this flag — `boundary`
+is "now", `--since` wants "when this session began". Using it would narrow the window to nothing and
+report that no skill had moved: the failure that looks most like success.]
+
+[NEEDS CLARIFICATION: should a `--since` that predates the resolved session start be rejected, or
+reported? It is always a mistake — no session began before it began — so the script can detect that
+particular error with no new information. Whether it is worth a check depends on whether the flag
+survives the `[DECISION:]` above at all.]
+
+This does not reopen the decision; it is the strongest argument yet for it. Documenting the source
+in prose is the alternative the filing considered and rejected: it explains the placeholder where
+defaulting deletes it, and makes the common invocation `skills-state` with no arguments.
+
 ## Open questions
 
 [NEEDS CLARIFICATION: what the default should be when no session resolves — a harness that exports

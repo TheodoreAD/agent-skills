@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-05
+updated: 2026-09-08
 ---
 
 # Evidence from one repo-tasks session: three rules broken, two of them measurable
@@ -221,7 +221,11 @@ chain.
 exists to catch, because both are `cd <session repo> && <command>`. The transcript can — the
 recovery follows a call whose cwd was elsewhere — but the audit reads calls one at a time. Worth a
 `cd-recovery` split only if the row keeps being read as a miss on sessions that did the right thing;
-two calls in 248 is not that yet.]
+two calls in 248 is not that yet.
+
+**Threshold met 2026-09-08** — see the sixth sample above: 4 of 4 hits the prescribed recovery, the
+row's whole content on that session, scored MISS. The question is now which way to fix it rather
+than whether to.]
 
 ## A fourth sample, 2026-09-05, and it is the first that mostly passes
 
@@ -290,6 +294,72 @@ Two things this sample adds to the corpus:
   That is the documented `claims`-versus-`audit.py` divergence, observed live on the same day it was
   written into both skills: `audit.py` strips heredoc bodies and counted 39, `claims` does not and
   counted 40.
+
+## Two samples on 2026-09-08, three minutes apart, and together they settle the `cd-own-repo` question
+
+**Sixth sample**, merged from `2026-09-08-cd-recovery-crosses-its-own-threshold.md`, filed by a
+`repo-tasks` session that could not write here. `repo-tasks`, n=212 (its own sweep excluded via
+`--until`), against `2026-09-06.json`: chain 6% (-41pp OK), head/tail 2% (-27pp OK), exit-masked
+**0%**, sed-n 0%, heredoc 0%, `cd-own-repo` **1 call MISS**, `rg-replace-bundle` 1 call MISS. **11
+of 13** — a release cut, two retirements and three bug fixes over ~5 hours.
+
+Its `cd-own-repo` call is `cd <repo-tasks> && inv quality.precommit`, taken immediately after a
+scratchpad `cd` during an isolated `uv run --no-project` probe. The session had no other `cd` in 212
+calls.
+
+Its second miss is worth keeping for the opposite reason: `rg -rn 'def promote' <path>` — the `-r`
+eats `n` trap — **caught by the documented detection signature rather than by luck**, the first such
+instance on record. The call returned nothing, the session recognised the shape from the rule and
+re-ran without `-r`. The three prior occurrences were all caught by luck, which is why the rule says
+so. [UNVERIFIED: whether it would have been caught had the command returned plausible rewritten
+lines instead of zero hits. The quiet case remains untested.]
+
+**Seventh sample**, this repo, and the two were measured within three minutes of each other by
+sessions that did not know of one another — which is why they are presented together rather than as
+independent confirmations. A five-hour session — text-only clones, the sweep attribution fixes,
+piped-gate layer 3 — audited at its harvest boundary against `2026-09-06-zero-on-count.json`
+(n=194):
+
+| pattern        | this session | vs baseline |
+| -------------- | ------------ | ----------- |
+| chain          | **54%**      | +7pp MISS   |
+| head/tail      | 33%          | +4pp MISS   |
+| exit-masked    | 23%          | —           |
+| echo-exit      | 2 calls      | MISS        |
+| cd-own-repo    | 4 calls      | MISS        |
+| git-C-mutating | 3 calls      | MISS        |
+| find-not-fd    | 1%           | +1pp MISS   |
+
+**7 of 13**, the corpus's second-worst after the 6/13 opener — and the worst on `chain`, which at
+54% is the highest any sample has recorded. Worth stating plainly because the session spent its day
+_building instruments that measure this_, which is the "authoring a rule is not evidence of
+following it" finding arriving for the sixth time.
+
+**Two of the six misses are the instrument, not the session, and the `cd-own-repo` one closes the
+open question above.** That question set a threshold — "worth a `cd-recovery` split only if the row
+keeps being read as a miss on sessions that did the right thing; two calls in 248 is not that yet."
+This sample is that: **4 of 4 `cd-own-repo` calls are the prescribed recovery**, every one a
+`cd <session repo> && …` issued immediately after the harness reset cwd to the scratchpad, which is
+the exact shape `~/AGENTS.md` requires after a cross-repo chain. Not a mixed sample with a couple of
+recoveries in it — the row's entire content on this session is correct behaviour scored as a miss.
+
+[DECISION: **the split is justified, on the plan's own criterion rather than on a fresh argument.**
+Counting both samples above, the row has now scored the prescribed recovery as a miss in four
+sessions — the fourth (0 calls), the fifth (1, already recorded as the instrument disagreeing with
+the rule), the sixth (1 of 1) and the seventh (4 of 4). The bar it set was "keeps being read as a
+miss on sessions that did the right thing", and 5 of 5 such calls across two repos on one day is
+past it. The detection needs no new transcript pass: a recovery follows a call whose cwd was
+elsewhere, and the audit already reads calls in order even though it judges them one at a time. A
+`cd-recovery` row counting those separately leaves `cd-own-repo` measuring only the habit it was
+built for.]
+
+**`git-C-mutating` is the same shape and is owned elsewhere** — all three hits are
+`git -C <plans store> add/commit`, which `plan-docs` instructs; see
+`2026-09-05-store-commit-has-no-multi-file-form.md`, which this session also reproduced.
+
+`exit-masked` at 23% needs no re-run: 21 of the 44 masked calls wrapped a gate, and `setopt`
+answered `pipefail`, so the 8 green-gate claims stood on real exit codes. `head/tail` at 33% cost
+**nothing measurable** — 0 of 64 actually cut output, by the truncation counter this session added.
 
 ## Open questions
 

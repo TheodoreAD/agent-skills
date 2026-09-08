@@ -2131,8 +2131,21 @@ def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
     `~/.agents/skills/<name>/scripts/<file>` while the installed skill had no `scripts/` directory,
     so a machine-wide rule instructed every future session to run a file that did not exist. The
     checkout worked perfectly throughout, which is why nothing surfaced it.
+
+    **Only files an agent loads unconditionally are read**, because "does this path exist" cannot
+    tell a path the session *instructed* someone to run from one it *documented* as belonging to
+    somebody else — and the second is correct content, not a defect. Confirmed 2026-09-04: a harvest
+    of a session whose whole subject was where each coding agent reads its instructions reported ten
+    paths, **all ten false positives** — vendor directories for agents not installed here, and a
+    docs table recording where three other agents look, which will never exist on this machine and
+    is right anyway. The check's own first paragraph already scoped it this way; the code did not,
+    and the gap between them is the whole finding.
+
+    The cost of that noise is not the noise. **A section that has been all-false-positive once is
+    one the next harvest skims**, and the true positive it exists for looks identical in the list to
+    a docs table entry — the 2026-08-29 instance would have been the eleventh line.
     """
-    missing: dict[str, str] = {}
+    missing: dict[str, tuple[str, str]] = {}
     for _, block in iter_blocks(entries):
         if block.get("type") != "tool_use" or block.get("name") not in ("Edit", "Write"):
             continue
@@ -2144,16 +2157,34 @@ def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
         # `~/.agents/skills/demo/scripts/gone.py` — the literal argument of the test that pins this
         # very function — as a machine-wide instruction pointing at a missing file.
         target = str(payload.get("file_path", ""))
-        if _is_test_path(target):
+        # A block naming no target at all is not evidence that the write was harmless, so it is
+        # kept — the same rule `_still_written` applies to a file it cannot read. The filter is
+        # there to drop paths written into something demonstrably descriptive, and an unknown
+        # destination demonstrates nothing.
+        if _is_test_path(target) or (target and not _is_always_loaded(target)):
             continue
         body = " ".join(str(payload.get(key, "")) for key in ("new_string", "content"))
         for match in HOME_PATH_RE.finditer(body):
             candidate = match.group(0).rstrip(".,;:)`\"'")
             if "<" in candidate or "*" in candidate or "." not in Path(candidate).name:
                 continue
-            if not Path(candidate).expanduser().exists():
-                missing[candidate] = target
-    return sorted(path for path, target in missing.items() if _still_written(path, target))
+            # Keyed by the expanded path, so `~/.codex`, `~/.codex/` and the absolute spelling are
+            # one row rather than three. The literal spelling is kept for display and for
+            # `_still_written`, which greps the file for the text that was actually written.
+            resolved = Path(candidate).expanduser()
+            if not resolved.exists() and str(resolved) not in missing:
+                missing[str(resolved)] = (candidate, target)
+    return sorted(shown for shown, target in missing.values() if _still_written(shown, target))
+
+
+# The files an agent reads without being asked. A path named in one of these is an instruction to
+# every future session; the same path in a docs page, a plan or a reference is a description, and
+# describing where another vendor's agent looks is correct content on a machine that does not run it.
+ALWAYS_LOADED_FILES = ("AGENTS.md", "CLAUDE.md", "SKILL.md")
+
+
+def _is_always_loaded(target: str) -> bool:
+    return bool(target) and Path(target).name in ALWAYS_LOADED_FILES
 
 
 def _still_written(candidate: str, target: str) -> bool:
@@ -2298,6 +2329,15 @@ def _sweep_stores(
     }
 
 
+# The seam every transcript-derived count shares: the tool call is the unit of evidence, so whatever
+# a script does *inside* one is out of scope. Three independent instances by 2026-09-08 — a config
+# rewritten by `inv catalogue.example --replace` rather than by `Edit`, a retrofit that re-cloned
+# seven library entries from a list inside `retrofit.py` where argv named two, and a truncation
+# counter that could not see the SIGPIPE its own verification script produced. None is reachable by
+# fixing the others, so the count says its own limit rather than each reader learning it once per row.
+SUBPROCESS_SEAM = "reads this session's own edit-tool writes; a file a subprocess wrote is out of scope"
+
+
 def _sweep_loose_files(runner: Runner, entries: Sequence[dict[str, Any]], have_transcript: bool) -> dict[str, Any]:
     """The two checks that read nothing but this session's own writes — and say when they could not.
 
@@ -2316,7 +2356,7 @@ def _sweep_loose_files(runner: Runner, entries: Sequence[dict[str, Any]], have_t
         why = "no transcript — both checks read this session's own writes"
         return {"loose_files": {"available": False, "why": why}}
     return {
-        "loose_files": {"available": True},
+        "loose_files": {"available": True, "limit": SUBPROCESS_SEAM},
         "written_outside_any_repo": [
             str(p) for p in written_paths(entries) if git_root(runner, p) is None and p.exists()
         ],
@@ -2541,7 +2581,7 @@ def _print_loose_files(payload: dict[str, Any]) -> None:
         return  # the section was not requested at all
     skipped = None if state.get("available") else f"  skipped: {state.get('why')}"
 
-    def section(heading: str, rows: list[str], suffix: str = "") -> None:
+    def section(heading: str, rows: list[str], limit: str = "", suffix: str = "") -> None:
         print(f"\n== {heading} ==")
         if skipped:
             print(skipped)
@@ -2549,13 +2589,23 @@ def _print_loose_files(payload: dict[str, Any]) -> None:
             print("  none")
         for path in rows:
             print(f"    {path}{suffix}")
+        if not skipped and limit:
+            # Printed whether or not there were rows: an empty result and an unexaminable one look
+            # identical otherwise, which is the property this whole sweep exists to refuse.
+            print(f"  limit: {limit}")
 
     section(
         "files written outside every repository",
         payload.get("written_outside_any_repo") or [],
-        "   (no diff, no history — say what would recover it)",
+        limit=state.get("limit", ""),
+        suffix="   (no diff, no history — say what would recover it)",
     )
-    section("paths this session wrote into files that do not exist", payload.get("paths_named_but_missing") or [])
+    reads = ", ".join(ALWAYS_LOADED_FILES)
+    section(
+        "paths this session wrote into files that do not exist",
+        payload.get("paths_named_but_missing") or [],
+        limit=f"only {reads} are read — a path in a docs page is a description, not an instruction",
+    )
 
 
 # --------------------------------------------------------------------------------------------

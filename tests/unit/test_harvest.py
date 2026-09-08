@@ -1583,6 +1583,10 @@ def test_children_are_unknown_rather_than_zero_when_no_harness_is_found(capsys):
 
 
 def test_a_path_inside_a_test_file_is_a_fixture_not_an_instruction():
+    """The target is a fixture `SKILL.md` rather than a `test_*.py`, because since the always-loaded
+    filter landed a `.py` is never read at all and this test would pass without exercising the
+    exemption. What is left for it to prove is the real surviving case: an always-loaded *name*
+    under a tests tree, which this repo's own fixtures create by the dozen."""
     entries = [
         blocks_entry(
             "assistant",
@@ -1592,14 +1596,96 @@ def test_a_path_inside_a_test_file_is_a_fixture_not_an_instruction():
                     "id": "a",
                     "name": "Edit",
                     "input": {
-                        "file_path": "/repo/tests/unit/test_harvest.py",
-                        "new_string": "assert x == '~/.agents/skills/demo/scripts/gone.py'",
+                        "file_path": "/repo/tests/fixtures/demo/SKILL.md",
+                        "new_string": "run `python3 ~/.agents/skills/demo/scripts/gone.py`",
                     },
                 }
             ],
         )
     ]
     assert harvest.promised_paths(entries) == []
+
+
+def test_only_a_file_an_agent_always_loads_can_carry_an_instruction():
+    """Confirmed 2026-09-04: a harvest of a session whose subject was where each coding agent reads
+    its instructions reported ten paths, all ten false positives — vendor directories for agents not
+    installed here, and a docs table recording where three *other* agents look. Those never exist on
+    this machine and the documentation is right anyway.
+
+    The damage is not the noise. A section that has been all-false-positive once is one the next
+    harvest skims, and the true positive looks identical in the list to a table entry.
+    """
+    described = blocks_entry(
+        "assistant",
+        [
+            {
+                "type": "tool_use",
+                "id": "a",
+                "name": "Edit",
+                "input": {
+                    "file_path": "/repo/docs/where-agents-read.md",
+                    "new_string": "| opencode | `~/.config/opencode/AGENTS.md` |",
+                },
+            }
+        ],
+    )
+    instructed = blocks_entry(
+        "assistant",
+        [
+            {
+                "type": "tool_use",
+                "id": "b",
+                "name": "Write",
+                "input": {
+                    "file_path": "/home/someone/AGENTS.md",
+                    "content": "always run `python3 ~/.agents/skills/demo/scripts/gone.py` first",
+                },
+            }
+        ],
+    )
+    assert harvest.promised_paths([described]) == []
+    assert harvest.promised_paths([instructed]) == ["~/.agents/skills/demo/scripts/gone.py"]
+
+    # A block naming no destination is kept. An unknown target demonstrates nothing about whether
+    # the write was descriptive, and dropping it would be this group's own defect: a check that
+    # quietly stops looking.
+    unknown = blocks_entry(
+        "assistant",
+        [
+            {
+                "type": "tool_use",
+                "id": "c",
+                "name": "Edit",
+                "input": {"new_string": "run `~/.agents/skills/demo/scripts/gone.py`"},
+            }
+        ],
+    )
+    assert harvest.promised_paths([unknown]) == ["~/.agents/skills/demo/scripts/gone.py"]
+
+
+def test_one_missing_path_written_three_ways_is_one_row():
+    """Three of the ten false positives were the same directory in three spellings, which is noise
+    under every filter."""
+    entries = [
+        blocks_entry(
+            "assistant",
+            [
+                {
+                    "type": "tool_use",
+                    "id": "a",
+                    "name": "Write",
+                    "input": {
+                        "file_path": "/home/someone/AGENTS.md",
+                        "content": (
+                            "see ~/.agents/skills/demo/scripts/gone.py and "
+                            f"{Path('~/.agents/skills/demo/scripts/gone.py').expanduser()} — both."
+                        ),
+                    },
+                }
+            ],
+        )
+    ]
+    assert len(harvest.promised_paths(entries)) == 1
 
 
 def test_each_differing_subdirectory_gets_its_own_consequence():

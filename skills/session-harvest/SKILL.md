@@ -613,6 +613,15 @@ What the script cannot do is decide what a finding means. That is this list:
   run's three and produced no `CORRECTION?` lines at all; and 2026-09-04, by a harvest that read the
   whole sweep, moved on, and found the hole only when re-reading this file for a later step. The
   header now also says when the repo set collapsed to the working directory for the same reason.
+
+  **Each also prints its own limit, and the limit they share is the tool call.** Every count here is
+  derived from the transcript, so whatever a script does _inside_ one Bash call is out of scope —
+  and that seam has three independent instances by 2026-09-08, none reachable by fixing the others:
+  a live config rewritten by a repo's own `inv` task rather than by `Edit`, so this very check came
+  back empty on exactly the class of file it exists for; a retrofit that re-cloned seven library
+  entries from a list held inside a script, where argv named two; and a truncation counter blind to
+  the SIGPIPE its own verification script produced. A reader who learns that once for one row will
+  still read the next row as complete, which is why the rows say it rather than this page alone.
 - **This session's own rule adherence**, which nothing else in the sweep reaches:
 
   ```shell
@@ -794,6 +803,15 @@ What the script cannot do is decide what a finding means. That is this list:
   installed skill still had no `scripts/` directory, so a machine-wide rule instructed every future
   session to run a file that did not exist. The checkout worked perfectly throughout, which is why
   nothing surfaced it.
+
+  **Only `AGENTS.md`, `CLAUDE.md` and `SKILL.md` are read, because existence cannot tell an
+  instruction from a description.** Confirmed 2026-09-04: a harvest of a session whose subject was
+  where each coding agent reads its instructions listed ten paths, **all ten false positives** —
+  vendor directories for agents not installed here, which the installer deliberately does not
+  create, and a docs table recording where three other agents look, which will never exist on this
+  machine and is correct content regardless. The cost was never the noise: a section that has been
+  all-false-positive once is one the next harvest skims, and the true positive above would have been
+  the eleventh line. Spellings of one path now collapse to one row for the same reason.
 - **CI, for anything this session pushed.** A green local gate is not a green CI run. The sweep
   reads `gh run list --json`, and reading the conclusion as JSON is the point: `--json` has no exit
   code to lose, so there is nothing for a pipe to take away. Never hand-roll an `until` loop, and

@@ -589,6 +589,35 @@ coverage.** The filed plan predicted the argv route would carry "no timestamp he
 parallel-session risk" — wrong in the direction that would have shipped it unguarded, which is why
 the prediction is recorded here rather than quietly dropped.
 
+**The fourth site is the one that shows attribution has a floor (2026-09-02/08).** The correction
+check — paths both unpushed now and published earlier in the session — is where this whole defect
+was first found, and it is the only one of the four that could not be finished by attributing
+better. It failed in three shapes, and narrowing killed two: a parallel session's commits landing in
+`published` because `--since` means "authored recently", and a repo the harvesting session had never
+written to at all. Intersecting with the session's own write paths removed both, and the check kept
+its finding.
+
+The third shape survived every filter, because it satisfies them honestly. Confirmed 2026-09-04: an
+`ingesta` harvest flagged `AGENTS.md`, `tasks/seed_database.py` and `tests/unit/test_store.py` —
+this session's own writes, in its own repo, genuinely committed on both sides of a push it genuinely
+made. Every one was an _addition_ to what was published: a new paragraph, appended incident
+recording, appended assertions. The remote was serving less, never serving wrong. The overlap being
+computed is "touched before a push" and "touched after it", and on a long session that set is most
+of the files it worked on.
+
+**So the last move was to stop claiming rather than to narrow again.** Correction is a property of
+what changed inside the file, and no intersection of path sets reaches it; the available narrowings
+from here are diff-shaped tests — a later commit that only adds lines is not correcting — which is a
+second mechanism guarding a line that was always meant to be a short list a human reads. The line
+now says commits on both sides of a push this session made, which is exactly what it computes, and
+names the two readings so the reader knows which judgement is theirs. That matters more here than at
+the other three sites because `SKILL.md` routes this one into "needs action now": a wrong row in the
+disk section costs a moment, and a wrong row here costs the section's credibility.
+
+The pattern the four make together, which no single one of them shows: **a check whose label the
+evidence cannot support has two repairs, and only one of them is always available.** Three of these
+found a second evidence source. The fourth had none to find, and the repair was the label.
+
 ## Why the write set is stated positively, and why narrowing it cost nothing (2026-09-03/05)
 
 The user's specification, close to verbatim: harvest _"should exclusively edit things in the repo

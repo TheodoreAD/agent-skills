@@ -2027,6 +2027,87 @@ def absorb_queue(runner: Runner, plans_py: Path | None, repo: Path) -> dict[str,
 DEPENDS_ON_RE = re.compile(r"^depends_on:\s*(.+)$")
 
 
+# Files whose basename is specific enough to be worth searching for, and which a plan would name
+# because it describes a mechanism rather than because it cites a document. `.md` is deliberately
+# absent: a plan naming another plan is a citation, which `plan-docs`' own `refs` already answers.
+SOURCE_SUFFIXES = (".py", ".sh", ".toml", ".yml", ".yaml", ".json", ".cfg", ".ini", ".ts", ".js", ".rs", ".go")
+
+
+def changed_source_names(entries: Sequence[dict[str, Any]]) -> list[str]:
+    """Basenames of the source files this session wrote — what another repo's plan would name."""
+    return sorted({p.name for p in written_paths(entries) if p.suffix in SOURCE_SUFFIXES})
+
+
+def plans_directories(root: Path, exclude: Path | None, depth: int = 3) -> list[Path]:
+    """Every checkout under the projects root that keeps a `plans/`, except the session's own."""
+    found: list[Path] = []
+
+    def walk(directory: Path, remaining: int) -> None:
+        try:
+            children = sorted(p for p in directory.iterdir() if p.is_dir() and not p.is_symlink())
+        except OSError:
+            return
+        for child in children:
+            if child.name.startswith("."):
+                continue
+            if (child / ".git").exists():
+                if (child / "plans").is_dir() and (exclude is None or child.resolve() != exclude):
+                    found.append(child / "plans")
+                continue
+            if remaining > 1:
+                walk(child, remaining - 1)
+
+    if root.is_dir():
+        walk(root, depth)
+    return found
+
+
+def superseded_candidates(entries: Sequence[dict[str, Any]], session_repo: Path | None) -> dict[str, Any]:
+    """Plans in *other* repos that name a source file this session changed.
+
+    **Every other check in the sweep asks what is dangling _for_ this session; this one asks the
+    inverse.** A plan describing a mechanism this session just replaced is not dangling state, not a
+    process, not git state and not an unkept promise — no check reaches it, and the plan cannot
+    notice on its own because the session that wrote it is gone.
+
+    Confirmed 2026-09-05: a session replaced a repo's gate-output mechanism, and a plan in a
+    different repo recorded that mechanism as its landed layer 2. **The cost was not the stale
+    prose** — it was that the plan's `## Verification` scheduled a comparison a week later against a
+    baseline saved to isolate exactly that layer, so the run would have measured a week of sessions
+    in neither mode and reported a null result as "the change did nothing". A human reading stale
+    prose notices; a scheduled measurement whose subject moved emits a confident wrong number.
+
+    **Candidates, never a verdict** — the same shape as the `depends_on` bullet, and for the same
+    reason: whether a plan is actually stale needs reading it, since one naming `quality.py` may be
+    about something else entirely.
+
+    **The session's own repo is not searched.** The blind spot is elsewhere by construction — a
+    session is already reading its own `plans/`, and including them turns every edit to a
+    well-discussed file into a page of true-but-useless rows, which is how a section teaches its
+    reader to skim.
+    """
+    names = changed_source_names(entries)
+    found: list[dict[str, Any]] = []
+    searched: list[str] = []
+    if not names:
+        return {"names": [], "searched": searched, "candidates": found}
+    # The shareable store only. A session has no business reading another party's plans to answer a
+    # question about its own source file, and the confirmed instance sits in the shareable tier.
+    store = next((path for label, path in _stores() if label == "plans"), None)
+    directories = plans_directories(projects_root(), session_repo.resolve() if session_repo else None)
+    for directory in [*directories, *([store] if store and store.is_dir() else [])]:
+        searched.append(str(directory))
+        for plan in sorted(directory.rglob("*.md")):
+            try:
+                text = plan.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            named = [name for name in names if name in text]
+            if named:
+                found.append({"plan": str(plan), "names": named})
+    return {"names": names, "searched": searched, "candidates": found}
+
+
 def depends_on(repo: Path) -> list[dict[str, Any]]:
     """`depends_on` plans, matched at line start and inside the frontmatter block only.
 
@@ -2291,7 +2372,10 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         "repos": lambda: {"repos": [asdict(state) for state in states]},
         "ci": lambda: {"ci": {s.path: ci_runs(runner, Path(s.path), s.branch, since) for s in states}},
         "stores": lambda: _sweep_stores(runner, args.checkout, repos, since, entries),
-        "plans": lambda: {"depends_on": {str(path): depends_on(path) for path in repos}},
+        "plans": lambda: {
+            "depends_on": {str(path): depends_on(path) for path in repos},
+            "superseded": superseded_candidates(entries, git_root(runner, Path.cwd())),
+        },
         "paths": lambda: _sweep_loose_files(runner, entries, transcript is not None),
     }
 
@@ -2407,7 +2491,24 @@ def _print_sweep(payload: dict[str, Any]) -> None:
         _print_absorb(repo, result)
     for repo, tagged in (payload.get("depends_on") or {}).items():
         _print_depends_on(repo, tagged)
+    _print_superseded(payload.get("superseded"))
     _print_loose_files(payload)
+
+
+def _print_superseded(state: dict[str, Any] | None) -> None:
+    if state is None:
+        return
+    print("\n== plans elsewhere naming a source file this session changed ==")
+    if not state.get("names"):
+        print("  none — this session changed no source file")
+        return
+    for row in state["candidates"]:
+        print(f"    {row['plan']}")
+        print(f"      names: {', '.join(row['names'])}")
+    if not state["candidates"]:
+        print("  none")
+    print(f"  searched: {len(state['searched'])} location(s), this repo's own plans/ excluded")
+    print("  limit: candidates, not a verdict — a plan naming one of these may be about something else")
 
 
 def _print_processes(procs: dict[str, Any] | None) -> None:

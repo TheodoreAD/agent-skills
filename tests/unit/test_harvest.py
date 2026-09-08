@@ -896,6 +896,58 @@ def test_a_skills_load_instant_comes_from_the_sessions_own_skill_calls(monkeypat
 # --------------------------------------------------------------------------------------------
 
 
+def test_a_plan_in_another_repo_naming_a_changed_source_file_is_a_candidate(tmp_path, monkeypatch):
+    """Every other check in the sweep asks what is dangling *for* this session; this asks the
+    inverse. Confirmed 2026-09-05: a session replaced a repo's gate-output mechanism and a plan in a
+    different repo recorded that mechanism as its landed layer 2 — with a comparison scheduled a
+    week later against a baseline saved to isolate exactly that layer, so it would have measured a
+    week of sessions in neither mode and read the null result as "the change did nothing".
+    """
+    root = tmp_path / "projects"
+    mine = root / "mine"
+    theirs = root / "theirs"
+    for repo in (mine, theirs):
+        (repo / ".git").mkdir(parents=True)
+        (repo / "plans").mkdir()
+    (theirs / "plans" / "2026-09-05-layered.md").write_text("layer 2 lives in `steps.py` and is landed\n")
+    (mine / "plans" / "2026-09-05-my-own.md").write_text("this plan also names steps.py constantly\n")
+    store = tmp_path / "store"
+    (store / "theirs").mkdir(parents=True)
+    (store / "theirs" / "filed.md").write_text("nothing relevant here\n")
+
+    monkeypatch.setattr(harvest, "projects_root", lambda: root)
+    monkeypatch.setattr(harvest, "_stores", lambda: [("plans", store), ("plans-sensitive", tmp_path / "nope")])
+    entries = [
+        blocks_entry(
+            "assistant",
+            [{"type": "tool_use", "id": "a", "name": "Edit", "input": {"file_path": str(theirs / "steps.py")}}],
+        )
+    ]
+
+    found = harvest.superseded_candidates(entries, mine)
+
+    assert found["names"] == ["steps.py"]
+    assert [Path(row["plan"]).name for row in found["candidates"]] == ["2026-09-05-layered.md"]
+    assert all("mine" not in row["plan"] for row in found["candidates"]), (
+        "the session's own plans are the one place it is already reading; including them turns every "
+        "edit to a well-discussed file into a page of true-but-useless rows"
+    )
+
+
+def test_a_session_that_changed_no_source_file_searches_nothing(tmp_path, monkeypatch):
+    """Documents are excluded on purpose: a plan naming another plan is a citation, which
+    `plan-docs`' own `refs` answers, and searching for `.md` basenames would hit every retirement."""
+    monkeypatch.setattr(harvest, "projects_root", lambda: tmp_path)
+    monkeypatch.setattr(harvest, "_stores", lambda: [])
+    entries = [
+        blocks_entry(
+            "assistant",
+            [{"type": "tool_use", "id": "a", "name": "Edit", "input": {"file_path": "/repo/plans/2026-09-08-x.md"}}],
+        )
+    ]
+    assert harvest.superseded_candidates(entries, None) == {"names": [], "searched": [], "candidates": []}
+
+
 def test_depends_on_is_matched_in_frontmatter_at_line_start(tmp_path):
     """A bare search for the word also hits a plan whose body tabulates a schema field of that
     name, and a false positive here reads exactly like a real queue entry."""

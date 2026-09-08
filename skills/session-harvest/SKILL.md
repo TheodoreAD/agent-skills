@@ -893,6 +893,19 @@ What the script cannot do is decide what a finding means. That is this list:
   had already rewritten both histories, force-pushed, opened a support request for the residue, and
   written all of it into a plan. Several probing calls, and nearly a duplicate alarm, for work that
   was done.
+- **What this session made stale somewhere else** — the reactive bullet above turned around. Every
+  other check here asks what is dangling _for_ this session; a plan in another repo describing a
+  mechanism this session just replaced is the inverse, and nothing else surfaces it: not dangling,
+  not a process, not git state, and the session that wrote it is gone. **The cost is not the stale
+  prose but a scheduled measurement whose subject moved**, which emits a confident wrong number
+  rather than an error. Confirmed 2026-09-05: a session replaced a repo's gate-output mechanism
+  while a plan elsewhere recorded that mechanism as its landed layer 2, with a comparison booked a
+  week out against a baseline saved to isolate exactly that layer — a null result there would have
+  read as "the change did nothing". The sweep lists plans in other repos and in the shareable store
+  naming a source file this session wrote; they are **candidates, not a verdict**, on the same
+  footing as `depends_on`, because a plan naming `quality.py` may be about something else. This
+  repo's own `plans/` are not searched — a session is already reading those, and including them
+  turns an edit to a well-discussed file into a page of true-but-useless rows.
 
 ### 6. Improve the skill on every run
 

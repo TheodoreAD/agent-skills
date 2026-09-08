@@ -3,14 +3,19 @@ status: idea
 updated: 2026-09-06
 ---
 
-# `claims`' green-claim matcher misses CI and counts denials
+# `claims`' green-claim matcher is wrong in both directions
 
 Merged 2026-09-06 from two plans written the same day about the same regex from opposite ends:
-`2026-09-06-claims-matcher-has-no-term-for-ci.md` (this file's earlier name, the under-count) and
+`2026-09-06-claims-matcher-has-no-term-for-ci.md` (the under-count) and
 `2026-09-06-claims-matcher-counts-sentences-that-deny-a-gate-ran.md` (the over-count), the latter
 filed from a `repo-tasks` session — transcript `a3c12c26-55b9-4ed1-941f-42898b4bf565.jsonl`, moment
-`2026-09-06T00:05:00Z`, where editing this plan directly was out. Both names are what
-`archive --search` needs.
+`2026-09-06T00:05:00Z`, where editing this plan directly was out.
+
+Merged again 2026-09-08 from `2026-09-08-claims-counts-prose-about-exit-codes.md`, filed from a
+`power-user-linux-setup` session, which measured a **second over-count shape** on a different
+session and asked to be merged rather than kept apart. The file was renamed then, from
+`2026-09-06-claims-matcher-misses-ci-and-counts-denials.md`, because three shapes no longer fit a
+title naming two. All four names are what `archive --search` needs.
 
 ## Context
 
@@ -64,6 +69,54 @@ finding neither half had on its own: this is not a pattern that is broad in one 
 in another, it is a pattern matching on subject-word proximity with no notion of who the sentence is
 about or whether it affirms anything.
 
+### And it counts prose _about_ an exit code, on a session that ran no gate claim near it
+
+Measured 2026-09-08 on session `2f0fa965-60a4-4478-bcba-5097aff65801` (`power-user-linux-setup`, 212
+Bash calls), harvested at boundary `2026-09-08T12:05:54+03:00`. `claims` reported **6 messages
+telling the user a gate or suite was green**, and read against the transcript **3 of the 6 are not
+about a gate at all**:
+
+| counted text (truncated)                                                       | what it actually is           |
+| ------------------------------------------------------------------------------ | ----------------------------- |
+| "Non-editable fails _silently_ — exit 0, found nothing."                       | describing a probe's result   |
+| "The plain install _succeeds_, exits 0, and silently finds nothing."           | the same probe, in the report |
+| "**Verified end to end** … both shims report a version, the listing excludes…" | a manual verification         |
+
+The other three are ordinary and correctly matched ("Gate green, 9 new tests pass", "Gate green. Now
+proving the install actually works", "Gate re-run after the install is green — 671 tests"). A 50%
+false-positive rate, and every false positive from one cause: **the session's subject was a probe
+whose whole finding was that a command exits 0 and does nothing useful**, so it wrote "exit 0" and
+"succeeds" repeatedly, in prose, about something that was never a gate.
+
+**It is a distinct shape from the denials above, and the filing's account of why was wrong in a way
+that strengthens its own argument.** The filing said both shapes land on the same first alternation.
+Checked against the live pattern 2026-09-08, they do not: the denials hit the first
+(`gate on a clean`), and the two exit-code sentences hit the **fourth**,
+`\b(0 errors|exits? 0|exit
+code 0)\b`, matching on `exit 0` and `exits 0` with no subject term
+anywhere in the alternation. So this is not a second symptom of one over-broad rule — it is the one
+alternation that anchors on no subject at all, and a negation fix aimed at the first cannot reach
+it. Neither sentence negates anything, and "exits 0" is exactly the phrase a true positive would
+use.
+
+The third row could not be reproduced: the counted text is truncated in the filing, and the visible
+part matches nothing in the pattern. Whatever matched is in the untruncated message, so the 3-of-6
+figure stands on the filing's reading of the transcript and two of the three are confirmed here.
+
+The harvest procedure branches on this number: `claims` answers "how many green results did this
+session assert on evidence a filter had discarded", and the answer decides whether the gate gets
+re-run. On this session the split (`0 gate, 12 listing`) and `pipefail` both said no re-run was
+owed, so nothing followed — but the two checks disagreed, and only reading the transcript resolved
+which was right.
+
+[PITFALL: **a matcher whose vocabulary is a topic over-counts on any session whose topic it is**,
+and this corpus writes about its own instruments constantly. The same failure is recorded for a
+different instrument in
+`power-user-linux-setup/plans/2026-09-02-rg-replace-flag-used-twice-in-one-session.md`: that counter
+over-reports by ~8% because it anchors on `\brg\b` anywhere in a command, so a corpus that writes
+about the trap inflates its own count of it. Both instruments are used to audit sessions that write
+about auditing, which is the condition that makes the shape systematic rather than unlucky.]
+
 ## The cause, confirmed
 
 `GREEN_CLAIM_RE` (`skills/session-harvest/scripts/harvest.py:105`) has four alternatives, and **none
@@ -81,12 +134,17 @@ r"|\b(0 errors|exits? 0|exit code 0)\b"
 and `CI`, `run`, `workflow` and `check run` appear in no alternation. The vocabulary it has is the
 **local gate's** — `precommit`, `pytest`, `quality.check`.
 
-The over-count comes out of the same first alternation.
-`no test anywhere runs the gate on a clean
-machine` puts `clean` fourteen characters after `gate`,
-inside the window. Nothing in the alternation looks at whether the sentence **negates** the claim,
-and "on a clean machine" is a phrase this corpus generates constantly — the clean-OS tier is a whole
-section of `session-harvest`'s own step 5.
+**The over-count comes out of two different alternations, which is why one fix will not do.** The
+denials are the first: `no test anywhere runs the gate on a clean machine` puts `clean` fourteen
+characters after `gate`, inside the window. Nothing there looks at whether the sentence **negates**
+the claim, and "on a clean machine" is a phrase this corpus generates constantly — the clean-OS tier
+is a whole section of `session-harvest`'s own step 5.
+
+The exit-code prose is the **fourth**, and it is the alternation with no subject term in it at all:
+`\b(0 errors|exits? 0|exit code 0)\b` matches any sentence containing those words, about anything.
+Verified 2026-09-08 by running the live pattern over both sets of sentences. That makes it the
+broadest of the four by construction, and the one a session writing about exit codes — which is what
+this corpus is largely about — will trip on its own subject matter.
 
 **The gap is against the check's own stated design.** The comment above the pattern reads:
 _"Sentences that tell the user a gate passed. Deliberately broad: an over-count is a footnote the
@@ -131,6 +189,20 @@ noun to match near `gate`? A stop-list (`clean machine`, `clean checkout`, `clea
 and is aimed at the observed collision. General negation handling in a regex is not, and the second
 question above may make the whole pattern narrower anyway.]
 
+[NEEDS CLARIFICATION: **does the fourth alternation earn its place at all?** It is the only one with
+no subject term, it produced two of the three confirmed false positives, and every true positive in
+both samples was caught by one of the other three. The candidate the filing proposed is to require a
+gate-shaped subject near the exit-code words — a gate, a suite, a test count, CI — which keeps every
+true positive in its sample and drops both confirmed false ones. Deleting the alternation outright
+is the cheaper version of the same idea and needs one counter-example to rule out: a real green
+claim phrased only as a bare exit code. Independent of the negation work above, and narrower.]
+
+[UNVERIFIED: whether the over-count rate generalises. Two sessions now sit at a similar rate from
+unrelated causes — three false positives each — but neither is a corpus-wide count, and the
+2026-09-08 session's subject was unusually exit-code-heavy: a packaging probe whose finding was
+literally that a command exits 0 and does nothing. The corpus is greppable; a count over every
+transcript would settle it before any pattern is touched.]
+
 The corpus's rule is that a regex is tested against hand-written cases, and **the test's cases are
 no longer hypothetical** — one real transcript supplies both directions. A test here wants the
 phrasings that must match and at least one that must not, since a matcher that becomes a matcher for
@@ -143,7 +215,15 @@ Decide the second question first: it determines whether this is a one-line widen
 Then write the test before the pattern change, using all four sentences from the
 `a3c12c26-55b9-4ed1-941f-42898b4bf565` transcript — the three denials that wrongly matched and one
 of the green assertions that wrongly did not — plus "Both CI legs green" as the case that currently
-fails.
+fails, and the two confirmed exit-code sentences from `2f0fa965-60a4-4478-bcba-5097aff65801` as the
+must-not-match cases for the fourth alternation. A positive-only suite would pass for a matcher that
+matches everything, which is the failure already recorded for `--expect`'s quote handling.
+
+**Decide the three shapes together, because they are not three fixes.** The fourth alternation may
+simply go, which resolves one over-count with no new machinery; the CI vocabulary question decides
+whether the pattern grows a subject or loses the concept of one; and the negation question only
+matters if the first alternation survives in its current form. Taking them one at a time risks
+adding a stop-list to an alternation that a later decision deletes.
 
 Worth doing before the next session that runs a piped gate, since that is the run where the
 under-count would matter — and the phrasing is generated by this skill's own procedure, so it is not

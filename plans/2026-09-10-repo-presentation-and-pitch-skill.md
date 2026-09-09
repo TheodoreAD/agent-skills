@@ -12,9 +12,11 @@ trustworthy", with elevator pitches "for repos and individual skills alike", so 
 and articles become possible once the work is solid. Deep research first, then a plan; a skill is
 the suspected shape.
 
-Six parallel research streams ran against clones in `$RESEARCH_HOME` (149 repos now, ~25 of them
-cloned for this). Everything below is sourced; where a claim is a page fetch rather than a clone, or
-was not verified at all, it says so.
+Six parallel research streams ran, preferring clones in `$RESEARCH_HOME` (149 repos now, ~25 cloned
+for this) over page fetches: GitHub presentation mechanics, pitch craft, launch channels, visual
+assets, article craft, and the agent-skills ecosystem. Everything below is sourced; where a claim is
+a page fetch rather than a clone, or was not verified at all, it says so. Several load-bearing
+numbers were re-checked here directly rather than taken from a report.
 
 ### What is already true, measured rather than assumed
 
@@ -275,6 +277,96 @@ presentation-free data and each destination renders it. Its test, which separate
 **does each artifact contain something the others do not?** Five paraphrases of one post is what
 Google's spam policy names "scaled content abuse".
 
+### 8. Distribution: the rules are per-channel, written, and mostly about restraint
+
+**Show HN has a mechanical qualification test** (page, `news.ycombinator.com/showhn.html`): _"On
+topic: things people can run on their computers or hold in their hands."_ A skills repo qualifies; a
+blog post about it explicitly does not (_"Off topic: blog posts, sign-up pages, newsletters,
+lists"_). Neither does a version bump — _"New features and upgrades ('Foo 1.3.1 is out') generally
+aren't substantive enough to be Show HNs. A major overhaul is probably ok."_ And the cadence is
+bounded by dang's own comment: a repost as Show HN needs a significantly different version, a link
+to the previous thread, and _"should probably only happen once or twice a year — more starts to be
+excessive."_
+
+Two mechanisms worth knowing because they point opposite ways. **The second-chance pool is
+sanctioned**: moderators re-float overlooked submissions, and _"If you see a submission that didn't
+get attention and which you think is particularly good for HN, please tell us at hn@ycombinator.com…
+It's fine if it's your own article."_ **Asking anyone to vote is bannable**: _"We penalize or ban
+submissions, accounts, and sites"_. So the remedy for bad timing is one polite email, never a nudge
+to anyone else.
+
+Timing folklore has no first-party backing; the ranking formula does (_"divides points by a power of
+the time since a story was submitted"_, plus flags and moderator action), and karma does not boost
+rank. Treat time-of-day advice as unevidenced.
+
+[PITFALL: **Reddit's live rules could not be read from this machine at all**, and that is a planning
+constraint rather than a footnote. `reddit.com` and `api.reddit.com` return 403 here, WebSearch
+refuses the domain, and mirrors sit behind JS challenges. The only route that worked was a dump API
+whose sidebar text is from **2025-02**, roughly nineteen months stale. Anything a skill says about a
+subreddit must be re-read on-site before acting, or fetched via OAuth (`PRAW`'s `subreddit.rules`
+hits `r/{sub}/about/rules` and needs a registered script app). Also: **r/devtools has 23
+subscribers** — not a channel, despite sounding like the obvious one.]
+
+From that stale dump, the useful shape: r/opensource states the ratio rule in its own words
+(_"Reddit recommends that <10% of your posts promote your content"_) and bans sensationalised
+titles; r/programming says _"If there is no code in your link, it probably doesn't belong here"_;
+**r/commandline explicitly welcomes programs "you've found or made yourself"** and is the
+friendliest of the set. The 90/10 rule is a norm quoted by subreddits, not a citable sitewide policy
+— cite the subreddit, not Reddit.
+
+**Product Hunt is the highest-cost channel and the one with no evidence behind it.** Verified costs:
+personal account only, tagline ≤60 chars, at least two gallery images at 1270×760, a 240×240
+thumbnail under 3 MB, a day starting 12:01am PST, a written maker's first comment (70% of Product of
+the Day winners had one), and a relaunch line of six months plus a significant update. Asking for
+upvotes _"may trigger the algorithm to drop the product in the ranks or remove it from the homepage
+entirely."_ Its own two pages disagree on the description limit (500 vs 260), so a script must check
+the live form. Every "is it worth it for a dev tool" source found was PH's own marketing or SEO
+blogspam — so ranking it below HN, one well-chosen subreddit and the newsletters is **judgement, and
+should be labelled as such.**
+
+**The "links kill reach on X" claim, resolved as far as it can be.** The open-sourced ranking code
+contains no link penalty in the home timeline — zero occurrences of `Url` in `home-mixer`'s ranking
+params; the only URL feature is a runtime-weighted term in the _search_ scorer whose sign is not in
+the repo. The effect is real in observation: Buffer's analysis of **18.8M posts across 71k
+accounts** (Aug 2025) found link posts at ~0% engagement for non-Premium accounts against ~0.40% for
+text. Buffer itself stops at correlation. Report it that way — real effect, unproven mechanism, no
+code evidence — and put the link in a reply.
+
+**LinkedIn has no findable first-party statement**; link-in-first-comment is folklore and should be
+labelled folklore. **Mastodon has no ranking feed at all**: featured hashtags, up to five pinned
+posts and an opt-in directory are the entire discovery mechanism, so there is no timing game and no
+link penalty. Bluesky was not verified.
+
+**Newsletters are the cheapest real channel and the least polluted by folklore.** Changelog News
+takes an open form and says outright _"Submitting your own work is also encouraged"_ while rejecting
+tutorials and commercial products; Console.dev takes an email, wants developers as the primary user
+and says _"We do not do sponsored reviews"_; PyCoder's Weekly has an open form that accepts
+_"projects you are working on"_. **Hacker Newsletter has no submission form — it curates from HN**,
+so a good Show HN feeds it automatically. Five minutes each, no ban risk.
+
+**Awesome-list mechanics split in two.** Listing a _tool_ is a PR to the topical list in the house
+format — `- [Name](url) - Objective description.`, capitalised, full stop, _"not a tagline or
+marketing blurb"_. Getting a _list_ into the root repo is a much heavier gate (30 days old,
+`awesome-lint` clean, CC0, review four other PRs, comment `unicorn`) and it states plainly: _"Fully
+AI-generated pull requests are not accepted."_ The relevant list here,
+`hesreallyhim/awesome-claude-code`, gates on **≥14 days old with continued commits OR ≥100 stars** —
+this repo cleared the age half on 2026-09-09.
+
+**Cross-posting, with the SEO caveat that matters.** dev.to's field is `canonical_url` (max 4 tags,
+cover 1000×420); Medium's canonical cannot be added after publish. But Google states canonical
+preference is _"a hint, not a rule"_ and specifically discourages it for syndication: _"The
+canonical link element is not recommended for those who want to avoid duplication by syndication
+partners… The most effective solution is for partners to block indexing of your content."_ Practical
+consequence: publish on the own domain first, let it index, cross-post after — and accept that the
+platform copy may still outrank you as the price of reach.
+
+**A sustainable solo loop, assembled from what each channel actually permits:** tag a release →
+CHANGELOG entry → one social post per release → newsletter submissions only on genuine news → an
+occasional deep article on the own domain, cross-posted with canonical a few days later → HN only on
+a genuinely major version, once or twice a year → Reddit only where the account already has history.
+Everything above the HN line is repeatable; HN and Product Hunt are the two channels with a written
+cooldown.
+
 ## Open questions
 
 [NEEDS CLARIFICATION: **how many skills, and where is the boundary?** The ask contains four jobs —
@@ -332,11 +424,16 @@ raw file. The CSP headers and `sharkdp/fd`'s live 127 KB `@keyframes` file both 
 github/docs says no in a sentence that appears to be about a different surface. One person opening
 that page settles it, and everything about choosing the demo format depends on the answer.]
 
-[UNVERIFIED: **the launch-channel research had not returned when this plan was written.**
-Per-channel rules for Show HN, Reddit, Product Hunt, the newsletters and the awesome-list submission
-path are therefore represented here only by the three prohibitions in Context, which arrived through
-the pitch and content streams. The distribution section is owed and this plan is not complete
-without it.]
+[UNVERIFIED: **every subreddit rule quoted in §8 is nineteen months stale**, because live Reddit is
+unreachable from this machine — 403 to the API, the domain refused to search, mirrors behind JS
+challenges. Before any skill tells anyone to post to a subreddit, its rules must be re-read on-site
+or through an OAuth app. Treat the r/opensource ratio and the r/commandline welcome as
+probably-still-true rather than as facts.]
+
+[UNVERIFIED: **whether Product Hunt is worth it for a tool of this kind.** Every source found was
+Product Hunt's own marketing or SEO blogspam. The costs are measured and real; the return is not
+evidenced either way. The plan ranks it last on judgement and says so rather than dressing it as a
+finding.]
 
 ## Recommended direction
 
@@ -386,9 +483,14 @@ measurable ones.
    with the Google/Microsoft packages, plus a custom rule from the `WP:AISIGNS` list) and the
    structural targets measured above. It never drafts the post.
 
-6. **Distribution last, and only once the channel research lands.** The three prohibitions already
-   in hand are enough to say the shape: per-channel _rules and length budgets_ are scriptable, the
-   _copy_ is not.
+6. **Distribution last, and as a checklist rather than a copywriter.** What is scriptable is narrow
+   and genuinely useful: per-channel length budgets, the HN title lint (no uppercase runs, no
+   exclamation marks, strip a trailing site name, require the `[video]`/`[pdf]` suffix), Product
+   Hunt asset dimensions, the awesome-list entry format, dev.to front matter with `canonical_url`,
+   and **cooldown bookkeeping** — last Show HN per project against the once-or-twice-a-year line,
+   last Product Hunt launch against the six-month line, last HN submission per URL against the
+   one-year repost line. Start with the newsletters, which are five minutes each and carry no ban
+   risk, and treat Show HN as a once-a-year event that the whole rest of the loop feeds.
 
 ## Anti-goals
 
@@ -400,3 +502,9 @@ measurable ones.
 - No detector that asserts text "reads like AI".
 - No emoji in headings — it silently breaks anchors.
 - No skill that requires this machine's toolchain to be useful.
+- **Never ask anyone to upvote, anywhere.** HN penalises or bans submissions, accounts and sites for
+  it; Product Hunt drops rank or removes from the homepage and can suspend the account. This is the
+  only item on this list whose cost is the account rather than the post, and no tooling here should
+  make it easy to get near.
+- No Show HN for a version bump, and no more than one or two a year.
+- No posting to a subreddit on the strength of a cached rules copy.

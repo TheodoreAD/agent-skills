@@ -2552,6 +2552,62 @@ def test_commit_refuses_paths_that_span_two_repositories(ws, capsys):
     assert "different repositories" in capsys.readouterr().err
 
 
+def test_commit_says_a_path_is_gone_because_absorb_took_it_not_because_you_deleted_it(ws, capsys):
+    """The race the note exists for. `session-harvest` step 2 tells a session that finds its topic
+    already owned to append to the existing plan, and when that plan is in the store the sequence is
+    Edit then commit. Between them another session can absorb the file, so the commit carries a pure
+    deletion under a message announcing an addition. Confirmed 2026-09-04: 76 deletions, 0
+    insertions, and establishing that the content had survived took eight minutes of reading the
+    target repo because nothing in either tool's output said where it went."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "shared-subject", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    filed = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-shared-subject.md"))
+    assert plans.main(["commit", str(filed), "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+
+    # What a parallel session's `absorb --apply` leaves behind: the file in the target repo's own
+    # plans/, committed there, and gone from the store.
+    absorbed = ws.client / "plans" / filed.name
+    absorbed.parent.mkdir(parents=True, exist_ok=True)
+    absorbed.write_text(filed.read_text(encoding="utf-8"), encoding="utf-8")
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.client, check=True)
+    subprocess.run(["git", "add", "--", str(absorbed.relative_to(ws.client))], cwd=ws.client, check=True)
+    subprocess.run(["git", "commit", "-qm", "absorbed"], cwd=ws.client, check=True)
+    filed.unlink()
+
+    assert plans.main(["commit", str(filed), "-m", "api: a second sample", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "(removed)" in out
+    assert "absorbed, not because you deleted it" in out
+    assert str(absorbed) in out
+
+
+def test_a_plain_retirement_gets_no_absorbed_note(ws, capsys):
+    """The other half of the distinction, and the reason the note resolves a destination rather than
+    printing on any absence: a retirement deletes the file on purpose, and telling that session its
+    plan was absorbed would be the confident wrong report the note exists to prevent."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "ordinary", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    plan = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-ordinary.md"))
+    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+    plan.unlink()
+
+    assert plans.main(["commit", str(plan), "-m", "retire it", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "(removed)" in out
+    assert "absorbed" not in out
+
+
 def test_commit_still_refuses_a_name_that_never_existed(ws, capsys):
     """The deleted-plan lookup must not turn a typo into a confusing git error. It resolves a *path*
     git still knows at HEAD and nothing else, so anything else falls through to `locate`."""

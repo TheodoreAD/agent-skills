@@ -3236,6 +3236,40 @@ def deleted_plan(candidate: Path) -> Path | None:
     return resolved if git(["cat-file", "-e", f"HEAD:{rel}"], repo) is not None else None
 
 
+def absorbed_to(cfg: Config, repo: Path, missing: Path) -> tuple[Path, str] | None:
+    """Where a store path went, for a file that is gone because another session absorbed it.
+
+    `absorb --apply` copies a filed plan into the target repo's tree and deletes it from the store,
+    and the two steps belong to different sessions whenever the filing session is still running.
+    Confirmed 2026-09-04: a session followed the already-owned rule, appended its evidence to a plan
+    in the store, and committed — between the edit and the commit another session absorbed the file,
+    so the commit carried **76 deletions and 0 insertions** under a message announcing an addition.
+    Establishing that the content had survived took eight minutes of reading the target repo, and
+    nothing in either tool's output had said so.
+
+    The mirror layout is what makes this answerable rather than a guess: a store path is
+    `<store>/<rel>/<name>`, and `<rel>` is the repo's own path under `projects_root`, so the file's
+    parent directory names exactly where to look. Returns the destination and the commit that added
+    it, or None — an absent answer is the honest one for a plain retirement, where the file is gone
+    because this session deleted it on purpose.
+    """
+    try:
+        rel = missing.parent.relative_to(repo)
+    except ValueError:
+        return None
+    destination = cfg.projects_root / rel / "plans" / missing.name
+    if not destination.is_file():
+        return None
+    target_repo = repo_root_for(destination)
+    if target_repo is None:
+        return None
+    added = git(
+        ["log", "--diff-filter=A", "--format=%h", "-1", "--", destination.relative_to(target_repo).as_posix()],
+        target_repo,
+    )
+    return destination, (added or "").strip()
+
+
 def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     """Commit these plans on their own, which is the step sessions were doing by hand 142 times.
 
@@ -3294,6 +3328,18 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
         rel = target.relative_to(repo).as_posix()
         print(f"file:      {rel}{' (removed)' if not target.exists() else ''}{tail}")
         tail = ""
+    for target in targets:
+        if target.exists():
+            continue
+        gone = absorbed_to(cfg, repo, target)
+        if gone is None:
+            continue
+        destination, added = gone
+        where = f" in {added}" if added else ""
+        print(f"\nNOTE: {target.name} is gone because it was absorbed, not because you deleted it.")
+        print(f"      It is now {destination}, added{where} — this commit records the store-side")
+        print("      removal, under the message you wrote. If that message announced an addition,")
+        print("      the addition is in that repo and this diff is a pure deletion.")
     return 0
 
 

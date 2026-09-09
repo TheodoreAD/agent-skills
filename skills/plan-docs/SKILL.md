@@ -630,6 +630,14 @@ session's staged deletions in a second mirror at exactly the moment one of these
 a `<dir>` argument was correct there by one directory level, and nothing in the command would have
 said so.
 
+**If a path you name has vanished, the command says whether `absorb` took it.** A store plan you
+edited can be absorbed by another session between your edit and your commit, and the commit then
+carries a pure deletion under a message announcing an addition. Confirmed 2026-09-04, following the
+already-owned rule in `session-harvest` step 2: 76 deletions, 0 insertions, and eight minutes of
+reading the target repo to establish the content had survived — which it had, absorbed whole. The
+note names the destination and the commit that added it, and it prints only when a destination
+actually resolves, so an ordinary retirement is not told its plan was absorbed.
+
 **Pushing is a separate, gated step, and only the shareable tier has anywhere to push to.** Scan
 before pushing and push only on a clean result — `--mode staged` on the commit you are about to
 make, and `--mode history` before the store's very first push, since that is what a push actually

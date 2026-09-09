@@ -544,6 +544,17 @@ Everything else in the sweep is `git`, the harness's own files, and Python, and 
 
 What the script cannot do is decide what a finding means. That is this list:
 
+**Every row here names a consequence, and a row that names only a state will have one invented for
+it.** A report has to say why an item is in it, so a bullet that reports a fact and stops leaves the
+reporting session to supply the reason — and it will, plausibly and out of the nearest thing it
+remembers. Confirmed 2026-09-08: the store's unpushed-commits row said to report the count and not
+what it cost, and one harvest filled the gap with "no future session gets offered them by `absorb`",
+stated twice and unchallenged both times because it sounds like the mechanism working. It is false;
+`absorb` reads a local directory. Every other row below names what goes wrong — an orphaned server
+serves `.env` to the LAN, a masked exit invalidates a green claim — and the one that did not is the
+one that produced a fabricated consequence. So when a row's cost is small, say that it is small
+rather than leaving it unsaid: a stated small cost cannot be inflated, and an unstated one can.
+
 - **Processes and what they serve.** A backgrounded poll outlives the turn that spawned it —
   confirmed 2026-08-28, four CI-poll loops 36 hours old, still polling, whose exit condition could
   never be true; the harvest was the only thing that would ever have found them. For anything
@@ -868,15 +879,40 @@ What the script cannot do is decide what a finding means. That is this list:
   a git repository (so the git bullet seems to cover it) and it sits outside every working tree (so
   the shared-stores bullet seems to). Each framing hands it to the other. What the git bullet
   actually misses is **uncommitted** work: an uncommitted plan is not a commit, so no ahead-count
-  sees it. Do not write "the store has no remote" — the shareable tier has one and the sensitive
-  tier deliberately does not, so committed-but-unpushed plans are a real second finding on the
-  shareable half, gated by that skill's content scan before any push. **`absorb` runs here even
-  though `plan-docs` already tells every session to run it first**: the queue refills for as long as
-  the session runs, because the sessions filing into it run concurrently. Measured 2026-08-30 in a
-  session that followed the first-call rule correctly — 4 plans at session start, 4 more two hours
-  in, and 1 at five hours, that last one a credential exposure that sat unread for half an hour.
-  Report a mid-transaction store — uncommitted changes that are not yours — rather than working
-  around it; it means another session is actively holding that directory.
+  sees it.
+
+  **Committing and pushing are two findings with two different costs, and only the first is
+  urgent.** An uncommitted plan is a live same-machine concurrency cost: `plan-docs` puts every
+  other session into its add-a-new-file fallback instead of editing, for as long as the dirty window
+  lasts. Report that every time, at full strength. **An unpushed one costs off-machine backup and
+  nothing else** — the store is the only copy of plans that live in no repo, plus the in-transit
+  copy of anything filed `--for` a repo that has not absorbed it, so a disk failure loses exactly
+  those. Say that, in those words, and leave the decision with the user, who has already said they
+  work from one machine at a time and push before starting elsewhere. Do not write "the store has no
+  remote" either — the shareable tier has one and the sensitive tier deliberately does not; a push
+  is gated by that skill's content scan.
+
+  [PITFALL: **do not reach for the handoff story, which is the wrong answer nearest to hand.**
+  `absorb` reads a local directory and never a remote — no `fetch`, no `pull`, no `ls-remote`
+  anywhere in `plans.py`, and `plan-docs` says `Network: none` outright — so a filed plan is visible
+  to every session on the machine the moment its file exists, whatever the push state. What makes
+  the wrong version attractive is that a real cross-session handoff sits right beside it:
+  `new --for` writes into the store and the next session in that repo is offered it. "The handoff
+  needs the store pushed" is one plausible step from something true, which is how it got stated
+  twice in one session without being checked, 2026-09-08.]
+
+  The **repo** ahead-count above is not over-reported for the same reason and should keep its
+  urgency: an unpushed repo commit means the change is not in the product and CI has never seen it,
+  which is true whatever the machine count. Checked 2026-09-09 rather than assumed, because the two
+  rows look alike and one habit applied twice would have demoted both.
+
+  **`absorb` runs here even though `plan-docs` already tells every session to run it first**: the
+  queue refills for as long as the session runs, because the sessions filing into it run
+  concurrently. Measured 2026-08-30 in a session that followed the first-call rule correctly — 4
+  plans at session start, 4 more two hours in, and 1 at five hours, that last one a credential
+  exposure that sat unread for half an hour. Report a mid-transaction store — uncommitted changes
+  that are not yours — rather than working around it; it means another session is actively holding
+  that directory.
 - **`depends_on` plans whose blocker may have lifted.** The routing filter above parks work owed to
   a mid-restructure repo in a `depends_on`-tagged plan — which stores it safely and gives it no
   trigger. Nothing watches the named repo, so a plan waiting on a repo that has been ready for days

@@ -1803,6 +1803,43 @@ def test_a_loose_files_check_that_ran_and_found_nothing_says_none(capsys):
     assert "skipped" not in out
 
 
+def test_the_store_rows_name_their_own_cost_and_the_two_costs_differ(capsys):
+    """A row that reports a state and stops leaves the reporting session to supply the reason, and it
+    will — plausibly, out of the nearest thing it remembers. Confirmed 2026-09-08: the unpushed row
+    said to report the count and not what it cost, and one harvest filled the gap with "no future
+    session gets offered them by absorb", stated twice and unchallenged because it sounds like the
+    mechanism working. It is false — absorb reads a local directory, and `plans.py` has no `fetch`,
+    `pull` or `ls-remote` anywhere in it.
+
+    The two rows also carry different urgency and must not be collapsed: a dirty store is a live
+    same-machine concurrency cost, an unpushed one is an off-machine backup preference."""
+    harvest._print_store(
+        {
+            "store": "plans",
+            "path": "/home/x/plans",
+            "present": True,
+            "dirty": [" M a.md"],
+            "unpushed": ["abc1234 Someone: a plan"],
+        }
+    )
+    out = capsys.readouterr().out
+
+    assert "add-a-new-file fallback" in out, "the dirty row's cost is concurrency, and it is the urgent one"
+    assert "off-machine backup and nothing else" in out
+    assert "Not a handoff failure" in out, "the wrong answer nearest to hand has to be refused by name"
+
+
+def test_a_clean_store_is_not_lectured_about_costs_it_is_not_paying(capsys):
+    """The consequence lines hang off findings, not off the section. A store with nothing to report
+    printing two paragraphs about what unpushed commits would cost is the alarm-fatigue shape this
+    corpus refuses everywhere else."""
+    harvest._print_store({"store": "plans", "path": "/home/x/plans", "present": True, "dirty": [], "unpushed": []})
+    out = capsys.readouterr().out
+
+    assert "off-machine backup" not in out
+    assert "add-a-new-file fallback" not in out
+
+
 def test_a_sweep_with_no_transcript_declares_its_narrowed_repo_scope(monkeypatch, capsys):
     """The repo set comes from the transcript's own write paths and shell targets, so without one it
     collapses to the working directory. Measured 2026-09-03: one repo where the resolved run of the

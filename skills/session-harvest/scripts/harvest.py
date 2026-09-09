@@ -2859,6 +2859,18 @@ def _print_store(state: dict[str, Any]) -> None:
     for key in ("dirty", "unpushed", "changed_by_this_session", "entries_without_provenance"):
         for line in state.get(key, []):
             print(f"  {key}: {line}")
+        if key == "dirty" and state.get(key):
+            print("    ^ every other session is in plan-docs' add-a-new-file fallback until this is")
+            print("      committed — a live concurrency cost, and the urgent half of this row")
+        if key == "unpushed" and state.get(key):
+            # The cost, printed rather than left to the reader — because the one run that had to
+            # supply it invented "no future session gets offered them by absorb", which is false:
+            # absorb reads a local directory and plans.py contains no fetch, pull or ls-remote.
+            # A row that names only a state gets a consequence invented for it, and a small cost
+            # stated cannot be inflated while an unstated one can.
+            print("    ^ costs off-machine backup and nothing else: the store is the only copy of")
+            print("      plans that live in no repo. Not a handoff failure — absorb reads this")
+            print("      directory locally, so a filed plan is already visible to every session here")
     others = state.get("changed_by_something_else") or []
     if others:
         # A count, not a list. A refresher moving every entry's mtime is the store working as

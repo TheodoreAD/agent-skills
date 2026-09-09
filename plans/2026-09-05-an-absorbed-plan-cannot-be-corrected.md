@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-05
+status: landed
+updated: 2026-09-09
 source_repo: github.com-personal/repo-tasks
 source_session: 1f762304-ee1a-4bfb-a78f-52da747d29e3.jsonl
 source_moment: 2026-09-05T00:25:35+03:00
@@ -55,25 +55,30 @@ the window in which a correction could have landed on anything.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: is this worth a mechanism at all, or is "file a second plan" the honest
-answer? The counter-argument is real: this failure needed a same-day reversal by the user of a
-decision the filing session had itself proposed, which is rare, and the recovery cost about an hour.
-A mechanism that fires on every filed plan to catch that is a poor trade. The cheapest thing that
-would have helped is not a mechanism at all but a line in the filed plan saying which of the source
-repo's plans owns the decision, so the absorbing session has somewhere to look.]
+[DECISION: **not a mechanism — the cheapest thing, exactly as this question framed it.** Shipped
+2026-09-09 as `source_plan`, a line in what `new --for` emits naming which of the source repo's
+plans owns the decision. The counter-argument stands and is why nothing bigger was built: this
+failure needed a same-day reversal by the user of a decision the filing session had itself proposed,
+which is rare, and cost about an hour to recover. What was missing was never that looking is
+expensive, only that nobody knew there was somewhere to look.]
 
-[NEEDS CLARIFICATION: if something is added, is it a frontmatter field or prose? `new --for` already
-writes `source_repo`, `source_session` and `source_moment` — a `source_plan` naming the filing
-repo's own plan file would be the smallest addition and needs no new machinery, since the absorbing
-session can read that file directly. Against: the filing repo's plan may itself be retired by then,
-and a pointer into a deleted file is worse than none unless the reader knows to reach for
-`plans.py archive`.]
+[DECISION: **a frontmatter field, and the objection is answered by naming the recovery route.** A
+pointer into a deleted file would be worse than none only if the reader did not know the file is
+still readable — and it is: the filing repo retires plans by deleting them, so `archive --file`
+reads one back out of its own retirement commit. `absorb` prints that instruction beside the pointer
+rather than leaving it to be remembered, so a retired target degrades to "no further information"
+instead of to a dead end.
 
-[NEEDS CLARIFICATION: does `session-harvest` want a check for this, or only `plan-docs`? A harvest
-could ask "did this session act on a plan filed from elsewhere, and has that source moved since" —
-structurally the same query step 0 already runs for skills. But it fires after the work is done,
-where `plan-docs` could fire before. Both, probably, with different costs; only one of them is
-cheap.]
+One thing this went past the question on, deliberately: the field is **printed by `absorb`** under
+`decision owned elsewhere`, not merely written into frontmatter for a reader to find. That is the
+same standing argument the corpus applied twice on 2026-09-08 — a rule whose evidence the tool does
+not print is a rule the next run re-derives differently — and it is not the watcher this plan
+resists, because it displays a field that is already there rather than going to look at anything.]
+
+[DECISION: **only `plan-docs`.** A harvest check would fire after the work is done, where this fires
+before, and "both" would mean two mechanisms for one fact with the expensive one catching nothing
+the cheap one missed. The harvest's own step 0 comparison is the structural analogue and stays where
+it is; nothing here needs it.]
 
 ## Corroboration for a neighbouring plan
 
@@ -94,16 +99,31 @@ is reproducible luck worth knowing about.
 moment it is written" section. What this plan is about — a filed plan whose **source** changed its
 mind after absorption — is untouched by either, since nothing there is a missing file.
 
-## Recommended direction
+## What landed, 2026-09-09
 
-Rough, and behind the questions above.
+Exactly the recommended direction, one field and one paragraph, plus the print at the moment of use.
 
-Prefer the smallest thing that would have helped over a mechanism: a `source_plan` line in what
-`new --for` emits, so an absorbing session has a named place to check before implementing, and a
-sentence in `plan-docs` telling it to check there when the plan it absorbed proposes a decision
-rather than reports a fact. That is one field and one paragraph, and it fails safe — an absent or
-retired source plan reads as "no further information", which is the state today.
+`new --for` emits `source_plan` alongside the three provenance fields; `absorb` lists any that are
+filled under `decision owned elsewhere` with the instruction to read the named plan before
+implementing and to reach for `archive --file` if it is gone. A blank is a real answer meaning "this
+reports a fact"; an unfilled template comment is normalised to blank, so nothing reads as an owner
+that is not one.
 
-Resist a watcher or a staleness scan. The corpus of filed plans is small, the failure is rare, and
-the convention's own answer to "what carries a correction" is already a plan file; the gap is that
-nobody knows to look, not that looking is expensive.
+No watcher and no staleness scan, as this plan asked.
+
+## Migrated to
+
+- **The failure and what the field is for** -> `plan-docs`' "Plans that arrive from another repo",
+  which now carries the 2026-09-04 incident, the fill-it-when-you-propose rule, and the `DECISION`
+  recording why one field beat a mechanism.
+- **Why blank and unfilled mean the same thing** -> `read_plan`'s own comment, and
+  `test_an_unfilled_source_plan_reads_as_no_owner_rather_than_as_a_comment`.
+- **The prompt arriving at the moment of use** -> `_report_absorbable`, held by
+  `test_a_filed_plan_that_proposes_names_who_still_owns_the_decision`.
+- **The `Edit`-over-`Write` mitigation** was migrated separately on 2026-09-09 into `plan-docs`'
+  "Commit a store plan the moment it is written", when the neighbouring plan it corroborated was
+  retired.
+
+Deliberately not migrated: the four-step sequence of who did what in the original incident. The
+commit message keeps it, and what a reader needs is the rule plus one line of why, not the
+reconstruction.

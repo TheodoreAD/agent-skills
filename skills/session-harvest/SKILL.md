@@ -171,6 +171,19 @@ non-empty diff, clean checkout level with the remote, two commits pushed minutes
 exactly as written, and a re-install was the right answer. The same diff meant opposite things a day
 apart.
 
+**The verdict is a reading, not a fact, and re-running it costs one call.** Which row you are on can
+change while the harvest is still going, because another session commits or pushes into the same
+checkout — so quote a verdict taken at the top of a run and you may hand the user the previous
+answer. Confirmed twice on `plan-docs`, and the interval is the point: thirteen hours apart on
+2026-09-03, where "unpushed skill work — a re-install reinstalls the same stale copy" became
+"install is stale against a clean, pushed checkout — a re-install is the remedy", the **remedy
+inverting** from "cannot fix this" to "is exactly the fix"; and then **inside ninety seconds** on
+2026-09-05, two rows of the table apart, with a parallel session's commit landing at 23:44:21 in the
+gap between two calls at 23:43 and 23:45. So this is not a long-interval precaution — a fast run
+that resolves at the top and reports at the bottom is exposed too, and is exactly the run where
+nobody would think to re-check. The git ahead-count already carries this rule under step 5;
+`skills-state` is the check whose output most directly becomes advice, so it needs it more.
+
 A dirty checkout does **not** block the run. Both sessions above harvested correctly, because every
 command they ran was against the committed version. Confirm in passing that the commands this run
 needs are not themselves inside the uncommitted diff, and — **only if this session is working in the

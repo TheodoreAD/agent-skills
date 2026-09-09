@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-08
+updated: 2026-09-10
 ---
 
 # Evidence from one repo-tasks session: three rules broken, two of them measurable
@@ -376,3 +376,45 @@ verdict from its side and re-arms its own trigger.]
 catching it afterwards? `session-harvest`'s `skills-state --since` is the detector and it runs at
 the _end_. The available-skills listing changing mid-session is the one free signal, already noted
 in that skill — but it fires on install, not on commit, and this session saw no such change.]
+
+## An eighth sample, 2026-09-10 — the first taken after the `cd-recovery` decision
+
+An `agent-skills` session across two days, n=318 with its own sweep excluded, against
+`2026-09-06-zero-on-count.json`. **15 of 17**, the corpus's best so far:
+
+| row                   | this session | vs baseline |
+| --------------------- | ------------ | ----------- |
+| chain                 | 4%           | -43pp OK    |
+| head/tail             | 1%           | -28pp OK    |
+| heredoc               | 2%           | -9pp OK     |
+| git-mutating-in-chain | 1%           | -5pp OK     |
+| sed-n, git-C-own-repo | 0%           | OK          |
+| **cd-own-repo**       | **1 call**   | **MISS**    |
+| **cut-message**       | **1 call**   | **MISS**    |
+
+**The comparison straddles an instrument change and is still sound, which is worth stating because
+the check exists to catch the opposite.** This session added four rows to `audit.py` on 2026-09-10;
+it modified no existing predicate, so none of the thirteen rows the baseline judges moved. The four
+new ones are absent from the baseline and scored fresh.
+
+**The `cd-own-repo` hit is the prescribed recovery again — sixth session, 1 of 1.** The call is
+`cd <agent-skills> && git status --short`, issued immediately after a `cd ~/plans && git commit`
+cross-repo chain, which is exactly the shape `~/AGENTS.md` requires after one. Recorded because it
+is the **first sample taken after the split was decided** above: the decision was made on 5 of 5
+across two repos, and the row has gone on scoring correct behaviour as a miss in every session
+since. Nothing has regressed; the fix has not been built.
+
+**The other miss is a true positive, from a row this session wrote the same day.** `cut-message`
+fired once, on this session's own `git commit -m` whose message quoted a phrase and closed its own
+argument — the commit landed truncated at `absorb's own report said the`, and the shell then failed
+on the remainder. The row caught its author within hours of being written, which is the one thing
+that separates it from an assertion.
+
+[NEEDS CLARIFICATION: one of the two `git-mutating-in-chain` hits is unexplained and stayed that
+way. The first is a real `git stash push … || git diff --stat`, a careless call this session made
+and corrected. The second is displayed as a plain `git commit -m "…"` truncated at 220 characters,
+with no separator visible; reconstructing it from the message's newlines and from its apostrophe
+both failed to reproduce a chain tag. Recorded as unexplained rather than given an invented
+mechanism — the sample display truncates, so the answer needs the full command out of `--json`
+rather than a hypothesis. A non-zero nobody can explain deserves the same suspicion this plan gives
+a zero.]

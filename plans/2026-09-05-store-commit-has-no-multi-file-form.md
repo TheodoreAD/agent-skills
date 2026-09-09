@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-08
+status: landed
+updated: 2026-09-09
 ---
 
 # `plans.py commit` takes one file, so a bulk absorption is N commits or a rule reasoned around
@@ -85,25 +85,46 @@ work states it in the plural one line above the command that cannot do it.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: give `commit` a multi-file form, or state the rule as a constraint? They are
-not exclusive and the first is probably enough on its own — the pressure to reach for `git` came
-entirely from the one-file signature. `commit <path>...` building one commit from `HEAD` plus every
-named path is the same private-index mechanism it already uses, with a loop.]
+[DECISION: **the multi-file form, and it was enough on its own.** `commit <path>...` builds one
+commit from `HEAD` plus every named path, through the same private index, with a loop. Shipped
+2026-09-09. `-m` became required past one file, which was not in the question and had to be: the
+generated message names a single plan's topic, so a set falling back to it would produce exactly the
+thing this plan is about — one message describing a third of its own diff.]
 
-[NEEDS CLARIFICATION: whether a whole-directory form is wanted too. An absorption's natural unit is
-"every plan that left this repo's mirror", which is a directory, and naming eleven paths on a
-command line is its own error surface. Against: a directory argument makes it easy to sweep a file
-the session did not touch, which is the class of mistake the one-file signature currently prevents
-by construction.]
+[DECISION: **no whole-directory form.** The argument against held and gained an instance while this
+plan was open: at the moment of the third occurrence's commits the store simultaneously held three
+unrelated deletions in another repo's mirror, staged by a parallel session mid-absorption. A
+`<mirror dir>` argument would have been correct there — by one directory level, with nothing in the
+command to say so. Naming paths prevents that by construction and the cost it was avoiding is now
+gone.]
 
-[NEEDS CLARIFICATION: whether the skill should say that a pathspec commit is an acceptable
-equivalent, or say nothing and rely on the command being sufficient. Blessing it invites the reader
-to decide equivalence for themselves, which is what happened here; staying silent leaves a correct
-alternative undocumented, which is what made the deviation feel safe.]
+[DECISION: **name the pathspec reasoning as correct, and let the loop retire it.** Neither of the
+two options as posed. Staying silent leaves a correct alternative undocumented, which is what made
+the deviation feel safe; blessing it invites the next reader to decide equivalence again. The skill
+now says the sessions who reached for it reasoned correctly — a pathspec commit does not ship the
+index — and then that the multi-file form is the same mechanism with a loop, so there is nothing
+left to argue with. The reasoning is acknowledged rather than an alternative being sanctioned.]
 
-## Recommended direction
+## What landed, 2026-09-09
 
-Take the multi-file signature first and re-read the rule afterwards. If `commit` covers the case
-that produced this, the wording may not need to change at all — the reason it was argued with was
-that following it cost eleven commits, and nothing in the file acknowledged that cost or offered a
-way around it.
+`plans.py commit` takes several files, `absorb`'s own report points at that form instead of stating
+"the removals" in the plural one line above a singular command, and `plan-docs` carries the four
+occurrences as evidence about the wording rather than about those sessions.
+
+## Migrated to
+
+- **Why the rule was argued with, and why the loop settles it** -> `plan-docs`' "Commit a store plan
+  the moment it is written" section, which now carries the four occurrences, the two constraints and
+  the reason there is no directory form. That is where a reader arrives with the question.
+- **The mechanism and its 2026-09-09 reason** -> `commit_paths`' own docstring.
+- **The three constraints as executable statements** ->
+  `test_commit_takes_a_whole_absorption_as_one_commit`,
+  `test_commit_refuses_a_set_with_no_message_because_no_default_describes_one` and
+  `test_commit_refuses_paths_that_span_two_repositories`.
+
+Deliberately not migrated: the per-session call counts (154 calls, 3 of 3 in the fourth session's
+`git-C-mutating` row). They were the argument for changing the command and are not facts about it.
+
+**The general finding this plan is an instance of** — a rule stating a mechanism can be argued
+around by anyone who accepts the mechanism, whereas a rule stating a constraint cannot — is the
+second of the three misuse shapes `session-harvest` step 2 already names, and needs no new home.

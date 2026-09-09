@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-04
+status: landed
+updated: 2026-09-09
 source_repo: github.com-personal/ingesta
 source_session: 54d36cb9-ba1c-4a48-8316-6f35ab58f452.jsonl
 source_moment: 2026-09-04T14:15:25+03:00
@@ -49,31 +49,37 @@ Two artefacts are left behind and neither is visibly wrong:
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **whether `plans.py commit` should refuse a path that no longer exists.** It
-committed a deletion it was not asked for, which is defensible — the deletion is real and someone
-has to record it — but the message came from a different intent. The cheap fix is to say so:
-`commit` already knows the file is absent, so a one-line "this path is gone; it was absorbed at
-<sha>, and this commit records the deletion" would have turned eight minutes of checking into
-reading one line. Refusing outright is the stronger option and risks leaving a deletion uncommitted
-in a store other sessions are reading.]
+[DECISION: **say so, do not refuse.** Shipped 2026-09-09. `commit` still records the deletion —
+refusing would leave it uncommitted in a store other sessions are reading, which is worse — and now
+prints where the file went and the commit that added it. The destination is derived rather than
+guessed: a store path is `<store>/<rel>/<name>` and `<rel>` is the repo's own path under
+`projects_root`, so the file's parent directory names exactly where to look. It prints only when a
+destination resolves, so a plain retirement is not told its plan was absorbed — which is the
+difference between a useful note and a second confident wrong report.
 
-[NEEDS CLARIFICATION: **whether `session-harvest` step 2 should say "re-read before you commit".**
-The already-owned rule sends a session to edit a file it does not own, in a directory several
-sessions write to concurrently, and says nothing about the interval. Every other race on this
-machine is handled by re-deriving state immediately before acting — the force-push lease, the undo
-by SHA, the ahead-count at report time — and this is the same shape with no such instruction.]
+The `<sha>` the question asked for is there too, read from the target repo's own
+`log --diff-filter=A` rather than inferred.]
 
-## Recommended direction
+[DECISION: **yes, and as "commit it in the same breath" rather than "re-read before you commit".**
+The rule that creates the exposure is the one that should mention it. Re-reading would only narrow
+the window and would need a second instruction about what to do with the answer; keeping the
+interval short removes it, and the tool now handles the case where it happens anyway.]
 
-**Say it in the tool before saying it in the skill.** `plans.py commit` is where the fact is already
-known, and a session that reads one line there needs no rule; a rule in `session-harvest` reaches
-only harvests, while `commit` is called by every session that files anything.
+## What landed, 2026-09-09
 
-Then the smaller half in the skill: step 2's already-owned bullet gains a clause that an edit to a
-store file should be committed in the same breath, and that a `(removed)` result means the work went
-somewhere else and the target repo is what confirms it.
+Both halves, in the order this plan asked for: the tool first, the skill second.
 
-**Not a data-loss bug, and worth being precise about that** — the absorb copied the file whole, so
-the addition arrived. What failed is that nothing said so, and the session could equally have
+## Migrated to
+
+- **The race, and why the note prints only on a resolved destination** -> `absorbed_to`'s docstring
+  in `plans.py`, plus `plan-docs`' "Commit a store plan the moment it is written" section.
+- **The instruction that creates the exposure** -> `session-harvest` step 2's already-owned bullet,
+  which now says to commit that edit in the same breath and what a `(removed)` result means.
+- **Both halves of the distinction as tests** ->
+  `test_commit_says_a_path_is_gone_because_absorb_took_it_not_because_you_deleted_it` and
+  `test_a_plain_retirement_gets_no_absorbed_note`.
+
+**Not a data-loss bug, and the migrated text keeps saying so** — the absorb copied the file whole,
+so the addition arrived. What failed is that nothing said so, and the session could equally have
 concluded the opposite. The failure mode is a confident wrong report rather than a lost edit, which
 is the same class as every other finding this skill's step 0 exists for.

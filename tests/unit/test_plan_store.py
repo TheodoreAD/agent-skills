@@ -2476,6 +2476,55 @@ def test_commit_takes_a_retirement_deletion_in_either_half_staged_state(ws, caps
     assert "retire it" in capsys.readouterr().out, "a retired plan has to read back out of its deletion"
 
 
+def test_a_filed_plan_that_proposes_names_who_still_owns_the_decision(ws, capsys):
+    """A filed plan is a snapshot and the filing repo can change its mind after it is absorbed.
+    Confirmed 2026-09-04: a repo filed a placement decision, the user overturned it there the same
+    day, and the absorbing session implemented the superseded version faithfully — writing the beaten
+    argument into a shipped docstring and a contributing page — then retired the plan and pushed.
+    Nobody made a mistake; there was no named place to look.
+
+    So the prompt arrives at the moment of use, in `absorb`'s own report, rather than sitting in
+    frontmatter a reader has to think to open."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    plans.main(["new", "a-proposal", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])
+    capsys.readouterr()
+    filed = next((ws.store / "github.com-personal" / "agent-skills").glob("*-a-proposal.md"))
+
+    # The template asks; a session filling it in is what this reports on.
+    body = filed.read_text(encoding="utf-8")
+    assert "source_plan:" in body, "the template has to ask, because judgement does not"
+    filed.write_text(
+        body.replace(
+            "source_plan: # the filing repo's plan that owns this decision, or blank if it reports a fact",
+            "source_plan: plans/2026-09-04-where-the-argument-lives.md",
+        ),
+        encoding="utf-8",
+    )
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "decision owned elsewhere" in out
+    assert "plans/2026-09-04-where-the-argument-lives.md" in out
+    assert "archive --file" in out, "a retired source plan is recoverable, and the prompt has to say so"
+
+
+def test_an_unfilled_source_plan_reads_as_no_owner_rather_than_as_a_comment(ws, capsys):
+    """The template emits the field as a `#` comment, and a comment is not an answer. Left as it
+    came, it means the same thing a deliberate blank does — this reports a fact, nobody to check
+    with — so it must not be printed as though a plan had been named."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    plans.main(["new", "a-report", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])
+    capsys.readouterr()
+
+    assert plans.main(["absorb", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "awaiting absorption" in out
+    assert "decision owned elsewhere" not in out
+    assert "the filing repo's plan" not in out, "the template comment must never reach the report"
+
+
 def test_commit_takes_a_whole_absorption_as_one_commit(ws, capsys):
     """An absorption's natural unit is every plan that left one mirror, and the one-file signature
     turned that into N commits with N messages for one logical change. Four sessions met it: two

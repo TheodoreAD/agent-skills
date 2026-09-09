@@ -965,7 +965,7 @@ without. Omit it for the ordinary single-repo case.
 
 ## Plans that arrive from another repo
 
-`new --for` writes three more fields and an `## Evidence` section — the inbound mirror of
+`new --for` writes four more fields and an `## Evidence` section — the inbound mirror of
 `depends_on`, for the case where the plan is read in one repo and the thing that produced it
 happened in another:
 
@@ -973,12 +973,38 @@ happened in another:
 source_repo: <the repo you were in> # filled in for you, from where the session was
 source_session: 8f3c….jsonl # the harness's transcript for that session
 source_moment: 2026-08-22T16:50:15Z # plus a distinctive quoted phrase in the body
+source_plan: plans/2026-08-22-why-this.md # the filing repo's plan that owns this decision
 ```
 
 **The point is that a triage session can re-read the original turns instead of trusting a summary.**
 Record a timestamp **and** a quoted phrase — either alone can miss in a multi-megabyte transcript —
 and note that a cited transcript only survives while the harness keeps it (30 days by default), so a
 capture worth acting on is worth acting on soon.
+
+**`source_plan` answers a different question from the other three: they point at the evidence, it
+points at whoever still owns the decision.** Fill it in when the plan **proposes** something, and
+leave it blank when the plan **reports a fact** — a blank is a real answer and means there is nobody
+to check with. A filed plan is a snapshot, and the filing repo can change its mind after it has been
+absorbed. Confirmed 2026-09-04: a repo filed a placement decision on its own reasoning, the user
+overturned it there the same day, and the absorbing session implemented the superseded version
+faithfully, wrote the beaten argument into a shipped docstring and a `contributing/` page, retired
+the plan and pushed. Nobody made a mistake — the filing session recorded the correction where it
+belonged and could not write into the other repo, and the absorbing session implemented exactly what
+it was handed. What was missing was a named place to look.
+
+So: **when a plan you are absorbing proposes rather than reports, read its `source_plan` before
+implementing.** `absorb` prints these under `decision owned elsewhere` so the prompt arrives at the
+moment of use. A named plan that no longer exists is not a dead end — the filing repo retires plans
+by deleting them, and `plans.py archive --file <name>` reads one back out of its own retirement
+commit.
+
+[DECISION: **one field and one prompt, deliberately, with no watcher and no staleness scan.**
+Settled 2026-09-09. The corpus of filed plans is small and this failure needed a same-day reversal
+by the user of a decision the filing session had itself proposed — rare, and it cost about an hour
+to recover, so a mechanism firing on every filed plan would be a poor trade. What was missing was
+never that looking is expensive, only that nobody knew there was somewhere to look. It fails safe in
+both directions: an absent field, an unfilled one and a retired target all read as "no further
+information", which is exactly the state before this existed.]
 
 **A plan carrying `source_repo` is not done until its `## Verification` names the original repro**,
 checked in the repo where it happened and after the fix is installed there. A fix verified only

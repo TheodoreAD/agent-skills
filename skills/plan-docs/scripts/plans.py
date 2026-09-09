@@ -1147,6 +1147,7 @@ class PlanFile:
     tags: Counter[str]
     depends_on: tuple[str, ...] = ()
     migrated: bool = False
+    source_plan: str = ""
 
     @property
     def group(self) -> str:
@@ -1219,6 +1220,10 @@ def read_plan(path: Path, where: str) -> PlanFile:
         tags=Counter(match.group(1) for match in TAG_RE.finditer(text)),
         depends_on=parse_depends_on(fields.get("depends_on", "")),
         migrated=bool(MIGRATED_RE.search(text)),
+        # The emitted template leaves this as a `#` comment when nobody filled it in, and a comment
+        # is not an answer — strip it back to blank so "unfilled" and "deliberately empty" read the
+        # same to every caller, which is what they mean: no named owner to go and check.
+        source_plan="" if fields.get("source_plan", "").lstrip().startswith("#") else fields.get("source_plan", ""),
     )
 
 
@@ -2456,11 +2461,21 @@ def write_plan(
     # work here. Twice now a session filed a cross-repo plan that paraphrased the incident instead of
     # citing it — once 2026-08-23 by an agent that had every reason to do better, once 2026-09-01 by
     # the session that was reading the plan describing that failure. Judgement is not the lever.
+    # `source_plan` is the fourth and answers a different question from the other three. They point
+    # at the *evidence*; it points at whoever still owns the **decision**. A filed plan is a snapshot,
+    # and the filing repo can change its mind after it is absorbed — confirmed 2026-09-04, where a
+    # repo filed a placement decision, the user overturned it there the same day, and the absorbing
+    # session implemented the superseded version faithfully, wrote it into a shipped docstring and a
+    # contributing page, retired the plan and pushed. Nobody made a mistake: the filing session wrote
+    # the correction down where it belonged and could not write into the other repo, and the
+    # absorbing session implemented exactly what it was handed. What was missing was a named place to
+    # look. Blank is a legitimate answer and means "this reports a fact, not a proposal".
     if source_repo is not None:
         lines += [
             f"source_repo: {source_repo}",
             "source_session: # transcript filename, or blank",
             "source_moment: # ISO timestamp of the turn",
+            "source_plan: # the filing repo's plan that owns this decision, or blank if it reports a fact",
         ]
     lines += ["---", "", "## Context", ""]
     if source_repo is not None:
@@ -3091,10 +3106,25 @@ def _require_own_repo(routing: Routing, cfg: Config) -> None:
 
 def _report_absorbable(routing: Routing, pending: list[PlanFile], pairs: dict[str, list[str]]) -> int:
     print(f"{len(pending)} plan(s) filed for {routing.rel or routing.repo_root}, awaiting absorption:")
+    owned = []
     for plan in pending:
         related = pairs.get(plan.path.name)
         note = f"  -> references {', '.join(related)}" if related else ""
         print(f"  {plan.path.name:<52} {plan.status}  updated {plan.updated or '?'}{note}")
+        if plan.source_plan:
+            owned.append((plan.path.name, plan.source_plan))
+    # Printed at the moment of use rather than left for a reader to find in the frontmatter, on the
+    # standing argument that a rule whose evidence the tool does not print is a rule the next run
+    # re-derives differently. Not a watcher and not a staleness scan — both were refused with this,
+    # because the corpus of filed plans is small and the failure is rare; what was missing was never
+    # that looking is expensive, only that nobody knew there was somewhere to look.
+    if owned:
+        print()
+        for name, source in owned:
+            print(f"decision owned elsewhere: {name} -> {source}")
+        print("  ^ these propose rather than report, and their source repo may have moved on. Read")
+        print("    the named plan before implementing; if it is gone, plans.py archive --file <name>")
+        print("    reads it back out of its own retirement commit.")
     if pairs:
         _print_consolidation_note()
     print("\nabsorb them with --apply; each moves into this repo's plans/ and leaves the store.")

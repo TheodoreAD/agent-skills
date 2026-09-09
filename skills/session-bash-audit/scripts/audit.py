@@ -286,6 +286,115 @@ def short_project(project: str) -> str:
 
 Predicate = Callable[[str], bool]
 
+# ------------------------------------------------------------------------------------------------
+# Parallel-session safety, added 2026-09-10.
+#
+# `~/AGENTS.md` credits four rules with every survival on the one evening this machine's concurrency
+# was measured — commit by pathspec, undo by SHA, `plans.py commit`'s private index, and reading the
+# ahead-range before pushing. Not one of them was in this table, so "the rules are holding" was an
+# assumption rather than a reading. Three of the four are properties of a single command and become
+# rows below.
+#
+# **The fourth is not, and saying so is the point.** "Did this session read `git log <upstream>..HEAD`
+# before it pushed" is a question about the order of two calls, and every predicate here judges one
+# command with no memory of the last. A row that answered it by matching the push alone would score
+# every push a miss, including the careful ones. It stays unmeasured and named rather than
+# approximated, because a row nobody can satisfy is one that gets ignored — the same reason
+# `grep-r-not-rg` has no expectation.
+
+
+def _store_write(cmd: str) -> bool:
+    """A mutating `git -C <plans store>` where `plans.py commit` was owed.
+
+    `git-C-mutating` already counts every cross-repo mutation, but it cannot say which are this one,
+    and this one is not really a cross-repo lapse: `plan-docs` sends every session to that directory
+    and the deviations were argued in their own commit messages, on the correct reasoning that a
+    pathspec commit does not ship the index. The cost that made the argument reasonable — one commit
+    per file — is gone as of 2026-09-09, so a hit after that date is a genuine miss rather than a
+    toll being avoided, and separating the row is what lets the two be told apart.
+
+    The store is identified by path: `$PLANS_HOME` and `$PLANS_SENSITIVE_HOME` when this machine
+    exports them, and otherwise the convention's default layout, a `plans` or `plans-*` directory
+    **directly under `$HOME`**. The "directly under" half is not decoration — matching the basename
+    alone tagged `~/projects/.../plans-viewer`, an ordinary repo that merely reads like a store, and
+    a row that manufactures a violation out of a repo name is worse than one that misses a store
+    somebody moved. A store outside both is under-counted, which is the direction that cannot invent
+    a miss.
+    """
+    match = re.search(r"\bgit\s+-C\s+(\S+)\s+(?:commit|add|rm|mv|reset)\b", strip_heredoc(cmd))
+    if not match:
+        return False
+    target = Path(_absolute_target(match.group(1)))
+    declared = {Path(v) for key in ("PLANS_HOME", "PLANS_SENSITIVE_HOME") if (v := os.environ.get(key))}
+    if target in declared:
+        return True
+    home = Path.home()
+    return target.parent == home and (target.name == "plans" or target.name.startswith("plans-"))
+
+
+def _cut_message(cmd: str) -> bool:
+    """A `-m`/`--body` argument the shell would cut short, because the prose closed its own quote.
+
+    `~/AGENTS.md` forbids backticks and `$` in a commit message: both are live inside a double-quoted
+    argument and make the shell *run* something. The quote character is live in the same argument for
+    a different reason — it **ends** it — and was not named, because the failure looks nothing like a
+    quoting problem: the error quotes a fragment of your own prose back, so it reads as a path
+    problem.
+
+    Two instances on 2026-09-09, three hours apart, in two repos, by two sessions that were not
+    looking for it — and they came out opposite ways, which is the finding. One message contained
+    `said "the removals" in the plural`: the remainder held a `/`, zsh tried it as a path, and the
+    **commit landed** with the message cut mid-sentence. The other contained `deciding "still ours?"
+    from the registry`: the remainder held a `?`, zsh globbed it, found no match, and `nomatch`
+    **aborted before git ran at all**. So which of the two you get is decided by punctuation later in
+    your own sentence, which no author can reason about while writing prose. Recovery differs too —
+    an amend after checking `HEAD`, or a plain retry — so the first thing to establish is whether a
+    commit happened.
+
+    Detection is the shell's own parse rather than a guess at intent: take the delimiter that opens
+    the argument, find where the shell would close it, and look at the very next character. A real
+    argument boundary is whitespace or the end of the command — `-m "subject" -- a.md`. A **word
+    character** there means the close landed inside a sentence, which is the whole defect:
+    `said "the` closes on the quote before `the`, and `deciding "still` on the one before `still`.
+
+    The first attempt asked instead whether the same delimiter reappeared anywhere after the close,
+    glued to a word. That tagged `git commit -m "subject" -- "a path with spaces.md"`, because the
+    closing quote of a legitimate later argument is glued to a word too. The next character is the
+    discriminator; a quote reopened after whitespace never is.
+
+    [PITFALL: **finding the close means walking the string, not calling `find`.** A backslash escapes
+    the delimiter inside a double-quoted argument, so `\\"` is a quote the author put in their prose
+    and not the end of the argument — and a plain search stops there, declares the message cut, and
+    reports a correct command as a defect. Caught on this row's own first corpus run, 2026-09-10: 30
+    hits over 14 days where the plans behind the row documented two, and the samples were ordinary
+    commit messages containing escaped quotes. Single quotes take the opposite rule and get it for
+    free: no escape exists inside them, so the first one really does close.]
+    """
+    body = strip_heredoc(cmd)
+    # The gate asks a question about shell *structure* — is a commit actually being run — so it is
+    # asked with quoted spans blanked, exactly as `_rx_unquoted` does and for the same reason. The
+    # scan below then needs the raw text, because the message is the subject rather than the noise.
+    # Skipping this tagged an `rg -n -o '…|git commit -m "contributing: the deps|…'` over a
+    # transcript: a search for the shape, counted as the shape. Caught on the row's first corpus run.
+    structure = strip_quoted(body)
+    if not re.search(r"(?:^|&&|;|\||\n)\s*(?:git\s+(?:-C\s+\S+\s+)?commit\b|gh\s+(?:pr|issue)\b)", structure):
+        return False
+    opened = re.search(r"(?:-m|--message|--body)\s+([\"'])", body)
+    if not opened:
+        return False
+    delim = opened.group(1)
+    i = opened.end()
+    while i < len(body):
+        if delim == '"' and body[i] == "\\":
+            i += 2
+            continue
+        if body[i] == delim:
+            break
+        i += 1
+    if i + 1 >= len(body):
+        return False
+    return bool(re.match(r"\w", body[i + 1]))
+
 
 def _rx(pattern: str) -> Predicate:
     compiled = re.compile(pattern)
@@ -420,6 +529,40 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
         "a bundled -r took the rest of the group as its replacement string: `rg -rn` prints "
         "rewritten matches and no line numbers, `rg -ril` searches case-sensitively for lines where "
         "you asked for a case-insensitive file list. Spell --replace in full when you mean it",
+    ),
+    "git-add-all": (
+        _rx_unquoted(
+            r"(?:^|&&|;|\||\n)\s*git\s+(?:-C\s+\S+\s+)?add\b[^|;&\n]*?(?:\s-A\b|\s--all\b|\s-u\b|\s--update\b|\s\.(?=\s|$))"
+        ),
+        "a blanket stage on a machine where sessions share one working tree: a parallel session's "
+        "edit landing between your last `git status` and your commit ships under your message, and "
+        "`git status --short` beforehand is not protection because it reports the staged set rather "
+        "than what changes while you read it. Name the paths, or commit by pathspec",
+    ),
+    "git-undo-relative": (
+        # `\bHEAD` but a lookbehind for `@`, because `\b` before `@` can never match: `@` is not a
+        # word character, so the boundary the engine needs is not there. Caught by the test, which
+        # named all three spellings — a regex that quietly covered two of the three would have
+        # reported a rate for a rule it was half measuring.
+        _rx_unquoted(r"(?:^|&&|;|\||\n)\s*git\s+(?:-C\s+\S+\s+)?reset\b[^|;&\n]*(?:\bHEAD|(?<![\w@])@)(?:~\d*|\^+)"),
+        "`HEAD~1` silently retargets when another session commits in the interval — it then resolves "
+        "to your commit and the reset discards theirs, with no error, because both readings are "
+        "valid git. Read the SHA (`git rev-parse`, or the reflog) and reset to that",
+    ),
+    "store-write-by-git": (
+        _store_write,
+        "a mutating `git -C` against the plans store, where `plans.py commit` builds the commit from "
+        "HEAD plus the named paths through a private index. Until 2026-09-09 that command took one "
+        "file, so an absorption cost N commits and four sessions either argued their way past the "
+        "rule or paid it; it takes several paths now, so a hit after that date is a miss rather than "
+        "a toll",
+    ),
+    "cut-message": (
+        _cut_message,
+        "prose closed its own quote inside a `-m`/`--body` argument, so the shell cut the message "
+        "there and reinterpreted the rest of the paragraph. Two instances 2026-09-09, three hours "
+        "apart in two repos: one landed a commit truncated mid-sentence, the other aborted before "
+        "git ran. Which you get depends on punctuation later in your own sentence",
     ),
 }
 
@@ -587,6 +730,10 @@ SESSION_ROWS = [
     "find-exempt",
     "rg-replace",
     "rg-replace-bundle",
+    "git-add-all",
+    "git-undo-relative",
+    "store-write-by-git",
+    "cut-message",
 ]
 
 # What a re-measurement after the 2026-08-24 changes (acceptEdits default, rewritten ~/AGENTS.md
@@ -609,6 +756,17 @@ EXPECTATIONS: dict[str, str] = {
     # `zero` there would demand that correct usage stop. Added 2026-09-06, once the split existed to
     # key on. `rg-replace` itself stays unjudged for the same reason `grep-r-not-rg` does.
     "rg-replace-bundle": "zero",
+    # The parallel-session four, added 2026-09-10. Three are `zero` because each has an exact
+    # alternative that costs nothing — name the paths, read the SHA, call `plans.py commit` — so
+    # there is no correct usage for the verdict to demand the end of. `cut-message` is `zero` on the
+    # same ground and one more: it is the only row in this table whose hit means work was actually
+    # lost, a commit truncated or a command that never ran, rather than a habit with a cost argued
+    # in prose. The fourth rule of that group, reading the ahead-range before a push, has no row —
+    # see the comment above `_store_write` for why a sequencing question cannot be one.
+    "git-add-all": "zero",
+    "git-undo-relative": "zero",
+    "store-write-by-git": "zero",
+    "cut-message": "zero",
     # `exit-masked` is deliberately absent, decided 2026-09-06. It measures a **hazard**, not a
     # defect: whether a masked exit code ever cost anything depends on the shell that ran the
     # command, and a shell setting `pipefail` carries the status through the pipe so nothing was
@@ -976,6 +1134,10 @@ CHAIN_TAGS = (
     "git-C-own-repo",
     "git-mutating-in-chain",
 )
+# A new row belongs here on the same commit that adds it. The table's own instruction is to read the
+# sample before counting a hit a defect, and a row whose samples never print cannot be read that way
+# by anybody — the first run of `store-write-by-git` and `cut-message` returned 174 and 30 against
+# plans documenting 7 and 2, and there was no way to see what they had matched.
 SAMPLE_TAGS = (
     "git-C-mutating",
     "git-mutating-in-chain",
@@ -986,6 +1148,10 @@ SAMPLE_TAGS = (
     "git-C-own-repo",
     "sed-n",
     "cat-view",
+    "git-add-all",
+    "git-undo-relative",
+    "store-write-by-git",
+    "cut-message",
 )
 
 

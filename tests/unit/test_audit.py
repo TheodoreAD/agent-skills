@@ -598,3 +598,140 @@ def test_save_baseline_in_session_mode_refuses_rather_than_being_skipped(monkeyp
     assert refusal.value.code == 2
     assert "not a baseline" in capsys.readouterr().err
     assert not (tmp_path / "b.json").exists()
+
+
+# --------------------------------------------------------------------------------------------
+# the parallel-session four
+#
+# `~/AGENTS.md` credits four rules with every survival on the one evening this machine's concurrency
+# was measured, and none of them was in the table until 2026-09-10 — so "the rules are holding" was
+# an assumption. Three became rows; the fourth is a sequencing question and deliberately did not.
+
+
+def test_a_blanket_stage_is_tagged_and_a_named_path_is_not():
+    """One working tree, several sessions: a parallel session's edit landing between your last
+    `git status` and your commit ships under your message, and `status --short` beforehand reports
+    the staged set rather than what changes while you read it."""
+    assert "git-add-all" in _call("git add -A").tags
+    assert "git-add-all" in _call("git add .").tags
+    assert "git-add-all" in _call("git add --all").tags
+    assert "git-add-all" in _call("git add -u").tags
+
+    assert "git-add-all" not in _call("git add plans/2026-09-09-a.md").tags
+    assert "git-add-all" not in _call("git add ./plans/a.md tests/unit/b.py").tags
+    # A message naming the trap is not the trap — every row keyed on a command name is matched with
+    # quoted spans blanked, and this row is no exception.
+    assert "git-add-all" not in _call('git commit -m "stage by path, never git add -A"').tags
+
+
+def test_an_undo_by_relative_ref_is_tagged_and_one_by_sha_is_not():
+    """`HEAD~1` silently retargets when another session commits in the interval: it resolves to your
+    commit and the reset discards theirs, with no error, because both readings are valid git."""
+    assert "git-undo-relative" in _call("git reset --soft HEAD~1").tags
+    assert "git-undo-relative" in _call("git reset --hard HEAD^").tags
+    assert "git-undo-relative" in _call("git reset @~2").tags
+
+    assert "git-undo-relative" not in _call("git reset --soft 4002efd").tags
+    assert "git-undo-relative" not in _call("git reset --soft $(git rev-parse HEAD)").tags
+
+
+def test_a_store_write_by_git_is_tagged_by_the_path_it_names():
+    """`plans.py commit` builds the commit from HEAD plus the named paths through a private index.
+    The row is separate from `git-C-mutating` because this was never really a cross-repo lapse —
+    `plan-docs` sends every session to that directory, and until 2026-09-09 its command took one
+    file, so the deviation bought one commit instead of N and was argued for in the open.
+
+    Paths are built from the real `Path.home()` rather than written out, because the check is
+    "directly under home" and a literal `/home/u/plans` passes on nobody's machine."""
+    home = Path.home()
+    assert "store-write-by-git" in _call(f"git -C {home}/plans commit -m 'x'").tags
+    assert "store-write-by-git" in _call(f"git -C {home}/plans-sensitive add -- a.md").tags
+    assert "store-write-by-git" in _call("git -C ~/plans rm -- b.md").tags
+
+    # Read-only verbs are how a session inspects a store it must not write to, and are not the miss.
+    assert "store-write-by-git" not in _call(f"git -C {home}/plans status --short").tags
+    assert "store-write-by-git" not in _call(f"git -C {home}/plans log --oneline -3").tags
+    # The reason "directly under home" is in the check rather than just the basename: this is an
+    # ordinary repo that reads like a store, and tagging it would manufacture a violation out of a
+    # name somebody chose.
+    assert "store-write-by-git" not in _call(f"git -C {home}/projects/plans-viewer commit -m 'x'").tags
+
+
+def test_a_store_declared_by_environment_is_recognised_wherever_it_sits(monkeypatch, tmp_path):
+    """The default layout is a fallback, not the definition — `plan-docs` routes both tiers by
+    config, and a store moved off home would otherwise be invisible to this row on the one machine
+    where it matters."""
+    moved = tmp_path / "elsewhere" / "planning-store"
+    assert "store-write-by-git" not in _call(f"git -C {moved} commit -m 'x'").tags
+
+    monkeypatch.setenv("PLANS_HOME", str(moved))
+    assert "store-write-by-git" in _call(f"git -C {moved} commit -m 'x'").tags
+
+
+def test_prose_that_closes_its_own_quote_is_tagged_in_both_shapes_it_failed_as():
+    """Both real commands, 2026-09-09, three hours apart in two repos by two sessions that were not
+    looking for it — and they came out opposite ways. The first landed a commit truncated
+    mid-sentence, because the remainder held a `/` that zsh tried as a path. The second never ran at
+    all, because the remainder held a `?` that zsh globbed and `nomatch` aborted on.
+
+    So the failure is not "the commit lands truncated"; it is that the shell reinterprets the rest of
+    your paragraph and what it does next depends on characters later in your own sentence."""
+    landed = 'git commit -m "absorb\'s own report said "the removals" in the plural one line above/"'
+    aborted = 'git commit -m "a prune deciding "still ours?" from the registry alone"'
+
+    assert "cut-message" in _call(landed).tags
+    assert "cut-message" in _call(aborted).tags
+
+
+def test_a_correctly_quoted_message_is_not_tagged_however_long():
+    """The row has to survive the shape this corpus writes every day: a multi-paragraph body, a
+    pathspec after it, and an apostrophe in ordinary prose."""
+    fine = 'git commit -m "subject\n\nA body that spans paragraphs and uses git\'s own name." -- a.md b.md'
+    assert "cut-message" not in _call(fine).tags
+    assert "cut-message" not in _call("git commit -m 'single quoted, with a \"quoted phrase\" inside'").tags
+    # A pathspec that genuinely needs quoting opens its quote on whitespace, so it cannot look like a
+    # quote the author wrote inside a sentence.
+    assert "cut-message" not in _call('git commit -m "subject" -- "a path with spaces.md"').tags
+
+
+def test_reading_the_ahead_range_before_a_push_has_no_row_and_that_is_deliberate():
+    """The fourth rule of the group is a question about the order of two calls, and every predicate
+    here judges one command with no memory of the last. A row matching the push alone would score
+    every push a miss, including the careful ones — a verdict nobody can satisfy is one that gets
+    ignored, which is why `grep-r-not-rg` has no expectation either."""
+    assert not any("ahead" in name or "before-push" in name for name in audit.PATTERNS)
+    assert "git push" not in str(audit.PATTERNS.get("git-add-all", ""))
+
+
+def test_an_escaped_quote_inside_a_message_is_not_a_cut(monkeypatch):
+    """A backslash escapes the delimiter inside a double-quoted argument, so `\\"` is a quote the
+    author put in their prose rather than the end of the argument. The first version searched for
+    the next delimiter and stopped there, so an ordinary message quoting a phrase with escapes read
+    as cut. Caught on this row's own first corpus run, 2026-09-10: 30 hits over 14 days against
+    plans documenting two, and the samples were correct commands."""
+    escaped = 'git commit -m "plan-docs: the store tier holds \\"unscoped\\" plans and nothing else"'
+    assert "cut-message" not in _call(escaped).tags
+
+    # The single-quoted form has no escape at all, so its first quote really does close — the two
+    # delimiters take opposite rules and conflating them is what the walk exists to avoid.
+    assert "cut-message" in _call("git commit -m 'a phrase 'glued' to a word'").tags
+
+
+def test_a_commit_named_inside_a_search_pattern_is_not_a_commit():
+    """The row that keys on a command name has to be gated on shell structure, not on the raw text —
+    the same one-directional bias every other name-keyed row here documents, landing on exactly the
+    session that is working on the audit. This is the real command from the row's first corpus run:
+    an `rg` over a transcript whose pattern quotes the very shape being counted."""
+    searching = (
+        'rg -n -o \'"timestamp":"[^"]+"|git commit -m "contributing: the deps|"type":"tool_result"\' '
+        "/home/tdumitrescu/.claude/projects/-home-x/cabd6f16.jsonl"
+    )
+    assert "cut-message" not in _call(searching).tags
+
+
+def test_the_commit_this_row_was_written_from_is_tagged():
+    """The one that produced the finding, 2026-09-09, reduced to its shape: a phrase quoted inside a
+    double-quoted message, with prose continuing after it. It landed as a commit whose message
+    stopped at `said the`, and the shell then failed on the remainder."""
+    real = 'git commit -m "absorb\'s own report said "the removals" in the plural one line above"'
+    assert "cut-message" in _call(real).tags

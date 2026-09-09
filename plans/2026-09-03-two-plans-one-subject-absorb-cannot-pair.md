@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-06
+status: landed
+updated: 2026-09-09
 source_repo: github.com-personal/power-user-linux-setup
 source_session: cd4f9f9e-379a-4bb2-986c-1a99e0f84ac0.jsonl
 source_moment: 2026-09-03T23:04:44+03:00
@@ -41,25 +41,24 @@ does run (name equality) is defeated by the ordinary act of choosing a descripti
 
 ## What might actually work
 
-[NEEDS CLARIFICATION: **is this `absorb`'s job, or the filing session's?** Two very different fixes.
-`absorb` could surface likely pairs among what it is about to hand over — title-word overlap across
-the incoming set and the repo's existing `plans/`, reported as "these two may be one subject" with
-no automatic action, in the same spirit as the existing `references` line. The filing session could
-instead check the target repo's `plans/` and the store mirror for the same subject _before_ writing,
-which is cheaper but only helps when the other plan already exists — and in this instance the two
-were hours apart, so it would have caught it in one direction and not the other.]
+[DECISION: **neither — a line in the absorb procedure, which is the third option this question did
+not list.** Shipped 2026-09-09. `absorb` surfacing likely pairs was refused with the next question's
+answer; the filing session checking first was refused on its own measured ground: it only helps when
+the other plan already exists, and these two were hours apart, so it catches one direction and not
+the other.]
 
-[NEEDS CLARIFICATION: what signal is good enough without being noise? Filename word overlap is
-crude; both of these share only "skills". Frontmatter is no help — neither carries a topic field,
-and adding one is a new thing to maintain and get wrong. The honest option may be that no automatic
-signal is reliable and the fix is a line in the absorb procedure telling the session to read the
-incoming titles as a set and ask whether any two are one subject, which is judgement rather than
-detection.]
+[DECISION: **no automatic signal — a prompt to think.** The honest option in the question turned out
+to be the right one, and it is a decision rather than a fallback. Filename word overlap is crude and
+this pair shares only one word. A topic field is a new thing to maintain and get wrong. The deciding
+argument is the one this plan already made about merges: **a weak detector that is trusted is worse
+than a prompt to think**, because it converts "I should look" into "the tool would have told me" —
+and the section it lives in already turns on a wrongly-merged pair destroying a separation somebody
+reasoned about in writing.]
 
-[NEEDS CLARIFICATION: does the same gap apply within one repo's own `plans/`? Nothing prevents two
-sessions in the same repo from opening two plans on one subject either, and `plans.py list` groups
-by status rather than by topic, so a reader scanning it sees them apart. The store case is the one
-observed; the in-repo case is the same mechanism with no store involved.]
+[DECISION: **yes, and the same prompt covers it.** Nothing prevents two sessions in one repo opening
+two plans on one subject either, and `list` groups by status rather than by topic so a reader sees
+them apart. Recorded in the skill as the same mechanism with no store involved; the in-repo case is
+still unobserved, so nothing was built for it beyond saying it exists.]
 
 ## A second, smaller instance of the same shape
 
@@ -98,11 +97,26 @@ the other reading existed. The clause above covers this unchanged; what the inst
 `skills-state` at the top and reports it at the bottom is exposed on a fast run too, which is
 exactly the run where nobody would think to re-check.
 
-## Recommended direction
+## What landed, 2026-09-09
 
-Decide the `absorb`-versus-filing-session question first; it decides whether anything is built at
-all. The judgement-only option — a line in the absorb procedure asking the session to read the
-incoming set as a set — is worth taking seriously rather than treating as the fallback, because both
-detection ideas above are weak and a weak detector that is trusted is worse than a prompt to think.
+Both halves, and nothing was built.
 
-The `skills-state` clause is independent, small, and can land whenever someone is next in the file.
+`plan-docs`' absorb section now says to read the incoming titles as a set and ask whether any two
+are one subject, with this pair as the worked instance, the least-visible-when-most-likely pitfall,
+and the decision recording why no detector. `session-harvest` step 0 gained the clause that the
+`skills-state` verdict is a reading rather than a fact, carrying both intervals — thirteen hours and
+ninety seconds — because the second is what makes it a rule for fast runs too.
+
+## Migrated to
+
+- **The pairing gap, the worked pair, and why a prompt beat a detector** -> `plan-docs`' absorb
+  section, immediately after the `references …` paragraph it extends. That paragraph already
+  establishes that the tool reports and the judgement is yours, so this is one more thing the
+  judgement covers rather than a new mechanism to learn.
+- **The in-repo case** -> the same place, named as unobserved so nobody reads it as measured.
+- **The `skills-state` clause** -> `session-harvest` step 0, next to the four-row table whose rows
+  are the thing that flips.
+
+Deliberately not migrated: the two plan filenames from the 2026-09-03 pair. Both are retired, and
+the skill describes them by what they were about — a reader needs the shape, and a pointer at two
+deleted files would be provenance dressed as a reference.

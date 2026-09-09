@@ -28,7 +28,9 @@ not looking for them:
 
 - **A commit landed in the shared tree mid-session, from a session working elsewhere.** `4345dce` at
   23:44:21, between two `skills-state` calls ninety seconds apart — which inverted that check's
-  verdict and its remedy, recorded in `2026-09-03-two-plans-one-subject-absorb-cannot-pair.md`.
+  verdict and its remedy. Fixed 2026-09-09: `session-harvest` step 0 now says the verdict is a
+  reading rather than a fact, and carries the ninety-second interval precisely so it is not read as
+  a long-interval precaution.
 - **A plan was filed for this repo at 23:50**, after this session's own `absorb` had reported one
   waiting and before its next command, so the count it had just read was already wrong.
 - **The plans store held three deletions belonging to another session's absorption** at the moment

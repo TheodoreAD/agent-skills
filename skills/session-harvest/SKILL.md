@@ -425,6 +425,16 @@ For what survives the significance test:
   and was about to file it — two plans already owned the contradiction, one of them citing "25–36%
   for two other sessions the same day". What survived as genuinely new was one row nobody had
   measured, and it landed in the existing plan as a fourth sample.
+
+  **Commit that edit in the same breath.** This rule sends you to edit a file you do not own, in a
+  directory several sessions write to at once, and between the edit and the commit another session
+  can absorb it — `absorb --apply` copies the plan into the target repo and deletes it from the
+  store, so `plans.py commit` then records a deletion under the message you wrote for an addition.
+  Confirmed 2026-09-04: 76 deletions, 0 insertions, and the content had survived, absorbed whole.
+  `commit` now says so when it happens and names where the file went, so a `(removed)` result is
+  information rather than an eight-minute investigation — but the interval is yours to keep short.
+  Every other race on this machine is handled by re-deriving state immediately before acting, and
+  this is that rule for a file you are editing rather than a count you are reading.
 - **Already covered → skip.** If an existing doc already says this, don't write a duplicate — check
   first.
 - **Meta-conventions about how to build things in this ecosystem (e.g. "skills should do X by

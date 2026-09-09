@@ -88,7 +88,7 @@ reaches it:
 python3 <path> where                        # which directories this repo reads and writes
 python3 <path> repos --search <words>       # what each repo is for, to route a plan by
 python3 <path> new <topic> --for <repo>     # something belonging to a repo you are not in
-python3 <path> commit <file> -m "<msg>"     # commit one plan alone, whatever else is staged
+python3 <path> commit <file>... -m "<msg>"  # commit these plans alone, whatever else is staged
 python3 <path> new <topic> --unscoped       # an idea with no repo yet
 python3 <path> graduate <file> --to <repo>  # …once it has one
 
@@ -603,16 +603,32 @@ python3 <path> commit <the plan> -m "<repo>: <what it is>"
 
 **Use the command rather than `git add && git commit`, because the store is one working tree with
 one index and every session on the machine writes to it.** `commit` builds the commit from `HEAD`
-plus that one file, through a private index, so a parallel session's staged work can neither ride
-along under your message nor be disturbed by your commit. Measured 2026-08-29, before it existed: a
-`git add` was swept into another session's commit twice in one sitting, each time reporting
-`nothing added to commit` — which reads exactly like the add failed, when in fact it had succeeded
-and someone else's commit had already taken it. The content was never wrong; the message described a
-different change than the diff it carried, and `git log -- <path>` was the only way to find out
-where the file actually landed.
+plus the files you name, through a private index, so a parallel session's staged work can neither
+ride along under your message nor be disturbed by your commit. Measured 2026-08-29, before it
+existed: a `git add` was swept into another session's commit twice in one sitting, each time
+reporting `nothing added to commit` — which reads exactly like the add failed, when in fact it had
+succeeded and someone else's commit had already taken it. The content was never wrong; the message
+described a different change than the diff it carried, and `git log -- <path>` was the only way to
+find out where the file actually landed.
 
 Doing it by hand was the single most repeated shape on this machine — **142 calls across 23
 sessions**, measured 2026-09-01 — which is what earned it a command rather than a longer sentence.
+
+**Name every file of one logical change in one call; an absorption is one commit, not N.** The
+command took a single file until 2026-09-09, and four sessions met the cost: two reasoned their way
+to `git -C <store> commit -- <dir>` — correctly, since a pathspec commit does not ship the index —
+one paid it as two commits with two messages for one absorption, and one hit the plural at seven,
+after five sessions in three repos had filed into the same queue. Each deviation was stated in full
+in its own commit message, so this is evidence about the wording rather than about those sessions: a
+rule that gives a **mechanism** can be argued around by anyone who accepts the mechanism. Naming
+several paths is that same private index with a loop, so there is nothing left to argue with.
+
+`-m` is required once you name more than one, because the generated message names a single plan's
+topic and no default describes a set. There is deliberately **no whole-directory form**: a directory
+argument makes it easy to sweep a file this session never touched, and the store has held another
+session's staged deletions in a second mirror at exactly the moment one of these commits was made —
+a `<dir>` argument was correct there by one directory level, and nothing in the command would have
+said so.
 
 **Pushing is a separate, gated step, and only the shareable tier has anywhere to push to.** Scan
 before pushing and push only on a clean result — `--mode staged` on the commit you are about to
@@ -1113,7 +1129,7 @@ Code contracts and verification logs are usually the bulk of the deletable volum
      Pass the path, not a bare filename — nothing can search for a file that no longer exists. It
      works whether the deletion is staged (`git rm`) or the file was simply removed, and `git rm`
      also prunes the directory it just emptied, which is ordinary for a store mirror holding one
-     last plan.
+     last plan. Retiring several at once is one call and one message, same as an absorption.
    - Don't blindly swap the old path for the new one at every hit. A reference to a specific quoted
      section title needs that title updated to match where the content actually landed — a valid
      path aimed at a renamed heading still dangles. Some cited content is already duplicated at a

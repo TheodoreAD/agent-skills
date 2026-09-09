@@ -2476,6 +2476,82 @@ def test_commit_takes_a_retirement_deletion_in_either_half_staged_state(ws, caps
     assert "retire it" in capsys.readouterr().out, "a retired plan has to read back out of its deletion"
 
 
+def test_commit_takes_a_whole_absorption_as_one_commit(ws, capsys):
+    """An absorption's natural unit is every plan that left one mirror, and the one-file signature
+    turned that into N commits with N messages for one logical change. Four sessions met it: two
+    argued their way to `git -C <store> commit -- <dir>`, one paid the cost as two commits, and one
+    hit the plural at seven. The reasoning that produced the deviation now produces this command.
+
+    The parallel-session guarantee has to survive the loop, so a foreign staged file is planted the
+    same way the single-file test plants one."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    for topic in ("first", "second", "third"):
+        plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    mirror = ws.sensitive / "client.com-bitbucket" / "team" / "api"
+    filed = sorted(mirror.glob("*.md"))
+    assert len(filed) == 3
+
+    theirs = ws.sensitive / "_unscoped" / "2026-01-01-theirs.md"
+    theirs.parent.mkdir(parents=True, exist_ok=True)
+    theirs.write_text("---\nstatus: idea\n---\n\n## Context\n")
+    subprocess.run(["git", "add", "--", str(theirs.relative_to(ws.sensitive))], cwd=ws.sensitive, check=True)
+
+    argv = ["commit", *[str(p) for p in filed], "-m", "api: three filed at once", "--path", str(ws.personal)]
+    assert plans.main(argv) == 0
+    out = capsys.readouterr().out
+    assert out.count("file:      ") == 3
+
+    touched = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        cwd=ws.sensitive,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert sorted(touched) == sorted(p.relative_to(ws.sensitive).as_posix() for p in filed)
+    assert theirs.relative_to(ws.sensitive).as_posix() not in touched, "a set commit still must not sweep"
+
+    still_staged = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"], cwd=ws.sensitive, capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert theirs.relative_to(ws.sensitive).as_posix() in still_staged, "their staged work was disturbed"
+
+
+def test_commit_refuses_a_set_with_no_message_because_no_default_describes_one(ws, capsys):
+    """The generated message names one plan's topic. Letting a set fall back to it would produce
+    exactly what the multi-file form exists to prevent: one message describing a third of its diff."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for topic in ("one", "two"):
+        plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    filed = sorted((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*.md"))
+
+    assert plans.main(["commit", *[str(p) for p in filed], "--path", str(ws.personal)]) == 1
+    assert "-m is required" in capsys.readouterr().err
+
+
+def test_commit_refuses_paths_that_span_two_repositories(ws, capsys):
+    """One commit cannot span two repositories, and the failure to catch it would be a git error
+    naming a path outside the repo rather than the reason. The two stores are the realistic pair:
+    the tiered split puts a client plan in one and a personal plan in the other."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    plans.main(["new", "client-side", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    plans.main(["new", "loose-idea", "--unscoped", "--path", str(ws.personal)])
+    capsys.readouterr()
+    sensitive_plan = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-client-side.md"))
+    shareable_plan = next((ws.store / "_unscoped").glob("*-loose-idea.md"))
+
+    argv = ["commit", str(sensitive_plan), str(shareable_plan), "-m", "both", "--path", str(ws.personal)]
+    assert plans.main(argv) == 1
+    assert "different repositories" in capsys.readouterr().err
+
+
 def test_commit_still_refuses_a_name_that_never_existed(ws, capsys):
     """The deleted-plan lookup must not turn a typo into a confusing git error. It resolves a *path*
     git still knows at HEAD and nothing else, so anything else falls through to `locate`."""

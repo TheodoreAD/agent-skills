@@ -61,7 +61,7 @@ import sys
 import tempfile
 import tomllib
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from functools import cached_property
@@ -832,8 +832,8 @@ def head_commit(repo: Path) -> str | None:
     return None
 
 
-def commit_one_path(repo: Path, path: Path, message: str) -> str:
-    """Commit exactly one file, through a private index, so no parallel session's work rides along.
+def commit_paths(repo: Path, paths: Sequence[Path], message: str) -> str:
+    """Commit exactly these files, through a private index, so no parallel session's work rides along.
 
     Every session on this machine writes to one store with **one** git index, and the convention's
     own rule — commit the moment the plan is written — puts several of them inside that window at
@@ -845,40 +845,53 @@ def commit_one_path(repo: Path, path: Path, message: str) -> str:
     the commit with plumbing against `GIT_INDEX_FILE`, so the shared index is read but never used
     to decide what the commit contains:
 
-        read-tree HEAD → add just this path → write-tree → commit-tree → update-ref
+        read-tree HEAD → add just these paths → write-tree → commit-tree → update-ref
 
-    The shared index is still updated for this one path first, deliberately. Without it HEAD would
-    carry a file the index does not, and `git status` would show a staged deletion to every other
-    session in that tree. Adding one known path is what the old advice did anyway; what changes is
-    that the *commit* is built from HEAD plus that path, rather than from whatever the shared index
-    happened to hold.
+    The shared index is still updated for those paths first, deliberately. Without it HEAD would
+    carry files the index does not, and `git status` would show staged deletions to every other
+    session in that tree. Adding known paths is what the old advice did anyway; what changes is
+    that the *commit* is built from HEAD plus those paths, rather than from whatever the shared
+    index happened to hold.
+
+    **Several paths rather than one, since 2026-09-09.** The one-file signature made an absorption
+    into N commits for one logical change, and four sessions met that: two argued their way to
+    `git -C <store> commit -- <dir>` on the correct reasoning that a pathspec commit does not ship
+    the index, one paid the cost as two commits with two messages for one absorption, and one hit
+    the plural at seven. A rule stating a *mechanism* can be argued around by anyone who accepts it,
+    and this is the same mechanism with a loop — so the reasoning that produced the deviation now
+    produces the command instead.
     """
-    rel = path.relative_to(repo).as_posix()
-    # Retirement commits a path that no longer exists, so "stage it" means "stage its removal", and
-    # the shared index may already have it. `git add -- <path>` does record a removal — but only
-    # while the index still holds the entry to match; once `git rm` has staged the deletion there is
-    # nothing left for the pathspec to match and the same command is a fatal error. Measured
-    # 2026-09-01: both are ordinary halfway points of the retirement procedure, so both must work.
-    # The private index below needs no such care: it is read from HEAD, which still has the file.
-    already_removed = not path.exists() and bool(git(["diff", "--cached", "--name-only", "--", rel], repo))
-    if not already_removed and git(["add", "--", rel], repo) is None:
-        raise PlanError(f"could not stage {rel} in {repo}")
+    rels = [path.relative_to(repo).as_posix() for path in paths]
+    for path, rel in zip(paths, rels, strict=True):
+        # Retirement commits a path that no longer exists, so "stage it" means "stage its removal",
+        # and the shared index may already have it. `git add -- <path>` does record a removal — but
+        # only while the index still holds the entry to match; once `git rm` has staged the deletion
+        # there is nothing left for the pathspec to match and the same command is a fatal error.
+        # Measured 2026-09-01: both are ordinary halfway points of the retirement procedure, so both
+        # must work. The private index below needs no such care: it is read from HEAD, which still
+        # has the file.
+        already_removed = not path.exists() and bool(git(["diff", "--cached", "--name-only", "--", rel], repo))
+        if not already_removed and git(["add", "--", rel], repo) is None:
+            raise PlanError(f"could not stage {rel} in {repo}")
 
     with tempfile.TemporaryDirectory() as tmp:
         env = {"GIT_INDEX_FILE": str(Path(tmp) / "index")}
         head = head_commit(repo)
         if head and git(["read-tree", head], repo, env) is None:
             raise PlanError(f"could not read HEAD into a private index in {repo}")
-        if git(["add", "--", rel], repo, env) is None:
-            raise PlanError(f"could not stage {rel} into a private index in {repo}")
+        # One `add` for the whole set rather than one per path: git applies them to the private index
+        # atomically enough that a half-staged tree cannot be written, and a partial commit here
+        # would be the very thing this function exists to prevent.
+        if git(["add", "--", *rels], repo, env) is None:
+            raise PlanError(f"could not stage {', '.join(rels)} into a private index in {repo}")
         tree = git(["write-tree"], repo, env)
     if not tree:
-        raise PlanError(f"could not write a tree for {rel} in {repo}")
+        raise PlanError(f"could not write a tree for {', '.join(rels)} in {repo}")
 
     parents = ["-p", head] if head else []
     commit = git(["commit-tree", tree, *parents, "-m", message], repo)
     if not commit:
-        raise PlanError(f"could not create a commit for {rel} in {repo}")
+        raise PlanError(f"could not create a commit for {', '.join(rels)} in {repo}")
     if git(["update-ref", "HEAD", commit], repo) is None:
         raise PlanError(f"could not move HEAD to {commit} in {repo}")
     return commit
@@ -3085,7 +3098,8 @@ def _report_absorbable(routing: Routing, pending: list[PlanFile], pairs: dict[st
     if pairs:
         _print_consolidation_note()
     print("\nabsorb them with --apply; each moves into this repo's plans/ and leaves the store.")
-    print("Commit both: this repo (the additions) and the store (the removals).")
+    print("Commit both: this repo (the additions) and the store (the removals). The removals are")
+    print("one commit — `plans.py commit <path> <path> ... -m '<message>'` takes the whole set.")
     return 0
 
 
@@ -3223,12 +3237,19 @@ def deleted_plan(candidate: Path) -> Path | None:
 
 
 def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
-    """Commit one plan on its own, which is the step sessions were doing by hand 142 times.
+    """Commit these plans on their own, which is the step sessions were doing by hand 142 times.
 
     Measured across the transcript store 2026-09-01: 142 calls in 23 sessions ran some form of
     `git -C <store> add … && git -C <store> commit …`, copied from what `new --for` printed. It is
     the densest single-shape repetition on this machine, and it is the one step where getting it
     wrong is silent — a correct diff under a message about someone else's change.
+
+    **Several files are one commit, since 2026-09-09**, because an absorption's natural unit is
+    every plan that left one mirror and the one-file signature turned that into N commits with N
+    messages for one logical change. A whole-directory form was considered and refused with it: a
+    directory argument makes it easy to sweep a file this session never touched, which is the class
+    of mistake naming paths prevents by construction, and the store has held another session's
+    staged deletions at exactly the moment one of these commits was made.
     """
     cfg = ws.config
     routing = ws.require_routable()
@@ -3237,23 +3258,42 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     # one just filed *for another repo*, which lives in that repo's store mirror — somewhere `locate`
     # deliberately cannot see, since it searches what this session reads. `new --for` prints the
     # path, so taking it is both the natural flow and the one that works across the store.
-    candidate = Path(args.file).expanduser()
-    if candidate.is_file():
-        target = candidate.resolve()
-    else:
-        target = deleted_plan(candidate) or locate(cfg, routing, args.file).path
+    targets: list[Path] = []
+    for name in args.file:
+        candidate = Path(name).expanduser()
+        if candidate.is_file():
+            targets.append(candidate.resolve())
+        else:
+            targets.append(deleted_plan(candidate) or locate(cfg, routing, name).path)
 
-    repo = repo_root_for(target)
-    if repo is None:
-        raise PlanError(f"{target} is not inside a git repository, so there is nothing to commit to")
+    repos = {repo_root_for(target) for target in targets}
+    if None in repos:
+        loose = [str(t) for t in targets if repo_root_for(t) is None]
+        raise PlanError(f"not inside a git repository, so there is nothing to commit to: {', '.join(loose)}")
+    if len(repos) > 1:
+        listed = ", ".join(sorted(str(r) for r in repos if r is not None))
+        raise PlanError(
+            f"these paths are in {len(repos)} different repositories ({listed}) — one commit cannot "
+            "span them. Run this once per repository."
+        )
+    repo = next(iter(repos))
+    assert repo is not None  # narrowed by the `None in repos` guard above
 
-    removed = not target.exists()
-    message = args.message or f"{routing.rel or repo.name}: {target.stem}"
-    commit = commit_one_path(repo, target, message)
+    # A generated message names one plan's topic, and there is no honest single-file default for
+    # several. Requiring `-m` for a set is the constraint that keeps the multi-file form from
+    # producing the thing it exists to prevent: one message that describes a third of its own diff.
+    if len(targets) > 1 and not args.message:
+        raise PlanError("-m is required when committing more than one plan: no default message describes a set")
+    message = args.message or f"{routing.rel or repo.name}: {targets[0].stem}"
+
+    commit = commit_paths(repo, targets, message)
     print(f"committed: {commit[:12]} in {repo}")
     print(f"message:   {message}")
-    rel = target.relative_to(repo).as_posix()
-    print(f"file:      {rel}{' (removed)' if removed else ''} — and nothing else, whatever else was staged")
+    tail = " — and nothing else, whatever else was staged"
+    for target in targets:
+        rel = target.relative_to(repo).as_posix()
+        print(f"file:      {rel}{' (removed)' if not target.exists() else ''}{tail}")
+        tail = ""
     return 0
 
 
@@ -4530,9 +4570,9 @@ def build_parser() -> argparse.ArgumentParser:
     move.add_argument("--to", choices=("repo", "store"), required=True)
     move.set_defaults(func=cmd_move)
 
-    commit = add("commit", "commit one plan, alone, without taking a parallel session's staged work")
-    commit.add_argument("file", help="plan path or bare filename")
-    commit.add_argument("-m", "--message", help="commit message (default: '<repo>: <topic>')")
+    commit = add("commit", "commit these plans, alone, without taking a parallel session's staged work")
+    commit.add_argument("file", nargs="+", help="plan path(s) or bare filename(s), all in one repository")
+    commit.add_argument("-m", "--message", help="commit message (default: '<repo>: <topic>'; required for several)")
     commit.set_defaults(func=cmd_commit)
 
     refs = add("refs", "inbound references to a plan, across the repo and the store")

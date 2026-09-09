@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-08
+updated: 2026-09-10
 ---
 
 # Two sessions in one working tree, which no filing convention can fix
@@ -61,11 +61,13 @@ closest thing that exists, and they fire after the fact.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **is there anything to build, or is this correctly a rules-only problem?** The
-parent plan's own conclusion was that filing conventions cannot fix concurrent edits, and that may
-generalise: a lock is refused elsewhere in this corpus for a directory several independent agents
-write to, and the same argument applies to a checkout. The honest answer may be that the rules are
-the mechanism and what is missing is only that nothing _measures_ whether they are followed.]
+[DECISION: **rules-only, and the measurement now exists to say so.** Three of the four became
+`session-bash-audit` rows on 2026-09-10 and the first corpus run — 14 days, **26,319 calls** — reads
+`git-add-all` 81, `git-undo-relative` **1**, `store-write-by-git` 174. The undo rule is holding
+almost perfectly, and its single hit is `git -C ~/plans reset --soft HEAD~1`: a relative-ref reset
+in the one directory several sessions write to at once, which is the rule's own worst case. So the
+answer to this question is yes, rules-only — and what was missing really was only that nothing
+measured them.]
 
 [NEEDS CLARIFICATION: **would a cheap read-time signal help, or only add noise?** The shapes
 available are all approximations — a `git status` diffed against the session's last one, a check
@@ -128,3 +130,24 @@ being followed while `git add -A` sat inside it uncounted.]
 Still open, and unaffected: whether a cheap read-time signal would help or only add noise. Prefer
 measurement first — a signal built before anyone knows the rules are being missed is a guess with a
 maintenance cost.
+
+## What the measurement said, 2026-09-10
+
+The rows landed and the numbers argue against building anything. `git-undo-relative` at **1 hit in
+26,319 calls** is a rule being followed, and a read-time signal for it would fire never and be
+trusted anyway. `git-add-all` at 81 is the one with room, and the fix for it is the rule that
+already exists rather than a warning: name the paths.
+
+**`store-write-by-git` at 174 turned out not to be about this plan at all**, and that is the useful
+part. Reading the samples — which the row's own instruction demands — a large share are
+`git -C <store> add <paths>` immediately followed by `plans.py scan --mode staged`: a session
+obeying the scan-before-you-commit rule, which needs something staged, with a command that
+deliberately does its own staging through a private index. **Two `plan-docs` rules pull against each
+other**, and that is where the number belongs, not here.
+
+[NEEDS CLARIFICATION: what should a session do to satisfy both? `scan --mode staged` needs an index
+and `plans.py commit` refuses to depend on one, which is the whole point of the private index. A
+`--mode` that scans named paths without staging them would resolve it, and so would `commit` running
+the scan itself; the second is the one that removes the decision rather than moving it. Filed here
+because this plan's measurement found it, but it is `plan-docs` work and wants its own file if it
+grows.]

@@ -257,9 +257,11 @@ five while the _shape_ is unchanged suggests the habit is bounded by how much su
 does rather than by whether the rule reached it.
 
 **Two `git -C <store> commit` calls, deliberate and argued in their own commit messages.** Filed
-separately as `2026-09-05-store-commit-has-no-multi-file-form.md`, because it is the "reasoned
-around" shape rather than a rate: `plan-docs` justifies its `commit` command by a mechanism, and a
-mechanism can be argued with when following it literally costs eleven commits.
+separately, because it is the "reasoned around" shape rather than a rate: `plan-docs` justified its
+`commit` command by a mechanism, and a mechanism can be argued with when following it literally
+costs eleven commits. **Fixed 2026-09-09** — `commit` now takes several paths, so the cost that made
+the deviation reasonable is gone; that plan is retired and its reasoning is in `plan-docs`' "Commit
+a store plan the moment it is written" section.
 
 ## A fifth sample, 2026-09-06/07, a two-day session in this repo
 
@@ -353,9 +355,10 @@ elsewhere, and the audit already reads calls in order even though it judges them
 `cd-recovery` row counting those separately leaves `cd-own-repo` measuring only the habit it was
 built for.]
 
-**`git-C-mutating` is the same shape and is owned elsewhere** — all three hits are
-`git -C <plans store> add/commit`, which `plan-docs` instructs; see
-`2026-09-05-store-commit-has-no-multi-file-form.md`, which this session also reproduced.
+**`git-C-mutating` is the same shape and was owned elsewhere** — all three hits are
+`git -C <plans store> add/commit`, reached for because `plans.py commit` took one file at a time.
+That plan is retired: the multi-file form shipped 2026-09-09, so a future run of this row in the
+store should read as a genuine miss rather than as a cost being avoided.
 
 `exit-masked` at 23% needs no re-run: 21 of the 44 masked calls wrapped a gate, and `setopt`
 answered `pipefail`, so the 8 green-gate claims stood on real exit codes. `head/tail` at 33% cost

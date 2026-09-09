@@ -77,19 +77,22 @@ cheap.]
 
 ## Corroboration for a neighbouring plan
 
-Separately, this session hit the race that
-[`2026-09-04-editing-a-filed-plan-races-with-absorb.md`](2026-09-04-editing-a-filed-plan-races-with-absorb.md)
-describes, from the other side and harmlessly. It had filed
-`power-user-linux-setup/2026-09-04-docs-build-gate-verification.md` earlier in the run, and later
-tried to extend it — by which time a session in that repo had absorbed it, so the store path no
-longer existed.
+Separately, this session hit the edit-versus-absorb race from the other side and harmlessly. It had
+filed `power-user-linux-setup/2026-09-04-docs-build-gate-verification.md` earlier in the run, and
+later tried to extend it — by which time a session in that repo had absorbed it, so the store path
+no longer existed.
 
 **The Edit tool's existence check is what caught it**, returning `File does not exist` rather than
-recreating the file. That is worth recording in that plan as a mitigation that already exists for
-one of the two shapes: an `Edit` against an absorbed plan fails loudly, while a `Write` to the same
-path would recreate it and `plans.py commit` would then commit a resurrection under a message
-written for an append. The distinction is the tool, not the convention, so it is luck rather than
-design — but it is reproducible luck worth knowing about.
+recreating the file: an `Edit` against an absorbed plan fails loudly, while a `Write` to the same
+path recreates it and `plans.py commit` then commits a resurrection under a message written for an
+append. The distinction is the tool, not the convention, so it is luck rather than design — but it
+is reproducible luck worth knowing about.
+
+**Both halves of that race are now handled and the plan describing it is retired**, 2026-09-09:
+`plans.py commit` says when a path is gone because `absorb` took it and names where it went, and the
+`Edit`-over-`Write` mitigation above is a `PITFALL` in `plan-docs`' own "Commit a store plan the
+moment it is written" section. What this plan is about — a filed plan whose **source** changed its
+mind after absorption — is untouched by either, since nothing there is a missing file.
 
 ## Recommended direction
 

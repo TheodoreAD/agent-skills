@@ -638,6 +638,15 @@ reading the target repo to establish the content had survived — which it had, 
 note names the destination and the commit that added it, and it prints only when a destination
 actually resolves, so an ordinary retirement is not told its plan was absorbed.
 
+[PITFALL: **`Edit` catches this a step earlier and `Write` does not, which is the tool rather than
+the convention.** An `Edit` against an absorbed path fails loudly with `File does not exist`; a
+`Write` to that same path recreates the file, and the commit then records a **resurrection** under a
+message written for an append — a plan back in the store that a session already took, which `absorb`
+will offer again. Confirmed 2026-09-05, from the harmless side: a session extending a plan it had
+filed earlier in the run found the store path gone and learned it from `Edit`. So reach for `Edit`
+when adding to a store plan somebody else may be absorbing, and read a failure as news rather than
+as something to route around with `Write`.]
+
 **Pushing is a separate, gated step, and only the shareable tier has anywhere to push to.** Scan
 before pushing and push only on a clean result — `--mode staged` on the commit you are about to
 make, and `--mode history` before the store's very first push, since that is what a push actually

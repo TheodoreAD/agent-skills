@@ -699,6 +699,41 @@ separation someone reasoned about in writing, and the reasoning goes with it. **
 a genuine pair after absorption**, because the pairing lives in prose, so a real split skipped here
 is one nobody is reminded of again.
 
+**Read the incoming titles as a set, and ask whether any two are one subject** — because name
+equality is the only collision anything detects, and two plans on the same subject with different
+names are invisible to all of it. That is the shape that actually occurs here: parallel sessions
+pick their own descriptive filenames, so the ordinary act of naming a plan well defeats the check.
+
+Confirmed 2026-09-03, and the pair is a good one because neither plan was wrong. One was filed into
+the store about what a skill declares regarding its config and mutations; the other was committed in
+the target repo within hours, by a parallel session, about where a skill may put things at all — XDG
+config versus data versus state, and the two store env vars. They compose rather than duplicate, and
+the dependency runs one way: **a disclosure names locations, so its format cannot be settled before
+the locations are.** A session absorbing the first without the second would have designed the
+disclosure format against locations that were about to change. `absorb` reported neither fact,
+because the two did not cite each other — neither author knew the other existed.
+
+[PITFALL: **the collision is least visible exactly when it is most likely.** Two sessions converge
+on one subject because the user raised it with both, in the same period — which is also when neither
+can see the other's filename, since the other plan may not exist yet at filing time. The mechanism
+that would catch it (citation) needs knowledge the authors cannot have, and the mechanism that does
+run (name equality) is defeated by choosing a descriptive filename.]
+
+[DECISION: **a prompt to think, not a detector.** Settled 2026-09-09, after weighing both. Filename
+word overlap is crude — the 2026-09-03 pair shares only "skills". Frontmatter is no help: neither
+carried a topic field, and adding one is a new thing to maintain and get wrong. **A weak detector
+that is trusted is worse than a prompt to think**, because it converts "I should look" into "the
+tool would have told me" — and this section's whole argument is already that a wrongly-merged pair
+destroys a separation someone reasoned about in writing. The same reasoning refuses putting the
+check on the _filing_ session instead: it only helps when the other plan already exists, and these
+two were hours apart, so it would have caught one direction and not the other.]
+
+**The same gap exists inside one repo's own `plans/`** — nothing stops two sessions opening two
+plans on one subject there either, and `list` groups by status rather than by topic, so a reader
+scanning it sees them apart. Only the store case has been observed; the in-repo case is the same
+mechanism with no store involved, and the same prompt covers it whenever you are reading the list as
+a list.
+
 When it _is_ a merge, four rules, each derived at the point of needing it:
 
 - **Keep the name that describes the merged subject**, not one case of it. "The earlier filename" is

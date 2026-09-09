@@ -1806,7 +1806,16 @@ def test_a_loose_files_check_that_ran_and_found_nothing_says_none(capsys):
 def test_a_sweep_with_no_transcript_declares_its_narrowed_repo_scope(monkeypatch, capsys):
     """The repo set comes from the transcript's own write paths and shell targets, so without one it
     collapses to the working directory. Measured 2026-09-03: one repo where the resolved run of the
-    same session covered three, in a report that read as complete."""
+    same session covered three, in a report that read as complete.
+
+    **Both anchors have to go, and this test stripped only one until 2026-09-09.** `resolve_transcript`
+    tries the job directory before the session id, so a suite run from inside a session that has a
+    `$CLAUDE_JOB_DIR` resolved that session's real transcript and the sweep never degraded — the test
+    then failed on a missing `repo_scope` key rather than on its own assertion. It passed everywhere
+    the variable is unset, CI included, which is what let a one-line omission survive: every other
+    test in this file that must not resolve a transcript already deletes the pair.
+    """
+    monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     args = argparse.Namespace(
         boundary="2026-09-08T12:00:00+03:00",

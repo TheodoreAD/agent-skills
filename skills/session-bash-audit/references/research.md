@@ -987,3 +987,59 @@ two of them landing on the one command where it matters, is the honest shape of 
 
 Printed beside `head/tail` in the session view rather than as a row of its own: a new row is absent
 from every stored baseline and would read as a regression on the first `--compare`.
+
+## The parallel-session rules were never measured (2026-09-10)
+
+`~/AGENTS.md` credits four rules with every survival on the one evening this machine's concurrency
+was measured: commit by pathspec, undo by SHA, `plans.py commit`'s private index, and reading the
+ahead-range before pushing. None of the four was in `PATTERNS`, so "the rules are holding" was an
+assumption. Three became rows; the first corpus run, 14 days to 2026-09-10 over **26,319 calls**:
+
+| row                  | hits | reading                                                              |
+| -------------------- | ---: | -------------------------------------------------------------------- |
+| `git-add-all`        |   81 | blanket stages on a shared tree                                      |
+| `git-undo-relative`  |    1 | and it was `git -C ~/plans reset --soft HEAD~1`, in the shared store |
+| `store-write-by-git` |  174 | raw git against the plans store where `plans.py commit` was owed     |
+| `cut-message`        |    6 | prose that closed its own quote inside a `-m` argument               |
+
+**`git-undo-relative` at 1 in 26,319 is the rule holding, and the one hit is the exact shape the
+rule warns about** — a relative-ref reset in the directory several sessions write to at once. A row
+that fires once is not noise; it is the only row here whose single hit is also its worst case.
+
+**`store-write-by-git` at 174 is far above anything the plans behind it had counted**, which
+recorded 2, 2 and 7 in named sessions. The samples are all genuine, and reading them turns the
+number into a different finding: a large share are `git -C <store> add <paths>` immediately followed
+by `plans.py scan --mode staged`. That is a session obeying the scan-before-you-commit rule, which
+needs something staged, with a command that deliberately does its own staging through a private
+index. **The two rules pull against each other**, and the count is mostly that rather than
+carelessness. Worth `plan-docs`' attention rather than a stern row.
+
+### Two false-positive shapes, both caught by reading the samples
+
+Recorded because both were in the first draft and neither would have announced itself.
+
+**An escaped quote is not a close.** `cut-message` walks to where the shell would end the `-m`
+argument; the first version called `str.find`, which stops at a `\"` the author wrote inside their
+prose. 30 hits over 14 days against plans documenting two, and the samples were ordinary commit
+messages. Walking the string and skipping `\X` pairs took it to 7. Single quotes need the opposite
+rule and get it free: no escape exists inside them, so the first one really does close.
+
+**A search for the shape is not the shape.** The remaining odd hit was
+`rg -n -o '…|git commit -m "contributing: the deps|…'` over a transcript — the row's gate matched
+raw text rather than shell structure. Gating on `strip_quoted` took it to 6. This is the same
+one-directional bias `rg-replace` and `find-not-fd` already carry, landing again on exactly the
+session that is working on the audit, and it is now three rows deep: **any row keyed on a command
+name is gated on structure, no exceptions.**
+
+The corollary is a rule about the table rather than about a row: **a new row joins `SAMPLE_TAGS` in
+the commit that adds it.** Both defects above were invisible until the samples printed, and a row
+whose samples never print cannot be checked by the next reader either — which makes it precisely the
+weak detector this corpus refuses elsewhere.
+
+### The fourth rule has no row, deliberately
+
+"Did this session read `git log <upstream>..HEAD` before it pushed" is a question about the order of
+two calls, and every predicate here judges one command with no memory of the last. A row matching
+the push alone would score every push a miss, including the careful ones — a verdict nobody can
+satisfy is one that gets ignored, which is why `grep-r-not-rg` has no expectation either. Named here
+so the gap is a decision rather than an oversight.

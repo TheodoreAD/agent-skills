@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-08
+status: landed
+updated: 2026-09-09
 source_repo: github.com-personal/repo-tasks
 source_session: 20d8525a-71ae-4cb3-af8a-c3f83e0bcde7.jsonl
 source_moment: 2026-09-08T02:15:00+03:00
@@ -59,25 +59,42 @@ rather than as a guess. That is what let it be stated twice without being checke
 
 ## Open questions
 
-[NEEDS CLARIFICATION: should the sweep report unpushed store commits at all by default? Options:
-drop the row for a single-machine setup; keep it but state the actual cost (backup only) so no
-report has to invent one; or make it configurable, since whether an unpushed store matters is
-genuinely a property of the user's machine count rather than of the session. The middle option is
-cheapest and fixes the observed failure without deciding anything for anyone.]
+[DECISION: **the middle option — keep the row and state the actual cost.** Shipped 2026-09-09. The
+row survives because it is a real thing to know once a year; what changed is that it now names
+off-machine backup as the whole of what it risks, so no report has to invent a consequence. Dropping
+it was rejected as deciding for the user, and making it configurable as a setting nobody would find
+a reason to change once the honest wording exists.]
 
-[NEEDS CLARIFICATION: does the same over-reporting apply to the **repo** ahead-count? Probably not —
-an unpushed repo commit means the change is not in the product and CI has not seen it, which is a
-real cost independent of machine count. Worth confirming the two are being reported for genuinely
-different reasons rather than by one habit applied twice.]
+[DECISION: **no, and it was checked rather than assumed.** The repo ahead-count keeps its urgency:
+an unpushed repo commit means the change is not in the product and CI has never seen it, true
+whatever the machine count. Worth the check because the two rows look alike and one habit applied
+twice would have demoted both — which is the failure this plan is about, arriving from the other
+side.]
 
-[NEEDS CLARIFICATION: is there a general rule here worth writing into the skill — that a sweep row
-must carry the consequence, not just the observation? Every other row in step 5 names what goes
-wrong (an orphaned server serves `.env`, a masked exit invalidates a green claim). This row is the
-one that names only a state, and it is the one that produced a fabricated consequence.]
+[DECISION: **yes, and it goes at the top of step 5 rather than in this bullet.** A row that reports
+a fact and stops leaves the reporting session to supply the reason, and it will — plausibly, out of
+the nearest thing it remembers. Every other row in step 5 already names what goes wrong; this was
+the only one that did not, and it is the one that produced a fabricated consequence, which is as
+close to a controlled experiment as this corpus gets. The rule carries a corollary the original
+question did not: when a row's cost is small, say that it is small, because a stated small cost
+cannot be inflated and an unstated one can.]
 
-## Recommended direction
+## What landed, 2026-09-09
 
-State the cost in the bullet — one clause, "the only thing an unpushed shareable store risks is
-off-machine backup" — and let the report say that rather than reaching for the handoff story. If the
-user then wants the row gone entirely on a single-machine setup, that is a second, easy change on
-top of an honest first one.
+The skill bullet, the general rule at the top of step 5, and the printed rows — the last because a
+rule whose evidence the tool does not print is a rule the next run re-derives differently, which is
+this corpus's standing argument and exactly what happened here.
+
+## Migrated to
+
+- **The general rule, and this row as its evidence** -> `session-harvest` step 5's preamble.
+- **The two costs and the refusal of the handoff story** -> the store bullet in step 5, with the
+  wrong claim named as a `PITFALL` so it is refused explicitly rather than merely not stated.
+- **Both halves as printed output** -> `_print_store`, held by
+  `test_the_store_rows_name_their_own_cost_and_the_two_costs_differ` and
+  `test_a_clean_store_is_not_lectured_about_costs_it_is_not_paying` — the second because the lines
+  hang off findings rather than off the section, which is the alarm-fatigue shape this corpus
+  refuses everywhere else.
+
+Deliberately not migrated: the user's own words, which are the evidence for the decision rather than
+a rule anyone needs to re-read.

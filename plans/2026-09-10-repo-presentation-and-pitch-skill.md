@@ -389,15 +389,24 @@ have no home today and are re-derived every time. The argument against is that i
 convention every consumer of these skills would have to adopt. Decide by writing one for
 `agent-skills` by hand first and seeing whether anything reads it.]
 
-[NEEDS CLARIFICATION: **does `.claude-plugin/marketplace.json` get adopted, and is that a
-contradiction?** It is a real, cheap discovery surface — a skills-only repo qualifies for the
-official Anthropic directory using `"strict": false` plus an explicit `skills` array, exactly as
-`amd/skills` and `box/skills` do, and self-hosting one costs a single file. But this repo's
-`AGENTS.md` states the opposite as a principle: _"A vendor manifest — `.claude-plugin/`, a
-marketplace entry, a harness-specific rules directory — does not belong in this repo even as a
-convenience."_ This is the user's call, not a research finding. The options are: hold the line and
-accept the lost surface; adopt it and rewrite the principle honestly; or adopt it in a separate repo
-that vendors these skills.]
+[DECISION: **adopt `.claude-plugin/marketplace.json`, and rewrite the stated principle to match** —
+user's call, 2026-09-10, taken against the alternatives of holding the line or vendoring the skills
+in a second repo. The surface is real and cheap: a skills-only repo qualifies for the official
+Anthropic directory using `"strict": false` plus an explicit `skills` array, exactly as `amd/skills`
+and `box/skills` do, and self-hosting one costs a single file. What makes this a decision rather
+than a convenience is that `AGENTS.md` currently says the opposite — _"A vendor manifest —
+`.claude-plugin/`, a harness-specific rules directory — does not belong in this repo even as a
+convenience."_ The rule that replaces it has to be the one actually being followed: **the content
+stays vendor-neutral, and exactly one vendor manifest is admitted as a distribution shim carrying no
+instructions.** Amending the principle is part of the work, not a follow-up — a stated principle the
+repo visibly violates is worse than either position held honestly, and this repo's README advertises
+the vendor-neutral claim to strangers.]
+
+[DEFERRED: **the manifest itself, and the `AGENTS.md` amendment.** The decision is recorded; neither
+file was written, because the session that took the decision was asked to stop at the plan. Whoever
+implements it owes three things in one change: the manifest, the amended principle, and a check that
+the manifest's `skills` array cannot drift from `skills/` — the same
+generate-from-the-repo's-own-code rule that governs the README catalogue table.]
 
 [NEEDS CLARIFICATION: **ClawHub relicenses everything published to MIT-0**, which removes the
 attribution requirement this repo's MIT licence carries. That is a licensing decision, not a

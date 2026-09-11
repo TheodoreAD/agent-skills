@@ -1684,9 +1684,18 @@ def processes(
         return {"available": False, "why": f"no process listing — {what} produced nothing here"}
     mine = os.getpid()
     my_group = table[mine].pgid if mine in table else -1
+    # Stop on a pid already walked, not on a depth cap: a stale ppid can point back into the chain
+    # — PID reuse makes that reachable on any platform — and without this the walk appends until the
+    # machine runs out of memory. Confirmed 2026-09-10 on a Windows CI runner: MemoryError here, so
+    # the sweep printed no JSON at all and the failure surfaced downstream as an unrelated "Expecting
+    # value: line 1 column 1" from the asserter reading its stdout. The descendant walk below caps at
+    # a depth of 12 instead, which is right there and wrong here — `harness` is found by searching
+    # this chain, so truncating it would silently stop recognising a harness that sits deeper.
     chain: list[int] = []
+    seen: set[int] = set()
     cursor = mine
-    while cursor in table and cursor > 1:
+    while cursor in table and cursor > 1 and cursor not in seen:
+        seen.add(cursor)
         chain.append(cursor)
         cursor = table[cursor].ppid
     harness = next((pid for pid in chain if "claude" in table[pid].args), None)

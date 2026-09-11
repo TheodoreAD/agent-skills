@@ -21,6 +21,7 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import override
 
 import pytest
 
@@ -1211,6 +1212,63 @@ def test_a_machine_without_ps_reports_unavailable_rather_than_no_survivors():
     result = harvest.processes(FakeRunner({"ps": (127, "", "ps: command not found")}))
     assert result["available"] is False
     assert "session_children" not in result, "an absent measurement must not read as a measured zero"
+
+
+class BoundedTable(dict[int, object]):
+    """A process table that refuses to be walked forever.
+
+    The bug this guards was an ancestor walk with no visited-set: a `ppid` cycle made it append
+    until the machine ran out of memory. Reproducing that literally would hang the suite for
+    thirteen minutes and then die, which is what it did in CI — so the table bounds the walk and
+    fails immediately instead. The limit is far above what a correct walk needs (a few lookups for
+    the chain, then at most twelve per process for the descendant walk) and far below anything a
+    runaway reaches.
+
+    `Process` is not available as a type here: the script is loaded by path, so every symbol it
+    exposes is a value rather than a name a type expression can use — the same reason this file
+    suppresses `reportAny` at the top.
+    """
+
+    def __init__(self, rows: dict[int, object], limit: int = 1000):
+        super().__init__(rows)
+        self.limit: int = limit
+        self.lookups: int = 0
+
+    @override
+    def __getitem__(self, key: int) -> object:
+        self.lookups += 1
+        if self.lookups > self.limit:
+            raise AssertionError(f"walked the process table {self.limit} times — it is not terminating")
+        return super().__getitem__(key)
+
+
+def test_a_cycle_in_the_parent_chain_terminates_instead_of_exhausting_memory(monkeypatch):
+    """Confirmed 2026-09-10: a Windows CI runner died with MemoryError inside this walk, and because
+    the sweep then printed nothing at all, the visible failure was a JSON parse error in the script
+    reading its stdout — a defect here surfacing as a defect two processes away.
+
+    PID reuse is what makes a cycle reachable: a process exits, its pid is recycled, and a survivor
+    still carrying the old number as its `ppid` now points at a descendant. Nothing about that is
+    Windows-specific; Windows CI just has the churn to produce it.
+    """
+    monkeypatch.setattr(harvest.os, "getpid", lambda: 500)
+    table = BoundedTable(
+        {
+            10: harvest.Process(1, 10, "S", 9999, "claude --session"),
+            300: harvest.Process(400, 300, "S", 8000, "recycled pid, parent of its own ancestor"),
+            400: harvest.Process(300, 400, "S", 8000, "the other half of the cycle"),
+            500: harvest.Process(400, 500, "S", 0, "python3 harvest.py sweep"),
+            600: harvest.Process(10, 600, "S", 36000, "bash -c until gh run view; do sleep 30; done"),
+        }
+    )
+    result = harvest.processes(FakeRunner(), table)
+    assert result["available"] is True, "a cycle must not take the step out of service"
+
+    # The walk stops at the cycle, so it never reaches pid 10 and reports no harness. That is the
+    # honest answer for this table rather than a degraded one: with 500's chain looping between 400
+    # and 300, no ancestor of this process is the harness.
+    assert result["harness_pid"] is None
+    assert result["session_children"] == [], "no harness means no descendants to attribute to one"
 
 
 def test_paths_written_into_files_that_do_not_exist_are_reported(tmp_path, monkeypatch):

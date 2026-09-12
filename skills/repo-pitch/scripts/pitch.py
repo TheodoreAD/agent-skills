@@ -191,6 +191,10 @@ README_SKIP_PREFIXES = (
 # "Personal — plain SKILL.md directories".
 IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+# Inline code markers are presentation, like the link syntax above, and the string the spec asks you
+# to match is plain text. A README that names a file in backticks could otherwise never equal its own
+# GitHub description, which is the check's whole purpose.
+CODE_TICK_RE = re.compile(r"`+")
 HTML_BLOCK_RE = re.compile(r"<picture>.*?</picture>|<img[^>]*>", re.DOTALL | re.IGNORECASE)
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 README_MIN_CHARS = 18
@@ -354,6 +358,7 @@ def readme_pitch(markdown: str) -> str | None:
         text = HTML_BLOCK_RE.sub("", block)
         text = IMAGE_RE.sub("", text)
         text = LINK_RE.sub(r"\1", text)
+        text = CODE_TICK_RE.sub("", text)
         text = HTML_TAG_RE.sub("", text)
         # A paragraph, not a line: every formatter here wraps prose, so the short description
         # arrives split across two or three lines and reading only the first truncates it.

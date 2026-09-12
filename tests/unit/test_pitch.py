@@ -236,6 +236,14 @@ def test_a_link_keeps_its_text_while_an_image_is_dropped():
     assert pitch.readme_pitch(markdown) == "Personal Agent Skills in plain files."
 
 
+def test_inline_code_markers_are_stripped_so_the_string_can_match_a_plain_text_field():
+    """Found by using the checker on this repo: the spec asks the README's short description to equal
+    the GitHub description, and GitHub stores plain text. A README naming a file in backticks could
+    otherwise never match, which would make the drift check permanently unsatisfiable."""
+    markdown = "# repo\n\nVendor-neutral skills in plain `SKILL.md` directories.\n"
+    assert pitch.readme_pitch(markdown) == "Vendor-neutral skills in plain SKILL.md directories."
+
+
 def test_a_wrapped_paragraph_is_joined_rather_than_truncated():
     """Every formatter in this repo family wraps prose, so the short description arrives split
     across two or three lines. Reading only the first line silently truncates it."""

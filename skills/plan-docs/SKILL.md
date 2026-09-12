@@ -152,11 +152,17 @@ landed where the worktree never looks.
 | `device`                   | the machine holds                                    | the store                                  |
 | -------------------------- | ---------------------------------------------------- | ------------------------------------------ |
 | **`contractor`** (default) | several parties' work plus your own public repos     | **two** repositories, split by sensitivity |
-| **`work`**                 | one organisation — an employer-issued or corp device | **one**, treated as sensitive throughout   |
+| **`work`**                 | one organisation — an employer-issued or corp device | **one**, with no tier at all               |
 
 **A work device has no boundary for a tier to draw**, so the split would be an empty directory every
-command still reasons about. `sensitive_store` and `shareable_roots` stop applying, `where` and
-`new --for` stop naming a tier, and `install` asks one fewer question.
+command still reasons about. `sensitive_store` and `shareable_roots` stop applying, and `install`
+asks about neither.
+
+**Nothing there prints a tier, and that is the point rather than tidiness.** "Sensitive" is a
+_relative_ classification — it means "must not go where the other tier goes" — so on a machine with
+one store there is nothing for it to be relative to, and printing it stated a property of the
+material nobody had claimed. `doctor`, `list`, `where` and `config` name no tier on a work device,
+and `--json` reports `tier: null` rather than a word a reader would have to interpret.
 
 **It also has a default, which a contractor device deliberately does not.** Everything on a
 corporate machine belongs to one organisation, and an organisation has its own work tracker — so an
@@ -166,10 +172,28 @@ Enterprise instance, where your repos and the employer's sit on the same hostnam
 account tells them apart. `where` names the fallback it used (`work device default`, or
 `work device, your own account`), so the answer is never silent. Setting `default` overrides it.
 
-**What does not relax is the remote check.** The single store is the guarded one: pushing an
+**What does not relax is the remote check — but it asks a different question.** Pushing an
 employer's internal work to a personal remote does not become acceptable because the machine holds
-only one organisation's work. A sanctioned destination — an internal host, an external drive — is
-fine; a personal one is not.
+one organisation's work, so the single store is the **guarded** one. What changed is that the check
+asks _which_ remote rather than _whether_ there is one: a destination you have recorded is silent,
+and anything else is reported.
+
+```shell
+python3 <path> config set sanctioned_remotes '["<host>/<owner>"]'   # where the store may push
+```
+
+An entry is `<host>/<owner>`, `<host>/<owner>/<repo>`, `<host>/` for a whole instance, or a path
+beginning with `/` or `~` for a drive or a NAS — matched against the remote's parsed identity, so
+the ssh, scp-like and https spellings of one destination all answer the same. **A bare account name
+is refused**, in code: `own_accounts` matches a name on any host deliberately, which is what makes
+one entry cover github.com and an enterprise instance, and reusing that shape here is precisely the
+hole — it cannot tell your account on the corporate host from the same name on a public one, and
+only one of those is inside the boundary.
+
+With the key unset, every remote on the guarded store is reported, as before; the message now
+carries the line that answers it, so it is a decision made once rather than a warning learned and
+skipped. **The check reads a URL and nothing else** — whether the repository you push to is private
+needs a network call this script does not make, so making it private stays your step.
 
 [PITFALL: **the default is `contractor` because the two mistakes cost differently.** Guessing
 `contractor` on a single-employer machine costs an unused directory and a line of output. Guessing
@@ -302,6 +326,7 @@ python3 <path> config set roots.<root-name> repo         # a whole root
 python3 <path> config set repos.<root>/<repo> store      # one repo, beats any root rule
 python3 <path> config set orgs.<host>/<owner> store      # every clone of theirs, beats a root rule
 python3 <path> config set own_accounts '["<account>"]'   # the accounts that are yours
+python3 <path> config set sanctioned_remotes '["<host>/<owner>"]'  # where the guarded store may push
 python3 <path> config set default store                  # everything unmatched
 python3 <path> config set view.idea_limit 20             # how many ideas a listing shows
 ```
@@ -326,6 +351,7 @@ public_roots = ["github.com-personal"] # names that may appear in a published re
 # shareable_roots = ["github.com-personal"] # the tier boundary; defaults to public_roots
 
 own_accounts = ["your-account"] # unset = no repo's ownership is checked at all
+# sanctioned_remotes = ["git.corp.example/your-account"] # where the guarded store may push
 
 [roots]
 "github.com-personal" = "repo" # longest matching prefix wins
@@ -431,25 +457,26 @@ store-routed repo's mirror _is_ its home and `absorb` correctly does nothing.
 python3 <path> doctor
 ```
 
-One call for the whole picture: config location, **both stores with their git state and which one
-has a remote**, which roots are enrolled, by which rule and into which tier, which repos actually
-hold plans, a tally by status and open tag, and a **problems** list — a store that is not a git
-repository or has lost its git identity, a remote on the sensitive tier, a mirrored root filed in
-the wrong tier, an unset `PLANS_HOME`, a repo holding plans that no rule routes, an organisation
-that is not yours whose repos are routed `repo`, and a foreign organisation's clone filed under a
-shareable root, whose store plans would land in the tier that may have a remote. Run it when
-something behaves oddly and before trusting `archive`, which retrieves nothing from a store with no
-git history.
+One call for the whole picture: config location, **every store with its git state and whether its
+remote was sanctioned**, which roots are enrolled, by which rule and into which tier, which repos
+actually hold plans, a tally by status and open tag, and a **problems** list — a store that is not a
+git repository or has lost its git identity, an unsanctioned remote on the guarded store, a mirrored
+root filed in the wrong tier, an unset `PLANS_HOME`, a repo holding plans that no rule routes, an
+organisation that is not yours whose repos are routed `repo`, and a foreign organisation's clone
+filed under a shareable root, whose store plans would land in the tier that may have a remote. Run
+it when something behaves oddly and before trusting `archive`, which retrieves nothing from a store
+with no git history.
 
 It aggregates by root and names an individual repo only when that repo holds plans — a per-repo
 listing is one row per clone on the machine, which is a roster of employers and clients. Its output
 is for setting the machine up, never for pasting into a repo you publish.
 
-**The sensitive tier's no-remote rule is the design, not an oversight**, and `doctor` reports a
-remote there as a problem: local history is the benefit, and one personal remote accumulating
-several clients' internal architecture is the outcome to avoid. Adding one is a per-root decision
-against that employer's actual policy, never a convenience. Until such a decision is made, treat
-that tier as unbacked-up. Never symlink either store, or a subtree of it, into a work repo — that
+**The guarded store's remote rule is the design, not an oversight** — the sensitive tier on a
+contractor device, the only store on a work device. `doctor` reports a remote there unless
+`sanctioned_remotes` covers it: local history is the benefit, and one personal remote accumulating
+several clients' internal architecture is the outcome to avoid. Recording a destination is a
+decision against that employer's actual policy, never a convenience, and until one is recorded treat
+that store as unbacked-up. Never symlink either store, or a subtree of it, into a work repo — that
 puts the content back inside the tree repo-scoped agent reads walk.
 
 ## Never let a client's identity reach a repo you publish

@@ -452,6 +452,66 @@ no single organisation for a fallback to be about. `where` prints which fallback
 (`work device default`, `work device, your own account`) so a routed-without-a-rule answer is never
 silent, and `doctor` lists a root reaching either of them as still awaiting a decision.
 
+### Why a work device names no tier, and what its remote check asks instead (2026-09-12)
+
+Stated by the user 2026-09-03: on an employer device nothing in `~/plans/` is sensitive, because
+**the corporate context is the entire context** — the company's GitHub sits inside the corporate
+boundary and the store belongs in a private repo there, exactly as personal work goes to a private
+repo on a personal machine. Raised again 2026-09-12 as _"doctor reports some weird stuff related to
+work vs contractor machine and sensitive vs non sensitive"_.
+
+The correction is about the vocabulary, not about a flag. **"Sensitive" is a relative
+classification**: it means "must not go where the other tier goes". On a contractor device the
+relation is real — one client's work must not reach another's remote or a personal one. On a work
+device there is nothing for it to be relative to, so the word stated an absolute property of the
+material, and it surfaced in five places: `doctor`'s store line and its tier column against
+**every** root including the user's own, the store README (keyed on the tier, so the single store
+was handed the text about several clients and a remote it must never have), `install --explain`'s
+`(no remote)` note — inferred from the tier rather than read, so false on a store that had one — and
+the `shareable_roots` question the walkthrough kept asking while the skill said it had stopped
+applying.
+
+**A third tier value rather than hiding the old one or removing tiers entirely.** Keeping
+`sensitive` internally and suppressing it at the print sites leaves the field saying something
+false, and the next reader re-derives the claim from it. Making `tier` meaningless and having every
+reader ask `split_by_sensitivity` first touches routing, `where`, `new --for`, `archive` and
+`uninstall` for no gain, because each of those needs _a_ key whatever it is called. `single` keys
+the README and the store lookup honestly; no human output prints it, and `--json` reports `null`
+rather than a word a consumer would have to know is not a claim.
+
+**The remote check asks which, not whether.** The old check fired on any remote at all, which on a
+work device meant firing forever on the documented workflow — and a check trained away is worse than
+no check, because the day a genuinely personal remote appears its message is the one that has been
+ignored for months. `sanctioned_remotes` records destinations; a match is silent and marked
+`(sanctioned)` where the store is printed, anything else is reported against the list. Four choices
+inside that:
+
+- **The guarded store only** — the sensitive tier, or the one store on a work device. The shareable
+  tier is _meant_ to have a remote and is gated on content by `scan`, which is a different question;
+  checking its destination too would change behaviour on a machine that works today. It also makes
+  this key the hook the sensitive tier's durability plan already wanted for an external drive.
+- **Host-qualified entries, and a bare account name refused in code.** `own_accounts` matches a bare
+  name on **any** host deliberately — that is what covers github.com and an enterprise instance in
+  one entry — and reusing that shape here is exactly the hole: a bare name cannot tell
+  `<corp-host>/<you>` from `github.com/<you>`, and only one of those is inside the boundary. The
+  refusal is code rather than documentation because the config would otherwise be well-formed and
+  the check would pass.
+- **Unset keeps the old behaviour.** A machine nobody has configured must keep the protection it
+  has; what changes is that the message carries the `config set` line that answers it.
+- **It matches a URL and says so.** Whether the destination repository is private needs a network
+  call this script does not make, so the skill states that keeping it private is the user's step
+  rather than letting a quiet `doctor` imply more than it checked.
+
+**And the question underneath it: organisations versus your own namespace is ownership, not
+visibility.** Asked 2026-09-12, whether the separation between repos in the corporation's
+organisations and repos in the user's own account on the corporate instance is modelled anywhere. It
+already is, twice over: an organisation's repos route to the store because organisations keep their
+own trackers, and the user's own namespace is where the store's own remote belongs — pushing it into
+an organisation's repository would show every plan on the machine to that organisation. Repository
+visibility itself (private, internal, public) is modelled nowhere and deliberately stays that way:
+it is unobservable offline, so it could only be a field nobody maintains, which is the bar "a field
+is a contract every future plan pays for" already sets.
+
 ### Why an unmatched repo asks instead of defaulting
 
 Decided with the user 2026-08-28: with no matching rule and no `default`, `plans.py where` exits 3

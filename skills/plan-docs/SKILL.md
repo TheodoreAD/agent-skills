@@ -30,9 +30,11 @@ case none of them solves cheaply — is
 - **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
   files in the session repo's `plans/` and in both stores — `new`, `set-status`, `move`,
   `absorb --apply`, `graduate`, and the retirement you perform by hand. The store directories and
-  their READMEs, created `0700`. Commits to the **store** through `commit`; never a commit in the
-  session repo, and never a file in any other repo's working tree — `new` refuses and names `--for`.
-  `archive`, `list`, `tags`, `refs`, `doctor`, `scan` and `where` write nothing.
+  their READMEs, created `0700`. Through `attach`: a copy of each file you name, either in a
+  directory beside the plan or in the store's `_attachments/`, the plan's own `## Attachments` rows,
+  and one line in the store's `.git/info/exclude`. Commits to the **store** through `commit`; never
+  a commit in the session repo, and never a file in any other repo's working tree — `new` refuses
+  and names `--for`. `archive`, `list`, `tags`, `refs`, `doctor`, `scan` and `where` write nothing.
 - **Network**: none. Pushing a store is your command, behind the scan.
 
 ## Run the script, don't re-derive it
@@ -96,6 +98,7 @@ python3 <path> graduate <file> --to <repo>  # …once it has one
 python3 <path> set-status <file> planned    # refuses if the gate for that status fails
 python3 <path> tags --tag DEFERRED          # anchored, across every plan this repo can see
 python3 <path> move <file> --to store       # a repo switching where it keeps plans
+python3 <path> attach <plan> <file>...      # copy evidence somewhere stable, and record it
 
 # retiring it, and getting it back
 python3 <path> refs <file>                  # inbound references, before retiring
@@ -929,6 +932,57 @@ applies to it. Commit it there anyway, in the same session that wrote it: the st
 only record that plan has, and an uncommitted file in a directory nobody browses is the same as no
 plan at all.
 
+## Attaching evidence to a plan
+
+A plan citing `~/Downloads/ci.log`, a scratch directory, or the transcript its own `source_session`
+names is citing something that stops existing — the transcript on a timer, the others the next time
+anyone tidies up. `attach` copies the file somewhere stable and writes a row into the plan saying
+what it took:
+
+```shell
+python3 <path> attach <plan> <file>...           # size decides where each one goes
+python3 <path> attach <plan> <file>... --commit  # evidence someone will read
+python3 <path> attach <plan> <file>... --local   # bulk output, or something that must stay exact
+```
+
+**Two destinations, and only you can judge the axis that matters.** A file at or under
+`[attachments] commit_limit_kb` (1024 by default) is copied into a directory beside the plan, named
+for it, and committed with it; anything larger goes to the store's `_attachments/` area, which git
+never sees. Size is the half a script can judge, so it picks the default — the flags are for the
+other half:
+
+| the file                                    | where it belongs |
+| ------------------------------------------- | ---------------- |
+| another agent's investigation, a screenshot | committed        |
+| a multi-megabyte log, a data dump           | local            |
+| anything that has to stay byte-exact        | local            |
+
+[PITFALL: **a committed attachment is an ordinary file in that repository and goes through its
+gate.** `dprint` reflows markdown, so an investigation report committed as `.md` stops being
+byte-exact the first time the gate runs — silently, because the gate rewrites it and passes. Use
+`--local` when the exact wording is the evidence.]
+
+**A local attachment is the only copy of that file**, and `attach` says so every time it writes one.
+It is in no git history, so `archive` cannot bring it back, and on a contractor device it sits in
+the tier that deliberately has no remote. The plan's row carries a sha256 so a later reader can tell
+it from a different file of the same name; whether to keep the original as well is your call.
+
+**A row never names where the file came from.** Independence from an ephemeral path is the whole
+point of copying it, and a source path can carry a client directory or an account name into a repo
+you publish. Say in prose what the file is and what it shows; the row carries name, size and digest.
+
+`scan` sees a committed attachment like any tracked file and cannot see a local one. That asymmetry
+is deliberate rather than a gap — the local half never leaves the machine.
+
+**Attachments travel with their plan.** `absorb`, `move` and `graduate` carry the directory, and
+`commit <plan>` takes the plan and its attachments as one commit. A directory already sitting where
+they would land blocks the move exactly as a name collision does: two things claiming one name is a
+merge, not a rename.
+
+At retirement the committed half is deleted with the plan and stays reachable in the history
+`archive` reads. The local half is **named by `refs` and left alone** — deleting it is the one
+irreversible step in a procedure built to be reversible, so it is a decision to put to the user.
+
 ## Tags
 
 Five inline markers, all `[SHOUTY-WORD: text]`, so the judgment calls below become greps instead of
@@ -1150,8 +1204,10 @@ Code contracts and verification logs are usually the bulk of the deletable volum
    (`deferred|not yet|follow-up|TODO|known
    limitation`) and read what it finds.
 3. **Find inbound references before starting, not after** — `python3 <path> refs <file>.md`, which
-   also warns if the repo has **unpushed commits**. The count decides whether this is one commit or
-   several.
+   also warns if the repo has **unpushed commits**, and names the attachments the plan holds. The
+   count decides whether this is one commit or several. The committed attachments go with the plan;
+   the local ones are the one thing here that deletion cannot undo, so they are the user's call, not
+   a step in the procedure.
 
    [PITFALL: **`landed` does not mean published, and retirement deletes the file.** `set-status`
    gates `landed` on open tags and on nothing about whether the work reached the remote — so a plan

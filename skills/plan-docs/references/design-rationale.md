@@ -946,6 +946,58 @@ repo finally exists, one command routes the file through that repo's own rule an
 provenance. Without it, the plan stays in the repo-less pile while the work moves into a repo, and
 nobody finds it again.
 
+### Why a plan's evidence has two homes, and the split is size (2026-09-12)
+
+Asked for by the user on a corporate machine: a way to say _"here are a bunch of outputs, copy them
+somewhere stable so we don't depend on the original ones that might be in downloads or other
+ephemeral locations"_, with the observation that committing should depend on size and use — another
+agent's investigation is worth committing, a large log or data dump is not.
+
+The convention already had the failure in miniature and had not noticed: `new --for`'s
+`source_session` field points at a harness transcript that survives about 30 days, so the one
+evidence pointer the design shipped with was itself ephemeral. A plan citing `~/Downloads` is worse
+only in that nothing states the expiry.
+
+**The committed half is a directory beside the plan, named for its stem.** Plan discovery globs
+`*.md` non-recursively, so such a directory is invisible to `list`, `absorb` and family scope for
+free — which is what made "next to the plan" affordable at all. Five other behaviours did assume one
+plan is one file, and each was fixed rather than worked around: `archive` counted any `.md` under a
+plans directory as a plan, so a deleted attachment would have been offered back as a plan that never
+existed; `absorb`, `move` and `graduate` moved only the markdown, leaving the evidence behind with
+nothing saying where it went; `commit` had to take the pair as one change.
+
+**The local half is in the store, not beside the plan and not under an XDG data directory.** Inside
+the store it is outside every working tree, so `git clean -X`, a removed worktree or a branch switch
+cannot take it; it is keyed on the repo path and the plan stem, neither of which changes when the
+plan moves between the repo and the store, so absorption moves markdown and never bytes; and the
+tier lookup already answers which store, so a sensitive root's evidence cannot land in the half that
+may have a remote. The exclusion lives in the store's `.git/info/exclude` rather than a committed
+`.gitignore`, because it describes a machine-local directory and a committed rule would name a path
+no clone of that store will ever have.
+
+**Size picks the default, and the number is configurable rather than derived.** Deriving it from
+whether the store has a sanctioned remote is more accurate — committing is only more durable than
+local when something receives the push — and it makes the threshold move when an unrelated key
+changes, which is the sort of coupling nobody remembers. One number,
+`[attachments]
+commit_limit_kb`, raised on a machine whose store pushes somewhere you trust. What
+the script cannot see is _use_, so `--commit` and `--local` exist for exactly that, and the skill
+states the rule in one line: evidence someone will read goes committed, bulk output and anything
+that must stay byte-exact goes local.
+
+**Durability of the local half is stated, not solved.** The alternatives were copying to a second
+destination — which invents the destination the sensitive tier's own durability plan has
+deliberately not chosen, and every copy made for durability is one to find and destroy if an
+engagement ends — or refusing local attachments until a durable destination exists, which blocks the
+feature on the machine that asked for it. So `attach` says the copy is the only one, the row says
+`local only`, and `refs` names them at retirement, where deletion is a decision for the user rather
+than a step in the procedure.
+
+Prior art, at knowledge depth rather than from a clone: Obsidian's "subfolder under current folder"
+setting and Hugo's page bundles are the same sibling-directory shape; `git-annex`, `git-lfs` and DVC
+each solve the large-file half properly and each add an install this skill's stdlib-only constraint
+forbids — and LFS would still push the bytes it exists to keep out of the history.
+
 ### Why repo descriptions are metadata, not a search
 
 Deciding which repo a piece of content belongs to by grepping candidate repos is the expensive,

@@ -11,6 +11,7 @@ against a fake `$HOME` and a fake projects root: the real config, the real store
 # annotation. Structural, so suppressed for the file rather than at 74 call sites.
 # pyright: reportAny=false
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -2758,3 +2759,147 @@ def test_a_repo_with_no_upstream_is_not_warned_about(ws, capsys):
     assert plans.main(["refs", "plans/2026-01-01-done.md", "--path", str(repo)]) == 0
 
     assert "unpushed" not in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------------------------
+# attachments
+#
+# A plan's evidence arrives in Downloads, a scratch directory, or a harness transcript that expires
+# — so a plan citing one of those describes a file that stops existing while the sentence naming it
+# still reads as true. `attach` copies it somewhere stable: beside the plan and committed with it
+# when it is small enough to read, into the store's excluded `_attachments/` area when it is not.
+
+REPO_PLANS = 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n'
+ONE_KB_LIMIT = f"{REPO_PLANS}[attachments]\ncommit_limit_kb = 1\n"
+
+
+def source_file(directory: Path, name: str, size: int) -> Path:
+    """A file somewhere ephemeral, which is where evidence always starts."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    path.write_bytes(b"x" * size)
+    return path
+
+
+def attachable(ws, body: str = REPO_PLANS) -> Path:
+    """A repo-held plan on a machine whose store exists, since a local attachment needs one."""
+    write_config(ws, body)
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    return plan(ws.personal / "plans", "2026-01-01-flaky-ci.md", "status: idea\nupdated: 2026-01-01")
+
+
+def test_a_small_attachment_lands_beside_the_plan_and_is_recorded(ws, capsys):
+    target = attachable(ws)
+    report = source_file(ws.home / "Downloads", "investigation.md", 200)
+    capsys.readouterr()
+
+    assert plans.main(["attach", str(target), str(report), "--path", str(ws.personal)]) == 0
+
+    landed = ws.personal / "plans" / "2026-01-01-flaky-ci" / "investigation.md"
+    assert landed.read_bytes() == b"x" * 200
+    body = target.read_text(encoding="utf-8")
+    assert "## Attachments" in body
+    assert "`investigation.md` — committed, 200 B" in body
+    # No digest for a committed file: git hashes it already, and the plan and the file are in one
+    # history, so recording a second answer would be a second thing that can drift.
+    assert "sha256" not in body
+    assert str(landed) in capsys.readouterr().out
+
+
+def test_a_large_attachment_goes_to_the_store_and_says_it_is_the_only_copy(ws, capsys):
+    """The size split exists so a repo never carries bulk output — and the moment a file lands
+    outside git, the honest thing to say is that nothing can get it back."""
+    target = attachable(ws, ONE_KB_LIMIT)
+    log = source_file(ws.home / "Downloads", "ci.log", 4096)
+    capsys.readouterr()
+
+    assert plans.main(["attach", str(target), str(log), "--path", str(ws.personal)]) == 0
+
+    landed = ws.store / "_attachments" / "github.com-personal" / "agent-skills" / "2026-01-01-flaky-ci" / "ci.log"
+    assert landed.read_bytes() == b"x" * 4096
+    body = target.read_text(encoding="utf-8")
+    assert "`ci.log` — local only, 4 KB, sha256 " in body
+    assert hashlib.sha256(b"x" * 4096).hexdigest() in body
+    assert "~/plans/_attachments/" in body, "the row names a home-relative directory, not an account name"
+    assert "the only copy" in capsys.readouterr().out
+    # Excluded per clone rather than in the store's history: the directory is machine-local, so a
+    # committed .gitignore would describe a path no clone of this store will ever have.
+    assert "_attachments/" in (ws.store / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+
+
+def test_the_flags_beat_the_size_in_both_directions(ws):
+    """Size is the half a script can judge. What a file is *for* — evidence to read, or bulk to
+    keep — is the half only the agent can, which is what the two flags are."""
+    target = attachable(ws, ONE_KB_LIMIT)
+    note = source_file(ws.home / "Downloads", "note.txt", 10)
+    dump = source_file(ws.home / "Downloads", "dump.bin", 4096)
+
+    assert plans.main(["attach", str(target), str(note), "--local", "--path", str(ws.personal)]) == 0
+    assert plans.main(["attach", str(target), str(dump), "--commit", "--path", str(ws.personal)]) == 0
+
+    stem = "2026-01-01-flaky-ci"
+    local = ws.store / "_attachments" / "github.com-personal" / "agent-skills" / stem
+    assert (local / "note.txt").is_file()
+    assert (ws.personal / "plans" / stem / "dump.bin").is_file()
+
+
+def test_an_attachment_is_never_overwritten_or_renamed_around(ws, capsys):
+    """The same answer `_take_plans` gives a name collision, for the same reason: two files claiming
+    one name is a question for a person, and a silent rename hides exactly that."""
+    target = attachable(ws)
+    first = source_file(ws.home / "Downloads", "log.txt", 10)
+    assert plans.main(["attach", str(target), str(first), "--path", str(ws.personal)]) == 0
+    second = source_file(ws.home / "elsewhere", "log.txt", 20)
+    capsys.readouterr()
+
+    assert plans.main(["attach", str(target), str(second), "--path", str(ws.personal)]) == 1
+
+    assert "already exists" in capsys.readouterr().err
+    landed = ws.personal / "plans" / "2026-01-01-flaky-ci" / "log.txt"
+    assert landed.read_bytes() == b"x" * 10, "the file already there is untouched"
+
+
+def test_a_second_attach_extends_the_section_rather_than_opening_another(ws):
+    target = attachable(ws)
+    for name in ("one.txt", "two.txt"):
+        source = source_file(ws.home / "Downloads", name, 10)
+        assert plans.main(["attach", str(target), str(source), "--path", str(ws.personal)]) == 0
+
+    body = target.read_text(encoding="utf-8")
+    assert body.count("## Attachments") == 1
+    assert "`one.txt`" in body
+    assert "`two.txt`" in body
+
+
+def test_an_unscoped_plans_attachments_key_under_the_unscoped_name(ws):
+    """An unscoped plan has no repo to key on, and its attachments follow it into the same tier its
+    own file lives in — the shareable one, because that is where the unscoped area is."""
+    write_config(ws, REPO_PLANS)
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    target = plan(ws.store / "_unscoped", "2026-01-01-idea.md", "status: idea\nupdated: 2026-01-01")
+    dump = source_file(ws.home / "Downloads", "dump.bin", 4096)
+
+    assert plans.main(["attach", str(target), str(dump), "--local", "--path", str(ws.personal)]) == 0
+
+    assert (ws.store / "_attachments" / "_unscoped" / "2026-01-01-idea" / "dump.bin").is_file()
+
+
+def test_a_directory_is_refused_rather_than_copied_whole(ws, capsys):
+    target = attachable(ws)
+    (ws.home / "Downloads" / "run").mkdir(parents=True)
+    capsys.readouterr()
+
+    assert plans.main(["attach", str(target), str(ws.home / "Downloads" / "run"), "--path", str(ws.personal)]) == 1
+
+    assert "attach the files themselves" in capsys.readouterr().err
+
+
+def test_the_commit_limit_is_configurable_and_a_bad_value_is_restored(ws):
+    write_config(ws, REPO_PLANS)
+    assert plans.load_config().commit_limit_kb == plans.DEFAULT_COMMIT_LIMIT_KB
+
+    assert plans.main(["config", "set", "attachments.commit_limit_kb", "4096", "--path", str(ws.personal)]) == 0
+    assert plans.load_config().commit_limit_kb == 4096
+
+    assert plans.main(["config", "set", "attachments.commit_limit_kb", "-1", "--path", str(ws.personal)]) == 1
+    assert plans.load_config().commit_limit_kb == 4096, "a rejected value is restored, never left on disk"

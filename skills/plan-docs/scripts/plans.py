@@ -29,6 +29,7 @@ constraint to be named rather than assumed; this is it.
     plans.py tags --tag DEFERRED        # the anchored greps, without the anchoring mistakes
     plans.py set-status <file> planned  # runs the promotion gate first
     plans.py move <file> --to store     # a repo switching where it keeps plans
+    plans.py attach <plan> <file>...    # copy evidence in: small ones committed, large ones local
     plans.py refs <file>                # inbound references, before a retirement
     plans.py archive --search <words>   # a retired plan, back out of git history
     plans.py scan                       # no client's identity in a repo you publish
@@ -51,6 +52,7 @@ belongs to an organisation nobody has decided about, so the agent must ask rathe
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -74,6 +76,19 @@ NEEDS_DECISION = 3
 # Plans that belong to no repo yet live here, under the shareable store. Underscore-prefixed so it
 # can never collide with a mirrored root directory.
 UNSCOPED_DIR = "_unscoped"
+
+# Where an attachment too big to commit goes: inside the store, keyed on the repo and the plan, and
+# excluded from the store's own git through `.git/info/exclude` rather than a committed `.gitignore`
+# — the exclusion is a machine-local fact about a machine-local directory. Underscore-prefixed for
+# the same reason `_unscoped` is: it can never collide with a mirrored root name.
+ATTACHMENTS_DIR = "_attachments"
+
+# How big a file may be and still be committed beside its plan, in kibibytes. An agent's
+# investigation report measures in tens of kilobytes and a screenshot in hundreds; logs and data
+# dumps cross this. `[attachments] commit_limit_kb` moves it per machine — raise it where the store
+# pushes somewhere you trust — and `--commit`/`--local` override it per call, because the script can
+# only see a file's size while the agent can see what it is for.
+DEFAULT_COMMIT_LIMIT_KB = 1024
 
 # The two halves of the store, most disclosable first. A root's tier decides which git repository
 # its mirrored plans live in — the shareable one may have a remote, the sensitive one may not.
@@ -219,7 +234,7 @@ SCOPES = ("auto", "repo", "family", "unscoped")
 
 # Tables `config set` understands. A key's table is whatever precedes its first dot, but only when
 # it is one of these — a [repos] key is a path full of dots and must not be split on every one.
-CONFIG_TABLES = ("roots", "repos", "orgs", "about", "private", "view")
+CONFIG_TABLES = ("roots", "repos", "orgs", "about", "private", "view", "attachments")
 
 # The gates SKILL.md states in prose, as data. Everything else is a free transition.
 #
@@ -329,6 +344,13 @@ ignore = []
 # tiers are bounded by what can be in flight, while ideas accumulate forever. 0 disables the cap.
 [view]
 idea_limit = 10
+
+# How big a file may be, in kibibytes, and still be committed beside the plan it belongs to.
+# Anything larger is copied into the store's `_attachments/` area instead, which git never sees.
+# `plans.py attach --commit` / `--local` override it per file: size is what a script can judge,
+# and what the file is for is what you can. Raise it where the store pushes somewhere you trust.
+[attachments]
+commit_limit_kb = 1024
 
 # What each repo is for — lets a plan be routed without grepping the repos. Only needed where a
 # repo's README does not already say it in its first line. `plans.py describe <repo> "<text>"`.
@@ -441,6 +463,7 @@ class Config:
     private_ignore: tuple[str, ...]
     about: dict[str, str]
     idea_limit: int
+    commit_limit_kb: int
 
     @property
     def unscoped(self) -> Path:
@@ -522,6 +545,16 @@ class Config:
     def store_for(self, rel: str | None) -> Store:
         """The store a repo's mirrored plans live in."""
         return self.store_of(self.tier_of(rel))
+
+    def attachments_dir(self, rel: str | None, stem: str) -> Path:
+        """Where one plan's local-only attachments live: in its tier's store, outside every tree.
+
+        Keyed on the repo's path and the plan's filename stem, neither of which changes when the
+        plan itself moves between the repo and the store — so absorption moves a markdown file and
+        never the bytes. The tier lookup is the same one routing uses, which is what keeps a
+        sensitive root's evidence out of the half that may have a remote.
+        """
+        return self.store_for(rel).path / ATTACHMENTS_DIR / (rel or UNSCOPED_DIR) / stem
 
     def stores(self) -> list[Store]:
         """Every distinct store on the machine, shareable first.
@@ -680,16 +713,19 @@ def load_config() -> Config:
         private_extra=_strings(_table(raw, "private").get("extra"), "private.extra"),
         private_ignore=_strings(_table(raw, "private").get("ignore"), "private.ignore"),
         about={str(key): str(value) for key, value in _table(raw, "about").items()},
-        idea_limit=_int_field(_table(raw, "view"), "idea_limit", DEFAULT_IDEA_LIMIT),
+        idea_limit=_int_field(_table(raw, "view"), "idea_limit", DEFAULT_IDEA_LIMIT, "view"),
+        commit_limit_kb=_int_field(
+            _table(raw, "attachments"), "commit_limit_kb", DEFAULT_COMMIT_LIMIT_KB, "attachments"
+        ),
     )
 
 
-def _int_field(raw: dict[str, object], key: str, fallback: int) -> int:
+def _int_field(raw: dict[str, object], key: str, fallback: int, table: str) -> int:
     value = raw.get(key)
     if value is None:
         return fallback
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise PlanError(f"view.{key} must be a non-negative integer, got {value!r}")
+        raise PlanError(f"{table}.{key} must be a non-negative integer, got {value!r}")
     return value
 
 
@@ -3226,6 +3262,243 @@ def cmd_move(args: argparse.Namespace, ws: Workspace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------------------------
+# attachments
+#
+# A plan's evidence — another agent's investigation, a failing run's log, a screenshot — arrives in
+# `~/Downloads`, a scratch directory or a harness transcript that expires, and a plan citing one of
+# those describes a file that stops existing while the sentence naming it still reads as true. So
+# the file is copied somewhere stable and the plan records what it got, in one of two places: beside
+# the plan and committed with it, or in the store's `_attachments/` area, which git never sees.
+#
+# Size chooses between them because it is the half a script can judge; `--commit` and `--local` are
+# there because what a file is *for* is the half only the agent can. A local copy is the only copy,
+# and `attach` says so rather than pretending otherwise — the durable-destination question belongs
+# to the store's own durability plan, where it gets answered once for everything.
+
+
+class Attached(NamedTuple):
+    """One file that was copied in, and where it landed."""
+
+    name: str
+    destination: Path
+    committed: bool
+    size: int
+    digest: str  # local only: git already answers this for anything committed
+
+
+def human_size(size: int) -> str:
+    """A size a reader can judge at a glance. Exact bytes are what the digest is for."""
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.0f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def file_digest(path: Path) -> str:
+    """sha256, read in blocks — an attachment can be a multi-gigabyte dump.
+
+    Recorded for a local attachment only, and it is what lets a later reader tell the cited file
+    from a different file that happens to share its name. A committed attachment needs none: git
+    hashes it already, and the plan and the file are in one history.
+    """
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def display_path(path: Path) -> str:
+    """`~/plans/...` rather than an absolute path carrying the account name.
+
+    Written into plan files, which are committed and sometimes published, so the home directory is
+    collapsed for the same reason the source path is never recorded at all.
+    """
+    try:
+        return f"~/{path.relative_to(Path.home()).as_posix()}"
+    except ValueError:
+        return path.as_posix()
+
+
+def exclude_attachments(store: Path) -> None:
+    """Keep the attachments area out of the store's git, per clone rather than in its history.
+
+    `.git/info/exclude` and deliberately not a committed `.gitignore`: the directory is machine-
+    local by construction, so a rule about it in the store's history would describe a path no clone
+    of that store will ever have. Idempotent, and silent on a store that is not a git repository —
+    `doctor` is what reports that, and an attachment is still written.
+    """
+    location = git(["rev-parse", "--git-path", "info/exclude"], store)
+    if not location:
+        return
+    path = Path(location)
+    if not path.is_absolute():
+        path = store / path
+    entry = f"{ATTACHMENTS_DIR}/"
+    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if entry in existing.split():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prefix = "" if not existing or existing.endswith("\n") else "\n"
+    path.write_text(f"{existing}{prefix}{entry}\n", encoding="utf-8")
+
+
+def attachment_row(entry: Attached) -> str:
+    """One line in the plan's `## Attachments` section.
+
+    Never the source path. Independence from where the file came from is the whole point of copying
+    it, and a source path can carry a client directory name or an account name into a published
+    repo in a line nobody reads twice.
+    """
+    if entry.committed:
+        return f"- `{entry.name}` — committed, {human_size(entry.size)}, attached {today()}"
+    return (
+        f"- `{entry.name}` — local only, {human_size(entry.size)}, sha256 {entry.digest}, "
+        f"attached {today()}, in {display_path(entry.destination.parent)}"
+    )
+
+
+def record_attachments(plan: Path, entries: list[Attached]) -> None:
+    """Append the rows to the plan's `## Attachments` section, creating it if it has none.
+
+    Written by the script rather than asked of the agent, on the same argument as `new`'s skeleton
+    and `set-status`' two frontmatter lines: a format a rule has to be followed correctly to produce
+    is one that drifts, and this one carries the digest that makes a local attachment verifiable.
+    """
+    lines = plan.read_text(encoding="utf-8").splitlines()
+    rows = [attachment_row(entry) for entry in entries]
+    heading = next((i for i, line in enumerate(lines) if line.strip().lower() == "## attachments"), None)
+    if heading is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        lines += ["", "## Attachments", "", *rows]
+    else:
+        end = next((i for i in range(heading + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+        while end > heading + 1 and not lines[end - 1].strip():
+            end -= 1
+        lines[end:end] = rows
+    plan.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _attachment_key(routing: Routing, plan: PlanFile) -> str | None:
+    """Which repo an attachment is filed under: the session's, or none at all for an unscoped plan.
+
+    Read from the plan's own location rather than from the route, for the same reason `where` is:
+    an unscoped plan is visible from every repo, so the repo a session happens to be in says
+    nothing about where that plan's evidence belongs.
+    """
+    return None if plan.where == "unscoped" else routing.rel
+
+
+def _attachment_target(cfg: Config, routing: Routing, plan: PlanFile, *, committed: bool) -> Path:
+    """The directory one plan's attachments go in, for whichever of the two destinations applies."""
+    if committed:
+        return plan.path.parent / plan.path.stem
+    rel = _attachment_key(routing, plan)
+    if rel is None and plan.where != "unscoped":
+        raise PlanError(
+            f"{routing.repo_root} is not under projects_root ({cfg.projects_root}), so it has no "
+            "store to keep a local attachment in — commit it with --commit, or move the clone under "
+            "the projects root"
+        )
+    return cfg.attachments_dir(rel, plan.path.stem)
+
+
+def attachment_sources(names: list[str]) -> list[Path]:
+    """Every file named on the command line, checked before anything is copied.
+
+    All of them up front: a run that copies two files and then refuses the third has already
+    changed the plan, and the second call would collide with its own first half.
+    """
+    found: list[Path] = []
+    for name in names:
+        source = Path(name).expanduser()
+        if source.is_dir():
+            raise PlanError(f"{source} is a directory; attach the files themselves")
+        if not source.is_file():
+            raise PlanError(f"no file at {source}")
+        found.append(source.resolve())
+    return found
+
+
+def _attach_one(cfg: Config, routing: Routing, plan: PlanFile, source: Path, *, committed: bool) -> Attached:
+    """Copy one file to its destination and describe what landed."""
+    target = _attachment_target(cfg, routing, plan, committed=committed)
+    destination = target / source.name
+    if destination.exists():
+        raise PlanError(
+            f"{destination} already exists — an attachment is never overwritten and never renamed "
+            "around, the same answer a plan name collision gets. Rename the incoming file, or "
+            "remove the one already there if it is stale."
+        )
+    if committed and (repo := repo_root_for(destination)) is not None:
+        warn_cross_repo(repo, cfg, f"attach {source.name}")
+    target.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    if not committed:
+        exclude_attachments(cfg.store_for(_attachment_key(routing, plan)).path)
+    return Attached(
+        name=source.name,
+        destination=destination,
+        committed=committed,
+        size=destination.stat().st_size,
+        digest="" if committed else file_digest(destination),
+    )
+
+
+def _print_attached(plan: Path, entries: list[Attached]) -> None:
+    for entry in entries:
+        where = "committed" if entry.committed else "local only"
+        print(f"attached: {entry.name} -> {entry.destination}  ({where}, {human_size(entry.size)})")
+    print(f"recorded: {plan}")
+    if any(not entry.committed for entry in entries):
+        print("\nNOTE: a local attachment is the only copy of that file. Nothing backs it up and")
+        print("      git cannot get it back — the plan records its sha256 so a later reader can")
+        print("      tell it from a different file of the same name. Keep the original until the")
+        print("      plan is retired if losing it would matter.")
+    if any(entry.committed for entry in entries):
+        print(f"\ncommit:   plans.py commit {plan} -m '<what this evidence is>'")
+        print("          which takes the plan and its attachments together.")
+
+
+def cmd_attach(args: argparse.Namespace, ws: Workspace) -> int:
+    """Copy evidence somewhere stable and record it in the plan."""
+    cfg = ws.config
+    routing = ws.require_routable()
+    plan = locate(cfg, routing, args.plan)
+    limit = cfg.commit_limit_kb * 1024
+    entries = [
+        _attach_one(
+            cfg,
+            routing,
+            plan,
+            source,
+            committed=args.commit or (source.stat().st_size <= limit and not args.local),
+        )
+        for source in attachment_sources(args.files)
+    ]
+
+    record_attachments(plan.path, entries)
+    if args.json:
+        payload = [
+            {
+                "name": entry.name,
+                "path": str(entry.destination),
+                "committed": entry.committed,
+                "bytes": entry.size,
+                "sha256": entry.digest or None,
+            }
+            for entry in entries
+        ]
+        print(json.dumps({"plan": str(plan.path), "attached": payload}, indent=2))
+        return 0
+
+    _print_attached(plan.path, entries)
+    return 0
+
+
 def repo_root_for(path: Path) -> Path | None:
     """The repository holding a path, which may itself no longer exist.
 
@@ -4645,6 +4918,19 @@ def build_parser() -> argparse.ArgumentParser:
     move.add_argument("file", help="plan path or bare filename")
     move.add_argument("--to", choices=("repo", "store"), required=True)
     move.set_defaults(func=cmd_move)
+
+    attach = add("attach", "copy evidence somewhere stable and record it in the plan")
+    attach.add_argument("plan", help="plan path or bare filename")
+    attach.add_argument("files", nargs="+", metavar="FILE", help="the files to copy in")
+    destination = attach.add_mutually_exclusive_group()
+    destination.add_argument(
+        "--commit", action="store_true", help="beside the plan, committed with it, whatever the size"
+    )
+    destination.add_argument(
+        "--local", action="store_true", help="into the store's attachments area, which git never sees"
+    )
+    attach.add_argument("--json", action="store_true")
+    attach.set_defaults(func=cmd_attach)
 
     commit = add("commit", "commit these plans, alone, without taking a parallel session's staged work")
     commit.add_argument("file", nargs="+", help="plan path(s) or bare filename(s), all in one repository")

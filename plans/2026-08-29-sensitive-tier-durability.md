@@ -74,3 +74,10 @@ machine and its drive being in the same place.
 Whatever lands, `plans.py doctor` has to keep flagging a remote on the sensitive tier: a non-vendor
 destination is still a remote, so the check either learns which remotes are sanctioned or the rule
 becomes "one you configured deliberately", recorded where doctor can read it.
+
+**That half is built, 2026-09-12**, by the work-device plan rather than by this one: `doctor` now
+reports a remote on the guarded store only when no `sanctioned_remotes` entry covers it, and an
+entry may be a path (`/media/backup`, `~/drive`) precisely because `parse_remote` answers None for a
+local path — which is the shape the external drive above arrives in. So the mechanism this plan's
+recommendation asked for exists, and what is still open is the decision it was always about: which
+destination, and whether one answer covers every employer.

@@ -1,7 +1,7 @@
 ---
 name: skill-authoring
 description: "Use when writing a new Agent Skill, editing an existing SKILL.md, or getting a skill change actually deployed — where the source lives versus the installed copy, why editing the installed copy silently does nothing, the edit → gate → commit → push → re-install → verify sequence, how to publish a skill repo so `skills add` finds it, how to word a `description` so it triggers on real requests without stealing another skill's, and when something should be an instructions-file rule instead of a skill at all."
-compatibility: Node (npx) for the skills CLI install commands; the skill-fitness skill's scripts for the measurements it asks for. Nothing else.
+compatibility: Node (npx) for the skills CLI install commands; the skill-fitness skill's scripts for the measurements it asks for. Its own scripts/names.py is stdlib Python 3 and reaches skills.sh over the network unless run with --offline.
 ---
 
 # Authoring and updating Agent Skills
@@ -25,16 +25,22 @@ take effect.
 
 ## What this skill reads, runs and writes
 
-This skill ships no scripts; what it touches, it touches through the commands it tells you to run.
+It ships one script, `scripts/names.py`, which reads skill directories and queries a public search
+endpoint. Everything else it touches, it touches through the commands it tells you to run.
 
+- **Reads**: `scripts/names.py` reads the `SKILL.md` of each skill under the roots you give it
+  (default: `skills/` and `~/.agents/skills/`) — the name and a digest of the file, nothing more. No
+  transcript, no process, no git state.
 - **Runs**: `npx skills add`, `skills ls`, `skills remove`; `skill-fitness`'s scripts for the
-  measurements below.
+  measurements below. `names.py` shells out to nothing at all.
 - **Writes**: `skills add --global` copies skills into `~/.agents/skills/` and links each detected
   agent's own skills directory at it; without `--global`, and standing in a repo, it writes
   `.agents/skills/`, a `.claude/skills` symlink and `skills-lock.json` into that working tree —
   which is why the flag is not optional here. The `ln -s ~/.agents/skills ~/.claude/skills` it
   suggests when the installer skipped the link writes one symlink. Nothing else.
-- **Network**: `skills add <owner>/<repo>` clones the repo you name.
+- **Network**: `skills add <owner>/<repo>` clones the repo you name. `names.py` queries
+  `skills.sh/api/search` — one GET per name, sending only the name — unless `--offline`, which makes
+  it network-free.
 
 ## Updating a skill and redeploying it
 
@@ -156,6 +162,59 @@ npx skills add <owner>/<repo> --global
 A skill that documents a repo's _own_ interface belongs committed in that repo under
 `.agents/skills/`, where it needs no install step for anyone working there. A cross-project
 convention skill belongs in a dedicated skills repo. Both install with the same command.
+
+## The name is a primary key, and nothing warns you
+
+Pick a name however you like — but **check it is free before you adopt it**, because the name is an
+identifier first and a label second, and every mechanism that uses it fails silently.
+
+```shell
+python3 <path>/names.py check <candidate>     # before adopting it
+python3 <path>/names.py audit --mine <you>    # every skill you already have
+python3 <path>/names.py audit --offline       # local duplicates only, no network
+```
+
+Exit 0 clean, 1 a collision, **3 indeterminate** — an unreachable registry is reported as unknown
+and never as clean, because a check that silently passes when it could not run is worse than no
+check.
+
+What the script is defending against, each verified in the installer's own source:
+
+- **A duplicate name is dropped without a message.** `vercel-labs/skills` skips a skill whose name
+  it has already seen — first-seen-wins by traversal order. Installing somebody else's repo can
+  therefore remove one of yours from the listing, and nothing anywhere says so.
+- **The lockfile is keyed by name**, so a rename does not read as a move. It reads as a **delete**,
+  and the new name reads as a skill nobody installed.
+- **Names are normalized before comparison** — case folded, whitespace and underscores mapped to
+  hyphens — so `My Skill`, `my_skill` and `my-skill` are one identity, not three.
+- **Skills have no escape hatch, and plugins do.** Anthropic shipped both a `displayName` and a live
+  `renames` map for plugins precisely because a slug change breaks installs; the skill format has
+  neither, so the name is identifier and label at once.
+
+Measured 2026-09-12 against the public index: **five of this corpus's fifteen names were already
+published by other repos** — `skill-authoring` by six of them, including two vendor repos. None of
+that is visible from the authoring side, and all five predate the check.
+
+[PITFALL: **a local collision is always _across scopes_, and a source checkout is not a scope.** Two
+rival skills cannot share one hub — the second overwrites the first — so the real clash is the user
+hub against a project's own `.agents/skills`, where the spec says the project wins and a warning is
+expected. Auditing a source `skills/` alongside the hub instead reports every skill whose source is
+merely ahead of its install, which is what authoring looks like every day. Confirmed while writing
+this section: editing this file made the check flag `skill-authoring` against its own installed
+copy. So the default roots are the loader's scopes, `--root skills` is the deliberate authoring
+call, and a digest decides whether two copies are the same file or two different ones.]
+
+**Renaming a published skill is a breaking change.** It strands every existing install, and the old
+slug stays in the public index forever: this repo renamed one skill and the pre-rename slug is still
+listed, with its own install count, beside the live one. Treat a rename as a deprecation, not an
+edit — and prefer getting the name right while nobody has it.
+
+**There is no style convention to follow, and that is a finding rather than a gap.** The
+specification's authoring pages carry none; no published eval varies skill names; the documented
+selection procedure is description-only. The one community rule that exists — prefer verbs and
+gerunds — is contradicted by the corpus roughly six to one, which is noun-led. So spend the effort
+on the description, which selection actually uses, and spend on the name only the two seconds this
+check costs.
 
 ## Cut a skill by responsibility, with triggers that don't contend
 

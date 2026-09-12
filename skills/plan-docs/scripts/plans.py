@@ -1923,8 +1923,19 @@ def source_label(cfg: Config, source: Source, path: str) -> str:
 
 
 def is_plan_path(path: str) -> bool:
-    name = path.rsplit("/", 1)[-1]
-    return path.endswith(".md") and name != "README.md"
+    """Whether a path in a plans directory is a plan, or a file attached to one.
+
+    An attachment lives in a directory named for its plan's stem, or under the store's attachments
+    area, and deleting one must not read as a retirement — `archive` would offer it back as a plan
+    that never existed. Written as two exclusions rather than as "the filename must be
+    date-prefixed", so a plan named before this convention is still found.
+    """
+    segments = path.split("/")
+    if ATTACHMENTS_DIR in segments[:-1]:
+        return False
+    if len(segments) > 1 and PLAN_NAME_RE.fullmatch(f"{segments[-2]}.md"):
+        return False
+    return path.endswith(".md") and segments[-1] != "README.md"
 
 
 def deleted_plans(cfg: Config, source: Source) -> list[Retired]:
@@ -3218,12 +3229,16 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> TakenPlans:
     blocked: list[PlanFile] = []
     for plan in chosen:
         destination = target / plan.path.name
-        if destination.exists():
+        # The plan's own attachments travel with it, and a directory already sitting where they
+        # would land blocks the absorption exactly as a name collision does — both mean two things
+        # claim one name, which is a question for a person rather than a rename to make silently.
+        if destination.exists() or attachments_landing_taken(plan.path, target):
             blocked.append(plan)
             continue
         target.mkdir(parents=True, exist_ok=True)
         text = strip_frontmatter_key(plan.path.read_text(encoding="utf-8"), "repo")
         destination.write_text(text, encoding="utf-8")
+        move_attachments(plan.path, target)
         plan.path.unlink()
         moved.append(MovedPlan(plan, destination))
     return TakenPlans(moved, blocked)
@@ -3254,9 +3269,12 @@ def cmd_move(args: argparse.Namespace, ws: Workspace) -> int:
         text = strip_frontmatter_key(text, "repo")
     target.mkdir(parents=True, exist_ok=True)
     destination.write_text(text, encoding="utf-8")
+    carried = move_attachments(plan.path, target)
     plan.path.unlink()
     print(f"moved:   {plan.path}")
     print(f"to:      {destination}")
+    if carried:
+        print(f"with:    {carried}  (its attachments, moved with it)")
     if plan.where == "repo":
         print("note:    stage the deletion in the repo (git rm / git add -u on that path) and commit it")
     return 0
@@ -3380,6 +3398,75 @@ def record_attachments(plan: Path, entries: list[Attached]) -> None:
             end -= 1
         lines[end:end] = rows
     plan.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def store_plan_files(store: Store) -> list[Path]:
+    """Plan files held in a store — never a file attached to one, which is counted separately."""
+    if not store.path.is_dir():
+        return []
+    return [
+        path
+        for path in store.path.rglob("*.md")
+        if path.name != "README.md" and ATTACHMENTS_DIR not in path.relative_to(store.path).parts
+    ]
+
+
+def store_attachments(store: Store) -> list[Path]:
+    """Local-only attachments held in a store. These are in no git history, here or anywhere."""
+    area = store.path / ATTACHMENTS_DIR
+    return [path for path in area.rglob("*") if path.is_file()] if area.is_dir() else []
+
+
+def attachments_of(plan: Path) -> Path:
+    """Where a plan's committed attachments sit: a directory beside it, named for its own stem."""
+    return plan.parent / plan.stem
+
+
+def attachments_landing_taken(plan: Path, target: Path) -> bool:
+    """Whether moving this plan to `target` would land its attachments on an existing directory."""
+    return attachments_of(plan).is_dir() and (target / plan.stem).exists()
+
+
+def move_attachments(plan: Path, target: Path) -> Path | None:
+    """Carry a plan's committed attachments to wherever the plan itself just went.
+
+    Every command that relocates a plan calls this, because the alternative is silent: the markdown
+    moves, the directory stays behind, and the plan's own rows then name files that are no longer
+    beside it. Returns None when the plan has none, which is the ordinary case.
+    """
+    source = attachments_of(plan)
+    if not source.is_dir():
+        return None
+    destination = target / plan.stem
+    if destination.exists():
+        raise PlanError(f"{destination} already exists — merge the two by hand, then move the plan")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source), str(destination))
+    return destination
+
+
+def with_attachments(plans: list[Path]) -> list[Path]:
+    """Each plan, plus the files in its own attachment directory — the set one commit should carry.
+
+    This is not the whole-directory form `commit` refuses. That one was refused because a directory
+    argument makes it easy to sweep a file this session never touched; a plan's attachment directory
+    is named for the plan and holds nothing else, so naming the plan cannot pull in somebody else's
+    change. A retirement is the case that needs the git question: the directory is gone by then, so
+    the deletions it owes are read from the index rather than from the filesystem.
+    """
+    found: list[Path] = []
+    for plan in plans:
+        found.append(plan)
+        directory = attachments_of(plan)
+        if directory.is_dir():
+            found.extend(sorted(path for path in directory.rglob("*") if path.is_file()))
+            continue
+        repo = repo_root_for(plan)
+        if repo is None:
+            continue
+        listed = git(["ls-files", "--", directory.relative_to(repo).as_posix()], repo)
+        found.extend(repo / line for line in (listed or "").splitlines() if line)
+    return found
 
 
 def _attachment_key(routing: Routing, plan: PlanFile) -> str | None:
@@ -3595,14 +3682,17 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     # one just filed *for another repo*, which lives in that repo's store mirror — somewhere `locate`
     # deliberately cannot see, since it searches what this session reads. `new --for` prints the
     # path, so taking it is both the natural flow and the one that works across the store.
-    targets: list[Path] = []
+    named: list[Path] = []
     for name in args.file:
         candidate = Path(name).expanduser()
         if candidate.is_file():
-            targets.append(candidate.resolve())
+            named.append(candidate.resolve())
         else:
-            targets.append(deleted_plan(candidate) or locate(cfg, routing, name).path)
+            named.append(deleted_plan(candidate) or locate(cfg, routing, name).path)
 
+    # A plan's attachments ride with it, and are counted separately below: they are part of the one
+    # change being committed, not a second plan that would demand a message describing a set.
+    targets = with_attachments(named)
     repos = {repo_root_for(target) for target in targets}
     if None in repos:
         loose = [str(t) for t in targets if repo_root_for(t) is None]
@@ -3619,9 +3709,9 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     # A generated message names one plan's topic, and there is no honest single-file default for
     # several. Requiring `-m` for a set is the constraint that keeps the multi-file form from
     # producing the thing it exists to prevent: one message that describes a third of its own diff.
-    if len(targets) > 1 and not args.message:
+    if len(named) > 1 and not args.message:
         raise PlanError("-m is required when committing more than one plan: no default message describes a set")
-    message = args.message or f"{routing.rel or repo.name}: {targets[0].stem}"
+    message = args.message or f"{routing.rel or repo.name}: {named[0].stem}"
 
     commit = commit_paths(repo, targets, message)
     print(f"committed: {commit[:12]} in {repo}")
@@ -4052,9 +4142,12 @@ def cmd_graduate(args: argparse.Namespace, ws: Workspace) -> int:
         text = text.replace("\nupdated:", f"\nrepo: {origin or routing.rel}\nupdated:", 1)
     target.mkdir(parents=True, exist_ok=True)
     destination.write_text(text, encoding="utf-8")
+    carried = move_attachments(plan.path, target)
     plan.path.unlink()
     print(f"graduated: {plan.path.name}")
     print(f"to:        {destination}")
+    if carried:
+        print(f"with:      {carried}  (its attachments, moved with it)")
     print(f"route:     {routing.rule.write if routing.rule else '?'} ({routing.source})")
     return 0
 
@@ -4360,7 +4453,7 @@ def misfiled_plans(cfg: Config) -> list[str]:
         if not store.path.is_dir():
             continue
         for path in sorted(store.path.iterdir()):
-            if not path.is_dir() or path.name.startswith(".") or path.name == UNSCOPED_DIR:
+            if not path.is_dir() or path.name.startswith(".") or path.name in {UNSCOPED_DIR, ATTACHMENTS_DIR}:
                 continue
             actual = cfg.tier_of(path.name)
             if actual != store.tier:
@@ -4658,31 +4751,33 @@ def cmd_uninstall(args: argparse.Namespace, ws: Workspace) -> int:
     else:
         print(f"absent:      {cfg.path}")
 
-    holding = {
-        store.tier: [path for path in store.path.rglob("*.md") if path.name != "README.md"]
-        if store.path.is_dir()
-        else []
-        for store in cfg.stores()
-    }
+    holding = {store.tier: store_plan_files(store) for store in cfg.stores()}
+    attached = {store.tier: store_attachments(store) for store in cfg.stores()}
     if not args.purge_store:
         for store in cfg.stores():
+            extra = f", {len(attached[store.tier])} attachment(s)" if attached[store.tier] else ""
             print(
-                f"kept:        {store.path} ({len(holding[store.tier])} plan file(s)) [{store.tier}] "
-                "— --purge-store to delete it"
+                f"kept:        {store.path} ({len(holding[store.tier])} plan file(s){extra}) "
+                f"[{store.tier}] — --purge-store to delete it"
             )
         return 0
     held = sum(len(files) for files in holding.values())
-    if held and not args.force:
+    attachments = sum(len(files) for files in attached.values())
+    if (held or attachments) and not args.force:
         # Counted across both stores before deleting either: purging one and stopping at the other
         # would be a half-done irreversible action, which is worse than refusing the whole thing.
+        # Attachments are counted too, and are the worse half — a plan is at least in the store's
+        # git history until the directory goes, while a local attachment is in no history anywhere.
         raise PlanError(
-            f"the store still holds {held} plan file(s) across {len(cfg.stores())} tier(s); this is "
-            "their only copy. Move what matters out first, or re-run with --force to delete them."
+            f"the store still holds {held} plan file(s) and {attachments} attachment(s) across "
+            f"{len(cfg.stores())} tier(s); this is their only copy, and an attachment is in no git "
+            "history at all. Move what matters out first, or re-run with --force to delete them."
         )
     for store in cfg.stores():
         if store.path.is_dir():
             shutil.rmtree(store.path)
-            print(f"removed:     {store.path} ({len(holding[store.tier])} plan file(s) deleted) [{store.tier}]")
+            extra = f", {len(attached[store.tier])} attachment(s)" if attached[store.tier] else ""
+            print(f"removed:     {store.path} ({len(holding[store.tier])} plan file(s){extra} deleted) [{store.tier}]")
     return 0
 
 

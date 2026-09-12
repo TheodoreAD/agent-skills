@@ -2894,6 +2894,123 @@ def test_a_directory_is_refused_rather_than_copied_whole(ws, capsys):
     assert "attach the files themselves" in capsys.readouterr().err
 
 
+def test_absorb_carries_a_plans_attachments_into_the_repo(ws, capsys, monkeypatch):
+    """The markdown moving without its evidence is the silent half: the plan's own rows would name
+    files that are no longer beside it, and nothing would say where they went."""
+    write_config(ws, REPO_PLANS)
+    anchor_session_to(ws, ws.personal, monkeypatch)
+    mirror = ws.store / "github.com-personal" / "agent-skills"
+    filed = plan(mirror, "2026-01-01-filed.md", "status: idea\nupdated: 2026-01-01")
+    evidence = source_file(mirror / "2026-01-01-filed", "report.md", 10)
+    capsys.readouterr()
+
+    assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 0
+
+    assert (ws.personal / "plans" / "2026-01-01-filed.md").is_file()
+    assert (ws.personal / "plans" / "2026-01-01-filed" / "report.md").is_file()
+    assert not evidence.exists()
+    assert not filed.exists()
+
+
+def test_absorb_is_blocked_when_the_attachments_have_nowhere_to_land(ws, capsys, monkeypatch):
+    """A directory already sitting where the evidence would go means two things claim one name —
+    the same answer a plan name collision gets, because merging them is a person's judgement."""
+    write_config(ws, REPO_PLANS)
+    anchor_session_to(ws, ws.personal, monkeypatch)
+    mirror = ws.store / "github.com-personal" / "agent-skills"
+    filed = plan(mirror, "2026-01-01-filed.md", "status: idea\nupdated: 2026-01-01")
+    source_file(mirror / "2026-01-01-filed", "report.md", 10)
+    source_file(ws.personal / "plans" / "2026-01-01-filed", "something-else.md", 10)
+    capsys.readouterr()
+
+    assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 1
+
+    assert "CONFLICT" in capsys.readouterr().out
+    assert filed.is_file(), "neither copy is destroyed"
+    assert not (ws.personal / "plans" / "2026-01-01-filed.md").exists()
+
+
+def test_move_carries_the_attachments_with_the_plan(ws, capsys):
+    write_config(ws, REPO_PLANS)
+    target = plan(ws.personal / "plans", "2026-01-01-flaky-ci.md", "status: idea\nupdated: 2026-01-01")
+    source_file(ws.personal / "plans" / "2026-01-01-flaky-ci", "report.md", 10)
+
+    assert plans.main(["move", str(target), "--to", "store", "--path", str(ws.personal)]) == 0
+
+    mirror = ws.store / "github.com-personal" / "agent-skills"
+    assert (mirror / "2026-01-01-flaky-ci.md").is_file()
+    assert (mirror / "2026-01-01-flaky-ci" / "report.md").is_file()
+    assert not (ws.personal / "plans" / "2026-01-01-flaky-ci").exists()
+    assert "its attachments, moved with it" in capsys.readouterr().out
+
+
+def test_commit_takes_a_plan_and_its_attachments_as_one_change(ws, capsys):
+    """Not the whole-directory form `commit` refuses: the directory is named for the plan and holds
+    nothing else, so naming the plan cannot sweep a file belonging to somebody else's change."""
+    write_config(ws, REPO_PLANS)
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.store, check=True)
+    mirror = ws.store / "github.com-personal" / "agent-skills"
+    filed = plan(mirror, "2026-01-01-filed.md", "status: idea\nupdated: 2026-01-01")
+    source_file(mirror / "2026-01-01-filed", "report.md", 10)
+    capsys.readouterr()
+
+    # No -m: one plan was named, so the generated message still applies — the attachments riding
+    # with it must not be counted as a second plan demanding a message that describes a set.
+    assert plans.main(["commit", str(filed), "--path", str(ws.personal)]) == 0
+
+    listed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"], cwd=ws.store, capture_output=True, text=True, check=True
+    ).stdout
+    assert "github.com-personal/agent-skills/2026-01-01-filed.md" in listed
+    assert "github.com-personal/agent-skills/2026-01-01-filed/report.md" in listed
+
+
+def test_archive_does_not_offer_an_attachment_back_as_a_retired_plan(ws, capsys):
+    """`archive` reads deletions out of history, and an attachment deleted with its plan would
+    otherwise be listed as a plan that never existed."""
+    write_config(ws, REPO_PLANS)
+    commit_plan(ws.personal, f"plans/{PLAN_NAME}", RETIRED_PLAN, "plan: land it")
+    commit_plan(ws.personal, "plans/2026-08-20-store-routing/notes.md", "an agent's report\n", "plan: its evidence")
+    retire_plan(ws.personal, "plans/2026-08-20-store-routing/notes.md")
+    retire_plan(ws.personal, f"plans/{PLAN_NAME}")
+
+    assert plans.main(["archive", "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert PLAN_NAME in out
+    assert "notes.md" not in out
+
+
+def test_the_misfiled_root_check_ignores_the_attachments_area(ws, capsys):
+    """`_attachments` is not a mirrored root, and reporting it as one filed in the wrong tier is a
+    permanent row on every machine that ever attaches anything."""
+    write_config(ws, TIERED)
+    source_file(ws.store / "_attachments" / "client.com-bitbucket" / "team" / "api" / "2026-01-01-x", "ci.log", 10)
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+
+    assert "_attachments" not in capsys.readouterr().out
+
+
+def test_uninstall_counts_attachments_and_will_not_delete_them_silently(ws, capsys):
+    """A plan in a store is at least in that store's git history until the directory goes. A local
+    attachment is in no history anywhere, so the refusal has to name it."""
+    write_config(ws, REPO_PLANS)
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    source_file(ws.store / "_attachments" / "github.com-personal" / "agent-skills" / "2026-01-01-x", "ci.log", 10)
+    capsys.readouterr()
+
+    assert plans.main(["uninstall", "--path", str(ws.personal)]) == 0
+    assert "0 plan file(s), 1 attachment(s)" in capsys.readouterr().out
+
+    write_config(ws, REPO_PLANS)
+    assert plans.main(["uninstall", "--purge-store", "--path", str(ws.personal)]) == 1
+    assert "in no git history at all" in capsys.readouterr().err
+    assert (ws.store / "_attachments").is_dir()
+
+
 def test_the_commit_limit_is_configurable_and_a_bad_value_is_restored(ws):
     write_config(ws, REPO_PLANS)
     assert plans.load_config().commit_limit_kb == plans.DEFAULT_COMMIT_LIMIT_KB

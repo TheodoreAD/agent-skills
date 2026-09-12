@@ -1,5 +1,5 @@
 ---
-status: planned
+status: landed
 updated: 2026-09-12
 ---
 
@@ -163,3 +163,11 @@ the attachments root; `commit <plan>` includes the sibling directory; an unscope
 Then the real thing: attach an agent's investigation report and a multi-megabyte log to a live plan
 on this machine, and check the plan reads correctly, the gate passes, and `plans.py commit` carries
 what it should.
+
+Run 2026-09-12 against a real repo and a real store in a throwaway `$HOME`, one command per step: a
+46-byte report was committed beside the plan and a 3 MB log went to the store's attachments area;
+the sha256 in the plan's row matched `sha256sum` on the file; `git status` in the store stayed
+clean, because `install`'s exclude line covers the area; `commit <plan>` carried the plan and the
+report and nothing else, under one message; `refs` named both halves with the local one marked
+final; and `move --to store` carried the committed directory while the local one stayed where its
+key puts it. Nothing in the real store or the projects tree was touched.

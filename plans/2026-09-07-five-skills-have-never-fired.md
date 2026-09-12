@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-07
+updated: 2026-09-12
 ---
 
 # Five of fourteen skills have never been invoked, and two of them were used by hand the same day
@@ -67,3 +67,59 @@ Run `trigger.py` over a small set of real requests taken from the transcript sto
 one that ran the two scripts by hand — before touching any description. Published measurement puts
 unmeasured model-authored descriptions below having no skill at all, and this corpus's own rule is
 that a description is measured rather than reworded on a hunch.
+
+## A third answer to the second question: a skill that only a person invokes
+
+Proposed by the user 2026-09-12, and it is a direct answer to the open question above rather than a
+new topic — _"we might want to explore skills that are only user triggered, never context triggered,
+so we can have more targeted skills with attached scripts saved easily, rather than having to
+constantly worry about trigger contention."_
+
+The appeal is real and this corpus has the measurements to say so. Trigger contention is not
+hypothetical here: `fitness.py overlap` ranks pairs sharing vocabulary, `trigger.py` exists because
+a static score was refuted by a live run, and the rule that a new skill's description must not steal
+a sibling's is enforced by nothing but care. Meanwhile the listing is **already over budget at a
+200k-token window** — 11,601 characters of descriptions against 8,000 — so every added skill makes
+the shared surface worse for the ones already there. A skill nobody has to select is a skill that
+costs neither.
+
+**The cost model forks on one unverified fact, and everything else follows from it.**
+
+[NEEDS CLARIFICATION: **can a skill be invokable by name while absent from the model-visible
+listing?** If yes, a user-only skill is genuinely free: no contention, no listing characters, and
+`python-refactor-audit`'s scripts get a home without their `SKILL.md` competing for requests it does
+not want. If no — if a skill must be listed to be invokable — then the idea saves contention and
+**not** budget, which is a much weaker case, because the listing is the resource currently
+exhausted. Nothing gathered so far answers it: the specification's progressive disclosure defines
+tier 1 as "the `name` and `description` fields are loaded at startup for **all** skills", and every
+loader read renders both, which points at "no" — but that is the default path, not proof that no
+exclusion exists.]
+
+[NEEDS CLARIFICATION: **is there any mechanism at all, or would this have to be invented?** The
+spec's frontmatter is six keys and none of them is a trigger mode; `allowed-tools` is the only
+experimental one and it constrains tools rather than selection. So the options are a spec proposal,
+a vendor-specific flag, or a convention with no enforcement — and the middle one collides with this
+repo's own principle that anything vendor-specific is plumbing and never a carrier for instructions.
+Worth noting the principle is already being amended once, for a distribution manifest; amending it
+twice for a selection flag is a different and larger claim.]
+
+[UNVERIFIED: **that invocation by name works without the listing.** Both harnesses do accept a named
+invocation — Claude Code takes `/skill-name`, and Codex's prompt says "if the user names a skill
+(with `$SkillName` or **plain text**)" — and Codex additionally has a documented tier that strips
+every description and renders names alone, which is at least proof that a name-only listing is a
+state the system can be in. Whether a skill can be _deliberately_ put in that state, per skill, is
+the question. `references/naming.md` in `skill-authoring` records what was established about both.]
+
+**What would make this decidable cheaply**: one skill, marked however the harness allows, and a
+`trigger.py run` over requests that should and should not select it. That is the same
+draft-then-measure loop this plan already recommends, applied to a mechanism rather than to wording.
+
+[DEFERRED: **the adjacent half of the same request** — a place for the measurement scripts this
+session produced, and a way to check the corpus against public surfaces (install counts, registry
+presence, name collisions, scanner verdicts). Partly started: `skill-authoring`'s `names.py` now
+answers the collision half, and
+`plans/2026-09-02-skill-risk-ratings-are-user-facing-and-unwatched.md` already owns the
+scanner-verdict monitor and should not be duplicated. What has no home is the corpus-harvesting
+apparatus, parked at `$RESEARCH_HOME/measurements/2026-09-12-pitch-and-skill-corpora/` outside
+version control. If the answer above is that user-only skills are viable, that apparatus is the
+obvious first tenant.]

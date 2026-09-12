@@ -92,7 +92,14 @@ DEFAULT_COMMIT_LIMIT_KB = 1024
 
 # The two halves of the store, most disclosable first. A root's tier decides which git repository
 # its mirrored plans live in — the shareable one may have a remote, the sensitive one may not.
-SHAREABLE, SENSITIVE = "shareable", "sensitive"
+#
+# `SINGLE` is the third value and is not a third half: it is what a machine with no split calls its
+# one store, because "sensitive" is a *relative* word — it means "must not go where the other tier
+# goes" — and there is no other tier on a work device for it to be relative to. Calling that store
+# sensitive stated an absolute property about the material, which is the thing the user corrected.
+# It keys the README and the store lookup; no human output prints it, and `--json` reports the tier
+# as null there so nothing downstream can read a label as a claim.
+SHAREABLE, SENSITIVE, SINGLE = "shareable", "sensitive", "single"
 
 # What kind of machine this is, which decides whether the store splits at all.
 #
@@ -105,7 +112,7 @@ SHAREABLE, SENSITIVE = "shareable", "sensitive"
 #                empty while every command still reasons about it.
 CONTRACTOR, WORK = "contractor", "work"
 DEVICES = (CONTRACTOR, WORK)
-TIERS = (SHAREABLE, SENSITIVE)
+TIERS = (SHAREABLE, SENSITIVE, SINGLE)
 
 # Terms shorter than this are dropped from the confidentiality scan: a three-letter directory name
 # matches half the English language and the resulting noise is what makes a gate get ignored.
@@ -312,8 +319,21 @@ public_roots = ["github.com-personal"]
 
 # Roots whose plans go in the shareable tier of the store. Defaults to `public_roots`, which is
 # almost always the same answer — set it only once the two genuinely disagree, i.e. a root whose
-# name may be published but whose plans may not, or the reverse.
+# name may be published but whose plans may not, or the reverse. A `work` device has one store, so
+# this key does not apply there.
 # shareable_roots = ["github.com-personal"]
+
+# Where the guarded store may push — the sensitive tier here, or the only store on a `work` device.
+# Each entry is "<host>/<owner>", "<host>/<owner>/<repo>", "<host>/" for a whole instance, or a
+# path beginning with / or ~ for a drive or a NAS. A remote matching none of them is reported by
+# `plans.py doctor`; with nothing set, every remote is, because a machine nobody has configured
+# must keep the protection it has.
+#
+# The host is not optional, and a bare account name is refused: `own_accounts` matches a name on
+# any host on purpose, and that is exactly what must not happen here — it cannot tell your account
+# on the organisation's host from the same name on a public one, and only one of those is inside
+# the boundary. Nothing here can check whether the destination repo is private; that is your step.
+# sanctioned_remotes = ["github.corp.example/your-account"]
 
 [roots]
 # "github.com-personal" = "repo"
@@ -403,6 +423,26 @@ inside the other one.
 
 Treat it as unbacked-up unless something was arranged deliberately.
 """,
+    SINGLE: f"""\
+# Plans store
+
+{STORE_README_COMMON}
+This machine holds one organisation's work, so there is one store and no tier to choose. Everything
+here belongs to that organisation, which is also why "sensitive" is not the word for it: that is a
+relative classification, and there is nothing here for it to be relative to.
+
+**A remote is expected, and which one is the whole question.** A private repository on the
+organisation's own host is the documented destination; a personal remote holding an employer's
+internal work is not, and no amount of "it is private" changes that. Record the destinations that
+are sanctioned and the check stays quiet about them:
+
+    python3 <path>/plans.py config set sanctioned_remotes '["<host>/<owner>"]'
+
+Nothing here can tell whether the repository you push to is private — that needs a network call this
+script does not make. Making it private is your step.
+
+It keeps full history, so a retired plan is still recoverable with `plans.py archive`.
+""",
 }
 
 
@@ -459,6 +499,7 @@ class Config:
     own_accounts: tuple[str, ...]
     public_roots: tuple[str, ...]
     shareable_roots: tuple[str, ...]
+    sanctioned_remotes: tuple[str, ...]
     private_extra: tuple[str, ...]
     private_ignore: tuple[str, ...]
     about: dict[str, str]
@@ -523,15 +564,25 @@ class Config:
         """
         return self.device == CONTRACTOR
 
+    @property
+    def guarded_store(self) -> Store:
+        """The store whose remotes are checked against `sanctioned_remotes`.
+
+        The sensitive tier where the store splits, and the only store where it does not. Both hold
+        material that must not reach a personal remote; the shareable tier is the one deliberately
+        allowed one, gated on content by `scan` rather than on destination.
+        """
+        return self.sensitive_store if self.split_by_sensitivity else self.store
+
     def tier_of(self, rel: str | None) -> str:
         """Which half of the store a repo path — or the unscoped area — belongs to.
 
-        On a work device there is one store and it is the sensitive one: the whole machine is the
-        tier that does not get a personal remote. That is the simplification — not a branch that
-        skips the check, but a machine where the check has one answer.
+        On a work device there is one store and every root is in it. It is not the *sensitive* tier
+        — that word means "must not go where the other tier goes", and there is no other tier here —
+        so it answers `single`, a name no human output prints.
         """
         if not self.split_by_sensitivity:
-            return SENSITIVE
+            return SINGLE
         if rel is None or rel == UNSCOPED_DIR:
             return SHAREABLE
         return SHAREABLE if rel.split("/")[0] in set(self.shareable_root_names()) else SENSITIVE
@@ -685,11 +736,11 @@ def load_config() -> Config:
             raise PlanError(f"{path}: {exc}") from exc
 
     device = _device_field(raw)
-    # A work device has one store and it is the sensitive one: the whole machine belongs to one
+    # A work device has one store and it is neither half of a split: the whole machine belongs to one
     # organisation, so there is no boundary for a tier to draw. The tier is stamped here, at the one
     # place that knows the device, rather than re-derived by every reader.
     store = _store_field(
-        raw, path, "store", "PLANS_HOME", Path.home() / "plans", SHAREABLE if device == CONTRACTOR else SENSITIVE
+        raw, path, "store", "PLANS_HOME", Path.home() / "plans", SHAREABLE if device == CONTRACTOR else SINGLE
     )
     sensitive = _store_field(
         raw, path, "sensitive_store", "PLANS_SENSITIVE_HOME", _sensitive_sibling(store.path), SENSITIVE
@@ -710,6 +761,7 @@ def load_config() -> Config:
         own_accounts=_strings(raw.get("own_accounts"), "own_accounts"),
         public_roots=_strings(raw.get("public_roots"), "public_roots"),
         shareable_roots=_strings(raw.get("shareable_roots"), "shareable_roots"),
+        sanctioned_remotes=_sanctioned_remotes(raw.get("sanctioned_remotes")),
         private_extra=_strings(_table(raw, "private").get("extra"), "private.extra"),
         private_ignore=_strings(_table(raw, "private").get("ignore"), "private.ignore"),
         about={str(key): str(value) for key, value in _table(raw, "about").items()},
@@ -734,6 +786,28 @@ def _table(raw: dict[str, object], key: str) -> dict[str, object]:
     if not isinstance(block, dict):
         raise PlanError(f"[{key}] must be a table")
     return {str(name): value for name, value in block.items()}  # pyright: ignore[reportUnknownVariableType]
+
+
+def _sanctioned_remotes(value: object) -> tuple[str, ...]:
+    """Destinations the guarded store may push to, each naming a host or a filesystem path.
+
+    Refused at load time — which is where `config set` catches it, since that command re-reads the
+    file and restores it on a rejection — because the mistake this guards is silent. `own_accounts`
+    matches a bare account name on **any** host, deliberately, so one entry covers github.com and an
+    enterprise instance; reusing that shape here would be the exact hole the check exists to close,
+    since a bare name cannot tell `<corp-host>/<you>` from `github.com/<you>` and only one of those
+    is inside the boundary. The config would be well-formed and the check would pass.
+    """
+    entries = _strings(value, "sanctioned_remotes")
+    for entry in entries:
+        if entry.startswith(("/", "~", ".")) or "/" in entry:
+            continue
+        raise PlanError(
+            f"sanctioned_remotes entry {entry!r} names no host, so it cannot tell your account on "
+            "the organisation's host from the same name on a public one. Write <host>/<owner>, or "
+            "<host>/ for a whole instance, or a path beginning with / or ~ for a drive or a NAS."
+        )
+    return entries
 
 
 def _strings(value: object, key: str) -> tuple[str, ...]:
@@ -997,24 +1071,59 @@ def parse_remote(url: str) -> Remote | None:
     return Remote(url=text, host=host.lower(), owner="/".join(segments[:-1]), name=segments[-1].removesuffix(".git"))
 
 
-def remote_of(repo: Path) -> Remote | None:
-    """The repository's remote, `origin` for preference, in one git call.
+def remote_urls(repo: Path) -> dict[str, str]:
+    """Every remote's URL by name, in one git call.
 
     `git config --get-regexp` rather than `git remote` followed by `git remote get-url`, because
     `doctor` and `orgs` ask this of every repo on the machine: two subprocesses each is the
-    difference between a diagnostic that runs and one nobody waits for. A repo with no remote at all
-    answers None, which every caller reads as "no evidence" rather than as "not yours".
+    difference between a diagnostic that runs and one nobody waits for.
     """
     listed = git(["config", "--get-regexp", r"^remote\..*\.url$"], repo)
-    if not listed:
-        return None
     urls: dict[str, str] = {}
-    for line in listed.splitlines():
+    for line in (listed or "").splitlines():
         key, _, url = line.partition(" ")
         if url.strip():
             urls[key.removeprefix("remote.").removesuffix(".url")] = url.strip()
+    return urls
+
+
+def remote_of(repo: Path) -> Remote | None:
+    """The repository's remote, `origin` for preference.
+
+    A repo with no remote at all answers None, which every caller reads as "no evidence" rather than
+    as "not yours".
+    """
+    urls = remote_urls(repo)
     chosen = urls.get("origin") or next((urls[name] for name in sorted(urls)), None)
     return parse_remote(chosen) if chosen else None
+
+
+def remote_is_sanctioned(url: str, entries: Sequence[str]) -> bool:
+    """Whether a remote URL is one of the destinations this machine has recorded as sanctioned.
+
+    Two shapes, because a destination has two shapes. A host entry is matched segment-wise against
+    the URL's parsed identity — `<host>`, `<host>/<owner>` or `<host>/<owner>/<repo>` — so one entry
+    can cover a whole instance, one namespace on it, or a single repository, and the ssh, scp-like
+    and https spellings of the same destination all normalise to the same answer. A path entry
+    (`/media/backup`, `~/drive`) is matched as a path prefix, because `parse_remote` returns None
+    for a local path and for `file://` — deliberately — and that is exactly the shape a drive or a
+    NAS arrives in.
+
+    Unmatched is the safe direction: an entry written wrongly leaves the remote unsanctioned, so the
+    check warns about a destination that is in fact fine, rather than passing one that is not.
+    """
+    remote = parse_remote(url)
+    identity = [remote.host, *(seg for seg in remote.owner.split("/") if seg), remote.name] if remote else []
+    for entry in entries:
+        if entry.startswith(("/", "~", ".")):
+            target = str(Path(entry).expanduser()).rstrip("/")
+            if url.removeprefix("file://").rstrip("/").startswith(target):
+                return True
+            continue
+        wanted = [segment.lower() for segment in entry.split("/") if segment]
+        if identity and [segment.lower() for segment in identity[: len(wanted)]] == wanted:
+            return True
+    return False
 
 
 class RuleMatch(NamedTuple):
@@ -1899,16 +2008,19 @@ def archive_sources(ws: Workspace, routing: Routing | None) -> list[Source]:
     deletion commit sat in the other repository.
     """
     cfg = ws.config
+    # The tier is carried only where there are two of them: it labels a row so a reader can tell
+    # which history a retired plan came out of, and on a one-store machine "store" is that answer.
+    tier_of_store = (lambda store: store.tier) if cfg.split_by_sensitivity else (lambda _: "")
     if routing is None:
         found = [Source("repo", cfg.projects_root / rel, "plans/") for rel in ws.repos]
-        return [*found, *(Source("store", store.path, "", store.tier) for store in cfg.stores())]
+        return [*found, *(Source("store", store.path, "", tier_of_store(store)) for store in cfg.stores())]
     found = []
     for read in routing.read_dirs():
         if read.where == "repo" and routing.repo_root is not None:
             found.append(Source("repo", routing.repo_root, "plans/"))
         elif read.where == "store" and routing.rel is not None:
             store = cfg.store_for(routing.rel)
-            found.append(Source("store", store.path, f"{routing.rel}/", store.tier))
+            found.append(Source("store", store.path, f"{routing.rel}/", tier_of_store(store)))
     return found
 
 
@@ -2620,12 +2732,13 @@ def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
 
     print(f"scope:   {scope}{' (auto)' if args.scope == 'auto' else ''}")
     if scope == "repo":
+        tier = f"  [{cfg.tier_of(routing.rel)}]" if cfg.split_by_sensitivity else ""
         print(f"repo:    {routing.rel or routing.repo_root}")
-        print(f"store:   {cfg.store_for(routing.rel).path}  [{cfg.tier_of(routing.rel)}]")
+        print(f"store:   {cfg.store_for(routing.rel).path}{tier}")
     else:
         print(f"root:    {cfg.projects_root}")
         for store in cfg.stores():
-            print(f"store:   {store.path}  [{store.tier}]")
+            print(f"store:   {store.path}{f'  [{store.tier}]' if cfg.split_by_sensitivity else ''}")
     if not entries:
         # Not necessarily an empty repo: a `plans/` holding nothing but landed plans is a
         # retirement backlog, and "(no plan files)" on its own would be a lie of omission.
@@ -4221,8 +4334,8 @@ def install_decisions(ws: Workspace) -> list[Decision]:
             what=(
                 "what kind of machine this is. `contractor` — several parties' work plus your own "
                 "public repos, so the store splits by sensitivity. `work` — an employer-issued or "
-                "corporate device where everything belongs to one organisation, so one store, "
-                "treated as sensitive, and no tier to choose"
+                "corporate device where everything belongs to one organisation, so one store, no "
+                "tier to choose, and a remote only where you have recorded it as sanctioned"
             ),
             current=cfg.device,
             suggest="work if this machine is issued by one employer; contractor otherwise",
@@ -4243,7 +4356,7 @@ def install_decisions(ws: Workspace) -> list[Decision]:
             what=(
                 "the shareable half of the store: the unscoped area and the roots you own. May have a remote"
                 if cfg.split_by_sensitivity
-                else "the store, holding every root on this machine. Local-only unless the destination is sanctioned"
+                else "the store, holding every root on this machine. Its remote has to be one you record below"
             ),
             current=f"{cfg.store.path} (from {cfg.store.source})",
             suggest=str(cfg.store.path),
@@ -4335,16 +4448,45 @@ def install_decisions(ws: Workspace) -> list[Decision]:
             "stops a client's identity reaching a published repo",
         )
     )
-    public = ", ".join(cfg.public_root_names())
-    decisions.append(
-        Decision(
-            key="shareable_roots",
-            what="roots whose plans go in the tier that may have a remote; every other root is local-only",
-            current=", ".join(cfg.shareable_roots) or f"(unset — falls back to public_roots: {public})",
-            suggest=public or "(none)",
-            cost="a root listed here has its plans pushed to whatever remote the shareable store has",
+    # Only where there are two tiers. A work device has one store, so this is a question about a
+    # split that does not exist there — asked anyway until 2026-09-12, while the skill said it had
+    # stopped applying.
+    if cfg.split_by_sensitivity:
+        public = ", ".join(cfg.public_root_names())
+        decisions.append(
+            Decision(
+                key="shareable_roots",
+                what="roots whose plans go in the tier that may have a remote; every other root is local-only",
+                current=", ".join(cfg.shareable_roots) or f"(unset — falls back to public_roots: {public})",
+                suggest=public or "(none)",
+                cost="a root listed here has its plans pushed to whatever remote the shareable store has",
+            )
         )
-    )
+    # Asked where it can actually be answered: a machine whose guarded store has no remote and is
+    # not a work device has nothing to sanction yet, and a walkthrough that asks anyway is one
+    # question longer for no decision.
+    guarded_remotes = sorted(remote_urls(cfg.guarded_store.path).values())
+    if cfg.device == WORK or guarded_remotes:
+        pointing = f"; it points at {', '.join(guarded_remotes)}" if guarded_remotes else ""
+        decisions.append(
+            Decision(
+                key="sanctioned_remotes",
+                what=(
+                    "where the store may push: <host>/<owner>, or <host>/ for a whole instance, or a "
+                    "path for a drive or NAS. A remote outside the list is reported by doctor, and "
+                    "with nothing recorded every remote is"
+                ),
+                current=(", ".join(cfg.sanctioned_remotes) or "(unset — every remote on the store is reported)")
+                + pointing,
+                suggest=_suggest_sanctioned(ws),
+                cost=(
+                    "too wide is how a store holding an employer's work reaches a personal remote. A "
+                    "bare account name is refused here even though own_accounts wants exactly that "
+                    "shape, because it cannot tell your account on the corporate host from the same "
+                    "name on a public one"
+                ),
+            )
+        )
     decisions.append(
         Decision(
             key="private.extra",
@@ -4376,6 +4518,22 @@ def _suggest_own_accounts(ws: Workspace) -> str:
     return f"one of {', '.join(common)} — confirm which is yours" if common else "your account on each host you use"
 
 
+def _suggest_sanctioned(ws: Workspace) -> str:
+    """A destination to confirm, built only from answers the user has already given.
+
+    The host this machine's repos actually use, plus the first `own_accounts` entry — which the user
+    confirmed rather than the tool deriving it. Deliberately **not** the store's current remote: a
+    suggestion echoing what is already configured would launder a personal remote into a sanctioned
+    one, which is the single thing this key exists to catch.
+    """
+    cfg = ws.config
+    hosts = Counter(remote.host for remote in ws.remotes.values() if remote and remote.host)
+    account = cfg.own_accounts[0] if cfg.own_accounts else "<your-account>"
+    if hosts:
+        return f"{hosts.most_common(1)[0][0]}/{account} — this machine's commonest host, and an account you confirmed"
+    return "<host>/<owner> — the organisation's own host and your account on it"
+
+
 def _no_default_description(cfg: Config) -> str:
     if cfg.device == WORK:
         return f"(none — `{WORK_DEFAULT_SOURCE}`: the store, with own_accounts routed `repo`)"
@@ -4394,8 +4552,16 @@ def explain_install(ws: Workspace) -> int:
     print("install would:")
     planned: list[tuple[str, Path, str]] = [("write" if not cfg.path.is_file() else "keep", cfg.path, "")]
     for store in cfg.stores():
-        note = " (git repository; a remote is allowed)" if store.tier == SHAREABLE else " (git repository, no remote)"
-        planned.append(("create" if not store.path.is_dir() else "keep", store.path, f"  [{store.tier}]{note}"))
+        # Read from the repository rather than inferred from the tier: the tier says what *may*
+        # have a remote, and printing that as though it were the state told a store with a remote
+        # that it had none.
+        # The URLs rather than the names: this is the moment the user decides what is sanctioned,
+        # and `origin` says nothing about where it points.
+        remotes = sorted(remote_urls(store.path).values()) if is_git_repo(store.path) else []
+        has = f"remote: {', '.join(remotes)}" if remotes else "no remote yet"
+        allowed = "a remote is allowed" if store.tier == SHAREABLE else "only a sanctioned remote"
+        tier = f"  [{store.tier}]" if cfg.split_by_sensitivity else ""
+        planned.append(("create" if not store.path.is_dir() else "keep", store.path, f"{tier} ({has}; {allowed})"))
     planned.append(("create" if not cfg.unscoped.is_dir() else "keep", cfg.unscoped, ""))
     for verb, target, note in planned:
         print(f"  {verb:<7}{target}{note}")
@@ -4426,19 +4592,21 @@ def run_install(args: argparse.Namespace, ws: Workspace) -> int:
         print(f"exists:      {cfg.path}")
 
     for store in cfg.stores():
+        prefix = tier_prefix(cfg, store)
+        tier = f"  [{store.tier}]" if cfg.split_by_sensitivity else ""
         store.path.mkdir(parents=True, exist_ok=True, mode=STORE_MODE)
         if not (store.path / ".git").is_dir():
             if git(["init", "-q"], store.path) is None:
                 raise PlanError(f"git init failed in {store.path}")
-            print(f"initialized: {store.path} (git)  [{store.tier}]")
+            print(f"initialized: {store.path} (git){tier}")
         else:
-            print(f"exists:      {store.path}  [{store.tier}]")
+            print(f"exists:      {store.path}{tier}")
         readme = store.path / "README.md"
         if not readme.exists():
             readme.write_text(STORE_README[store.tier], encoding="utf-8")
             print(f"created:     {readme}")
         if not git(["config", "user.email"], store.path):
-            print(f"todo:        the {store.tier} store has no git identity and cannot commit —")
+            print(f"todo:        the {prefix}store has no git identity and cannot commit —")
             print(f"             git -C {store.path} config user.name/user.email")
     cfg.unscoped.mkdir(parents=True, exist_ok=True)
 
@@ -4453,32 +4621,55 @@ def run_install(args: argparse.Namespace, ws: Workspace) -> int:
 
 
 def remote_problems(cfg: Config) -> list[str]:
-    """Remotes that must not exist.
+    """Remotes on the guarded store that nobody has said are sanctioned.
 
-    On a contractor device that is the sensitive tier's only — the shareable tier is meant to have
-    one, and that asymmetry is the whole point of the split. On a work device the single store is
-    the sensitive one, so the same rule applies to it: a personal remote holding an employer's
-    internal architecture is the outcome the check exists to prevent, and it does not become
-    acceptable because there is only one organisation on the machine.
+    The question used to be *whether* the store had a remote, which fired forever on a work device:
+    the only sensible destination there is the organisation's own host, so the first thing a user
+    learned was that the warning is noise — and a check trained away is worse than no check, because
+    the day a genuinely personal remote appears its message is the one they have been ignoring.
 
-    Neither case gates a *sanctioned* destination — an internal host, an external drive, a NAS — so
-    the message names what is wrong rather than refusing outright, and a deliberate remote is
-    recorded where doctor can read it rather than argued with here.
+    So it asks *which*. A destination recorded in `sanctioned_remotes` is silent; anything else is
+    reported, with the line that records the answer, so it is a decision made once rather than a row
+    to skip. With nothing recorded the old behaviour stands — every remote is reported — because a
+    machine nobody has configured must keep the protection it has.
+
+    The shareable tier is deliberately outside this: it is meant to have a remote, and what may go
+    on it is a content question `scan` answers.
     """
-    guarded = cfg.store if not cfg.split_by_sensitivity else cfg.sensitive_store
+    guarded = cfg.guarded_store
     if not is_git_repo(guarded.path):
         return []
     if cfg.split_by_sensitivity and guarded.path.expanduser() == cfg.store.path.expanduser():
         return []
-    remotes = git(["remote"], guarded.path)
-    if not remotes:
+    unsanctioned = sorted(
+        url for url in remote_urls(guarded.path).values() if not remote_is_sanctioned(url, cfg.sanctioned_remotes)
+    )
+    if not unsanctioned:
         return []
     holding = "several clients' internal architecture" if cfg.split_by_sensitivity else "an employer's internal work"
+    where = f"the {tier_prefix(cfg, guarded)}store {guarded.path}"
+    if cfg.sanctioned_remotes:
+        return [
+            f"{where} has remote(s) {unsanctioned} that no sanctioned_remotes entry covers "
+            f"({', '.join(cfg.sanctioned_remotes)}) — a store holding {holding} belongs at a "
+            "destination somebody sanctioned, and nothing here says this is one"
+        ]
     return [
-        f"the {'sensitive ' if cfg.split_by_sensitivity else ''}store {guarded.path} has remote(s) "
-        f"{remotes.split()} — one personal remote holding {holding} is the outcome this check "
-        "exists to avoid; a sanctioned destination is fine, a personal one is not"
+        f"{where} has remote(s) {unsanctioned} and nothing records a sanctioned destination — one "
+        f"personal remote holding {holding} is the outcome this check exists to avoid. Answer it "
+        "once: config set sanctioned_remotes '[\"<host>/<owner>\"]'"
     ]
+
+
+def tier_prefix(cfg: Config, store: Store) -> str:
+    """What to put before the word "store" in a message: `sensitive `, `shareable `, or nothing.
+
+    Every user-visible string goes through this, which is what keeps `single` out of the terminal.
+    A machine with one store has no tier to choose, and printing a word for the choice it does not
+    have is how the old "sensitive" label came to read as a claim about the material. A qualifier
+    rather than a label, so the sentence reads "the store" rather than "the store store".
+    """
+    return f"{store.tier} " if cfg.split_by_sensitivity else ""
 
 
 def misfiled_plans(cfg: Config) -> list[str]:
@@ -4516,17 +4707,17 @@ def store_problems(cfg: Config) -> list[str]:
     if not cfg.path.is_file():
         found.append(f"no config at {cfg.path} — run: plans.py install")
     for store in cfg.stores():
+        prefix = tier_prefix(cfg, store)
         if not store.path.is_dir():
-            found.append(f"the {store.tier} store {store.path} does not exist — run: plans.py install")
+            found.append(f"the {prefix}store {store.path} does not exist — run: plans.py install")
             continue
         if not is_git_repo(store.path):
             found.append(
-                f"the {store.tier} store is not a git repository, so `archive` can retrieve nothing there "
-                "— plans.py install"
+                f"the {prefix}store is not a git repository, so `archive` can retrieve nothing there — plans.py install"
             )
         elif not git(["config", "user.email"], store.path):
             found.append(
-                f"the {store.tier} store has no git identity and cannot commit — "
+                f"the {prefix}store has no git identity and cannot commit — "
                 f"git -C {store.path} config user.name/user.email"
             )
     found += remote_problems(cfg)
@@ -4668,7 +4859,9 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
             "store_source": cfg.store.source,
             "stores": [
                 {
-                    "tier": store.tier,
+                    # Null on a one-store machine for the same reason the root rows are: `single` is
+                    # the internal key, not a word a consumer should have to interpret.
+                    "tier": store.tier if cfg.split_by_sensitivity else None,
                     "path": str(store.path),
                     "source": store.source,
                     "git": is_git_repo(store.path),
@@ -4683,7 +4876,10 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
                     "root": name,
                     "rule": (rule.describe() if (rule := match_rule(cfg, f"{name}/x").rule) else "(no rule — asks)"),
                     "source": match_rule(cfg, f"{name}/x").source,
-                    "tier": cfg.tier_of(name),
+                    # Null rather than "single" on a machine with one store: a consumer reading a
+                    # tier name would have to know it is not a claim about the material, and null
+                    # cannot be misread.
+                    "tier": cfg.tier_of(name) if cfg.split_by_sensitivity else None,
                     "repos": len(members),
                 }
                 for name, members in sorted(roots.items())
@@ -4724,9 +4920,11 @@ def _print_doctor(
         rule, source = match_rule(cfg, f"{name}/x")
         described = rule.describe() if rule else "(no rule — asks)"
         with_plans = sum(1 for rel in members if counts.get(rel))
-        tier = cfg.tier_of(name)
+        # No tier column where there is one store: printing `sensitive` against every root — the
+        # user's own included — is what made the label read as a claim about the material.
+        tier = f"{cfg.tier_of(name):<10} " if cfg.split_by_sensitivity else ""
         print(
-            f"  {name.ljust(width)}  {described:<24} {source:<22} {tier:<10} "
+            f"  {name.ljust(width)}  {described:<24} {source:<22} {tier}"
             f"{len(members):>3} repo(s), {with_plans} with plans"
         )
 
@@ -4765,20 +4963,30 @@ def _print_doctor(
 
 
 def _print_stores(cfg: Config) -> None:
-    """Both halves of the store, their git state, and which one has a remote.
+    """Every store, its git state, and — on the guarded one — whether its remote was sanctioned.
 
-    Printed together rather than as one `store:` line, because "which tier has a remote" is the
-    question the split creates and the one thing a session cannot infer from the paths.
+    Printed per store rather than as one `store:` line, because "which tier has a remote" is the
+    question the split creates and the one thing a session cannot infer from the paths. The tier is
+    named only where there are two of them; a machine with one store has no choice to report.
+
+    The `(sanctioned)` mark is worth its word: without it, a destination somebody recorded and one
+    nobody has looked at read identically, since both are simply absent from the problems list.
     """
     for store in cfg.stores():
+        guarded = store.path == cfg.guarded_store.path
         if not store.path.is_dir():
             state = "missing"
         elif not is_git_repo(store.path):
             state = "not a git repository"
         else:
-            remotes = (git(["remote"], store.path) or "").split()
-            state = f"remote: {', '.join(remotes)}" if remotes else "no remote"
-        print(f"store:         {store.path} (from {store.source})  [{store.tier}, {state}]")
+            remotes = remote_urls(store.path)
+            marks = [
+                f"{name}{' (sanctioned)' if guarded and remote_is_sanctioned(url, cfg.sanctioned_remotes) else ''}"
+                for name, url in sorted(remotes.items())
+            ]
+            state = f"remote: {', '.join(marks)}" if marks else "no remote"
+        tier = f"{store.tier}, " if cfg.split_by_sensitivity else ""
+        print(f"store:         {store.path} (from {store.source})  [{tier}{state}]")
 
 
 def cmd_uninstall(args: argparse.Namespace, ws: Workspace) -> int:
@@ -4798,9 +5006,10 @@ def cmd_uninstall(args: argparse.Namespace, ws: Workspace) -> int:
     if not args.purge_store:
         for store in cfg.stores():
             extra = f", {len(attached[store.tier])} attachment(s)" if attached[store.tier] else ""
+            tier = f" [{store.tier}]" if cfg.split_by_sensitivity else ""
             print(
-                f"kept:        {store.path} ({len(holding[store.tier])} plan file(s){extra}) "
-                f"[{store.tier}] — --purge-store to delete it"
+                f"kept:        {store.path} ({len(holding[store.tier])} plan file(s){extra})"
+                f"{tier} — --purge-store to delete it"
             )
         return 0
     held = sum(len(files) for files in holding.values())
@@ -4819,7 +5028,8 @@ def cmd_uninstall(args: argparse.Namespace, ws: Workspace) -> int:
         if store.path.is_dir():
             shutil.rmtree(store.path)
             extra = f", {len(attached[store.tier])} attachment(s)" if attached[store.tier] else ""
-            print(f"removed:     {store.path} ({len(holding[store.tier])} plan file(s){extra} deleted) [{store.tier}]")
+            tier = f" [{store.tier}]" if cfg.split_by_sensitivity else ""
+            print(f"removed:     {store.path} ({len(holding[store.tier])} plan file(s){extra} deleted){tier}")
     return 0
 
 
@@ -4975,10 +5185,14 @@ def show_config(cfg: Config) -> int:
     print(f"config:        {cfg.path}{'' if cfg.exists else ' (does not exist)'}")
     print(f"projects_root: {cfg.projects_root}")
     for store in cfg.stores():
-        print(f"store:         {store.path} (from {store.source})  [{store.tier}]")
+        tier = f"  [{store.tier}]" if cfg.split_by_sensitivity else ""
+        print(f"store:         {store.path} (from {store.source}){tier}")
     print(f"public_roots:  {', '.join(cfg.public_root_names()) or '(none)'}")
-    fallback = "" if cfg.shareable_roots else "  (unset — falls back to public_roots)"
-    print(f"shareable:     {', '.join(cfg.shareable_root_names()) or '(none)'}{fallback}")
+    if cfg.split_by_sensitivity:
+        fallback = "" if cfg.shareable_roots else "  (unset — falls back to public_roots)"
+        print(f"shareable:     {', '.join(cfg.shareable_root_names()) or '(none)'}{fallback}")
+    sanctioned = ", ".join(cfg.sanctioned_remotes) or "(unset — any remote on the guarded store is reported)"
+    print(f"sanctioned:    {sanctioned}")
     print(f"own_accounts:  {', '.join(cfg.own_accounts) or '(unset — no ownership is checked)'}")
     print(f"default:       {cfg.default.describe() if cfg.default else _no_default_description(cfg)}")
     for section, rules in (("roots", cfg.roots), ("repos", cfg.repos), ("orgs", cfg.orgs)):

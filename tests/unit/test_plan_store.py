@@ -2163,9 +2163,159 @@ def test_a_work_device_routes_every_root_to_the_one_store(ws, monkeypatch):
     assert route(ws.personal).store_dir == ws.store / "github.com-personal" / "agent-skills"
     cfg = plans.load_config()
     assert cfg.split_by_sensitivity is False
-    assert [(store.tier, store.path) for store in cfg.stores()] == [("sensitive", cfg.store.path)], (
-        "one store, and it is the guarded one"
+    # Not `sensitive`: that word means "must not go where the other tier goes", and there is no
+    # other tier here for it to be relative to. `single` keys the README and the store lookup and
+    # is never printed to a person.
+    assert [(store.tier, store.path) for store in cfg.stores()] == [(plans.SINGLE, cfg.store.path)]
+    assert cfg.guarded_store.path == cfg.store.path, "the one store is the one the remote check guards"
+
+
+def work_device(ws, monkeypatch, *, remote: str | None = None, extra: str = "") -> None:
+    """A configured single-store machine, optionally already pointing somewhere."""
+    monkeypatch.setenv("PLAN_DOCS_DEVICE", "work")
+    write_config(ws, tiered(extra))
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    if remote:
+        subprocess.run(["git", "remote", "add", "origin", remote], cwd=ws.store, check=True)
+
+
+def test_a_work_device_names_no_tier_where_a_person_reads_one(ws, capsys, monkeypatch):
+    """The label surfaced in five places, including the tier column against every root — the user's
+    own personal root included — which is how a word about a split became a claim about material."""
+    work_device(ws, monkeypatch)
+    plan(ws.personal / "plans", "2026-01-01-open.md", "status: idea\nupdated: 2026-01-01")
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    doctor = capsys.readouterr().out
+    for word in ("sensitive", "shareable", "single"):
+        assert word not in doctor, f"doctor still prints {word!r} on a one-store machine"
+
+    assert plans.main(["list", "--path", str(ws.personal)]) == 0
+    assert "[" not in capsys.readouterr().out.splitlines()[2], "the store line carries no tier"
+
+    assert plans.main(["config", "--path", str(ws.personal)]) == 0
+    assert "sensitive" not in capsys.readouterr().out
+
+    assert plans.main(["doctor", "--json", "--path", str(ws.personal)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert {root["tier"] for root in payload["roots"]} == {None}, "null, not a word a consumer must interpret"
+
+
+def test_the_store_readme_on_a_work_device_is_not_the_sensitive_one(ws, monkeypatch):
+    """`install` keys the README on the tier, so the single store used to be handed the text about
+    several clients' internal architecture and a remote it must never have."""
+    work_device(ws, monkeypatch)
+
+    readme = (ws.store / "README.md").read_text(encoding="utf-8")
+    assert "sensitive tier" not in readme
+    assert "one organisation's work" in readme
+    assert "sanctioned_remotes" in readme
+
+
+def test_a_sanctioned_remote_is_silent_and_says_so(ws, capsys, monkeypatch):
+    """The check that fired forever on the documented workflow: a private repo on the organisation's
+    own host is the destination, not a smell."""
+    work_device(
+        ws,
+        monkeypatch,
+        remote="git@git.corp.example:teodor/plans.git",
+        extra='sanctioned_remotes = ["git.corp.example/teodor"]\n',
     )
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert "exists to avoid" not in out
+    assert "origin (sanctioned)" in out, "a recorded destination reads as confirmed, not as absent"
+
+
+def test_an_unsanctioned_remote_is_still_reported_against_the_list(ws, capsys, monkeypatch):
+    """The risk does not go away on a work device; only the question changes."""
+    work_device(
+        ws,
+        monkeypatch,
+        remote="git@github.com:teodor/plans.git",
+        extra='sanctioned_remotes = ["git.corp.example/teodor"]\n',
+    )
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert "no sanctioned_remotes entry covers" in out
+    assert "git@github.com:teodor/plans.git" in out
+    assert "git.corp.example/teodor" in out, "the report names what was recorded, so the gap is readable"
+
+
+def test_with_nothing_recorded_every_remote_is_still_reported(ws, capsys, monkeypatch):
+    """A machine nobody has configured keeps the protection it has — what changes is that the
+    message carries the line that answers it, so it is a decision once rather than a row to skip."""
+    work_device(ws, monkeypatch, remote="git@github.com:teodor/plans.git")
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert "exists to avoid" in out
+    assert "config set sanctioned_remotes" in out
+
+
+def test_a_bare_account_name_is_refused_as_a_sanctioned_remote(ws, capsys, monkeypatch):
+    """`own_accounts` matches a bare name on any host deliberately, which is exactly the hole here:
+    it cannot tell the corporate host from the public one, and the config would look fine."""
+    work_device(ws, monkeypatch)
+    capsys.readouterr()
+
+    assert plans.main(["config", "set", "sanctioned_remotes", '["teodor"]', "--path", str(ws.personal)]) == 1
+
+    assert "names no host" in capsys.readouterr().err
+    assert plans.load_config().sanctioned_remotes == (), "a rejected value is restored, never left on disk"
+
+
+def test_a_path_entry_sanctions_a_drive_or_nas(ws, capsys, monkeypatch):
+    """`parse_remote` answers None for a local path and for file://, deliberately — and that is the
+    shape the sensitive tier's durability answer arrives in."""
+    backup = ws.home / "media" / "backup" / "plans.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(backup)], check=True)
+    entry = (ws.home / "media").as_posix()
+    work_device(ws, monkeypatch, remote=str(backup), extra=f'sanctioned_remotes = ["{entry}"]\n')
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+
+    assert "exists to avoid" not in capsys.readouterr().out
+
+
+def test_a_contractor_devices_shareable_tier_is_not_touched_by_the_key(ws, capsys, monkeypatch):
+    """The shareable tier is meant to have a remote and is gated on content by `scan`; checking its
+    destination too would change behaviour on a machine that works today."""
+    monkeypatch.setenv("PLAN_DOCS_DEVICE", "contractor")
+    write_config(ws, tiered('sanctioned_remotes = ["git.corp.example/teodor"]\n'))
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    subprocess.run(["git", "remote", "add", "origin", "git@github.com:teodor/plans.git"], cwd=ws.store, check=True)
+    capsys.readouterr()
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert "exists to avoid" not in out
+    assert "[shareable, remote: origin]" in out, "no sanctioned mark on a tier the key does not govern"
+
+
+def test_install_stops_asking_about_a_split_that_does_not_exist(ws, capsys, monkeypatch):
+    """SKILL.md said `shareable_roots` stops applying on a work device; the walkthrough asked anyway.
+    The question it does owe there is where the one store may push."""
+    work_device(ws, monkeypatch, remote="git@git.corp.example:teodor/plans.git")
+    capsys.readouterr()
+
+    assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert "decision: shareable_roots" not in out
+    assert "decision: sanctioned_remotes" in out
+    assert "remote: git@git.corp.example:teodor/plans.git" in out, "the note reads the repo, not the tier"
 
 
 def test_doctor_reports_a_root_filed_in_the_wrong_tier(ws, capsys):

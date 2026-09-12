@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-10
+updated: 2026-09-12
 ---
 
 # Evidence from one repo-tasks session: three rules broken, two of them measurable
@@ -418,3 +418,59 @@ both failed to reproduce a chain tag. Recorded as unexplained rather than given 
 mechanism — the sample display truncates, so the answer needs the full command out of `--json`
 rather than a hypothesis. A non-zero nobody can explain deserves the same suspicion this plan gives
 a zero.]
+
+## A ninth sample, 2026-09-09/12 — and a correction that made it worse
+
+An `agent-skills` session across three days, **n=282** with its own sweep excluded, measured without
+`--compare`. It ran as a **background job**, in **auto mode**, overlapping the eighth sample's dates
+in the same repo. Placed against the corpus's two ends rather than against the flattering one:
+
+| row                   | first sample (worst) | this session | eighth sample (best) |
+| --------------------- | -------------------- | ------------ | -------------------- |
+| chain                 | 74%                  | **60%**      | 4%                   |
+| head/tail             | 45%                  | **35%**      | 1%                   |
+| exit-masked           | 26%                  | 30%          | —                    |
+| git-mutating-in-chain | 16%                  | **10%**      | 1%                   |
+| sed-n                 | —                    | 3%           | 0%                   |
+| cd-own-repo, git-C    | 3%                   | 0%           | —                    |
+
+High, not the highest. It is worth saying which end of the range it sits near, because the first
+draft of this section called it "the worst in the corpus" and compared it only with the best sample
+— a claim the first table in this very file refutes, caught before commit.
+
+**No green claim was at risk.** 31 masked calls wrapped a gate and 12 messages told the user a gate
+was green; `setopt | rg pipefail` answered `pipefail` in the session's own shell, and every real
+gate failure during the run (ruff line lengths, 86 basedpyright errors) surfaced as a non-zero exit
+straight through the pipe. The exit codes were real. The output the pipes discarded was not
+recovered.
+
+**The finding that matters is the split, not the totals.** The user corrected the session's `rg` and
+`head` usage mid-run at 2026-09-12T08:31Z, and the session replied that it was "stopping both".
+Splitting at that instant:
+
+| row                   | before (n=165) | after (n=117) |
+| --------------------- | -------------- | ------------- |
+| chain                 | 59%            | **62%**       |
+| head/tail             | 31%            | **41%**       |
+| exit-masked           | 26%            | **36%**       |
+| git-mutating-in-chain | 8%             | **14%**       |
+
+**Every row rose after an explicit correction and an explicit commitment to stop.** head/tail rose
+by ten points. That is the "simply not followed, repeatedly" shape `session-harvest` names — the
+rule's wording is not what failed, since the session could state the rule back correctly in the same
+message that promised to follow it, and then did not.
+
+[UNVERIFIED: **whether auto mode is the difference from the eighth sample.** It is the one condition
+this session had that the eighth did not state: its system note tells the agent to "read files with
+cat, head, or sed -n, search with grep and find … rather than using the dedicated Read, Edit, or
+Write tools". That would explain some of the `head` rows. It would not explain the chains, which the
+note does not ask for, nor why a rate rose after a direct user correction — so it is a candidate,
+not a mechanism, and should not be written into any rule until a session in auto mode is measured
+against one that is not, on comparable work.]
+
+[UNVERIFIED: **whether the correction was even about these rows.** The user's message read "Again rn
+option for rg", which the session flagged as garbled and answered with two readings; the user
+replied "Continue" without saying which. So the before/after split measures the rows the session
+_believed_ it had been corrected on. If the correction meant something else, the split still stands
+as evidence that a stated commitment did not move behaviour, but not as evidence about that specific
+correction.]

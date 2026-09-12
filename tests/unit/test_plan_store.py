@@ -3011,6 +3011,25 @@ def test_uninstall_counts_attachments_and_will_not_delete_them_silently(ws, caps
     assert (ws.store / "_attachments").is_dir()
 
 
+def test_refs_names_the_local_attachments_retirement_will_not_delete(ws, capsys):
+    """`refs` is what a retirement runs before deleting anything, and a local attachment is the one
+    thing in this convention that deletion cannot undo — so it is named there or nowhere."""
+    target = attachable(ws, ONE_KB_LIMIT)
+    source_file(ws.home / "Downloads", "report.md", 10)
+    source_file(ws.home / "Downloads", "ci.log", 4096)
+    for name in ("report.md", "ci.log"):
+        assert plans.main(["attach", str(target), str(ws.home / "Downloads" / name), "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+
+    assert plans.main(["refs", str(target), "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert "1 committed attachment(s)" in out
+    assert "1 local attachment(s)" in out
+    assert "deleting one is final" in out
+    assert "ci.log" in out
+
+
 def test_the_commit_limit_is_configurable_and_a_bad_value_is_restored(ws):
     write_config(ws, REPO_PLANS)
     assert plans.load_config().commit_limit_kb == plans.DEFAULT_COMMIT_LIMIT_KB

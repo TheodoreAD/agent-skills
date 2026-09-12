@@ -3445,6 +3445,44 @@ def move_attachments(plan: Path, target: Path) -> Path | None:
     return destination
 
 
+def attachments_held(cfg: Config, routing: Routing, name: str) -> dict[str, list[Path]]:
+    """What a plan has attached, by destination — the half of a retirement nothing else reports.
+
+    Asked at `refs`, which is the command the retirement procedure runs before deleting anything.
+    The committed half goes with the plan and stays in the history `archive` reads; the local half
+    is in no history at all, so it is a decision to put to the user rather than a file to delete
+    along the way.
+    """
+    stem = Path(name).stem
+    committed = [
+        directory / stem
+        for where in ("repo", "store")
+        if (directory := routing.dir_for(where)) is not None and (directory / stem).is_dir()
+    ]
+    local = cfg.attachments_dir(routing.rel, stem)
+    unscoped = cfg.attachments_dir(None, stem)
+    return {
+        "committed": sorted({path for root in committed for path in root.rglob("*") if path.is_file()}),
+        "local": sorted(
+            {path for root in {local, unscoped} if root.is_dir() for path in root.rglob("*") if path.is_file()}
+        ),
+    }
+
+
+def _print_attachments_held(held: dict[str, list[Path]]) -> None:
+    if held["committed"]:
+        print(f"\n{len(held['committed'])} committed attachment(s), deleted with the plan and kept in its history:")
+        for path in held["committed"]:
+            print(f"  {path}")
+    if not held["local"]:
+        return
+    print(f"\n{len(held['local'])} local attachment(s) — in no git history, so deleting one is final:")
+    for path in held["local"]:
+        print(f"  {path}")
+    print("  Retirement does not touch these. Ask before deleting them, and say where they are if")
+    print("  they are worth keeping: nothing else on the machine records that they existed.")
+
+
 def with_attachments(plans: list[Path]) -> list[Path]:
     """Each plan, plus the files in its own attachment directory — the set one commit should carry.
 
@@ -3760,12 +3798,16 @@ def cmd_refs(args: argparse.Namespace, ws: Workspace) -> int:
                     found.append({"where": "store", "path": str(path), "line": number, "text": line.strip()})
 
     unpushed = unpushed_summary(routing.repo_root) if routing.repo_root else None
+    held = attachments_held(ws.config, routing, name)
     if args.json:
-        print(json.dumps({"file": name, "references": found, "unpushed": unpushed}, indent=2))
+        payload = {"file": name, "references": found, "unpushed": unpushed}
+        payload["attachments"] = {where: [str(path) for path in paths] for where, paths in held.items()}
+        print(json.dumps(payload, indent=2))
         return 0
     for hit in found:
         print(f"{hit['where']:<6} {hit['path']}:{hit['line']}:{hit['text']}")
     print(f"\n{len(found)} reference(s) to {name}")
+    _print_attachments_held(held)
     if unpushed:
         print(f"\nWARNING: {unpushed}")
         print("         Retirement deletes this plan. If the work it explains is not published,")

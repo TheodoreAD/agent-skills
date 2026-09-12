@@ -126,6 +126,60 @@ such as 'modern' and 'lightweight' … meaningless marketing fluff which must be
 That is the argument for putting a rule in code rather than in a paragraph, measured on one project
 that did both.
 
+## The gallery
+
+Real descriptions, kept because a rule list does not teach the shape and a worked example does.
+Drawn from `dump.tsv` in the parked apparatus.
+
+**Clean against every rule here:**
+
+| description                                                                   | chars | why it works                                                        |
+| ----------------------------------------------------------------------------- | ----: | ------------------------------------------------------------------- |
+| `Command-line JSON processor` — jq                                            |    27 | three words, complete                                               |
+| `A cat(1) clone with wings.` — bat                                            |    26 | analogy to a tool the reader already has; "wings" carries the delta |
+| `Lint your Python architecture.` — import-linter                              |    30 | verb-initial and right, because the verb _is_ the product           |
+| `The Kubernetes Package Manager` — helm                                       |    30 | category plus substrate; the definite article earns its place       |
+| `Presentation Slides for Developers` — slidev                                 |    34 | the rare case where the audience is named                           |
+| `Get your documents ready for gen AI` — docling                               |    35 | outcome not mechanism; "your" does the audience work                |
+| `macOS system monitor in your menu bar` — stats                               |    37 | category plus exactly where it lives                                |
+| `Display and control your Android device` — scrcpy                            |    39 | two verbs, one object, no adjectives at all                         |
+| `Data validation using Python type hints` — pydantic                          |    39 | mechanism _is_ the differentiator here, so naming it is correct     |
+| `Lightweight coding agent that runs in your terminal` — codex                 |    51 | category plus the one difference that matters                       |
+| `Developer-first error tracking and performance monitoring` — sentry          |    57 | a positioning adjective doing real work                             |
+| `Send push notifications to your phone or desktop using PUT/POST` — ntfy      |    63 | names the interface, because here the interface is the pitch        |
+| `An extremely fast Python package and project manager, written in Rust.` — uv |    70 | family template, and identical on GitHub and PyPI                   |
+
+**Instructive failures:**
+
+| description                                                                                                                                                         | the lesson                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `Stable Diffusion web UI`                                                                                                                                           | the repo name respaced; zero information added                                                   |
+| `Agents that use the browser.` — browser-use                                                                                                                        | same problem, sentence-shaped                                                                    |
+| `tmux source code`                                                                                                                                                  | describes the _repository_, not the tool; 16 characters all wasted                               |
+| `This is the repo for Vue 2. For Vue 3, go to …`                                                                                                                    | the field repurposed as a redirect notice                                                        |
+| `⚡ Serverless Framework – Effortlessly build apps that auto-scale, incur zero costs when idle…` (176)                                                              | **worst scoring, 9 flags**: emoji, own name, superlative, 3 commas, trailing period, over length |
+| `Gin is a high-performance HTTP web framework written in Go. It provides a Martini-like API but with significantly better performance—up to 40 times faster…` (253) | three sentences and a benchmark in a field that renders as one line                              |
+| `Ansible is a radically simple IT automation platform that makes your applications…` (338)                                                                          | near the 350 ceiling; a README paragraph in the wrong field                                      |
+| `🤗 Transformers: the model-definition framework for state-of-the-art machine learning models…` (172)                                                               | restates the name, four commas, trailing space, superlative                                      |
+| `A Python tool to visualize + enforce dependencies… 🌎 Open source 🐍 Installable via pip…` (249) — tach                                                            | emoji-bulleted feature list; its own README says it in 78 chars                                  |
+
+**Failure modes with their measured frequency**, so effort goes where the problem is:
+
+- **A feature list instead of a pitch** — ≥2 commas, 27.0% against Debian's 1.01%. The sharpest
+  single discriminator found.
+- **The self-restating opener**, `<Name> is a…` — 7.8%, median 12 characters spent repeating what
+  the interface renders directly above.
+- **The description that is the repo name respaced** — no clean count; obvious on sight.
+- **"Framework for building `<abstraction>`"** — only 1.8%, and its users are React Native, Flask,
+  Vue, Hugo, Nest. It fails only when the object is generic: "for building rich text editors" is
+  fine, "for building modern applications" is not.
+- **Buzzword stack** — 3+ generic adjectives is 2.5%, 4+ is 0.1%. A long-tail problem, not a
+  top-repo one.
+- **Mechanism where the outcome belongs** — 4.4%, and legitimate when the mechanism is the
+  differentiator (pydantic, uv). Vite carries the outcome on GitHub and the mechanism on npm.
+- **Marketing register** — superlatives 5.3%. On Hacker News specifically, a moderator's standing
+  advice is to "drop any language that sounds like marketing or sales… that is an instant turnoff".
+
 ## Naming a parent product is surface-dependent
 
 The same Obsidian plugins name "Obsidian" in **90%** of their GitHub repo descriptions (n=58) and

@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-10
+updated: 2026-09-12
 ---
 
 # Making these repos legible to a stranger, and pitching them without writing slop
@@ -500,6 +500,141 @@ measurable ones.
    last Product Hunt launch against the six-month line, last HN submission per URL against the
    one-year repost line. Start with the newsletters, which are five minutes each and carry no ban
    risk, and treat Show HN as a once-a-year event that the whole rest of the loop feeds.
+
+## Evidence kept in full, because no skill owns it yet
+
+The sections above summarise; these are the measurements behind them. They sit in the plan rather
+than in a skill's `references/` for one reason — **which skills this becomes is still open question
+one**, so there is no `references/` directory to put them in without pre-deciding it. At retirement
+they are routed like any other plan content, and that routing is the moment the question gets
+answered. The pitch measurements are not here: `repo-pitch` exists, so they went to its
+`references/measurements.md`.
+
+Apparatus for all of it: `$RESEARCH_HOME/measurements/2026-09-12-pitch-and-skill-corpora/`.
+
+### Article archetypes, measured rather than asserted
+
+Method: the Hacker News Algolia API, `tags=story`, title-restricted phrase search, comparing each
+phrase's total against the same query filtered to `points>150`. "Rate" is the share clearing 150
+points; "med" is the median among those.
+
+| archetype         | phrase                    | rate      | med     | n     |
+| ----------------- | ------------------------- | --------- | ------- | ----- |
+| workflow post     | `"how i use"`             | 6.1%      | **290** | 311   |
+| design decision   | `"why we switched"`       | **14.0%** | 217     | 43    |
+| design decision   | `"how we built"`          | 5.3%      | 197     | 655   |
+| rewrite narrative | `"we rewrote"`            | 5.8%      | 257     | —     |
+| postmortem        | `"postmortem"`            | 4.6%      | 262     | —     |
+| incident          | `"outage"`                | 4.8%      | **360** | —     |
+| release           | `"announcing"`            | 4.0%      | **365** | 4,281 |
+| opinion           | `"stop using"`            | 5.0%      | 277     | —     |
+| opinion           | `"you're doing it wrong"` | **2.4%**  | 258     | —     |
+| measurement       | `"measured"`              | 3.9%      | 219     | —     |
+| deep dive         | `"source code of"`        | 5.2%      | 262     | —     |
+| tutorial          | `"getting started"`       | **1.2%**  | 262     | 3,134 |
+
+**What the numbers cannot support**, stated because the temptation is to over-read them:
+title-phrase matching catches non-articles (the `outage` bucket contains outage _news_), the search
+is typo-tolerant so quoting is not exact, and no absolute base rate was obtainable. Treat every
+figure as relative between archetypes and nothing more. The one clean anchor: **16,261 stories in
+HN's entire index have over 500 points.**
+
+Two readings that do hold. **The template is not the performance** — the most-used openings are the
+worst-differentiated (4,281 "Announcing", 3,134 "Getting started"), while what outperforms carries a
+specific claim: a number, a named swap, or a named tool plus a named person. And **the literal
+phrasing of the contrarian genre is its worst form** — `"you're doing it wrong"` at 2.4% against
+`"stop using"` at 5.0%. The archetype works; the posture does not.
+
+### What unassisted developer prose actually looks like
+
+Measured across **579 posts, 267,370 words** of a well-known developer's TIL corpus — chosen because
+it is six years of continuous output by one person, so it is a baseline rather than a sample.
+
+| measure                               | value                                     |
+| ------------------------------------- | ----------------------------------------- |
+| posts containing a fenced code block  | 88%                                       |
+| median share of lines inside fences   | **60%** (mean 58%)                        |
+| median prose before the first block   | **80 words** (p25 48, p75 134)            |
+| median H2+ headings                   | **0** — sections appear above ~600 words  |
+| posts with any image or diagram       | 27%                                       |
+| median post length                    | **323 words** (p25 186, min 33)           |
+| posts under 200 words                 | 28%                                       |
+| first body line starts with "I "      | **41%**                                   |
+| uses first person anywhere            | 96%                                       |
+| **em dashes, total**                  | **15, in 7 posts — 0.06 per 1,000 words** |
+| "AI vocabulary" hits (generous regex) | 11 total — 0.04 per 1,000 words           |
+| occurrences of `delve`                | **zero**                                  |
+
+The last three are the useful ones: they are what a linter should be calibrated against, and they
+are why "sounds like AI" is not a claim any tool here should make.
+
+### The LLM-tell list, and the honest limits on it
+
+Source is Wikipedia's `WP:AISIGNS`, mirrored to
+`$RESEARCH_HOME/pages/wikipedia-signs-of-ai-writing/`. It is usable because it has an inclusion rule
+— a word enters only with corroboration from a reliable non-pop-science source — and behind it sit
+Kobak et al. (_Science Advances_ 2025, 15M abstracts), Juzek & Ward (ACL 2025), Reinhart et al.
+(_PNAS_ 2025) and Liang et al. (_Nature Human Behaviour_ 2025).
+
+**Vocabulary**: _additionally_ (sentence-initial), _align with_, _boasts_, _bolstered_, _crucial_,
+_deep dive_, _delve_, _emphasizing_, _enduring_, _enhance_, _fostering_, _garner_, _highlight_
+(verb), _interplay_, _intricate_, _key_ (adjective), _landscape_ (abstract), _meticulous_,
+_pivotal_, _realm_, _robust_, _showcase_, _tapestry_, _testament_, _underscore_ (verb), _valuable_,
+_vibrant_. Density matters more than any single word — where there is one there are usually others.
+
+**Structural tells, which are more mechanizable than the vocabulary**: the participial coda, an
+"-ing" phrase bolted to a sentence end to manufacture significance
+(`, creating a lively community
+within its borders`) — a regex for `, [a-z]+ing` before a sentence
+end catches it and it is rare in real developer prose; negative parallelism ("not just X, but also
+Y"); the rule of three; vague attribution ("some critics argue"); and inline-header bullet lists.
+
+[PITFALL: **the same source disproves the detector.** Human discrimination of LLM text is **no
+better than chance** (Cheng et al. 2025); detectors have non-trivial error rates and fall to
+paraphrasing; and the tells drift — the em-dash section now carries a banner questioning whether it
+belongs under historical indicators, citing a July 2026 finding that only one model exceeded
+professional-writer rates. The page also lists **ineffective indicators** explicitly: perfect
+grammar, mixed register, "bland" prose, "fancy" prose, transition words, unsourced content. A linter
+against a named list is defensible; "this reads like AI" is not a claim any tool may make.]
+
+### Visual tooling, with maintenance judged from the repos
+
+| tool                            | makes                                | verdict                                                                                          |
+| ------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `charmbracelet/vhs`             | GIF/MP4/PNG from a committed `.tape` | **Adopt.** The only one whose demo _source_ is committed                                         |
+| `charmbracelet/freeze`          | static SVG/PNG of code or ANSI       | **Adopt** for stills; deterministic, no `time.Now` anywhere                                      |
+| `d2lang/d2`                     | SVG/PNG/PDF from `.d2`               | **Adopt.** Native Go rasterizer, no browser; `--dark-theme` emits the media query inside one SVG |
+| Mermaid                         | rendered natively by GitHub          | **Adopt as default.** Zero build step, source in the README                                      |
+| `asciinema` + `agg`             | cast → GIF                           | Adopt only if you want the cast format                                                           |
+| `badge-maker`                   | shields SVG **offline**              | **Adopt** — the same renderer, two dependencies, no network call                                 |
+| `resvg`                         | SVG → PNG, deterministic fonts       | **Adopt**; `--skip-system-fonts --use-font-file` is reproducible                                 |
+| `terminalizer`                  | GIF                                  | **Dead.** No commits in 12 months; downloads Chromium to record                                  |
+| `svg-term-cli`                  | animated SVG                         | **Dead since 2018 — and its output is the best format.** See below                               |
+| `vercel/og-image`               | OG cards                             | **Archived** 2023. `satori` is alive but is a library with no CLI                                |
+| `kefranabg/readme-md-generator` | README scaffold                      | **Dead.** 11k stars, last commit 2019 — the star count is a trap                                 |
+| `todogroup/repolinter`          | repo hygiene                         | **Archived**, but its 26-rule default set is the best free inventory                             |
+
+**Name-collision traps on PyPI**, each an unrelated project: `d2` is an async ORM, `svgo` a Rust SVG
+library, `takumi` a 2018 package. Do not `uv tool install` any of them expecting the tool above.
+
+**Licensing traps for a logo**: Simple Icons is CC0 on the repo but its own disclaimer warns the
+icons are **brand marks** — copyright waived, trademark not. Twemoji's graphics are CC-BY 4.0, so
+attribution is mandatory and easy to breach silently because the SVG carries no notice. Lucide (ISC)
+and Noto Emoji (Apache-2.0 for most image resources) are the clean choices. What projects without a
+designer actually ship is a typographic wordmark rendered once to a light/dark SVG pair.
+
+**Budgets, from GitHub's own numbers**: recommended repo file size 1 MB; github/docs' own image
+standard is 750–1000 px wide and **≤250 KB**; Camo 404s any proxied image over **5 MB**; README text
+truncates at 500 KiB; the social preview is PNG/JPG/GIF **under 1 MB**, at least 640×320, 1280×640
+recommended — which is 2:1 where the generic OG convention is 1.91:1, so the card is slightly
+cropped elsewhere.
+
+[UNVERIFIED: **the animated-SVG gap is the one real hole in the toolchain.** `sharkdp/fd` ships a
+**127 KB** CSS-animated terminal SVG where the equivalent GIF is **4.45 MB** — a 35× difference —
+and the CSP on `raw.githubusercontent.com` (`style-src 'unsafe-inline'`) allows the `@keyframes`
+that make it work, contradicting github/docs' claim that SVGs do not animate. Nothing maintained
+produces these. Someone should open that page and confirm it animates in a rendered README before
+anything is built on it.]
 
 ## Anti-goals
 

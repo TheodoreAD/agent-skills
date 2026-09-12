@@ -1,7 +1,9 @@
 # agent-skills
 
-Personal [Agent Skills](https://github.com/agentskills/agentskills) — plain `SKILL.md` directories,
-readable by any agent that speaks the format, with no vendor bundle wrapped around them.
+[![Total installs of these skills on skills.sh](https://skills.sh/b/TheodoreAD/agent-skills)](https://skills.sh/TheodoreAD/agent-skills)
+
+Vendor-neutral [Agent Skills](https://github.com/agentskills/agentskills) in plain `SKILL.md`
+directories, readable by any agent.
 
 Everything here is authored against the vendor-neutral stack only: `AGENTS.md` for instructions,
 Agent Skills for procedural knowledge, MCP for tools. No Claude Code plugin manifest, no

@@ -190,3 +190,23 @@ that is gone rather than reading `sensitive` against the personal root, and `--j
 was not touched — the same run reports `problems (0)` and prints `remote: origin (sanctioned)`,
 which is the whole of what this plan asked for: the documented workflow is silent, and the check
 still has something to say about anything else. The contractor path is byte-identical to before.
+
+## Migrated to
+
+- `skills/plan-docs/references/design-rationale.md`, "Why a work device names no tier, and what its
+  remote check asks instead (2026-09-12)" — every `DECISION` above, the `PITFALL` about a check that
+  fires on correct behaviour, the five symptoms that were measured, and the ownership-versus-
+  visibility answer to the question this plan was reopened with.
+- `skills/plan-docs/SKILL.md` — the device table and the no-tier paragraph under "First: which kind
+  of machine is this?", the `sanctioned_remotes` rules with what the check cannot see, the
+  `config set` list, the TOML example, and the guarded-store sentence in the `doctor` section.
+- `skills/plan-docs/scripts/plans.py` with `tests/unit/test_plan_store.py` — the behaviour itself
+  and the tests that hold it, including the two whose tier assertions this plan predicted would need
+  rewriting.
+- `plans/2026-08-29-sensitive-tier-durability.md` — the one live thread. Its recommendation asked
+  for a check that learns which remotes are sanctioned; that now exists, so the note went to the
+  plan that stays open rather than dying with this one.
+
+Deliberately not migrated: the before-and-after terminal output. It was evidence for the change,
+`PLAN_DOCS_DEVICE=work` reproduces it in one command, and it names this machine's roots — which is
+exactly what a published repo must not carry.

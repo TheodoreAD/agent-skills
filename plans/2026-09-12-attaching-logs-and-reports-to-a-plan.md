@@ -171,3 +171,20 @@ clean, because `install`'s exclude line covers the area; `commit <plan>` carried
 report and nothing else, under one message; `refs` named both halves with the local one marked
 final; and `move --to store` carried the committed directory while the local one stayed where its
 key puts it. Nothing in the real store or the projects tree was touched.
+
+## Migrated to
+
+- `skills/plan-docs/references/design-rationale.md`, "Why a plan's evidence has two homes, and the
+  split is size (2026-09-12)" — the four `DECISION`s, why the local half lives in the store rather
+  than beside the plan or under an XDG directory, the large-file tools this skill's constraints rule
+  out, and why durability is stated rather than solved.
+- `skills/plan-docs/SKILL.md`, "Attaching evidence to a plan" — the command, the table that decides
+  which half a file belongs in, both `PITFALL`s, the rule that attachments travel with their plan,
+  the disclosure block, and the retirement line in step 3 of "Retiring a plan".
+- `skills/plan-docs/scripts/plans.py` with `tests/unit/test_plan_store.py` — `attach`, the
+  `[attachments]` key, the five behaviours that assumed one plan is one markdown file, and their
+  tests.
+
+Deliberately not migrated: the file-and-line inventory of what would break. It was the map for doing
+the work, every entry on it is now either code or a test that fails without it, and a list of line
+numbers is wrong within a week.

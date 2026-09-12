@@ -1,5 +1,5 @@
 ---
-status: planned
+status: landed
 updated: 2026-09-12
 ---
 
@@ -181,3 +181,12 @@ itself is unobservable offline, so it could only ever be a field nobody maintain
   shareable tier is unaffected by the key being set.
 - `PLAN_DOCS_DEVICE=work python3 …/plans.py doctor` on this machine, which is how every symptom
   above was found, run again with a sanctioned entry set and expected to be quiet.
+
+Done 2026-09-12. Twelve tests, including the two rewritten ones. On this machine's real data, the
+work-device path now prints `store: … [remote: origin]` with no tier word anywhere, a tier column
+that is gone rather than reading `sensitive` against the personal root, and `--json` reporting
+`tier: null` for every root and for the store itself. With
+`sanctioned_remotes = ["github.com/TheodoreAD"]` recorded in a **copy** of the config — the real one
+was not touched — the same run reports `problems (0)` and prints `remote: origin (sanctioned)`,
+which is the whole of what this plan asked for: the documented workflow is silent, and the check
+still has something to say about anything else. The contractor path is byte-identical to before.

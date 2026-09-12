@@ -75,12 +75,12 @@ had been resolved first — but that was sequencing, not process.]
 **Start here. These three answer most sessions**, and nothing below is needed until the lifecycle
 reaches it:
 
-| the question                             | the command                            |
-| ---------------------------------------- | -------------------------------------- |
-| **first call of a session, in any repo** | `absorb` — silent unless it applies    |
-| what is open? what should I work on?     | `list` — see "Asking what is open"     |
-| where does a new plan go, and write it   | `new <topic>`, or `new … --for <repo>` |
-| is this machine set up, and how?         | `doctor`                               |
+| the question                             | the command                                |
+| ---------------------------------------- | ------------------------------------------ |
+| **first call of a session, in any repo** | `absorb` — silent unless something is owed |
+| what is open? what should I work on?     | `list` — see "Asking what is open"         |
+| where does a new plan go, and write it   | `new <topic>`, or `new … --for <repo>`     |
+| is this machine set up, and how?         | `doctor`                                   |
 
 <details>
 <summary>The rest, by the moment you need them</summary>
@@ -692,6 +692,14 @@ idea is exactly what it cannot catch. The sensitive tier has no remote, so there
 python3 <path> absorb            # report only — silent when nothing is waiting and nothing is owed
 python3 <path> absorb --apply    # move them into this repo's plans/
 ```
+
+[PITFALL: **in a repo whose plans live in the store, there is nothing for `absorb` to absorb, and
+the call is still the right first one.** The mirror _is_ that repo's permanent home, so nothing is
+ever in transit — but this is the one command that carries the retirement prompt, and a store-held
+plan goes terminal like any other. On a machine where every repo is store-routed, which is the
+normal shape of a corporate one, that prompt is the whole of what it ever prints. The command is
+named for the other case; read a silent run as "nothing is owed here", not as a command that did not
+apply.]
 
 It is silent when the store holds nothing for this repo and nothing is owed retirement, so it costs
 nothing on the sessions where it does not apply. When it does print filed plans, **put the set to

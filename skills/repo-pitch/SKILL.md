@@ -16,6 +16,10 @@ README to GitHub; of 13, 5 matched GitHub to their registry.
 So the work is usually not writing a new pitch. It is finding the one you already have, deciding
 which wording wins, and putting it on every surface.
 
+Every number below is sourced in [`references/measurements.md`](references/measurements.md) — the
+two corpora and how they were drawn, the full distributions, the platform limits with the code each
+was read from, and the two negative results that bound what this skill may claim.
+
 ## What this skill reads, runs and writes
 
 - **Reads**: a README path you name; this repo's own `scripts/`. `drift` additionally reads a GitHub

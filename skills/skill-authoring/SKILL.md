@@ -28,9 +28,9 @@ take effect.
 It ships one script, `scripts/names.py`, which reads skill directories and queries a public search
 endpoint. Everything else it touches, it touches through the commands it tells you to run.
 
-- **Reads**: `scripts/names.py` reads the `SKILL.md` of each skill under the roots you give it
-  (default: `skills/` and `~/.agents/skills/`) — the name and a digest of the file, nothing more. No
-  transcript, no process, no git state.
+- **Reads**: `scripts/names.py` reads the `SKILL.md` of each skill under the roots you give it — by
+  default the loader's own scopes, `~/.agents/skills/` and a project's `.agents/skills/` — taking
+  the name and a digest of the file, nothing more. No transcript, no process, no git state.
 - **Runs**: `npx skills add`, `skills ls`, `skills remove`; `skill-fitness`'s scripts for the
   measurements below. `names.py` shells out to nothing at all.
 - **Writes**: `skills add --global` copies skills into `~/.agents/skills/` and links each detected
@@ -215,6 +215,10 @@ selection procedure is description-only. The one community rule that exists — 
 gerunds — is contradicted by the corpus roughly six to one, which is noun-led. So spend the effort
 on the description, which selection actually uses, and spend on the name only the two seconds this
 check costs.
+
+[`references/naming.md`](references/naming.md) has the corpus (1,043 skills, 40 repos), what the
+spec requires and how little of it binds, the one harness that renders names with no descriptions at
+all under budget pressure, and the adjacent ecosystems whose naming rules do and do not transfer.
 
 ## Cut a skill by responsibility, with triggers that don't contend
 

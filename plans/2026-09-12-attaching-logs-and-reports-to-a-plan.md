@@ -1,5 +1,5 @@
 ---
-status: idea
+status: planned
 updated: 2026-09-12
 ---
 
@@ -43,54 +43,95 @@ Read 2026-09-12, with the line numbers that matter:
 - `dprint` reflows committed markdown (`dprint.json`: markdown `textWrap: always`, `lineWidth 100`).
   `.log` and `.txt` are untouched.
 
-## Recommended direction
+## Design
 
-`python3 <path> attach <plan> <file>... [--commit | --local]`, with two destinations:
+### 1. One command, two destinations
+
+```shell
+python3 <path> attach <plan> <file>...            # size decides
+python3 <path> attach <plan> <file>... --commit   # this is evidence someone will read
+python3 <path> attach <plan> <file>... --local    # this is bulk, or must stay byte-exact
+```
 
 1. **committed** — `<the plan's directory>/<the plan's stem>/<name>`, a sibling directory named for
    the plan, inside whichever git repository already holds that plan.
 2. **local only** — `<the store for that repo's tier>/_attachments/<rel>/<the plan's stem>/<name>`,
-   excluded through the store's `.git/info/exclude`.
+   where `rel` is the repo's path under the projects root, or `_unscoped`.
 
 [DECISION: **local attachments live in the store, not beside the plan.** Outside every working tree,
 so a `git clean -X`, a removed worktree or a branch switch cannot take them; keyed on repo path plus
 plan stem, neither of which changes when a plan moves between the repo and the store, so absorption
 never has to move bytes; and the tier lookup already answers which store, so a sensitive root's
-evidence cannot land in the half that may have a remote. `.git/info/exclude` rather than a committed
-`.gitignore` because the exclusion is a machine-local fact about a machine-local directory, and
-committing it would write a rule into the store's history for a path no clone of it will ever have.]
+evidence cannot land in the half that may have a remote. The exclusion goes in the store's
+`.git/info/exclude` rather than a committed `.gitignore`, because it is a machine-local fact about a
+machine-local directory and committing it would write a rule into the store's history for a path no
+clone of it will ever have.]
 
-[DECISION: **size picks the default, use overrides it, and the skill says which is which.** The
-script cannot see use; the agent can. 1 MiB per file as the line — an agent's investigation report
-measures in tens of kilobytes and a screenshot in hundreds, while logs and dumps cross it — with
-`--commit` and `--local` overriding per call.]
+A destination that already exists is **refused**, never overwritten and never renamed around — the
+same answer `_take_plans` gives a name collision, and for the same reason: two files claiming one
+name is a question for a person.
 
-[DECISION: **the plan records name, size, destination, date, and a sha256 for a local attachment —
-never the source path.** Independence from where the file came from is the whole request, and a
-source path can carry a client directory name or a username into a published repo in a line nobody
-reads twice. The digest is what lets a later reader tell the cited file from a different file of the
-same name; for the committed half git already answers that.]
+### 2. Size picks the default, a flag overrides it, one configurable number
 
-The section is `## Attachments`, written by the script rather than by hand, on the same argument as
-`new`'s skeleton and `set-status`' two frontmatter lines: anything mechanical that a rule would
-otherwise ask an agent to spell correctly every time.
+[DECISION: **one threshold everywhere, `[attachments] commit_limit_kb`, default 1024.** Settled with
+the user 2026-09-12 against deriving it from whether the store has a sanctioned remote. Deriving is
+more accurate — committing is only more durable than local when something actually receives the push
+— and it makes the threshold move when an unrelated key changes, which is the kind of coupling
+nobody remembers. One number, changeable per machine, is explainable in a sentence: raise it on a
+box whose store pushes somewhere you trust.]
 
-Five existing behaviours change with it: `is_plan_path` learns the plan filename shape so an
-attachment is never reported as a retired plan; `_take_plans`, `move` and `graduate` carry the
-sibling directory with the plan; `commit <plan>` includes that plan's own sibling directory, bounded
-to the plan being named rather than reopening the whole-directory form that was refused;
-`misfiled_plans` skips the attachments root; and `uninstall`'s count ignores it.
+The script cannot see _use_; the agent can, which is what `--commit` and `--local` are for. The
+skill states the rule in one line: evidence someone will read goes committed, bulk output and
+anything that must stay byte-exact goes local.
+
+### 3. What the plan records
+
+An `## Attachments` section, written by the script rather than by hand — the same argument as
+`new`'s skeleton and `set-status`' two frontmatter lines. One row per file: name, destination, size,
+the date, a sha256 for a local attachment, and the directory a local one lives in.
+
+[DECISION: **the source path is never recorded.** Independence from where the file came from is the
+whole request, and a source path can carry a client directory name or a username into a published
+repo in a line nobody reads twice. The digest is what lets a later reader tell the cited file from a
+different file of the same name; for the committed half, git already answers that.]
+
+### 4. Durability of the local half: said, not solved
+
+[DECISION: **`attach` states that a local copy is the only one, and nothing else pretends to fix
+it.** Settled with the user 2026-09-12. The alternatives were copying to a second destination —
+which invents the destination `2026-08-29-sensitive-tier-durability.md` has deliberately not chosen,
+and every copy made for durability is one to find and destroy if an engagement ends — or refusing
+local attachments until a durable destination exists, which blocks the feature on exactly the
+machine that asked for it. So the output says it at the moment it writes the file, the plan's own
+row says `local
+only`, and the gap stays owned by the plan that already owns it, where a destination
+gets chosen once for everything.]
 
 Retirement keeps its shape. A committed attachment is deleted with the plan and stays reachable in
 the same history `archive` already reads. A local one is **listed** at retirement and never deleted
 automatically: it is not in git, so deleting it is the one irreversible step in a procedure built
 entirely around being reversible.
 
+### 5. The five assumptions that have to change
+
+`is_plan_path` stops counting a file inside a plan-stem directory, or anywhere under `_attachments`,
+as a plan — by excluding those two shapes rather than by requiring a date-prefixed name, so a legacy
+plan with an older filename is still found by `archive`. `_take_plans`, `move` and `graduate` carry
+the sibling directory with the plan, refusing when the destination already has one. `commit <plan>`
+includes that plan's own sibling directory — bounded to the plan being named, which is not the
+whole-directory form that was refused. `misfiled_plans` skips the attachments root the way it skips
+`_unscoped`. `uninstall`'s plan count ignores it.
+
 [PITFALL: **a committed attachment is an ordinary file in that repository and goes through its
 gate.** `dprint` reflows markdown, so an investigation report committed as `.md` stops being
-byte-exact the first time the gate runs — silently, because the gate rewrites it and passes. The
-rule that follows is worth stating in the skill: evidence that must stay verbatim goes local,
-evidence that is meant to be read goes committed.]
+byte-exact the first time the gate runs — silently, because the gate rewrites it and passes. That is
+the concrete reason `--local` exists for things that must stay verbatim.]
+
+[PITFALL: **`scan` sees a committed attachment and cannot see a local one.** A log copied into a
+repo is scanned for private names like any other tracked file, which is right. A local one is
+outside every working tree, so a client name inside it is never flagged — and never published
+either, which is what makes that acceptable rather than a hole. Worth saying in the skill so the
+asymmetry is not discovered as a bug.]
 
 Prior art, at knowledge depth rather than from a clone: Obsidian's "subfolder under current folder"
 attachment setting and Hugo's page bundles are the same sibling-directory shape. `git-annex`,
@@ -98,17 +139,27 @@ attachment setting and Hugo's page bundles are the same sibling-directory shape.
 stdlib-only, no-install constraint — and LFS would still push the bytes it exists to keep out of the
 history.
 
-## Open questions
+## Files touched
 
-[NEEDS CLARIFICATION: **whether a local attachment needs durability at all.** It lives on one disk,
-and on a contractor device it lives in the tier that deliberately has no remote — so a plan can now
-cite something whose only copy is local, which is the gap `2026-08-29-sensitive-tier-durability.md`
-already holds open, made one step wider. Either the attach output says so at the moment it writes
-the file, or the attachments area becomes part of whatever destination that plan eventually
-settles.]
+- `skills/plan-docs/scripts/plans.py` — the `attach` command and its destination logic; the
+  `## Attachments` writer; the `[attachments]` config table and its `config set` validation; the
+  five behaviours in section 5.
+- `skills/plan-docs/SKILL.md` — a section on attaching evidence, the commit-or-local rule, the two
+  pitfalls, and the disclosure block, which must gain the paths this writes and the
+  `.git/info/exclude` line it maintains.
+- `skills/plan-docs/references/design-rationale.md` — why the local half lives in the store, why the
+  threshold is one configurable number, and why durability is stated rather than solved.
+- `tests/unit/test_plan_store.py` — see below.
 
-[NEEDS CLARIFICATION: **whether the size threshold should differ on a work device.** Part of the
-reason to keep bytes out of git is that they get pushed — but on a work device the store's remote is
-a sanctioned corporate repository, which is a real backup and usually tolerant of large files, so
-committing a 20 MB log there may be better than keeping it local and unbacked. The alternative is
-one number everywhere: simpler to explain, and wrong in a different direction on each device.]
+## Verification
+
+New tests: a small file lands beside the plan and is recorded; a file over the limit lands in the
+store's attachments area with a digest, and the output says it is the only copy; `--commit` and
+`--local` override the size; a collision is refused; `absorb` and `move` carry the sibling
+directory; `archive` does not report an attached `.md` as a retired plan; `misfiled_plans` ignores
+the attachments root; `commit <plan>` includes the sibling directory; an unscoped plan keys under
+`_unscoped`; `config set attachments.commit_limit_kb` validates.
+
+Then the real thing: attach an agent's investigation report and a multi-megabyte log to a live plan
+on this machine, and check the plan reads correctly, the gate passes, and `plans.py commit` carries
+what it should.

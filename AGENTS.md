@@ -34,6 +34,14 @@ description more carefully.
 - `description` is the field agents actually match on. Write it as a list of concrete situations
   ("Use when …, …, or …"), not as a summary of the skill's contents. Everything a reader needs in
   order to decide _whether to open the file_ goes here; everything else goes in the body.
+- **`name` keeps the domain in the first token and may carry flavour in the second.** The first
+  token is what a reader scans when a listing is truncated to bare names, which happens — so `plan-`
+  and `research-` stay put, and `-conveyor` and `-trove` are where character goes. A slightly
+  fantasy or sci-fi register is the house preference, admissible **exactly while the word still
+  denotes**: a stranger seeing `research-trove` with no description infers roughly the right thing,
+  which is why `manifold` was rejected for the same slot. Check the name is free before adopting it
+  — `skill-authoring`'s `names.py` — because a duplicate is dropped silently and a rename later
+  reads as a delete.
 - Keep the body to what an agent must follow. Reasoning, prior art, measurements and rejected
   alternatives go in `references/` — loaded only when the agent needs them.
 - Cite evidence with a date when a rule came from something that actually happened ("Confirmed live

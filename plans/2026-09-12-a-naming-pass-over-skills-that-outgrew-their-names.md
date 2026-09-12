@@ -92,15 +92,28 @@ All free in the registry as of 2026-09-12:
 | `research-depot`  | a place things are stored and dispatched from      | would echo `plan-conveyor` deliberately                              |
 | `research-desk`   | where the work happens                             | human and modest; vague about there being a store                    |
 
-[NEEDS CLARIFICATION: **which of these.** The trade-off is mechanism versus method: `-mirror` and
-`-corpus` name what the store _is_, while `-trove` and `-larder` name what it is _for_. The user
-leans toward the activity, which argues for the second pair, and `research-trove` is the closest
-match to their own phrasing.]
+[DECISION: **`research-trove`**, chosen by the user 2026-09-12, and the reason given matters more
+than the choice: _"sounds better, and is in line with the slightly fantasy or sci fi themes I
+favor."_ So the corpus has a house aesthetic, stated for the first time here. The trade-off it
+settles is mechanism versus method — `-mirror` and `-corpus` name what the store _is_, `-trove` and
+`-larder` name what it is _for_ — and the activity won, consistent with the first token staying
+`research-`.]
 
-[DEFERRED: **whether the family should echo.** `research-depot` beside `plan-conveyor` would read as
-one author's system rather than two unrelated choices. Tempting and worth exactly one echo, not a
-scheme — forcing every skill into logistics nouns would produce bad names for the ones that do not
-fit, and `skill-smithing` below is already a different metaphor.]
+[DECISION: **flavour is admissible exactly while the word still denotes.** This is the line that
+already rejected `manifold`, now stated as a rule rather than a one-off. "Trove" passes because it
+means a gathered collection of valuable things, so a stranger reading `research-trove` with the
+description stripped infers roughly the right thing; "manifold" fails because it means nothing here
+and misleads toward mathematics. A theme left unguarded drifts toward opacity, and the guard is the
+same name-alone test the whole section rests on — not a judgement about how much whimsy is
+tasteful.]
+
+[DEFERRED: **whether the family should echo, now that there is a stated aesthetic to echo.** The
+logistics option is closed — `research-depot` was the candidate that would have paired with
+`plan-conveyor`, and `-trove` was chosen over it. What replaces that question is a better one: a
+slightly fantasy or sci-fi register is a **register**, not a scheme, and `plan-conveyor`
+(industrial) sits beside `research-trove` (fantasy) without friction because both are concrete
+material nouns. The thing to avoid is a theme applied uniformly, which would force bad names onto
+the skills that do not fit — `skill-smithing` is already a third metaphor and is fine.]
 
 ## The two with a reason beyond taste
 
@@ -160,10 +173,12 @@ year is a migration; today it is an edit.]
 
 ## Recommended direction
 
-1. Settle `research-library`'s second token — the only open naming question, since `plan-conveyor`
-   is the user's own and free.
+1. **Both names are settled**: `plan-docs` → `plan-conveyor`, `research-library` → `research-trove`.
+   Nothing here is blocked on a naming decision any more.
 2. Decide the `-conventions` question as a yes/no on the whole cluster rather than per skill, since
-   the value of harmonising is coherence and a partial pass has none.
+   the value of harmonising is coherence and a partial pass has none. Note that `-defaults` carries
+   no flavour, which is the right call for a family whose job is to be looked up rather than
+   remembered — the aesthetic belongs on the distinctive skills, not on a set of reference tables.
 3. Then one batch, in this order: rename directories and frontmatter, regenerate the README row,
    `rg` the old names across the repo and the deployed instructions, run the gate, push, reinstall,
    remove the old slugs locally, and file a plan for the global instructions file's `plans.py` path.

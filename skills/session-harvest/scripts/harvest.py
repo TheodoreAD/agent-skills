@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import ipaddress
 import json
 import os
 import re
@@ -96,7 +97,31 @@ SERVER_RE = re.compile(
     r"http\.server|uvicorn|gunicorn|flask run|vite|webpack|next dev|npm run dev|yarn dev|"
     r"rails s|php -S|python -m http|serve -|ngrok|caddy|nginx"
 )
-LOOPBACK = ("127.0.0.1", "::1", "[::1]", "localhost")
+
+
+def is_loopback(host: str) -> bool:
+    """Whether a listener's bind address is reachable only from this machine.
+
+    A range, not a list. Loopback is all of `127.0.0.0/8` plus `::1`, and the literal tuple this
+    replaced knew four spellings, so every other address in the range read as reachable from the
+    network. Confirmed 2026-09-12 on this skill's own sweep: systemd-resolved's `127.0.0.53%lo:53` and
+    `127.0.0.54:53` were both reported `EXPOSED beyond loopback` — the first naming the `lo`
+    interface in its own zone suffix. A false exposure in this row is not cosmetic: it is the row a
+    reader acts on, and one that cries wolf on DNS every run teaches them to skim the real finding.
+
+    A wildcard bind (`0.0.0.0`, `::`, `*`) and anything that does not parse stay exposed, because
+    the failure this check exists to prevent is calling a reachable server safe.
+    """
+    bare = host.strip("[]").split("%", 1)[0]
+    if bare == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(bare)
+    except ValueError:
+        return False
+    mapped = getattr(address, "ipv4_mapped", None)
+    return address.is_loopback or bool(mapped and mapped.is_loopback)
+
 
 # `$?` after a pipe is the filter's, not the command's. Same regex as session-bash-audit's
 # `exit-masked` row, restated here rather than imported: the two scripts install into separate skill
@@ -1844,7 +1869,7 @@ def sockets(
                     "readable_secrets": readable,
                 }
             )
-        listeners.append({"local": local, "exposed": host not in LOOPBACK, "processes": served})
+        listeners.append({"local": local, "exposed": not is_loopback(host), "processes": served})
     return {
         "available": True,
         "listeners": listeners,

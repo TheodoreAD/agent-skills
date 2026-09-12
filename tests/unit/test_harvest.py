@@ -1167,6 +1167,24 @@ def test_the_sweeps_own_pipeline_is_not_a_surviving_process(monkeypatch):
     assert result["harness_pid"] == 10
 
 
+@pytest.mark.parametrize(
+    "host",
+    ["127.0.0.1", "127.0.0.53%lo", "127.0.0.54", "127.1.2.3", "::1", "[::1]", "[::ffff:127.0.0.1]", "localhost"],
+)
+def test_all_of_the_loopback_range_is_loopback(host):
+    """Confirmed 2026-09-12 on this skill's own sweep: systemd-resolved's `127.0.0.53%lo:53` and
+    `127.0.0.54:53` were reported `EXPOSED beyond loopback`, because loopback was a tuple of four
+    spellings rather than a range. The first one names the `lo` interface in its own zone suffix."""
+    assert harvest.is_loopback(host) is True
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "[::]", "::", "*", "192.168.1.5", "10.0.0.1", "not-an-address"])
+def test_a_wildcard_or_routable_bind_stays_exposed(host):
+    """The asymmetry is the point: the failure this row exists to prevent is calling a reachable
+    server safe, so anything that does not parse as loopback is reported as exposed."""
+    assert harvest.is_loopback(host) is False
+
+
 def test_a_listener_says_whether_a_session_still_holds_it():
     """Step 5's rule turns on "reparented to `systemd --user` rather than held by a live session",
     and until 2026-09-06 the sweep printed neither the parent nor its command. Confirmed 2026-09-05:

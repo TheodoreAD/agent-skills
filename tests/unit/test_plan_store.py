@@ -2808,15 +2808,72 @@ def test_a_plain_retirement_gets_no_absorbed_note(ws, capsys):
     assert "absorbed" not in out
 
 
+def _absorbed_here_but_not_committed_in_the_store(ws: Workspace, capsys) -> tuple[str, Path]:
+    """The state every absorption leaves: the plan committed in this repo, gone from the store's
+    working tree, and the store's deletion not yet committed."""
+    write_config(ws, REPO_PLANS)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.store, check=True)
+    capsys.readouterr()
+    rel = "github.com-personal/agent-skills/2026-09-12-adopt-the-shared-docs-generator.md"
+    filed = plan(ws.store / "github.com-personal" / "agent-skills", Path(rel).name, "status: idea\nupdated: 2026-09-12")
+    subprocess.run(["git", "add", "--", rel], cwd=ws.store, check=True)
+    subprocess.run(["git", "commit", "-qm", "filed"], cwd=ws.store, check=True)
+    absorbed = plan(ws.personal / "plans", filed.name, "status: idea\nupdated: 2026-09-12")
+    subprocess.run(["git", "add", "--", f"plans/{filed.name}"], cwd=ws.personal, check=True)
+    subprocess.run(["git", "commit", "-qm", "absorbed"], cwd=ws.personal, check=True)
+    filed.unlink()
+    return rel, absorbed
+
+
 def _head(repo: Path) -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout
 
 
+def test_commit_resolves_a_store_relative_path_in_the_store_not_by_basename_here(ws, capsys, monkeypatch):
+    """Confirmed 2026-09-12 from a `power-user-linux-setup` session following `absorb`'s own closing
+    instruction: the store-relative path fell through to `locate`, which matched the absorbed copy's
+    basename in the session's own repo, and `commit` reported `committed: 075f98407862` there — an
+    empty commit in the wrong repository, with the store's deletion still uncommitted. Every line of
+    output was true about a commit that changed nothing, so the caller believed it.
+
+    A path is resolved against the working directory and then against each store, and never by its
+    basename; the store is the repository an absorption's removal belongs to."""
+    rel, _ = _absorbed_here_but_not_committed_in_the_store(ws, capsys)
+    before = _head(ws.personal)
+    monkeypatch.chdir(ws.personal)
+
+    assert plans.main(["commit", rel, "-m", "absorbed into agent-skills", "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert f"in {ws.store}" in out
+    assert "(removed)" in out
+    assert _head(ws.personal) == before, "nothing may be committed in the repo that merely shares a basename"
+    removed = subprocess.run(
+        ["git", "show", "--name-status", "--format=", "HEAD"], cwd=ws.store, capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert removed == ["D", rel]
+
+
+def test_commit_refuses_a_path_it_cannot_find_rather_than_guessing_by_basename(ws, capsys, monkeypatch):
+    """The fallback that produced the empty commit, closed at the argument's shape: a path containing
+    a separator names a location, so one that resolves nowhere is an error, not a filename search."""
+    _, absorbed = _absorbed_here_but_not_committed_in_the_store(ws, capsys)
+    before = _head(ws.personal)
+    monkeypatch.chdir(ws.personal)
+
+    wrong = f"github.com-personal/some-other-repo/{absorbed.name}"
+    assert plans.main(["commit", wrong, "-m", "x", "--path", str(ws.personal)]) == 1
+
+    assert "never by its basename" in capsys.readouterr().err
+    assert _head(ws.personal) == before
+
+
 def test_commit_refuses_an_empty_commit(ws, capsys):
     """`commit_paths` builds the commit with `commit-tree`, which — unlike `git commit` — records an
-    empty tree change without complaint. That is why a path resolved in the wrong repository on
-    2026-09-12 produced an empty commit rather than an error; no legitimate plan commit is empty, so
-    it is refused outright."""
+    empty tree change without complaint. That is why the wrong-repository commit above was empty
+    rather than an error; no legitimate plan commit is empty, so it is refused outright."""
     write_config(ws, REPO_PLANS)
     already = plan(ws.personal / "plans", "2026-09-12-clean.md", "status: idea\nupdated: 2026-09-12")
     subprocess.run(["git", "add", "--", "plans/2026-09-12-clean.md"], cwd=ws.personal, check=True)
@@ -2831,12 +2888,15 @@ def test_commit_refuses_an_empty_commit(ws, capsys):
 
 def test_commit_still_refuses_a_name_that_never_existed(ws, capsys):
     """The deleted-plan lookup must not turn a typo into a confusing git error. It resolves a *path*
-    git still knows at HEAD and nothing else, so anything else falls through to `locate`."""
+    git still knows at HEAD and nothing else; a path found nowhere is refused, and a bare name
+    falls through to `locate`, which refuses in its own words."""
     write_config(ws, TIERED)
     plans.main(["install", "--path", str(ws.personal)])
     capsys.readouterr()
 
     assert plans.main(["commit", "plans/2026-01-01-never-existed.md", "--path", str(ws.personal)]) == 1
+    assert "no plan at" in capsys.readouterr().err
+    assert plans.main(["commit", "2026-01-01-never-existed.md", "--path", str(ws.personal)]) == 1
     assert "no plan named" in capsys.readouterr().err
 
 

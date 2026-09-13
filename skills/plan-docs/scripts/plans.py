@@ -3820,6 +3820,60 @@ def absorbed_to(cfg: Config, repo: Path, missing: Path) -> tuple[Path, str] | No
     return destination, (added or "").strip()
 
 
+def commit_target(cfg: Config, name: str) -> Path | None:
+    """The file a `commit` argument names: as given, then under each store — never by basename.
+
+    **A store-relative path is what an absorption hands its caller**, since `absorb` names the store
+    and the plans it took from it, and the removal it leaves belongs to the store. Confirmed
+    2026-09-12 from a `power-user-linux-setup` session: that spelling was not a file relative to the
+    session's repo, so it fell through to `locate`, which matched the absorbed copy's basename in
+    that repo — and `commit` printed `committed: 075f98407862` there, an empty commit in the wrong
+    repository, with the store's deletion still uncommitted. The caller then reached for a raw
+    `git -C <store> commit`, because the sanctioned command had appeared to succeed.
+
+    Both forms of each location are tried — the file, and a deletion `HEAD` still holds — because
+    the removal an absorption leaves is the latter. An absolute path never reaches the store loop.
+    """
+    candidate = Path(name).expanduser()
+    if candidate.is_file():
+        return candidate.resolve()
+    gone = deleted_plan(candidate)
+    if gone is not None or candidate.is_absolute():
+        return gone
+    for store in cfg.stores():
+        under = store.path.expanduser() / candidate
+        if under.is_file():
+            return under.resolve()
+        gone = deleted_plan(under)
+        if gone is not None:
+            return gone
+    return None
+
+
+def _commit_argument(cfg: Config, routing: Routing, name: str) -> Path:
+    """One `commit` argument resolved: a path where it points, and a bare filename by search.
+
+    A path first, and a bare filename only as a fallback. The plan most in need of this command is
+    one just filed *for another repo*, which lives in that repo's store mirror — somewhere `locate`
+    deliberately cannot see, since it searches what this session reads. `new --for` prints the
+    path, so taking it is both the natural flow and the one that works across the store.
+    """
+    found = commit_target(cfg, name)
+    if found is not None:
+        return found
+    if len(Path(name).parts) > 1:
+        # A separator makes the argument a location, and a location that resolves nowhere is an error.
+        # Falling through to `locate` here is what committed an absorption's removal as an empty commit
+        # in the wrong repository — see `commit_target`.
+        searched = ", ".join(str(store.path.expanduser()) for store in cfg.stores())
+        raise PlanError(
+            f"no plan at {name!r} — not under the working directory, not under any store ({searched}), "
+            "and not a deletion either one's HEAD still holds.\n"
+            "  A path is resolved where it points, never by its basename; pass a bare filename to search."
+        )
+    return locate(cfg, routing, name).path
+
+
 def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     """Commit these plans on their own, which is the step sessions were doing by hand 142 times.
 
@@ -3838,17 +3892,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     cfg = ws.config
     routing = ws.require_routable()
 
-    # A path first, and a bare filename only as a fallback. The plan most in need of this command is
-    # one just filed *for another repo*, which lives in that repo's store mirror — somewhere `locate`
-    # deliberately cannot see, since it searches what this session reads. `new --for` prints the
-    # path, so taking it is both the natural flow and the one that works across the store.
-    named: list[Path] = []
-    for name in args.file:
-        candidate = Path(name).expanduser()
-        if candidate.is_file():
-            named.append(candidate.resolve())
-        else:
-            named.append(deleted_plan(candidate) or locate(cfg, routing, name).path)
+    named = [_commit_argument(cfg, routing, name) for name in args.file]
 
     # A plan's attachments ride with it, and are counted separately below: they are part of the one
     # change being committed, not a second plan that would demand a message describing a set.

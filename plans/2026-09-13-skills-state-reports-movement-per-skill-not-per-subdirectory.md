@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-13
 ---
 
@@ -57,12 +57,30 @@ skills are invoked overwhelmingly through their scripts — `plan-docs`, `sessio
 of them without a single `Skill` call. The existing fallback ("a skill with no such call falls back
 to session start") handles the _baseline_ correctly and says nothing about which part moved.
 
+## Step 1 landed, and its first real run found the trigger has the same flaw (2026-09-13)
+
+Annotation landed as `307262d`: each moved commit ends `(SKILL.md)`, `(scripts/)`,
+`(SKILL.md, scripts/)`. The flattened list stays, as step 3 asks. Read live in the same session, it
+showed `plan-docs` as three `(scripts/)` commits and one `(SKILL.md)` under the unchanged
+`SKILL.md moved` sentence — the shape this plan describes, now readable from the output alone.
+
+[PITFALL: **a skill whose `SKILL.md` did not move gets no moved note at all, however much else
+moved.** The move check compares the baseline against `skill_md_last_commit`, the last commit
+touching `SKILL.md`, and only then lists every commit under the skill. The same run showed
+`session-bash-audit` with two commits since session start — `28099cd` to `scripts/audit.py`,
+`692a391` to `references/research.md` — and `moved_since_session_start: false`, because its
+`SKILL.md` last changed 2026-09-07. So the list's flattening was the visible half. The trigger is
+the silent half: a scripts-only change, the case this plan says matters most, is never reported as a
+move. `subdirs_differing` does name `scripts/` there, but only as install-against-checkout, which
+says nothing about whether an earlier call in this session ran the old code.]
+
+The trigger and the sentence are one decision, so neither was changed alone. Firing on any part
+while the sentence still says `SKILL.md moved` would make it wrong on exactly the new rows. That is
+the second question below, which now has the real run that step 2 was waiting for.
+
 ## Open questions
 
-[NEEDS CLARIFICATION: split the list, or annotate each commit with the subdirectories it touched?
-Annotating keeps one list and answers both questions at once — `15ab22d (SKILL.md)`,
-`d7f1184 (SKILL.md, scripts/)` — and it is one `--name-only` the subcommand is already positioned to
-read. Splitting reads better when a skill moved a lot, which is the case that produced this.]
+- **Split the list, or annotate?** Annotated — answered by step 1.
 
 [NEEDS CLARIFICATION: should the remedy sentence key on what this session actually used? It already
 knows, from the same `Skill`-call scan that sets the baseline: no `Skill` call plus N `scripts/`

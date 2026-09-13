@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 source_repo: github.com-personal/power-user-linux-setup
 source_session: feea009a-eef1-4312-9967-186504d96db7.jsonl
@@ -51,23 +51,23 @@ The honest read, once the row was given a denominator by hand — message-carryi
 wording change — was **7 in 559 before, 0 in 12 after**: expected 0.15 hits at that base rate, so
 nothing was readable either way.
 
-## Open questions
+## Open questions, answered 2026-09-13
 
-[NEEDS CLARIFICATION: refuse, warn, or normalise? Refusing a mismatched comparison is the strongest
-and would have made this session's prescribed command fail loudly, which is the right outcome — but
-it also breaks a deliberate wider-window re-read, which the skill's own text suggests ("re-run with
-a wider `--days`"). A warning line naming both values is the cheap version and is probably enough,
-since the failure here was that the output said nothing at all.]
+Landed as `26f823b`. Re-run on the case this plan was filed from — `--days 3 --compare` against
+`2026-09-12.json` — the header now reads `windows differ: this run --days 3, the baseline --days 6`,
+and the row reads `cut-message=3/329(MISS)` rather than a bare `3`.
 
-[NEEDS CLARIFICATION: should the absolute-count rows be scored at all under `--compare`, or only
-reported? They are the rows a window mismatch destroys, and they are also the rows a reader most
-naturally reads as a trend. A count with no denominator cannot be compared across any two runs, even
-two with identical `--days`, because the corpus is whatever transcripts were touched.]
-
-[NEEDS CLARIFICATION: is there a denominator worth adding for `cut-message` specifically? It is the
-one row whose population is obvious — calls carrying a `git commit -m` / `gh … --body` message — and
-the hand-computed version was what made the row readable. A per-row denominator field would
-generalise: `git-add-all` over staging calls, `rg-replace-bundle` over `rg` calls.]
+- **Refuse, warn, or normalise?** Warn. The header names both windows whenever they differ, and a
+  single-session run says its counts are that session's alone. Refusing would break the deliberate
+  wider-window re-read the skill suggests, and the failure was that the output said nothing.
+- **Should the absolute-count rows be scored under `--compare`?** Yes, still. A `zero` verdict is
+  absolute: it never used the baseline, so a window mismatch cannot make it wrong. What a mismatch
+  destroys is reading the count as a trend, and the header now says so.
+- **A denominator for `cut-message`?** Added: hits over calls carrying a commit or `gh` message, in
+  the session view and in the comparison cell. It is built as a `DENOMINATORS` map, so another row
+  can gain one. None has, because `git-add-all` over staging calls and `rg-replace-bundle` over `rg`
+  calls each need a population definition of their own, and a guessed one is a second number to
+  distrust.
 
 ## Recommended direction
 

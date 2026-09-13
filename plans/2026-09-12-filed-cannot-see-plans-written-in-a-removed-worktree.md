@@ -37,9 +37,10 @@ harvesting session remembered writing more. A session that did not would have op
 "where everything went" group with a count four short, from the one tool meant to replace
 remembering.]
 
-Related but distinct: `2026-09-12-filed-shows-numbers-the-session-did-not-write.md`, filed for this
-repo from the store, is about which **lines** `filed` samples inside a plan it did find. This is
-about which **files** it can find at all.
+Related but distinct: which **lines** `filed` samples inside a plan it did find was settled in
+`6254193`, by matching them against this session's own writes to that path. This is about which
+**files** it can find at all — and a normalised write path would have to reach that matching too,
+since it compares by path.
 
 ## Recommended direction
 

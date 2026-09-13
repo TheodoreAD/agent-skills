@@ -321,6 +321,76 @@ def test_saved_carries_the_local_moment_not_a_bare_utc_date(tmp_path):
     assert datetime.fromisoformat(saved).tzinfo is not None
 
 
+def _replaying_corpus(root: Path) -> None:
+    """A parent transcript and the one its resume wrote, which repeats the parent's two calls."""
+
+    def write(name: str, calls: list[tuple[str, str]]) -> None:
+        lines = [
+            json.dumps(
+                {
+                    "timestamp": f"2026-09-09T20:0{i}:00Z",
+                    "message": {
+                        "model": "claude-opus-5",
+                        "content": [{"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": cmd}}],
+                    },
+                }
+            )
+            for i, (tid, cmd) in enumerate(calls)
+        ]
+        (root / "-home-u-repo").mkdir(parents=True, exist_ok=True)
+        (root / "-home-u-repo" / f"{name}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    parent = [("toolu_a", 'git commit -m "x | tail"'), ("toolu_b", "ls")]
+    write("b494b3ef-parent", parent)
+    write("6794e240-resumed", [*parent, ("toolu_c", "git status")])
+
+
+def test_a_call_a_resumed_transcript_replayed_is_counted_once_and_credited_to_its_parent(monkeypatch, tmp_path):
+    """Measured 2026-09-13 over seven days: 649 of 9,012 calls, 7.2%, sat in more than one transcript,
+    because a resumed session's transcript repeats its parent's history. `cut-message` read 7 over 5
+    distinct calls. All 649 kept their `tool_use` id, which is what makes the id the key."""
+    _replaying_corpus(tmp_path)
+    monkeypatch.setattr(audit, "PROJECTS_DIR", tmp_path)
+
+    calls, replayed = audit.load_calls(days=36500, project_filter=None)
+
+    assert replayed == 2
+    assert sorted((c.tool_use_id, c.session) for c in calls) == [
+        ("toolu_a", "b494b3ef-parent"),
+        ("toolu_b", "b494b3ef-parent"),
+        ("toolu_c", "6794e240-resumed"),
+    ]
+
+
+def test_a_call_without_an_id_is_never_merged():
+    """Two id-less calls are not evidence of a replay; merging them would lose a real call."""
+    first, second = _call("ls"), _call("ls")
+    kept, replayed = audit.drop_replayed([first, second])
+    assert replayed == 0
+    assert len(kept) == 2
+
+
+@pytest.mark.usefixtures("_no_git")
+def test_a_baseline_taken_before_the_dedupe_says_so_on_compare(tmp_path, capsys):
+    """A baseline is a measurement that cannot be re-taken, so one saved before the dedupe is not
+    adjusted — but a delta against it is partly the fix, and the comparison has to say which kind of
+    baseline it is reading. The recorded count is that mark."""
+    calls = [_call("ls") for _ in range(60)]
+    after = tmp_path / "after.json"
+    audit.save_baseline(calls, after, days=7.0, note="", replayed=649)
+    assert json.loads(after.read_text(encoding="utf-8"))["replayed_dropped"] == 649
+
+    before = tmp_path / "before.json"
+    payload = json.loads(after.read_text(encoding="utf-8"))
+    del payload["replayed_dropped"]
+    before.write_text(json.dumps(payload), encoding="utf-8")
+
+    audit.compare(calls, after, audit.EXPECTATIONS, "shipped")
+    assert "predates replay dedupe" not in capsys.readouterr().out
+    audit.compare(calls, before, audit.EXPECTATIONS, "shipped")
+    assert "predates replay dedupe" in capsys.readouterr().out
+
+
 def test_no_checkout_means_no_instrument_rather_than_a_wrong_one(monkeypatch, tmp_path):
     """The installed copy is not in a checkout, and `None` there is the useful answer — a SHA
     borrowed from whatever repo the file happened to sit under would be worse than none."""

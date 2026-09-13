@@ -96,6 +96,7 @@ class Call:
     timestamp: str
     error: bool
     result: str
+    tool_use_id: str = ""
     tags: set[str] = field(default_factory=set)
 
     @property
@@ -618,6 +619,7 @@ def _parse_transcript(path: Path, project: str) -> list[Call]:
                 timestamp=obj.get("timestamp") or "",
                 error=False,
                 result="",
+                tool_use_id=block["id"],
             )
         elif block.get("type") == "tool_result":
             tid = block.get("tool_use_id", "")
@@ -688,7 +690,8 @@ def load_session(session: str) -> list[Call]:
     return _parse_transcript(path, path.relative_to(PROJECTS_DIR).parts[0] if PROJECTS_DIR in path.parents else "")
 
 
-def load_calls(days: float, project_filter: str | None) -> list[Call]:
+def load_calls(days: float, project_filter: str | None) -> tuple[list[Call], int]:
+    """Every Bash call in the window, each counted once, and how many replayed copies were dropped."""
     cutoff = time.time() - days * 86400
     calls: list[Call] = []
     for path in PROJECTS_DIR.rglob("*.jsonl"):
@@ -698,7 +701,41 @@ def load_calls(days: float, project_filter: str | None) -> list[Call]:
         if project_filter and project_filter not in project:
             continue
         calls.extend(_parse_transcript(path, project))
-    return calls
+    return drop_replayed(calls)
+
+
+def drop_replayed(calls: list[Call]) -> tuple[list[Call], int]:
+    """Keep one copy of each call a resumed transcript replayed from its parent.
+
+    **A resumed session writes a new transcript that repeats its parent's history**, so every call
+    the parent made was loaded once per descendant still inside the window. Measured 2026-09-13 over
+    seven days: 649 of 9,012 calls, 7.2%, sat in more than one transcript. Every absolute-count row
+    was inflated by an amount nothing printed — `cut-message` read 7 over 5 distinct calls — and a
+    baseline saved while a long session was being resumed daily carried more of it than one saved
+    after a quiet week.
+
+    **The key is the `tool_use` id, which the replay keeps unchanged.** Checked on the same window
+    before choosing, 9,495 calls by then and the same 649 replayed: every one kept its id, and id and
+    `(timestamp, command)` agreed on all of them, so the id is exact rather than a heuristic. A call
+    with no id is never merged.
+
+    The copy kept is the one in the transcript holding the fewest calls. A descendant holds its
+    parent's calls plus its own, so the smallest holder is the ancestor, and the per-session table
+    credits each call to the session that made it rather than to whichever file was read first.
+    """
+    size = Counter((c.project, c.session) for c in calls)
+    keep: dict[str, Call] = {}
+    for call in calls:
+        if not call.tool_use_id:
+            continue
+        held = keep.get(call.tool_use_id)
+        if held is None or (size[(call.project, call.session)], call.session) < (
+            size[(held.project, held.session)],
+            held.session,
+        ):
+            keep[call.tool_use_id] = call
+    kept = [c for c in calls if not c.tool_use_id or keep[c.tool_use_id] is c]
+    return kept, len(calls) - len(kept)
 
 
 RATE_COLUMNS = [
@@ -914,7 +951,9 @@ def instrument_commit() -> str | None:
         return None
 
 
-def save_baseline(calls: list[Call], path: Path, days: float, note: str, force: bool = False) -> None:
+def save_baseline(
+    calls: list[Call], path: Path, days: float, note: str, force: bool = False, replayed: int = 0
+) -> None:
     """Write this run's per-model rates, refusing to destroy a baseline already at `path`.
 
     A baseline is a measurement of a corpus that has since moved on, so overwriting one is
@@ -928,6 +967,10 @@ def save_baseline(calls: list[Call], path: Path, days: float, note: str, force: 
     The default filename stays UTC-dated, so an artefact already on disk keeps its scheme; `saved`
     carries the local timestamp with its offset, because the corpus, the plans and the user's day
     are all local and a bare UTC date claimed the wrong one.
+
+    `replayed_dropped` records how many replayed copies `drop_replayed` removed. Its presence is also
+    the mark of a baseline taken after that fix, which `compare` reads: one saved before it counted
+    those copies, and cannot be adjusted afterwards any more than it can be re-taken.
     """
     if path.exists() and not force:
         existing = json.loads(path.read_text(encoding="utf-8"))
@@ -943,6 +986,7 @@ def save_baseline(calls: list[Call], path: Path, days: float, note: str, force: 
         "days": days,
         "note": note,
         "instrument": instrument_commit(),
+        "replayed_dropped": replayed,
         "models": rates_by_model(calls),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -969,6 +1013,10 @@ def compare(calls: list[Call], baseline_path: Path, expectations: dict[str, str]
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     print(f"\n== vs baseline {baseline_path.name} ({baseline.get('saved')}, {baseline.get('note', '')}) ==")
     print(f"   expectations: {source}")
+    if "replayed_dropped" not in baseline:
+        print("   this baseline predates replay dedupe: its rates counted each call a resumed transcript")
+        print("   replayed once per copy (7.2% of one 7-day corpus), which moves any row a resumed session")
+        print("   dominated — part of a delta against it is the fix, not the behaviour")
     now = rates_by_model(calls)
     verdicts: list[bool] = []
     for label, cur in sorted(now.items(), key=lambda kv: -int(kv[1]["n"])):
@@ -1086,9 +1134,13 @@ def report(
     samples: int,
     compare_with: Path | None = None,
     expectations: tuple[dict[str, str], str] | None = None,
+    replayed: int = 0,
 ) -> None:
     random.seed(1)
     print(f"Bash calls: {len(calls)}  (subagent: {sum(c.subagent for c in calls)})")
+    # Said, not silently applied — the same reason `--until` prints what it excluded: a filter that
+    # changes the denominator has to show by how much.
+    print(f"  {replayed} more were copies a resumed transcript replayed from its parent, counted once")
 
     _print_rates("per model", _group(calls, lambda c: f"{c.model}{' [sub]' if c.subagent else ''}"))
     main_calls = [c for c in calls if not c.subagent]
@@ -1392,16 +1444,17 @@ def main() -> None:
             dump_json(session_calls, args.json)
         return
 
-    calls = load_calls(args.days, args.project)
+    calls, replayed = load_calls(args.days, args.project)
     if args.until:
         calls = _before(calls, args.until)
     if not calls:
         print("no Bash calls found — check --days / --project / --until")
         return
-    report(calls, args.samples, args.compare, load_expectations(args.expectations) if args.compare else None)
+    wanted = load_expectations(args.expectations) if args.compare else None
+    report(calls, args.samples, args.compare, wanted, replayed)
     if args.save_baseline is not False:
         default = state_dir() / f"{time.strftime('%Y-%m-%d', time.gmtime())}.json"
-        save_baseline(calls, args.save_baseline or default, args.days, args.note, args.force)
+        save_baseline(calls, args.save_baseline or default, args.days, args.note, args.force, replayed)
     if args.json:
         dump_json(calls, args.json)
 

@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-06
+updated: 2026-09-13
 source_repo: github.com-personal/power-user-linux-setup
 source_session: cd4f9f9e-379a-4bb2-986c-1a99e0f84ac0.jsonl
 source_moment: 2026-09-02T20:05:00+03:00
@@ -503,3 +503,36 @@ are already two days stale against a corpus that has since had substantial pushe
 installing today is shown a verdict about a version they are not getting. That is the same
 population-versus-measurement gap `skill-fitness` now prints a corpus header for, arriving from
 outside this repo and with no way to fix it from here — only to know it.
+
+## Re-queried 2026-09-13: `session-harvest` is back at critical, two minutes after a push
+
+Noticed in a `skills add` summary, which printed `Gen: Med Risk` beside `session-harvest` where the
+same command about forty minutes earlier had printed `Safe`. The audit endpoint for the three skills
+pushed that session:
+
+| skill                | ath                    | socket                            | snyk            |
+| -------------------- | ---------------------- | --------------------------------- | --------------- |
+| `session-harvest`    | **medium** (14:04:03Z) | **critical, 1 alert** (14:05:03Z) | low (14:03:34Z) |
+| `plan-docs`          | safe (09-07)           | safe, 0 alerts (09-07)            | low (14:40:16Z) |
+| `session-bash-audit` | safe (09-07)           | safe, 0 alerts (09-07)            | low (09-07)     |
+
+**All three `session-harvest` verdicts are stamped 14:03–14:05Z, and two pushes reached the remote
+just before: `410db5c` at about 14:02Z and `2c1dd3d` at about 14:03Z, going by their CI runs.** The
+second only deleted plans; the first carried the store-commit receipt attribution, the
+session-written line split, and the read-only command classification that stops the sweep enrolling
+a repo it only read. None adds a network client, a write, or a new file read. What it does add is
+more text in `harvest.py` and `SKILL.md` about reading transcripts, classifying commands and
+attributing authorship, which is the "reconnaissance" vocabulary this plan already identified as the
+likely trigger. That is a reading, not a finding, and is recorded as one.
+
+[PITFALL: **the per-scanner page and the API disagree again, in the opposite direction.** Fetched
+the same hour, `www.skills.sh/TheodoreAD/agent-skills/session-harvest/security/socket` renders a
+green **Pass** with every category passing and no alert text, while the endpoint returns `critical`
+with one alert for a scan stamped after the push. So the alert text this plan retrieved on
+2026-09-03 is not retrievable this time, and the page cannot be taken as the current verdict.]
+
+This does not answer the disclosure `[UNVERIFIED:]` above either. A scan dated after 2026-09-05
+exists now, but the corpus it scanned also changed, so a worse verdict cannot be separated from the
+disclosure, the new code, or a detector update. What it does settle is the monitor question: **a
+push re-scans within minutes and can move a verdict to `critical`**, and the only reason anyone
+knows is that a reinstall happened to print the summary.

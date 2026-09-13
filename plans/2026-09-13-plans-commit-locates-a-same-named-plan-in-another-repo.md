@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 ---
 
@@ -81,25 +81,26 @@ it was just told about — the one spelling that falls through to `locate`. So t
 in `absorb`'s output rather than in `commit`'s resolution: print the exact command, absolute paths
 filled in.]
 
-## Open questions
+## Open questions, answered 2026-09-13
 
-[NEEDS CLARIFICATION: should `locate`'s basename fallback be scoped to the routed repo, refused when
-the argument contains a path separator, or dropped from `commit` entirely? The argument
-`github.com-personal/<repo>/<file>.md` is unambiguously a path and was treated as a name. Refusing a
-multi-segment argument that does not resolve looks like the smallest correct change, and it keeps
-the fallback for the bare-filename case the help text advertises.]
+Decided together, as step 2 below asks, and landed as `d36864d`, `910c71b`, `11d5ac3` and `edc92fb`.
+The collision was reproduced as a test first, and it failed exactly as filed:
+`committed: … in …/agent-skills`, the absorbed copy's path, and no store change.
 
-[NEEDS CLARIFICATION: should `commit_paths` refuse an empty commit outright? An absorption's removal
-commit is never legitimately empty, and `git commit` without `--allow-empty` would have failed on
-its own — so something in the path construction is passing a non-empty set that stages no change.
-Worth reading before choosing between the two fixes, since one of them may make the other
-unnecessary.]
-
-[NEEDS CLARIFICATION: what should `commit` do when cwd is not the store and the target is? This is
-the common case after every `absorb`, `absorb`'s own closing text prescribes the command, and
-neither the store-relative form nor `--path` works from there — only an absolute path does. A
-`--store` flag, `require_routable()` recognising `$PLANS_HOME` as a store rather than as an
-unroutable project, or `absorb` printing the absolute command are the three shapes.]
+- **Scope the basename fallback, refuse a separator, or drop it?** Refuse a separator. A path is
+  tried under the working directory and then under each store, as a file and as a deletion `HEAD`
+  still holds, and one that resolves nowhere is an error naming where it looked. A bare filename
+  still searches.
+- **Refuse an empty commit outright?** Yes, and neither fix made the other unnecessary. The question
+  was right that something let an empty commit through: `commit_paths` builds the commit with
+  `commit-tree`, which records an unchanged tree where `git commit` would refuse. A tree equal to
+  `HEAD`'s is now refused. With the resolution fix alone a same-named collision can no longer reach
+  it, but a race with another session committing the same change can.
+- **What should `commit` do when cwd is not the store and the target is?** Resolve the
+  store-relative spelling in the store, from any repo. `absorb --apply` also prints the command with
+  those paths filled in. `--path <store>` still exits 3, because the store is not a project to
+  route. With both of the above there is no longer a reason to reach for it, so no `--store` flag
+  was added.
 
 ## Recommended direction
 

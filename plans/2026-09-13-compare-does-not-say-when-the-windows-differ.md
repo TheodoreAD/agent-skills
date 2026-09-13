@@ -41,10 +41,11 @@ Two further things make the same output worse than a silent mismatch:
   `cutoff = time.time() - days * 86400`, then `if path.stat().st_mtime < cutoff: continue`). So a
   resumed old session drags its entire history back inside the window whatever the number, and two
   runs with the _same_ `--days` can still cover different spans of calls.
-- **The duplication defect filed separately** as
-  `2026-09-13-audit-counts-a-resumed-sessions-calls-twice.md` (absorbed into this repo the same day)
-  inflates exactly those absolute-count rows, so the two compound: an inflated count compared over
-  an unstated window.
+- **The duplication defect filed separately**, fixed the same day in `28099cd` — its plan retired
+  after that landed — inflated exactly those absolute-count rows, so the two compounded: an inflated
+  count compared over an unstated window. Since the fix a baseline records `replayed_dropped`, and
+  `--compare` already says when it reads one taken before; the window check this plan asks for is
+  the same kind of line.
 
 The honest read, once the row was given a denominator by hand — message-carrying calls, split at the
 wording change — was **7 in 559 before, 0 in 12 after**: expected 0.15 hits at that base rate, so
@@ -75,6 +76,5 @@ baseline's `saved` and `note` already appear, and mark the absolute-count rows a
 rather than scoring them. That is one line of output and one guard, and it turns a number nobody can
 falsify into a stated limitation.
 
-The related filing is `2026-09-13-audit-counts-a-resumed-sessions-calls-twice.md`; they touch the
-same subcommand and the fixes compose, but neither substitutes for the other — dedupe makes a count
-correct, and this makes two counts comparable.
+The related dedupe (`28099cd`) touches the same subcommand and the fixes compose, but neither
+substitutes for the other — dedupe makes a count correct, and this makes two counts comparable.

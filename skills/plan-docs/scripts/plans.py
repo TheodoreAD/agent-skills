@@ -997,6 +997,15 @@ def commit_paths(repo: Path, paths: Sequence[Path], message: str) -> str:
         tree = git(["write-tree"], repo, env)
     if not tree:
         raise PlanError(f"could not write a tree for {', '.join(rels)} in {repo}")
+    # `commit-tree` records whatever tree it is given, an unchanged one included, where `git commit`
+    # would refuse. So an empty commit was not an error here, and that is what let a path resolved in
+    # the wrong repository report `committed:` on a commit that changed nothing (2026-09-12). No plan
+    # commit is legitimately empty.
+    if head and tree == git(["rev-parse", f"{head}^{{tree}}"], repo):
+        raise PlanError(
+            f"nothing to commit: {', '.join(rels)} already match HEAD in {repo}.\n"
+            "  If you meant a change elsewhere — an absorption's removal is in the store — name that path."
+        )
 
     parents = ["-p", head] if head else []
     commit = git(["commit-tree", tree, *parents, "-m", message], repo)

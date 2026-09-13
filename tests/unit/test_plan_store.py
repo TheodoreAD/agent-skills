@@ -2808,6 +2808,27 @@ def test_a_plain_retirement_gets_no_absorbed_note(ws, capsys):
     assert "absorbed" not in out
 
 
+def _head(repo: Path) -> str:
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout
+
+
+def test_commit_refuses_an_empty_commit(ws, capsys):
+    """`commit_paths` builds the commit with `commit-tree`, which — unlike `git commit` — records an
+    empty tree change without complaint. That is why a path resolved in the wrong repository on
+    2026-09-12 produced an empty commit rather than an error; no legitimate plan commit is empty, so
+    it is refused outright."""
+    write_config(ws, REPO_PLANS)
+    already = plan(ws.personal / "plans", "2026-09-12-clean.md", "status: idea\nupdated: 2026-09-12")
+    subprocess.run(["git", "add", "--", "plans/2026-09-12-clean.md"], cwd=ws.personal, check=True)
+    subprocess.run(["git", "commit", "-qm", "clean"], cwd=ws.personal, check=True)
+    before = _head(ws.personal)
+
+    assert plans.main(["commit", str(already), "-m", "nothing to say", "--path", str(ws.personal)]) == 1
+
+    assert "nothing to commit" in capsys.readouterr().err
+    assert _head(ws.personal) == before
+
+
 def test_commit_still_refuses_a_name_that_never_existed(ws, capsys):
     """The deleted-plan lookup must not turn a typo into a confusing git error. It resolves a *path*
     git still knows at HEAD and nothing else, so anything else falls through to `locate`."""

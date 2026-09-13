@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 source_repo: github.com-personal/repo-tasks
 source_session: e0a0f092-e55e-4429-95e5-1882a6b773be.jsonl
@@ -18,6 +18,29 @@ recorded the **command door**: a path this session merely read is credited the s
 for this merge, and the reason holds: a fix to either door alone moves the error to the other, so
 the two are one subject and have to be decided together. Both originals are in this repo's history,
 the second under `e0dd11e`.
+
+## Landed, 2026-09-13
+
+Both doors decided in one change, as asked, and every open question below is answered. Retire once
+the commits are pushed; the reasoning lives in `harvest.py`'s docstrings and step 8.
+
+[DECISION: **authorship is the commit's receipt, not the third bucket alone** (`43f481a`). The
+bucket as recommended would have made every commit either touched or unattributed, leaving step 8's
+edit authority nothing to key on. Making a commit prints its id at a line start — git's
+`[main 7e23df7]`, `plans.py commit`'s `committed: …` — and reading history does not, so no command
+needs classifying. Measured over seven days of the store: 109 of 110 commits carried a receipt (the
+miss was a `| tail -3` cutting it off), none came from a non-commit command, and all six
+mis-attributions recorded below resolve to the session that made them. A path match without a
+receipt is the bucket, printed `(authorship unestablished)` — the wording the lines plan shares.]
+
+[DECISION: **the sweep enrols a `git -C` target only for a call that is not a read** (`8730971`),
+against closed read-only lists so an omission costs noise, never a missed repo. A `cd` is exempt
+only when its own result carries the harness's `Shell cwd was reset to` notice, since a `cd` that
+sticks moves later unscoped commands into the repo it named. On the 2026-09-12 session `repo-tasks`
+drops out and the store and the session's own repo stay.]
+
+The store plans section claims no authorship, so it needed nothing. The research attribution shared
+the command door and now skips read-only calls too (`e96e489`).
 
 ## Context
 
@@ -189,35 +212,21 @@ Reading a repo is not incidental here either — it is prescribed. The cross-rep
 another repo "stays fine, and is how a filed plan gets written accurately enough to act on", and
 that session read `repo-tasks` for exactly that reason.
 
-## Open questions
+## Open questions, answered 2026-09-13
 
-[NEEDS CLARIFICATION: **can touching and authoring be separated by static analysis of the transcript
-at all?** A write to the path and a `git log`/`cat-file` naming it are both "named in a command",
-and a session-wide gate ("ran an absorbing command anywhere") leaks as shown above. Separating them
-means classifying the command that names _that_ path — mutating versus read-only — which the audit
-script already does for a different purpose (`git-C-mutating`, `git-mutating-in-chain`), so the
-vocabulary exists. The per-path, per-command-kind rule is the precise one; whether it is worth its
-cost depends on the next question.]
+The questions as they stood, each with its answer; the decisions are in "Landed" above.
 
-[NEEDS CLARIFICATION: **or is the honest answer a third bucket rather than a better binary?** The
-evidence supports "this session touched this path" and not "this session made this commit" — true of
-the write door's absorptions, its edits, and the command door's reads. A row reading
-`touched the path, authorship unestablished` would stop the attributed column asserting more than it
-knows, needs no command classification, and would say the useful thing in the filed-and-absorbed
-case: that the filing landed.]
-
-[NEEDS CLARIFICATION: **should the sweep enroll a repo on a read-only command at all?** Enrolment
-feeds the unpushed-commit rows and the consumer warning. A write or a mutating command is evidence
-the session changed something there; a read is what the cross-repo rules prescribe, and enrolling on
-it is what made the loudest line in the sweep fire on a repo nobody changed.]
-
-[NEEDS CLARIFICATION: does the same over-claim reach the sweep's `store plans` section? That section
-lists filed-and-not-taken plans rather than commits, so it looked correct on 2026-09-09 — but it is
-built from the same store and worth checking rather than assumed.]
-
-[NEEDS CLARIFICATION: does the command-door loop reach the `research` store attribution, which also
-matches "named in this session's own commands"? Not observed — the 2026-09-12 session's research
-count was 0 of 5 attributed and it named no research entries — but the mechanism reads identical.]
+- **Can touching and authoring be separated by static analysis of the transcript at all?** Yes, and
+  not by classifying the command that names the path. The commit's receipt in the session's own tool
+  output separates them directly.
+- **Or is the honest answer a third bucket rather than a better binary?** Both: the bucket holds
+  every path match without a receipt, and the receipt keeps "this session's" from being empty.
+- **Should the sweep enrol a repo on a read-only command at all?** No, for `git -C`. A `cd` still
+  enrols unless the harness reset it.
+- **Does the same over-claim reach the sweep's `store plans` section?** No. It lists dirty and
+  unpushed rows and makes no authorship claim to over-make.
+- **Does the command-door loop reach the `research` store attribution?** The mechanism did, so it
+  now skips read-only calls, which cannot move an mtime.
 
 ## Recommended direction
 
@@ -243,6 +252,5 @@ over a repo this session only read (not enrolled).
 
 `2026-09-12-filed-shows-numbers-the-session-did-not-write.md` is the same root error one level down:
 a **line** in a file this session touched is not a line it wrote. Kept separate because it is about
-lines rather than commits and its fix is a diff against the session-start revision rather than
-command classification. Whatever wording the third bucket lands on here is the wording that plan's
-label should use, so the two halves of `filed` hedge in one voice.
+lines rather than commits and its fix is the session's own writes rather than a receipt. Both hedge
+as `(authorship unestablished)`, so the two halves of `filed` speak in one voice.

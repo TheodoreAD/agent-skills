@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 source_repo: github.com-personal/repo-tasks
 source_session: db005386-041e-4f80-acbe-6e944677e6fa.jsonl
@@ -8,6 +8,22 @@ source_plan: # reports a fact about the tool's output
 ---
 
 # `harvest.py filed` prints number-bearing lines from plans the session only appended to
+
+## Landed, 2026-09-13
+
+Retire once the commits are pushed; the reasoning lives in `measurement_lines`' docstring and
+step 8.
+
+[DECISION: **attribute by the transcript's own writes, not by a git diff, and hedge the rest**
+(`6254193`). The transcript does hold what is needed — not the file's prior state, but the text this
+session put in: a Write's content, and an Edit's `new_string` lines that its `old_string` did not
+already hold, so the anchor lines an Edit repeats are not claimed. Compared with whitespace removed,
+because the gate reflows and re-pads after every write. Everything else is printed
+`(authorship unestablished)`, the same hedge the store commits use. On `db005386` all five
+`consumer-transitions` lines come back hedged and none claimed.]
+
+The sample limit was a second defect: a long shared plan's first six number lines are its oldest, so
+the session's own were never printed. The two lists are now limited separately.
 
 ## Context
 
@@ -51,18 +67,14 @@ a path in it. Separate because that one is about commits and command classificat
 lines and a diff; but the label that plan settles on is the one this plan's hedge should reuse, so
 the two halves of `filed` do not hedge in two voices. Absorbed together 2026-09-13.
 
-## Open questions
+## Open questions, answered 2026-09-13
 
-[NEEDS CLARIFICATION: attribute by diff, or label and leave it? A diff of the session's own writes
-against the file as it stood at session start is the exact answer, and it needs the pre-session
-content — `git show <sha-at-session-start>:<path>` where the plan is committed, nothing where it is
-not. A label is one line and always available: "lines may predate this session; re-derive only what
-this session wrote." The label is honest and cheap; the diff is what the step's instruction actually
-assumes.]
-
-[NEEDS CLARIFICATION: does the same reasoning reach the store rows? A store commit is attributed by
-write-or-name, which is a real signal; the number-bearing lines have none. Worth checking whether
-the two lists should print their confidence differently rather than looking alike.]
+- **Attribute by diff, or label and leave it?** Both halves, from the transcript rather than from
+  git: lines found in this session's own writes print plainly, and the rest carry the label. A
+  session-start diff would also have credited a line another session added after the start.
+- **Does the same reasoning reach the store rows?** It did, and write-or-name turned out not to be a
+  real signal of authorship there either. Both lists now print the same hedge for the same kind of
+  evidence.
 
 ## Recommended direction
 

@@ -794,3 +794,43 @@ the measurement that would settle it — and in both cases the measurement was c
 grep over transcripts already on disk. So the rule this leaves is narrow and practical: when a plan
 proposes a pattern change and names the corpus that would test it, run that first, because the
 result decides the design rather than confirming it.
+
+## Why the harvest stopped carrying the deploy sequence and editing others' store plans (2026-09-13)
+
+The same test as the write-set narrowing above — _"doing less intrusive things if it helps, unless
+the skill needs them"_ — applied a second time, and prompted the same way. After a day of pushes,
+the public Socket rating of this skill returned to `critical`, on one alert against `SKILL.md`,
+labelled LOW at 88% confidence and 53% severity:
+
+> SUSPICIOUS. The skill's footprint mostly matches its stated purpose, but it is unusually powerful
+> for a 'harvest' helper: it reads broad local state, can influence durable files across plan
+> stores, and includes transitive skill install/reinstall guidance.
+
+Each of the three was tested against what the skill needs, and the answers differ:
+
+- **Broad local reads are the skill** — transcripts, processes, git state across the repos a session
+  touched — and they stay, disclosed where they already were.
+- **Install and re-install guidance is not this skill's job.** `skill-authoring`'s description names
+  the deploy sequence as its own, and its body already carried every piece harvest repeated: the
+  push being necessary but not sufficient, the default branch, the linked worktree, the install
+  commands. Two skills owning one procedure is the trigger contention this repo's instructions tell
+  every author to design out. Step 0 now reports which of the four install states applies and whose
+  move it is; the moves themselves are `skill-authoring`'s. The one fact that was only here,
+  reloading a skill in the session that changed it, moved there as its step 8.
+- **Editing a plan somebody else filed for a different repo was not needed either.** It was how step
+  2 put evidence into an already-owned plan. Filing the evidence for that repo as a new plan naming
+  its owner reaches the same end through `absorb`, which pairs the two for the owning repo's session
+  to merge — shown the same day, when a `repo-tasks` session filed a second occurrence that way and
+  it was merged into its owner in one commit. It also retires a race: an in-place edit in the shared
+  store could be absorbed between the edit and the commit. Correcting a plan this session itself
+  wrote stays, because nothing else can do it, and so does adding to the session repo's own plans, a
+  store-routed repo's included, because that is ordinary work in the repo the session is in.
+
+**What was not done is recorded because it would have been easy.** The description is 1021 of 1024
+characters and does not name every capability, and it was not rewritten here, since a description
+change moves triggering and has to be measured first. Nor was anything renamed or split to read as
+less alarming: the remaining footprint is what the skill does, and the disclosure section says so.
+The install guidance was 30 matching lines in the version that passed on 2026-09-07 and 34 in the
+one flagged, while the file grew from 1,117 to 1,355 lines. So this is a judge reading a larger
+file, not one sentence that tipped it, and whether the next scan passes is not something this change
+can promise.

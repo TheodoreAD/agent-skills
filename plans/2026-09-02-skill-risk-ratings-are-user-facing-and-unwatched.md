@@ -525,11 +525,49 @@ more text in `harvest.py` and `SKILL.md` about reading transcripts, classifying 
 attributing authorship, which is the "reconnaissance" vocabulary this plan already identified as the
 likely trigger. That is a reading, not a finding, and is recorded as one.
 
-[PITFALL: **the per-scanner page and the API disagree again, in the opposite direction.** Fetched
-the same hour, `www.skills.sh/TheodoreAD/agent-skills/session-harvest/security/socket` renders a
-green **Pass** with every category passing and no alert text, while the endpoint returns `critical`
-with one alert for a scan stamped after the push. So the alert text this plan retrieved on
-2026-09-03 is not retrievable this time, and the page cannot be taken as the current verdict.]
+[PITFALL: **the per-scanner page is cached per URL spelling, and the mixed-case one serves an old
+scan.** `www.skills.sh/TheodoreAD/agent-skills/session-harvest/security/socket` rendered a green
+**Pass** dated 2026-09-07, which read as the page contradicting the API. The lowercase spelling,
+`www.skills.sh/theodoread/agent-skills/session-harvest/security/socket`, rendered the current scan
+with its alert. Always fetch the lowercase path, and read the page's own "Analyzed At" before
+trusting it — the two spellings differ only in which scan they show.]
+
+The alert, from the lowercase page, is one **Anomaly** on `SKILL.md`, **LOW**, confidence 88%,
+severity 53%, analyzed 2026-09-13 14:05Z:
+
+> SUSPICIOUS. The skill's footprint mostly matches its stated purpose, but it is unusually powerful
+> for a 'harvest' helper: it reads broad local state, can influence durable files across plan
+> stores, and includes transitive skill install/reinstall guidance. Data flows appear to stay local
+> or go to expected remotes/GitHub rather than attacker endpoints, so this looks more like a
+> high-trust workflow skill with medium security risk than confirmed malware.
+
+The headline is again `critical` for a LOW alert, the same count-not-severity mapping recorded on
+2026-09-03. The first two concerns restate the 2026-09-03 alert; the third is new. It is not new
+text, though: the install guidance was 30 matching lines in the version that passed on 2026-09-07
+and 34 in the flagged one, while `SKILL.md` grew from 1,117 to 1,355 lines. So the judge named what
+a larger file made prominent, rather than a sentence tipping it.
+
+[DECISION: **each concern tested against what the skill needs, per the user's two standing
+decisions.** Broad local reads are the skill, disclosed, and stay. Install and re-install guidance
+is `skill-authoring`'s by its own description, so `session-harvest` now reports install state and
+hands deploying over (`3aa3c70`), with the one fact only it held moved to `skill-authoring`
+(`ec1852a`). Editing a plan somebody else filed for a different repo is replaced by filing the
+evidence as a new plan that names it (`0e005bd`). The reasoning, alert quoted, is in
+`session-harvest`'s `references/rationale.md` (`b92cacd`). Not done, deliberately: no rewording of
+the description, which sits at 1021 of 1024 characters and moves triggering, and no renaming or
+splitting to read less alarming.]
+
+[UNVERIFIED: **whether the next scan of `session-harvest` passes.** The change cannot promise it,
+since the judge is a model reading prose. Re-query the audit endpoint after the push that publishes
+these commits, reading `analyzedAt` to confirm the verdict is for a scan newer than the push. Note
+that `session-harvest` was not re-scanned after two later pushes the same afternoon while
+`plan-docs` and `session-bash-audit` were, so a re-scan may lag the push by hours.]
+
+**Seen in the same query and not yet looked at:** `research-library` now carries `ath: high`,
+analyzed 2026-09-06T00:53Z — worse than the `safe` implied by the 2026-09-06 re-query's "1 of 14
+non-safe", which read scans from 2026-09-04, and from a later bulk re-scan wave that stamped several
+skills within two minutes. Its alert text is not exposed for Gen, so reading it starts from Snyk's
+page for the same skill, which still says `medium`.
 
 This does not answer the disclosure `[UNVERIFIED:]` above either. A scan dated after 2026-09-05
 exists now, but the corpus it scanned also changed, so a worse verdict cannot be separated from the

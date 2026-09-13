@@ -1658,14 +1658,19 @@ def test_a_markdown_file_outside_every_plan_root_is_not_a_filing(tmp_path, monke
     assert [Path(row["path"]).name for row in harvest.filed_plans(entries, repos=[repo])] == ["2026-09-07-thing.md"]
 
 
+def result_entry(content: object, timestamp: str = "2026-09-07T12:00:00.000Z") -> dict[str, object]:
+    block = {"type": "tool_result", "tool_use_id": "b", "content": content}
+    return blocks_entry("user", [block], timestamp=timestamp)
+
+
 def test_a_store_commit_from_another_session_is_not_this_sessions_to_correct(tmp_path, monkeypatch):
     """The store is shared, so a commit inside the window is not this session's by virtue of being
     there — the same trap the disk bullet's image rows fell into on 2026-09-06. Attribution is the
-    transcript's own write paths, and an unattributable row is listed rather than dropped."""
+    commit's receipt in this session's own output, and an unattributable row is listed rather than
+    dropped."""
     store = tmp_path / "plans"
     (store / ".git").mkdir(parents=True)
     monkeypatch.setenv("PLANS_HOME", str(store))
-    mine = store / "power-user-linux-setup" / "2026-09-07-adherence-row.md"
     log = (
         "\x1eaaaaaaaaaaaa\x1f2026-09-07T08:30:00+03:00\x1fT\x1fpower-user-linux-setup: an adherence row\n"
         "power-user-linux-setup/2026-09-07-adherence-row.md\n"
@@ -1673,8 +1678,9 @@ def test_a_store_commit_from_another_session_is_not_this_sessions_to_correct(tmp
         "repo-tasks/2026-09-07-other.md\n"
     )
     runner = FakeRunner({f"git -C {store} log": (0, log, "")})
+    entries = [result_entry("committed: aaaaaaaaaaaa in /home/u/plans\nmessage:   an adherence row")]
 
-    state = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [mine])
+    state = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [], entries)
     assert [c["subject"] for c in state["commits"] if c["this_session"]] == ["power-user-linux-setup: an adherence row"]
     assert [c["subject"] for c in state["commits"] if not c["this_session"]] == ["repo-tasks: somebody else's plan"]
 
@@ -1688,7 +1694,7 @@ def test_a_store_commit_that_only_deletes_is_still_this_sessions(tmp_path, monke
     `filed` reported `0 commit(s) this session, 20 from elsewhere` with all three of its own among
     the strangers. Worse than a mislabelled row, because step 8 gives the label authority — "a row
     marked (another session) is reported, never edited" — so a harvest following the procedure
-    correctly declines to correct its own filings.
+    correctly declines to correct its own filings. A deletion prints its receipt like any commit.
     """
     store = tmp_path / "plans"
     (store / ".git").mkdir(parents=True)
@@ -1698,7 +1704,10 @@ def test_a_store_commit_that_only_deletes_is_still_this_sessions(tmp_path, monke
         "power-user-linux-setup/2026-09-07-take-invoke-stubs-0-2-0.md\n"
     )
     runner = FakeRunner({f"git -C {store} log": (0, log, "")})
-    entries = [bash_entry("python3 plans.py absorb --apply --only 2026-09-07-take-invoke-stubs-0-2-0.md")]
+    entries = [
+        bash_entry("python3 plans.py commit plans/2026-09-07-take-invoke-stubs-0-2-0.md", "2026-09-07T12:08:30.000Z"),
+        result_entry("[main 719a495] power-user-linux-setup: absorbed, take invoke-stubs\n 1 file changed"),
+    ]
 
     # Written paths alone: the file was deleted, so nothing this session wrote names it.
     blind = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [])
@@ -1707,7 +1716,70 @@ def test_a_store_commit_that_only_deletes_is_still_this_sessions(tmp_path, monke
     seeing = harvest.store_commits(runner, "plans", store, "2026-09-07T07:00:00+03:00", [], entries)
     (commit,) = seeing["commits"]
     assert commit["this_session"] is True
-    assert commit["evidence"] == "named a file in a command"
+    assert commit["evidence"] == "reported making it"
+
+
+def test_a_path_match_is_contact_with_a_file_not_authorship_of_a_commit(tmp_path, monkeypatch, capsys):
+    """Both doors over-claimed, and each fix to one moved the error to the other. Every recorded
+    shape, from the plan that merged them:
+
+    - 2026-09-09: a filer credited with the owning repo's absorption of its plan — the write door.
+    - 2026-09-10: a filer credited with another session's in-place correction of it — the write door
+      again, with no deletion anywhere for a deletion-only rule to catch.
+    - 2026-09-12: a session credited with an absorption it had only read the log of, running the
+      confirmation step 8 prescribes — the command door, and the log's output carries the id.
+
+    None of the three is this session's, and none is a stranger's the check can prove, so each is
+    its own bucket. Only a receipt makes a commit this session's.
+    """
+    store = tmp_path / "plans"
+    (store / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    filed = "github.com-personal/agent-skills/2026-09-09-checkout-v7.md"
+    read = "github.com-personal/repo-tasks/2026-09-12-consumer-sweep.md"
+    # Commit ids are hex, because a receipt is matched as one.
+    log = (
+        f"\x1eab50b0001\x1f2026-09-09T12:00:00+03:00\x1fT\x1fagent-skills: absorbed the checkout bump\n{filed}\n"
+        f"\x1ec0cc00002\x1f2026-09-09T12:30:00+03:00\x1fT\x1fagent-skills: a second instance\n{filed}\n"
+        f"\x1e4ead00003\x1f2026-09-09T13:00:00+03:00\x1fT\x1frepo-tasks: absorbed the consumer sweep\n{read}\n"
+        f"\x1e5e1f00004\x1f2026-09-09T13:30:00+03:00\x1fT\x1fagent-skills: filed a finding\n{filed}\n"
+    )
+    runner = FakeRunner({f"git -C {store} log": (0, log, "")})
+    entries = [
+        # Confirming the filing is still there, minutes before the owning repo's session absorbs it.
+        bash_entry(f"git -C {store} cat-file -e HEAD:{read}", "2026-09-09T09:55:00.000Z"),
+        bash_entry(f"git -C {store} log --oneline -1 -- {read}", "2026-09-09T10:05:00.000Z"),
+        result_entry("4ead000 repo-tasks: absorbed the consumer sweep", "2026-09-09T10:05:01.000Z"),
+        result_entry("committed: 5e1f00004 in /home/u/plans", "2026-09-09T10:30:01.000Z"),
+    ]
+
+    state = harvest.store_commits(runner, "plans", store, "2026-09-09T08:00:00+03:00", [store / filed], entries)
+    by_sha = {c["sha"]: (c["this_session"], c["touched"], c["evidence"]) for c in state["commits"]}
+    assert by_sha == {
+        "ab50b0001": (False, True, "wrote a file in it"),
+        "c0cc00002": (False, True, "wrote a file in it"),
+        "4ead00003": (False, True, "named a file in a command"),
+        "5e1f00004": (True, False, "reported making it"),
+    }
+
+    harvest._print_store_commits(state)
+    out = capsys.readouterr().out
+    assert "1 commit(s) this session, 3 of authorship unestablished, 0 not attributable" in out
+    for sha in ("ab50b0001", "c0cc00002", "4ead00003"):
+        assert f"(authorship unestablished) {sha}" in out
+
+
+def test_a_receipt_counts_only_as_tool_output_at_a_line_start():
+    """A session that quotes a commit line in its own prose, or reads a log that prints the id bare,
+    did not make that commit."""
+    entries = [
+        blocks_entry("assistant", [{"type": "text", "text": "[main 1111111] committed earlier"}]),
+        result_entry("2222222 agent-skills: a subject, as git log --oneline prints it"),
+        result_entry("see [main 3333333] inside a sentence"),
+        result_entry("[main (root-commit) 4444444] first\n"),
+        result_entry([{"type": "text", "text": "noise\ncommitted: 5555555555ab in /x"}]),
+    ]
+    assert harvest.commit_receipts(entries) == ["4444444", "5555555555ab"]
 
 
 def test_naming_a_file_after_a_commit_does_not_make_that_commit_yours(tmp_path, monkeypatch):
@@ -1735,8 +1807,8 @@ def test_naming_a_file_after_a_commit_does_not_make_that_commit_yours(tmp_path, 
     entries = [bash_entry("plans.py absorb --apply --only 2026-09-07-web-fetch.md", "2026-09-07T21:45:00.000Z")]
 
     state = harvest.store_commits(runner, "plans", store, "2026-09-07T20:00:00+03:00", [], entries)
-    attributed = {c["sha"]: c["this_session"] for c in state["commits"]}
-    assert attributed == {"theirs001": False, "mine00001": True}
+    touched = {c["sha"]: c["touched"] for c in state["commits"]}
+    assert touched == {"theirs001": False, "mine00001": True}
 
 
 def test_an_unattributable_commit_time_is_not_attributed(tmp_path, monkeypatch):
@@ -1750,7 +1822,7 @@ def test_an_unattributable_commit_time_is_not_attributed(tmp_path, monkeypatch):
     entries = [bash_entry("plans.py commit 2026-09-07-thing.md")]
 
     state = harvest.store_commits(runner, "plans", store, "2026-09-07T20:00:00+03:00", [], entries)
-    assert [c["this_session"] for c in state["commits"]] == [False]
+    assert [(c["this_session"], c["touched"]) for c in state["commits"]] == [(False, False)]
 
 
 def test_an_unmatched_store_commit_is_not_asserted_to_be_another_sessions(tmp_path, monkeypatch, capsys):

@@ -3112,6 +3112,17 @@ COMMIT_RECORD = "\x1e"
 COMMIT_FIELD = "\x1f"
 COMMIT_FORMAT = "--format=%x1e%H%x1f%aI%x1f%an%x1f%s"
 
+# What making a commit prints, as opposed to what reading history prints about one: git's own
+# `[main 7e23df7] subject` (commit, amend, revert and cherry-pick all share it) and `plans.py
+# commit`'s `committed: 8ee9226b2114`. Anchored to a line start, because `git log --oneline` prints
+# the same id bare and a session that reads the log to confirm a filing is not the one that made it.
+COMMIT_RECEIPT_RE = re.compile(r"^(?:\[[^\]\n]*?\b([0-9a-f]{7,40})\]|committed: ([0-9a-f]{7,40})\b)", re.MULTILINE)
+
+# One hedge for both halves of `filed`: a store commit touching a file this session wrote, and a
+# number-bearing line in a plan this session edited, are the same evidence — contact with a file —
+# and read as a claim of authorship when printed without it.
+UNESTABLISHED = "(authorship unestablished)"
+
 
 def harvest_runs(entries: Iterable[dict[str, Any]], until: str | None = None) -> list[str]:
     """When this session ran a harvest, from its own `boundary` calls.
@@ -3199,12 +3210,26 @@ def store_commits(
     procedure correctly declines to correct its own filings. It is self-concealing in the usual way,
     since `0 commit(s) this session` is a plausible number for a session that did no store work.
 
-    So argv is read as well as write paths: a commit whose file this session *named* in a command —
-    `plans.py commit <file>`, `plans.py absorb --only <file>`, a `git rm` — is this session's,
-    provided the command ran before the commit. That proviso is not decoration: this door was
-    predicted to carry no timestamp heuristic and no new parallel-session risk, and its first live
-    run refuted both — see `_named_before`. What still cannot be matched is reported as unattributed
-    rather than as another session's, because that is the only claim the evidence supports.
+    So argv was read as well as write paths, and **both doors over-claimed**, because a path is
+    evidence that this session touched a file and never that it made the commit. The write door
+    credited a filer with the owning repo's absorption of its plan (2026-09-09, twice) and with
+    another session's in-place correction of it (2026-09-10, twice); the command door credited a
+    session with an absorption it had only *read* the log of, running the very confirmation step 8
+    prescribes (2026-09-12). Each fix to one door had moved the error to the other.
+
+    **Authorship is the commit's receipt in this session's own tool output** — see
+    `COMMIT_RECEIPT_RE`. Making a commit prints its id and reading one does not print it that way,
+    so no command has to be classified. Measured 2026-09-13 over seven days of this machine's store:
+    109 of 110 commits had a receipt in some transcript, none came from a command that was not a
+    commit, and every one of the six recorded mis-attributions above resolved to the session that
+    really made it. The one without a receipt was a `git commit … | tail -3` that cut the line off.
+
+    A path match without a receipt is kept as its own bucket, `touched`, rather than folded into
+    either neighbour: it is the filing that landed elsewhere, the correction someone made to it, the
+    log this session read — or this session's own commit through a command whose output did not
+    show it. The ordering proviso still applies to the command door (`_named_before`). What matches
+    nothing is reported as unattributed rather than as another session's, because that is the only
+    claim the evidence supports.
     """
     state: dict[str, Any] = {"store": name, "path": str(path)}
     if not path.is_dir() or not (path / ".git").exists():
@@ -3219,6 +3244,7 @@ def store_commits(
         state["error"] = ran.err.strip() or f"git log exited {ran.code}"
         return state
     mine = {os.path.normpath(str(p)) for p in written}
+    receipts = commit_receipts(entries)
     # Paired with their instants, because naming a file is not enough — see `_named_before`.
     named = [(as_instant(stamp), QUOTED_SPAN_RE.sub(" ", command)) for stamp, command in bash_calls(entries)]
     commits: list[dict[str, Any]] = []
@@ -3231,6 +3257,7 @@ def store_commits(
             continue
         sha, when, author, subject = header
         files = lines[1:]
+        made = any(sha.startswith(receipt) for receipt in receipts)
         wrote = any(os.path.normpath(str(path / f)) in mine for f in files)
         mentioned = _named_before(files, when, named)
         commits.append(
@@ -3240,17 +3267,40 @@ def store_commits(
                 "author": author,
                 "subject": subject,
                 "files": files,
-                "this_session": wrote or mentioned,
-                "evidence": "wrote a file in it" if wrote else "named a file in a command" if mentioned else "",
+                "this_session": made,
+                "touched": not made and (wrote or mentioned),
+                "evidence": "reported making it"
+                if made
+                else "wrote a file in it"
+                if wrote
+                else "named a file in a command"
+                if mentioned
+                else "",
             }
         )
     state["commits"] = commits
     state["attribution"] = (
-        "a commit is this session's when this session wrote or named one of its files"
+        "a commit is this session's when its own output reported making it; "
+        "writing or naming a file in it establishes contact, not authorship"
         if entries
         else "no transcript: nothing here is attributable, whatever the timestamps say"
     )
     return state
+
+
+def commit_receipts(entries: Iterable[dict[str, Any]]) -> list[str]:
+    """Commit ids this session's own tool output reported making — see `COMMIT_RECEIPT_RE`.
+
+    Tool results only. The same line quoted in the agent's prose, or in a harvest report, is a
+    sentence about a commit rather than the event of making one.
+    """
+    found: dict[str, None] = {}
+    for _, block in iter_blocks(entries):
+        if block.get("type") != "tool_result":
+            continue
+        for match in COMMIT_RECEIPT_RE.finditer(block_text(block.get("content"))):
+            found[match.group(1) or match.group(2)] = None
+    return list(found)
 
 
 def _named_before(files: Sequence[str], when: str, commands: Sequence[tuple[datetime | None, str]]) -> bool:
@@ -3356,14 +3406,28 @@ def _print_store_commits(state: dict[str, Any]) -> None:
             print(f"    {key}: {state[key]}")
     commits = state.get("commits") or []
     ours = [c for c in commits if c["this_session"]]
-    theirs = [c for c in commits if not c["this_session"]]
-    print(f"    {len(ours)} commit(s) this session, {len(theirs)} not attributable, since session start")
+    touched = [c for c in commits if c.get("touched")]
+    theirs = [c for c in commits if not c["this_session"] and not c.get("touched")]
+    print(
+        f"    {len(ours)} commit(s) this session, {len(touched)} of authorship unestablished, "
+        f"{len(theirs)} not attributable, since session start"
+    )
     if state.get("attribution"):
         print(f"    ^ {state['attribution']}")
     for commit in ours:
         print(f"    {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
-        if commit.get("evidence"):
-            print(f"        ^ this session {commit['evidence']}")
+    for commit in touched:
+        print(f"    {UNESTABLISHED} {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
+        print(f"        ^ this session {commit['evidence']}")
+    if touched:
+        # The label names the evidence rather than an outcome. "Your filing, absorbed elsewhere" is
+        # right for one of the recorded shapes and wrong for the other two — a correction made in
+        # place, and a log this session only read — so a label naming the outcome needs as many
+        # labels as there are outcomes.
+        print(f"    rows marked {UNESTABLISHED} touch a file this session wrote or named, but no output of")
+        print("    its own reported making them: often the owning repo absorbing or correcting a filing, which")
+        print("    means it landed. Not this session's output to count or to correct — unless you know one is")
+        print("    yours through a command whose output did not show the commit, and then say so")
     for commit in theirs:
         print(f"    (not attributed) {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
     if theirs:

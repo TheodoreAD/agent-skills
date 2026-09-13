@@ -898,16 +898,51 @@ def test_a_skill_that_moved_after_the_session_began_is_named(tmp_path):
     installed_root = tmp_path / "installed"
     make_skill(checkout, "demo", "same\n")
     make_installed(installed_root, "demo", "same\n")
-    runner = FakeRunner(
-        {
-            f"git -C {checkout} log -1 --format=%cI": (0, "2026-09-02T15:00:00+03:00\n", ""),
-            f"git -C {checkout} log --since=": (0, "abc123 Me a later edit\n", ""),
-        }
-    )
+    edit = "\x1eabc123 Me a later edit\n\nskills/demo/SKILL.md\n"
+    runner = FakeRunner({f"git -C {checkout} log --since=": (0, edit, "")})
     state = harvest.skill_state(runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z")
     assert state["moved_since_session_start"] is True
-    assert "re-read" in state["verdict"]
+    assert "SKILL.md moved after this session began (1 commit(s)) — re-read" in state["verdict"]
     assert state["move_baseline"] == {"instant": "2026-09-02T09:00:00Z", "is": "this session began"}
+
+
+def test_a_skill_whose_scripts_moved_and_skill_md_did_not_is_still_named(tmp_path):
+    """The trigger was the last commit touching `SKILL.md`, so a change to `scripts/` alone — the
+    code a session executes — was never reported. Confirmed 2026-09-13: `session-bash-audit` had two
+    commits since session start, to `scripts/` and `references/`, and reported no move. Each part
+    gets its own remedy, and none of them is the `SKILL.md` re-read."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    make_skill(checkout, "demo", "same\n")
+    make_installed(installed_root, "demo", "same\n")
+    log = (
+        "\x1e28099cd Me counted once\n\nskills/demo/scripts/audit.py\n"
+        "\x1e692a391 Me research note\n\nskills/demo/references/research.md\n"
+    )
+    runner = FakeRunner({f"git -C {checkout} log --since=": (0, log, "")})
+
+    state = harvest.skill_state(runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z")
+
+    assert state["moved_since_session_start"] is True
+    assert "scripts/ moved after this session began (1 commit(s)) — a call made earlier" in state["verdict"]
+    assert "references/ moved after this session began (1 commit(s)) — read on demand" in state["verdict"]
+    assert "SKILL.md moved" not in state["verdict"]
+    assert "re-read" not in state["verdict"]
+
+
+def test_a_history_that_cannot_be_read_is_not_reported_as_nothing_moved(tmp_path):
+    """A failed log read as an empty one says "nothing moved", the one wrong answer that prompts
+    nobody — the same failure the store's git log check guards against."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    make_skill(checkout, "demo", "same\n")
+    make_installed(installed_root, "demo", "same\n")
+    runner = FakeRunner({f"git -C {checkout} log --since=": (128, "", "fatal: bad default revision")})
+
+    state = harvest.skill_state(runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z")
+
+    assert state["moved_since_session_start"] is None
+    assert "could not read what moved" in state["verdict"]
 
 
 def test_each_moved_commit_says_which_part_of_the_skill_it_touched(tmp_path):
@@ -923,12 +958,7 @@ def test_each_moved_commit_says_which_part_of_the_skill_it_touched(tmp_path):
         "\x1ed7f1184 Me commit takes a set\n\nskills/demo/SKILL.md\nskills/demo/scripts/plans.py\n"
         "\x1e6b0e71d Me a reference note\n\nskills/demo/references/rationale.md\n"
     )
-    runner = FakeRunner(
-        {
-            f"git -C {checkout} log -1 --format=%cI": (0, "2026-09-02T15:00:00+03:00\n", ""),
-            f"git -C {checkout} log --since=": (0, log, ""),
-        }
-    )
+    runner = FakeRunner({f"git -C {checkout} log --since=": (0, log, "")})
 
     state = harvest.skill_state(runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z")
 
@@ -952,12 +982,8 @@ def test_the_move_baseline_is_named_in_the_verdict_it_produced(tmp_path):
     installed_root = tmp_path / "installed"
     make_skill(checkout, "demo", "same\n")
     make_installed(installed_root, "demo", "same\n")
-    runner = FakeRunner(
-        {
-            f"git -C {checkout} log -1 --format=%cI": (0, "2026-09-02T15:00:00+03:00\n", ""),
-            f"git -C {checkout} log --since=": (0, "abc123 Me a later edit\n", ""),
-        }
-    )
+    edit = "\x1eabc123 Me a later edit\n\nskills/demo/SKILL.md\n"
+    runner = FakeRunner({f"git -C {checkout} log --since=": (0, edit, "")})
     state = harvest.skill_state(
         runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z", baseline="this skill entered context"
     )

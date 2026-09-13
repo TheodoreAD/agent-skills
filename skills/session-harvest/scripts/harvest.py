@@ -54,6 +54,7 @@ import signal
 import subprocess
 import sys
 import tomllib
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -1391,7 +1392,7 @@ def skill_state(
             if not subdirs
             else "installed copy matches, except references/ — read on demand and inert, so nothing to do"
         )
-        return _with_move_check(state, runner, checkout, rel, since, last, baseline)
+        return _with_move_check(state, runner, checkout, rel, since, baseline)
 
     # The three causes of a difference, which the diff alone cannot tell apart. Confirmed both ways
     # a day apart in 2026-08-30/29: the same non-empty diff meant "re-install" on a clean, level
@@ -1415,7 +1416,7 @@ def skill_state(
         # side is ahead, and a stale script cannot — the run executes it.
         state["verdict"] += "; the stale part includes scripts/, which this session EXECUTES rather than reads"
         _note_own_staleness(state, installed, source)
-    return _with_move_check(state, runner, checkout, rel, since, last, baseline)
+    return _with_move_check(state, runner, checkout, rel, since, baseline)
 
 
 def _note_own_staleness(state: dict[str, Any], installed: Path, source: Path) -> None:
@@ -1450,13 +1451,21 @@ def _note_own_staleness(state: dict[str, Any], installed: Path, source: Path) ->
         state["verdict"] += f" (differing: {', '.join(differing)})"
 
 
+# What a part of a skill having moved under a session means, in the order a reader should meet them.
+# The same three fates as `SUBDIR_CONSEQUENCE`, told as history rather than as an install difference.
+MOVE_CONSEQUENCE = {
+    "SKILL.md": "re-read it from whichever side is ahead",
+    "scripts/": "a call made earlier in this session ran it as it was then, so read the diff before trusting it",
+    "references/": "read on demand, so only a page this session already opened is out of date",
+}
+
+
 def _with_move_check(
     state: dict[str, Any],
     runner: Runner,
     checkout: Path,
     rel: str,
     since: str | None,
-    last: str,
     baseline: str = "this session began",
 ) -> dict[str, Any]:
     """The moved-after-the-baseline note, appended to whatever verdict was reached.
@@ -1471,29 +1480,54 @@ def _with_move_check(
     the machine. Session start is right for a skill the session leaned on throughout and wrong for
     the one loaded last by construction — which is every harvest, on itself, in the step whose whole
     purpose is deciding whether to trust its own instructions.
+
+    **A move is any commit under the skill, and the note says which part moved.** Until 2026-09-13
+    the trigger was the last commit touching `SKILL.md` and the note always named `SKILL.md`, so a
+    change to `scripts/` alone — the code a session executes, and the likelier half to change —
+    was never reported at all. Confirmed the day it was fixed: `session-bash-audit` had two commits
+    since session start, to `scripts/` and `references/`, and reported no move. Each part now gets
+    its own clause and remedy (`MOVE_CONSEQUENCE`), which needs no knowledge of what the session
+    used: the remedy is stated for the part, and the reader knows whether they held it.
     """
-    if since and last:
-        moved = as_instant(last) is not None and as_instant(since) is not None and as_instant(last) > as_instant(since)
-        state["moved_since_session_start"] = moved
-        state["move_baseline"] = {"instant": since, "is": baseline}
-        if moved:
-            log = ["log", f"--since={since}", "--name-only", "--format=%x1e%h %an %s", "--", rel]
-            ran = runner(["git", "-C", str(checkout), *log])
-            moves = _annotated_moves(ran.out, rel)
-            state["moves_since_session_start"] = moves
-            # Re-reading exists for *another* session's commit landing under this one's feet. When
-            # every move is this run's own, the context holding the newest text is not stale and the
-            # expensive branch fires on the case it was never about (confirmed 2026-09-02, four
-            # skills, all four moved by the session's own commits).
-            state["verdict"] += (
-                f"; SKILL.md moved after {baseline} ({len(moves)} commit(s)) — re-read it from "
-                "whichever side is ahead, unless every one of those commits is this session's own"
-            )
+    if not since:
+        return state
+    state["move_baseline"] = {"instant": since, "is": baseline}
+    log = ["log", f"--since={since}", "--name-only", "--format=%x1e%h %an %s", "--", rel]
+    ran = runner(["git", "-C", str(checkout), *log])
+    if not ran.ok:
+        # A failed log read as an empty one says "nothing moved", the one wrong answer that
+        # prompts nobody.
+        state["moved_since_session_start"] = None
+        state["verdict"] += f"; could not read what moved after {baseline}: {ran.err.strip() or ran.code}"
+        return state
+    moves = _parsed_moves(ran.out, rel)
+    state["moved_since_session_start"] = bool(moves)
+    if not moves:
+        return state
+    state["moves_since_session_start"] = [
+        f"{line} ({', '.join(sorted(parts))})" if parts else line for line, parts in moves
+    ]
+    counts = Counter(part for _, parts in moves for part in parts)
+    order = [*MOVE_CONSEQUENCE, *sorted(set(counts) - set(MOVE_CONSEQUENCE))]
+    clauses = [
+        f"{part} moved after {baseline} ({counts[part]} commit(s)) — {MOVE_CONSEQUENCE.get(part, 'no run loads it')}"
+        for part in order
+        if counts[part]
+    ]
+    unlisted = sum(1 for _, parts in moves if not parts)
+    if unlisted:
+        clauses.append(f"{unlisted} commit(s) after {baseline} whose files git did not list — read them")
+    # Every remedy exists for *another* session's commit landing under this one's feet. When every
+    # move is this run's own, the context holding the newest text is not stale and the expensive
+    # branch fires on the case it was never about (confirmed 2026-09-02, four skills, all four moved
+    # by the session's own commits).
+    exemption = " — none of it applies if every one of those commits is this session's own"
+    state["verdict"] += "; " + "; ".join(clauses) + exemption
     return state
 
 
-def _annotated_moves(log: str, rel: str) -> list[str]:
-    """Each moved commit, followed by the parts of the skill it touched: `(SKILL.md, scripts/)`.
+def _parsed_moves(log: str, rel: str) -> list[tuple[str, frozenset[str]]]:
+    """Each moved commit's header, with the parts of the skill it touched: `SKILL.md`, `scripts/`.
 
     **The list used to be flattened to the skill, and the half that mattered was the quiet one.**
     Confirmed 2026-09-13 in a `power-user-linux-setup` harvest: `plan-docs` showed seven commits
@@ -1504,21 +1538,19 @@ def _annotated_moves(log: str, rel: str) -> list[str]:
     and checkout per subdirectory; only this history was not split.
 
     Annotated rather than split into lists, so a skill that moved a lot is still seen whole and the
-    subset is findable in it. The remedy sentence is left as it was until the annotation has been
-    read in a real run, since keying it on what this session used would couple the check to
-    transcript resolution it does not otherwise need.
+    subset is findable in it.
     """
-    moves: list[str] = []
+    moves: list[tuple[str, frozenset[str]]] = []
     prefix = f"{rel}/"
     for chunk in log.split(COMMIT_RECORD):
         lines = [line.strip() for line in chunk.splitlines() if line.strip()]
         if not lines:
             continue
-        parts: set[str] = set()
-        for path in lines[1:]:
-            inside = path.removeprefix(prefix).split("/")
-            parts.add(inside[0] if len(inside) == 1 else f"{inside[0]}/")
-        moves.append(f"{lines[0]} ({', '.join(sorted(parts))})" if parts else lines[0])
+        parts = {
+            inside[0] if len(inside) == 1 else f"{inside[0]}/"
+            for inside in (path.removeprefix(prefix).split("/") for path in lines[1:])
+        }
+        moves.append((lines[0], frozenset(parts)))
     return moves
 
 

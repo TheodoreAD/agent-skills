@@ -1312,7 +1312,11 @@ def test_absorb_completes_the_round_trip_and_empties_the_store(ws, capsys, monke
     assert "## Evidence" in filed  # a cross-repo capture is prompted to cite, not summarise
 
     assert plans.main(["absorb", "--apply", "--path", str(ws.personal)]) == 0
-    assert "absorbed:" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "absorbed:" in out
+    # The removal command is printed with the store-relative paths it needs, which `commit` resolves
+    # in the store — the spelling a caller assembled by hand and once got committed in the wrong repo.
+    assert f"plans.py commit github.com-personal/agent-skills/{name} -m" in out
     absorbed = ws.personal / "plans" / name
     assert absorbed.is_file()
     assert not mirror.exists()

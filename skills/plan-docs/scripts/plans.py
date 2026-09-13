@@ -56,6 +56,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -3213,6 +3214,12 @@ def _absorb_filed(
     if moved:
         store = cfg.store_for(routing.rel)
         print(f"\n{len(moved)} absorbed. Run this repo's quality gate, then commit here and in {store.path}.")
+        # The removal command spelled out, with the paths the caller would otherwise assemble by hand
+        # from basenames — the step where a store-relative spelling once reached a same-named plan in
+        # this repo and committed nothing (2026-09-12). `commit_target` resolves these in the store.
+        root = store.path.expanduser()
+        taken = " ".join(shlex.quote(entry.plan.path.relative_to(root).as_posix()) for entry in moved)
+        print(f'The store\'s removals, as one commit: plans.py commit {taken} -m "<message>"')
     landed = {entry.plan.path.name for entry in moved}
     owed = {name: related for name, related in pairs.items() if name in landed}
     if owed:

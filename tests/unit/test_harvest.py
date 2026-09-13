@@ -1149,7 +1149,58 @@ def test_a_session_that_changed_no_source_file_searches_nothing(tmp_path, monkey
             [{"type": "tool_use", "id": "a", "name": "Edit", "input": {"file_path": "/repo/plans/2026-09-08-x.md"}}],
         )
     ]
-    assert harvest.superseded_candidates(entries, None) == {"names": [], "searched": [], "candidates": []}
+    assert harvest.superseded_candidates(entries, None) == {
+        "names": [],
+        "not_searched": [],
+        "searched": [],
+        "candidates": [],
+    }
+
+
+def test_a_name_every_package_has_its_own_copy_of_is_not_searched(tmp_path, monkeypatch, capsys):
+    """Confirmed 2026-09-13 on a `repo-tasks` session: 24 rows, 22 matching nothing but `__init__.py`
+    or `pyproject.toml`, and the two real ones — both on `selfinstall.py` — below them. Those two names
+    are tracked by 36 and 27 of the machine's 71 checkouts; `selfinstall.py` by one. The sibling
+    written-paths check learned the same lesson: a section that has been all-false-positive once is
+    one the next harvest skims. The skipped names are printed, so the omission is not silent."""
+    root = tmp_path / "projects"
+    mine, theirs = root / "repo-tasks", root / "a-consumer"
+    for repo in (mine, theirs):
+        (repo / ".git").mkdir(parents=True)
+        (repo / "plans").mkdir()
+    (theirs / "plans" / "2026-08-23-tool-conflict.md").write_text("the fix lives in selfinstall.py\n")
+    (theirs / "plans" / "2026-09-01-packaging.md").write_text("pyproject.toml and src/pkg/__init__.py\n")
+    monkeypatch.setattr(harvest, "projects_root", lambda: root)
+    monkeypatch.setattr(harvest, "_stores", lambda: [])
+
+    def edit(path: Path) -> dict[str, object]:
+        block = {"type": "tool_use", "id": "a", "name": "Edit", "input": {"file_path": str(path)}}
+        return blocks_entry("assistant", [block])
+
+    entries = [edit(mine / "src" / "pkg" / name) for name in ("__init__.py", "selfinstall.py")]
+    entries.append(edit(mine / "pyproject.toml"))
+
+    found = harvest.superseded_candidates(entries, mine)
+    assert found["names"] == ["selfinstall.py"]
+    assert found["not_searched"] == ["__init__.py", "pyproject.toml"]
+    assert [Path(row["plan"]).name for row in found["candidates"]] == ["2026-08-23-tool-conflict.md"]
+
+    harvest._print_superseded(found)
+    assert "not searched: __init__.py, pyproject.toml" in capsys.readouterr().out
+
+    # A session that changed only such names still says what it skipped, rather than "no source file".
+    only = harvest.superseded_candidates([edit(mine / "pyproject.toml")], mine)
+    harvest._print_superseded(only)
+    out = capsys.readouterr().out
+    assert "not searched: pyproject.toml" in out
+    assert "changed no other source file" in out
+
+    # Tool config is searched even though its name is as fixed: `repo-tasks` propagates a canonical
+    # `pytest.ini`, so a consumer's plan naming it may be about exactly this change.
+    (theirs / "plans" / "2026-09-02-testpaths.md").write_text("the canonical pytest.ini broke collection\n")
+    config = harvest.superseded_candidates([edit(mine / "src" / "repo_tasks" / "configs" / "pytest.ini")], mine)
+    assert config["not_searched"] == []
+    assert [Path(row["plan"]).name for row in config["candidates"]] == ["2026-09-02-testpaths.md"]
 
 
 def test_depends_on_is_matched_in_frontmatter_at_line_start(tmp_path):

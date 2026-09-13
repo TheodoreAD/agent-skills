@@ -2219,6 +2219,20 @@ DEPENDS_ON_RE = re.compile(r"^depends_on:\s*(.+)$")
 SOURCE_SUFFIXES = (".py", ".sh", ".toml", ".yml", ".yaml", ".json", ".cfg", ".ini", ".ts", ".js", ".rs", ".go")
 
 
+# Package scaffolding: names a tool fixes for every package or project, whose content is always that
+# package's own, so a plan naming one says only that it is about such a project. **Tool config is
+# deliberately absent even where its name is just as fixed** — `pytest.ini`, `ruff.toml`,
+# `dprint.json` — because one repo can own a canonical copy and propagate it to consumers, and then a
+# consumer's plan naming it may well be about the change. `repo-tasks` distributes all three. A closed
+# list rather than a count of checkouts carrying a name, for the same reason: a propagated file gains
+# a checkout with every consumer, so any threshold eventually drops exactly that file.
+SUBJECTLESS_NAMES = frozenset(
+    {"__init__.py", "__main__.py", "conftest.py", "pyproject.toml", "setup.cfg", "setup.py", "tasks.py"}
+    | {"package.json", "package-lock.json", "index.js", "index.ts"}
+    | {"Cargo.toml", "lib.rs", "main.rs", "mod.rs", "main.go"}
+)
+
+
 def changed_source_names(entries: Sequence[dict[str, Any]]) -> list[str]:
     """Basenames of the source files this session wrote — what another repo's plan would name."""
     return sorted({p.name for p in written_paths(entries) if p.suffix in SOURCE_SUFFIXES})
@@ -2256,12 +2270,24 @@ def superseded_candidates(entries: Sequence[dict[str, Any]], session_repo: Path 
     session is already reading its own `plans/`, and including them turns every edit to a
     well-discussed file into a page of true-but-useless rows, which is how a section teaches its
     reader to skim.
+
+    **A name every package has its own copy of is not searched (`SUBJECTLESS_NAMES`)** — the lesson
+    the written-paths check learned first, in the same words: a section that has been
+    all-false-positive once is one the next harvest skims. Confirmed 2026-09-13 on a `repo-tasks`
+    session: 24 rows, 22 of them matching nothing but `__init__.py` or `pyproject.toml`, and the two
+    real ones, both on `selfinstall.py`, below them. Measured the same day, those two names are
+    tracked by 36 and 27 of this machine's 71 checkouts, while `plans.py`, `setup.toml` and
+    `selfinstall.py` are each in one. Counting how many plans *mention* a name was rejected as the
+    filter: `plans.py` is named by 38 plans across five repos precisely because it is one shared
+    file, which is the signal. The skipped names are printed, so the omission is visible.
     """
-    names = changed_source_names(entries)
+    changed = changed_source_names(entries)
+    names = [name for name in changed if name not in SUBJECTLESS_NAMES]
+    skipped = [name for name in changed if name in SUBJECTLESS_NAMES]
     found: list[dict[str, Any]] = []
     searched: list[str] = []
     if not names:
-        return {"names": [], "searched": searched, "candidates": found}
+        return {"names": [], "not_searched": skipped, "searched": searched, "candidates": found}
     # The shareable store only. A session has no business reading another party's plans to answer a
     # question about its own source file, and the confirmed instance sits in the shareable tier.
     store = next((path for label, path in _stores() if label == "plans"), None)
@@ -2276,7 +2302,7 @@ def superseded_candidates(entries: Sequence[dict[str, Any]], session_repo: Path 
             named = [name for name in names if name in text]
             if named:
                 found.append({"plan": str(plan), "names": named})
-    return {"names": names, "searched": searched, "candidates": found}
+    return {"names": names, "not_searched": skipped, "searched": searched, "candidates": found}
 
 
 # Where a checkout records what it installs. A repo naming another repo in one of these is a
@@ -2843,8 +2869,11 @@ def _print_superseded(state: dict[str, Any] | None) -> None:
     if state is None:
         return
     print("\n== plans elsewhere naming a source file this session changed ==")
+    skipped = state.get("not_searched") or []
+    if skipped:
+        print(f"  not searched: {', '.join(skipped)} — every package has its own, so a match names no subject")
     if not state.get("names"):
-        print("  none — this session changed no source file")
+        print(f"  none — this session changed no {'other ' if skipped else ''}source file")
         return
     for row in state["candidates"]:
         print(f"    {row['plan']}")

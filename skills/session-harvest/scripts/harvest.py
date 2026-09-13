@@ -3175,18 +3175,21 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     inaccuracy with a reader.
     """
     transcript = resolve_transcript(args.session, args.job, args.expect, Path.cwd())
-    masked = [
-        {"timestamp": stamp, "command": command}
-        for stamp, command in bash_calls(transcript.entries)
-        if EXIT_MASKED_RE.search(command) and before(stamp, args.until)
-    ]
+    every = bash_calls(transcript.entries)
+    # Both halves of the ratio describe one window. The denominator used to count the whole
+    # transcript while the numerator honoured `--until`, so the harvest's own unpiped calls diluted
+    # the rate: confirmed 2026-09-13, `0 of 39` where `audit.py --until` on the same boundary counted
+    # 32 — the 7 being the harvest's own boundary, transcript, skills-state, turns, sweep and claims.
+    window = [(stamp, command) for stamp, command in every if before(stamp, args.until)]
+    masked = [{"timestamp": stamp, "command": command} for stamp, command in window if EXIT_MASKED_RE.search(command)]
     # Every match, not the first per message: a message often makes the claim twice, and an
     # undercount here is the same failure the rule exists to prevent, one level up.
     claims, ci_claims = _green_claims(transcript.entries, args.until)
-    total_bash = len(bash_calls(transcript.entries))
+    total_bash = len(window)
     payload = {
         "transcript": transcript.as_dict(),
         "bash_calls": total_bash,
+        "bash_calls_excluded_by_until": len(every) - total_bash,
         "exit_masked": len(masked),
         "green_claims": claims,
         "green_ci_claims": ci_claims,
@@ -3196,6 +3199,9 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         return payload
     print(f"# transcript: {transcript.path}")
     print(f"# {len(masked)} of {total_bash} Bash calls masked their exit code behind a filter")
+    if args.until:
+        excluded = payload["bash_calls_excluded_by_until"]
+        print(f"#   excluding {excluded} at or after {args.until} — the run's own sweep")
     print(f"# {len(claims)} message(s) told the user a gate or suite was green")
     for claim in claims:
         print(f"    {claim['timestamp']}  {claim['line']}")

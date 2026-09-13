@@ -1697,6 +1697,30 @@ def test_green_claims_are_counted_against_the_masked_exits(tmp_path, monkeypatch
     assert [claim["line"] for claim in payload["green_claims"]] == ["Gate green, committing now."]
 
 
+def test_the_claims_ratio_counts_one_window_on_both_sides(tmp_path, monkeypatch, capsys):
+    """Confirmed 2026-09-13: `claims --until <boundary>` printed `0 of 39` where `audit.py --until`
+    on the same boundary counted 32 calls. The numerator honoured the cutoff and the denominator did
+    not, so the harvest's own unpiped inspection calls diluted the rate."""
+    path = write_transcript(
+        tmp_path / "s.jsonl",
+        [
+            bash_entry("pytest 2>&1 | tail -3", "2026-09-13T14:00:00.000Z"),
+            bash_entry("git status", "2026-09-13T14:05:00.000Z"),
+            bash_entry("python3 harvest.py boundary", "2026-09-13T14:15:12.000Z"),
+            bash_entry("python3 harvest.py sweep", "2026-09-13T14:16:00.000Z"),
+        ],
+    )
+    args = harvest.build_parser().parse_args(["claims", "--session", str(path), "--until", "2026-09-13T14:15:12Z"])
+    monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
+
+    payload = harvest.cmd_claims(args, FakeRunner())
+
+    assert (payload["exit_masked"], payload["bash_calls"], payload["bash_calls_excluded_by_until"]) == (1, 2, 2)
+    out = capsys.readouterr().out
+    assert "# 1 of 2 Bash calls masked" in out
+    assert "excluding 2 at or after 2026-09-13T14:15:12Z" in out
+
+
 def test_a_bare_exit_code_needs_a_gate_shaped_subject_beside_it():
     """Measured 2026-09-08 over 1,201 transcripts: the subject-less alternation matched 303
     sentences, of which a gate-shaped subject keeps 158 and drops 145. The must-not-match cases are

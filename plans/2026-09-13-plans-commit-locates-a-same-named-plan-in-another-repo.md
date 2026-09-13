@@ -102,6 +102,22 @@ The collision was reproduced as a test first, and it failed exactly as filed:
   route. With both of the above there is no longer a reason to reach for it, so no `--store` flag
   was added.
 
+## A second occurrence, unprompted, 2026-09-13
+
+Merged from `2026-09-13-commit-fallback-reproduced-in-the-wild.md`, filed from `repo-tasks` the same
+day. A session that had never read this plan absorbed
+`2026-09-12-venv-sync-needs-an-extras-selector.md`, committed it in `repo-tasks`, then ran
+`plans.py commit` with the store-relative path. The output was
+`committed: 20653a99fec7 in .../repo-tasks`, and `git show --stat` listed no files. The
+`--path <store>` retry exited 3, and the session fell back to `git -C <store> commit`.
+`session-bash-audit` scored that one call as both of the session's misses, `store-write-by-git` and
+`git-C-mutating`, against 15 of 17 met.
+
+[PITFALL: **the caller read `commit --help` before reaching for git**, and the help offered only
+`--path`, described as "a path inside the repo". A fix that lands in `absorb`'s output alone would
+miss a caller who starts from the help. The help now says a store-relative path works and needs no
+`--path` (`f7bb2db`).]
+
 ## Recommended direction
 
 1. Reproduce from a repo that holds an absorbed plan of the same basename — the whole finding rests

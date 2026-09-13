@@ -3152,16 +3152,71 @@ def _under(path: Path, root: Path) -> bool:
         return False
 
 
-def measurement_lines(path: Path, limit: int = 6) -> list[str]:
-    """The lines in a filed plan that carry a number this session could have re-derived since."""
+WHITESPACE_RE = re.compile(r"\s+")
+
+
+def measurement_lines(path: Path, written: Sequence[str] = (), limit: int = 6) -> tuple[list[str], list[str]]:
+    """The lines in a filed plan that carry a number, split by whether this session wrote them.
+
+    **The whole file used to be sampled, and a plan the session only appended to is shared.**
+    Confirmed 2026-09-12 in `repo-tasks`: one section appended to a plan several sessions accumulate,
+    and all five sampled lines were other sessions' measurements from five and eighteen days earlier
+    — which step 8's "re-derive each measurement it prints and edit the file" sends a harvest to
+    correct. Reproduced 2026-09-13 in a second repo by the smallest possible edit, one paragraph. The
+    limit made it worse than noise: a long shared plan's first six number lines are its oldest, so
+    the lines this session did write were never printed at all.
+
+    `written` is this session's own text for the file (`session_text`), compared with all whitespace
+    removed, since the gate reflows prose and re-pads tables after every write. What that cannot
+    follow — a formatter changing a character rather than a space, a write through a script — lands
+    on the hedged side, which asks the reader to recognise the line rather than claiming it.
+    """
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return []
-    return [line.strip()[:200] for line in text.splitlines() if MEASUREMENT_RE.search(line)][:limit]
+        return [], []
+    mine: list[str] = []
+    unestablished: list[str] = []
+    for line in text.splitlines():
+        if not MEASUREMENT_RE.search(line):
+            continue
+        key = WHITESPACE_RE.sub("", line)
+        (mine if any(key in chunk for chunk in written) else unestablished).append(line.strip()[:200])
+    return mine[:limit], unestablished[:limit]
 
 
-def filed_plans(entries: Iterable[dict[str, Any]], repos: Sequence[Path]) -> list[dict[str, Any]]:
+def session_text(entries: Iterable[dict[str, Any]], path: Path) -> list[str]:
+    """What this session itself put into one file, whitespace removed: each Write's content, and each
+    Edit's runs of lines that its `old_string` did not already hold.
+
+    An Edit's `new_string` repeats the lines around the change so the edit can anchor, and those
+    lines are the file's existing text — counting them would claim exactly the neighbouring
+    measurement this function exists to disown. A run is kept whole so a reflow joining two of its
+    lines still matches; runs are kept apart so a line never matches across the gap between two.
+    """
+    target = os.path.normpath(str(path))
+    chunks: list[str] = []
+    for _, block in iter_blocks(entries):
+        if block.get("type") != "tool_use" or block.get("name") not in ("Edit", "Write"):
+            continue
+        payload = block.get("input")
+        if not isinstance(payload, dict) or os.path.normpath(str(payload.get("file_path", ""))) != target:
+            continue
+        if block.get("name") == "Write":
+            chunks.append(WHITESPACE_RE.sub("", str(payload.get("content", ""))))
+            continue
+        old = {line.strip() for line in str(payload.get("old_string", "")).splitlines()}
+        run: list[str] = []
+        for line in [*str(payload.get("new_string", "")).splitlines(), None]:
+            if line is not None and line.strip() not in old:
+                run.append(line)
+            elif run:
+                chunks.append(WHITESPACE_RE.sub("", "".join(run)))
+                run = []
+    return [chunk for chunk in chunks if chunk]
+
+
+def filed_plans(entries: Sequence[dict[str, Any]], repos: Sequence[Path]) -> list[dict[str, Any]]:
     """Plan files this session wrote, wherever they landed, each with its measurement lines."""
     roots = plan_roots(repos)
     found: list[dict[str, Any]] = []
@@ -3171,12 +3226,14 @@ def filed_plans(entries: Iterable[dict[str, Any]], repos: Sequence[Path]) -> lis
         root = next((r for r in roots if _under(path, r)), None)
         if root is None:
             continue
+        mine, unestablished = measurement_lines(path, session_text(entries, path))
         found.append(
             {
                 "path": str(path),
                 "root": str(root),
                 "exists": path.exists(),
-                "measurements": measurement_lines(path),
+                "measurements": mine,
+                "measurements_unestablished": unestablished,
             }
         )
     return found
@@ -3386,11 +3443,19 @@ def _print_filed(payload: dict[str, Any]) -> None:
 
     plans = payload.get("plans_written") or []
     print(f"\n## plan files this session wrote ({len(plans)})")
+    hedged = False
     for plan in plans:
         mark = "" if plan.get("exists") else "  MISSING (absorbed, or moved)"
         print(f"    {plan['path']}{mark}")
         for line in plan.get("measurements") or []:
             print(f"        {line}")
+        for line in plan.get("measurements_unestablished") or []:
+            print(f"        {UNESTABLISHED} {line}")
+            hedged = True
+    if hedged:
+        print(f"    lines marked {UNESTABLISHED} are in a plan this session wrote to, but not in anything")
+        print("    it wrote there: re-derive the unmarked ones. Not this session's to correct — unless you")
+        print("    recognise one as yours through a write this check cannot see, and then say so")
 
     for state in payload.get("stores") or []:
         _print_store_commits(state)

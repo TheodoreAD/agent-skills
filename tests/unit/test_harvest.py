@@ -1608,9 +1608,19 @@ def test_a_claim_made_inside_a_question_is_still_a_claim():
 # --------------------------------------------------------------------------------------------
 
 
-def write_entry(path: str, timestamp: str = "2026-09-07T08:20:00.000Z") -> dict[str, object]:
-    block = {"type": "tool_use", "id": "w", "name": "Write", "input": {"file_path": path}}
+def write_entry(path: str, timestamp: str = "2026-09-07T08:20:00.000Z", content: str = "") -> dict[str, object]:
+    block = {"type": "tool_use", "id": "w", "name": "Write", "input": {"file_path": path, "content": content}}
     return blocks_entry("assistant", [block], timestamp=timestamp)
+
+
+def edit_entry(path: str, old: str, new: str) -> dict[str, object]:
+    block = {
+        "type": "tool_use",
+        "id": "e",
+        "name": "Edit",
+        "input": {"file_path": path, "old_string": old, "new_string": new},
+    }
+    return blocks_entry("assistant", [block])
 
 
 def test_a_second_harvest_is_counted_from_the_transcript_not_remembered():
@@ -1635,14 +1645,87 @@ def test_a_filed_plan_carries_the_measurements_a_second_harvest_must_re_derive(t
     (store / "power-user-linux-setup").mkdir(parents=True)
     monkeypatch.setenv("PLANS_HOME", str(store))
     plan = store / "power-user-linux-setup" / "2026-09-07-adherence-row.md"
+    text = "# a row\n\nn=211  chain=36%  head/tail=20%  sed-n=0%(1)\n\nprose carrying no measurement\n"
+    plan.write_text(text, encoding="utf-8")
+
+    (row,) = harvest.filed_plans([write_entry(str(plan), content=text)], repos=[])
+    assert row["exists"]
+    assert row["measurements"] == ["n=211  chain=36%  head/tail=20%  sed-n=0%(1)"]
+    assert row["measurements_unestablished"] == []
+
+
+SHARED_PLAN = """\
+# consumer transitions
+
+- `inv quality.precommit` here: 0 errors, 0 warnings, 294 unit tests.
+- one more measured row: 353 tests
+
+## Appended
+
+- the anchor line, 27 tests, which this session's edit repeated
+"""
+
+
+def test_a_number_in_a_plan_this_session_only_appended_to_is_not_its_to_re_derive(tmp_path, monkeypatch, capsys):
+    """Confirmed 2026-09-12 in `repo-tasks`: one section appended to a plan several sessions share,
+    and all five sampled lines were other sessions' numbers, days old — which step 8 sends a harvest
+    to re-derive and edit. Reproduced 2026-09-13 by a one-paragraph edit in a second repo.
+
+    The anchor line an Edit repeats is the file's existing text, so it is not the session's either."""
+    store = tmp_path / "plans"
+    (store / "repo-tasks").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    plan = store / "repo-tasks" / "2026-08-25-consumer-transitions.md"
+    anchor = "- the anchor line, 27 tests, which this session's edit repeated"
+    appended = "- this session's own sweep: 12 files changed, 3 errors"
+    plan.write_text(SHARED_PLAN + appended + "\n", encoding="utf-8")
+
+    (row,) = harvest.filed_plans([edit_entry(str(plan), anchor, f"{anchor}\n{appended}")], repos=[])
+    assert row["measurements"] == [appended]
+    assert row["measurements_unestablished"] == [
+        "- `inv quality.precommit` here: 0 errors, 0 warnings, 294 unit tests.",
+        "- one more measured row: 353 tests",
+        anchor,
+    ]
+
+    harvest._print_filed({"plans_written": [row]})
+    out = capsys.readouterr().out
+    assert f"        {appended}" in out
+    assert "(authorship unestablished) - one more measured row: 353 tests" in out
+
+
+def test_a_line_the_gate_reflowed_is_still_the_line_this_session_wrote(tmp_path, monkeypatch):
+    """dprint reflows prose and re-pads tables after every write, so the file never holds the bytes
+    the Write sent. Whitespace is what moves, so whitespace is what the comparison ignores."""
+    store = tmp_path / "plans"
+    (store / "agent-skills").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    plan = store / "agent-skills" / "2026-09-13-a-measurement.md"
+    sent = "Over seven days 109 of 110 commits had a receipt and 6 recorded rows resolved.\n\n| a | 3 calls |\n"
     plan.write_text(
-        "# a row\n\nn=211  chain=36%  head/tail=20%  sed-n=0%(1)\n\nprose carrying no measurement\n",
+        "Over seven days 109 of 110 commits had a receipt\nand 6 recorded rows resolved.\n\n| a   | 3 calls |\n",
         encoding="utf-8",
     )
 
-    (row,) = harvest.filed_plans([write_entry(str(plan))], repos=[])
-    assert row["exists"]
-    assert row["measurements"] == ["n=211  chain=36%  head/tail=20%  sed-n=0%(1)"]
+    (row,) = harvest.filed_plans([write_entry(str(plan), content=sent)], repos=[])
+    assert row["measurements_unestablished"] == []
+    assert len(row["measurements"]) == 2
+
+
+def test_the_sample_limit_does_not_hide_the_lines_this_session_wrote(tmp_path, monkeypatch):
+    """A long shared plan's first number lines are its oldest. Sampling the whole file and then
+    truncating printed only other sessions' rows, and never the one this session appended."""
+    store = tmp_path / "plans"
+    (store / "repo-tasks").mkdir(parents=True)
+    monkeypatch.setenv("PLANS_HOME", str(store))
+    plan = store / "repo-tasks" / "2026-08-25-long.md"
+    old = "".join(f"- row {n}: {n} tests\n" for n in range(10))
+    mine = "- appended today: 99 tests"
+    plan.write_text(old + mine + "\n", encoding="utf-8")
+
+    (row,) = harvest.filed_plans([edit_entry(str(plan), "- row 9: 9 tests", f"- row 9: 9 tests\n{mine}")], repos=[])
+    assert row["measurements"] == [mine]
+    assert len(row["measurements_unestablished"]) == 6
 
 
 def test_a_markdown_file_outside_every_plan_root_is_not_a_filing(tmp_path, monkeypatch):

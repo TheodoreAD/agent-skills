@@ -90,6 +90,7 @@ reaches it:
 python3 <path> where                        # which directories this repo reads and writes
 python3 <path> repos --search <words>       # what each repo is for, to route a plan by
 python3 <path> new <topic> --for <repo>     # something belonging to a repo you are not in
+python3 <path> new <topic> --to store       # this repo's plan, kept out of a tree another session holds
 python3 <path> commit <file>... -m "<msg>"  # commit these plans alone, whatever else is staged
 python3 <path> new <topic> --unscoped       # an idea with no repo yet
 python3 <path> graduate <file> --to <repo>  # …once it has one
@@ -603,6 +604,13 @@ It writes into that repo's store mirror, outside every working tree, whatever th
 says. Nothing in the target changes. The session working there sees it — `list` at repo scope reads
 the store mirror regardless of route — and absorbs it on its own schedule with
 `move <file> --to repo`, committing only to its own repo.
+
+**The same mirror serves this repo when its own tree is busy.** When a plan belongs to the repo you
+are in but another session is writing that working tree, `new <topic> --to store` puts it in this
+repo's store mirror instead, and `absorb` offers it here later. `--for` on your own repo is refused,
+and `--unscoped` is the wrong fallback: the unscoped area is where `absorb` never looks. Confirmed
+2026-09-13: a plan filed unscoped for that reason sat unoffered for three hours, until a harvest
+noticed `new` takes `--to` and moved it.
 
 No frontmatter marks these. For a repo that keeps its own plans, a file in its store mirror is **in
 transit** by definition; for a repo routed to the store, the same file is at its permanent home.

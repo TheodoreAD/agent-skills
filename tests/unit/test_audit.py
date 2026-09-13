@@ -391,6 +391,53 @@ def test_a_baseline_taken_before_the_dedupe_says_so_on_compare(tmp_path, capsys)
     assert "predates replay dedupe" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    ("cmd", "carries"),
+    [
+        ('git commit -m "plans: a subject" -- plans/x.md', True),
+        ("git -C /r commit --message 'subject'", True),
+        ('gh pr create --title t --body "the body"', True),
+        ("git commit -F msg.txt", False),
+        ("git commit --amend --no-edit", False),
+        ("rg -n 'git commit -m \"x\"' transcript.jsonl", False),
+    ],
+)
+def test_a_message_carrying_call_is_the_population_cut_message_is_drawn_from(cmd, carries):
+    """The denominator the 2026-09-13 re-read had to compute by hand: 7 cut in 559 before a wording
+    change, 0 in 12 after. A search for the shape is not the shape, the same rule every row keeps."""
+    assert audit.carries_message(cmd) is carries
+
+
+def test_the_session_view_prints_cut_message_against_its_population(capsys):
+    calls = [_call('git commit -m "one said "the removals" twice" -- a.md'), _call('git commit -m "fine" -- b.md')]
+    calls += [_call("ls")]
+    audit._print_session_rows(calls)
+    line = next(ln for ln in capsys.readouterr().out.splitlines() if "cut-message" in ln)
+    assert "of 2 message-carrying calls" in line
+
+
+@pytest.mark.usefixtures("_no_git")
+def test_compare_says_when_the_two_windows_differ_and_counts_do_not_compare(tmp_path, capsys):
+    """Confirmed 2026-09-13: `--days 3 --compare` against a baseline saved at `days=6.0` printed
+    `cut-message=3(MISS)` with no remark, beside a remembered 6 — read as a halving. The verdict is
+    absolute and stays; what was missing is that the output said the spans differ, and a population
+    to set the count against."""
+    calls = [_call('git commit -m "a "quoted" word" -- a.md')] + [_call('git commit -m "ok" -- b.md')] * 59
+    baseline = tmp_path / "b.json"
+    audit.save_baseline(calls, baseline, days=6.0, note="")
+
+    audit.compare(calls, baseline, audit.EXPECTATIONS, "shipped", days=3.0)
+    out = capsys.readouterr().out
+    assert "windows differ: this run --days 3, the baseline --days 6" in out
+    assert "cut-message=1/60(MISS)" in out
+
+    audit.compare(calls, baseline, audit.EXPECTATIONS, "shipped", days=6.0)
+    assert "windows differ" not in capsys.readouterr().out
+
+    audit.compare(calls, baseline, audit.EXPECTATIONS, "shipped")
+    assert "this run is one session" in capsys.readouterr().out
+
+
 def test_no_checkout_means_no_instrument_rather_than_a_wrong_one(monkeypatch, tmp_path):
     """The installed copy is not in a checkout, and `None` there is the useful answer — a SHA
     borrowed from whatever repo the file happened to sit under would be worse than none."""

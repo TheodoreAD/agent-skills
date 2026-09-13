@@ -333,6 +333,29 @@ def _store_write(cmd: str) -> bool:
     return target.parent == home and (target.name == "plans" or target.name.startswith("plans-"))
 
 
+MESSAGE_COMMAND_RE = re.compile(r"(?:^|&&|;|\||\n)\s*(?:git\s+(?:-C\s+\S+\s+)?commit\b|gh\s+(?:pr|issue)\b)")
+MESSAGE_OPENER_RE = re.compile(r"(?:-m|--message|--body)\s+([\"'])")
+
+
+def carries_message(cmd: str) -> bool:
+    """A commit or a `gh` pr/issue call carrying a quoted `-m`/`--message`/`--body` argument.
+
+    The population `cut-message` is drawn from, and so its denominator. A count of cut messages says
+    nothing without the count of messages that could have been cut: a re-read on 2026-09-13 compared
+    `cut-message` at 3 against a baseline's 6 over half the window, nearly reported a halving, and only a
+    hand-computed population — 7 cut in 559 message-carrying calls before a wording change, 0 in 12
+    after — showed nothing was readable yet.
+    """
+    body = strip_heredoc(cmd)
+    return bool(MESSAGE_COMMAND_RE.search(strip_quoted(body)) and MESSAGE_OPENER_RE.search(body))
+
+
+# Rows whose population is obvious enough to count, printed as `hits/population`. Only these: a
+# denominator guessed for a row whose population is not a clean shape would be a second number to
+# distrust rather than a reading.
+DENOMINATORS: dict[str, tuple[str, Predicate]] = {"cut-message": ("message-carrying", carries_message)}
+
+
 def _cut_message(cmd: str) -> bool:
     """A `-m`/`--body` argument the shell would cut short, because the prose closed its own quote.
 
@@ -377,10 +400,9 @@ def _cut_message(cmd: str) -> bool:
     # scan below then needs the raw text, because the message is the subject rather than the noise.
     # Skipping this tagged an `rg -n -o '…|git commit -m "contributing: the deps|…'` over a
     # transcript: a search for the shape, counted as the shape. Caught on the row's first corpus run.
-    structure = strip_quoted(body)
-    if not re.search(r"(?:^|&&|;|\||\n)\s*(?:git\s+(?:-C\s+\S+\s+)?commit\b|gh\s+(?:pr|issue)\b)", structure):
+    if not carries_message(cmd):
         return False
-    opened = re.search(r"(?:-m|--message|--body)\s+([\"'])", body)
+    opened = MESSAGE_OPENER_RE.search(body)
     if not opened:
         return False
     delim = opened.group(1)
@@ -1006,18 +1028,50 @@ def dump_json(calls: list[Call], path: Path) -> None:
     print(f"\nwrote {path}")
 
 
-def compare(calls: list[Call], baseline_path: Path, expectations: dict[str, str], source: str) -> None:
-    """Per model present in both runs: delta in percentage points against the baseline, with a
-    verdict for every tag the expectations name. A model with under 50 calls in either run is shown
-    but not judged — the rates are too noisy to call."""
-    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+def _print_compare_header(baseline_path: Path, baseline: dict, source: str, days: float | None) -> None:
+    """What the comparison is against, and the two ways a reader can mistake what it shows."""
     print(f"\n== vs baseline {baseline_path.name} ({baseline.get('saved')}, {baseline.get('note', '')}) ==")
     print(f"   expectations: {source}")
+    theirs = baseline.get("days")
+    if days is None:
+        print(f"   this run is one session, the baseline a corpus of --days {theirs}: counts below are this")
+        print("   session's alone, and only a rate or a hits/population cell compares across the two")
+    elif theirs is not None and float(theirs) != float(days):
+        print(f"   windows differ: this run --days {days:g}, the baseline --days {float(theirs):g} — counts below")
+        print("   cover a different span, so compare rates and hits/population cells, never a bare count")
     if "replayed_dropped" not in baseline:
         print("   this baseline predates replay dedupe: its rates counted each call a resumed transcript")
         print("   replayed once per copy (7.2% of one 7-day corpus), which moves any row a resumed session")
         print("   dominated — part of a delta against it is the fix, not the behaviour")
+
+
+def _population(tag: str, calls: list[Call]) -> str:
+    """`/N` for a row with a known population (`DENOMINATORS`), and nothing for the rest."""
+    if tag not in DENOMINATORS:
+        return ""
+    return f"/{sum(1 for c in calls if DENOMINATORS[tag][1](c.cmd))}"
+
+
+def compare(
+    calls: list[Call], baseline_path: Path, expectations: dict[str, str], source: str, days: float | None = None
+) -> None:
+    """Per model present in both runs: delta in percentage points against the baseline, with a
+    verdict for every tag the expectations name. A model with under 50 calls in either run is shown
+    but not judged — the rates are too noisy to call.
+
+    `days` is this run's `--days`, or None for a single session. **The two windows are printed when
+    they differ, because the output said nothing and a count was read across them.** Confirmed
+    2026-09-13: a prescribed `--days 3 --compare` against a baseline saved at `days=6.0` printed
+    `cut-message=3(MISS)` beside a remembered 6, which read as a halving fifteen hours after a wording
+    change. A `zero` row's verdict stays — it is absolute and never used the baseline — but its count
+    is this run's alone, and even two runs with equal `--days` select whole transcript files by mtime,
+    so the count is never a trend against another run. A row with a population prints `hits/population`
+    (`DENOMINATORS`), which is the form that can be compared.
+    """
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    _print_compare_header(baseline_path, baseline, source, days)
     now = rates_by_model(calls)
+    groups = _group(calls, lambda c: f"{c.model}{' [sub]' if c.subagent else ''}")
     verdicts: list[bool] = []
     for label, cur in sorted(now.items(), key=lambda kv: -int(kv[1]["n"])):
         old = baseline["models"].get(label)
@@ -1064,7 +1118,7 @@ def compare(calls: list[Call], baseline_path: Path, expectations: dict[str, str]
                 # rounds to `-0pp` and says nothing, and a count delta is worse than nothing when
                 # the two runs have different denominators — a 160-call session against a
                 # 15,000-call corpus baseline would read `-288` as though it had improved.
-                cells.append(f"{tag}={hits}({mark})")
+                cells.append(f"{tag}={hits}{_population(tag, groups.get(label, []))}({mark})")
             else:
                 cells.append(f"{tag}={after:.0%}({delta:+.0f}pp,{mark})")
         print(f"{label:44} n={cur['n']:5}  " + "  ".join(cells))
@@ -1135,6 +1189,7 @@ def report(
     compare_with: Path | None = None,
     expectations: tuple[dict[str, str], str] | None = None,
     replayed: int = 0,
+    days: float | None = None,
 ) -> None:
     random.seed(1)
     print(f"Bash calls: {len(calls)}  (subagent: {sum(c.subagent for c in calls)})")
@@ -1152,7 +1207,7 @@ def report(
     # entirely when it printed last, and reported the rates as though they were the finding.
     if compare_with:
         wanted, source = expectations or load_expectations(None)
-        compare(calls, compare_with, wanted, source)
+        compare(calls, compare_with, wanted, source, days)
 
     print("\n== pattern totals ==")
     totals = Counter(t for c in calls for t in c.tags)
@@ -1352,6 +1407,9 @@ def _print_session_rows(calls: list[Call]) -> None:
             note = f"   {gates} wrapped a gate, {hits - gates} a listing"
         elif row == "rg-replace" and flags:
             note = "   " + ", ".join(f"{flag} x {k}" for flag, k in flags.most_common())
+        elif row in DENOMINATORS:
+            name, belongs = DENOMINATORS[row]
+            note = f"   of {sum(1 for c in calls if belongs(c.cmd))} {name} calls"
         print(f"  {row:24} {hits:5}  {hits / n:4.0%}{note}")
 
 
@@ -1451,7 +1509,7 @@ def main() -> None:
         print("no Bash calls found — check --days / --project / --until")
         return
     wanted = load_expectations(args.expectations) if args.compare else None
-    report(calls, args.samples, args.compare, wanted, replayed)
+    report(calls, args.samples, args.compare, wanted, replayed, args.days)
     if args.save_baseline is not False:
         default = state_dir() / f"{time.strftime('%Y-%m-%d', time.gmtime())}.json"
         save_baseline(calls, args.save_baseline or default, args.days, args.note, args.force, replayed)

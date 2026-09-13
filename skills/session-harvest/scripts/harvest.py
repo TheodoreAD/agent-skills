@@ -2045,8 +2045,14 @@ def attributable_entries(changed: Sequence[str], entries: Sequence[dict[str, Any
     let a low count read as a small session. The seam is `SUBPROCESS_SEAM`, shared with the checks
     that print it; the three instances that made it a convention rather than a footnote are in
     `references/rationale.md`, "What the step-5 checks owed a reader".
+
+    **A read names an entry and cannot have moved its mtime**, so a read-only command is not
+    evidence (`read_only_call`). An `rg` over a clone a refresher updated in the same window was the
+    plans store's command-door over-claim — a session credited with a commit it had only looked at —
+    arriving one store along; not observed here, but the mechanism was identical.
     """
-    haystack = [*bare_commands(entries), *(str(path) for path in written_paths(entries))]
+    commands = [QUOTED_SPAN_RE.sub(" ", command) for _, command in bash_calls(entries) if not read_only_call(command)]
+    haystack = [*commands, *(str(path) for path in written_paths(entries))]
     return [
         item
         for item in changed

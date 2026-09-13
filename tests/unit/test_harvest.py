@@ -1528,6 +1528,22 @@ def test_searching_for_an_entrys_name_is_not_touching_it(tmp_path):
     assert state["changed_by_this_session"] == []
 
 
+def test_reading_a_clone_a_refresher_moved_is_not_touching_it(tmp_path):
+    """The plans store's command door, one store along: a session credited with a commit it had only
+    read the log of, 2026-09-12. A read names the entry and cannot move its mtime, so an `rg` over a
+    clone some refresher updated in the same window is not this session's change."""
+    library = tmp_path / "research"
+    for name in ("github.com--block--goose", "github.com--a--b"):
+        (library / "repos" / name).mkdir(parents=True)
+    entries = [
+        bash_entry(f"rg -n 'def main' {library}/repos/github.com--block--goose | head"),
+        bash_entry(f"python3 library.py update {library}/repos/github.com--a--b"),
+    ]
+
+    state = harvest.store_state(FakeRunner(), "research", library, "2000-01-01T00:00:00Z", entries)
+    assert state["changed_by_this_session"] == ["repos/github.com--a--b"]
+
+
 def test_without_a_transcript_no_library_entry_is_claimed(tmp_path):
     """The same shape as the docker rows: the entries are still reported, and no claim is made about
     whose they are. An empty attributed list plus a count is the honest answer, not silence."""

@@ -27,7 +27,9 @@ considered and rejected).
   only, never contents.
 - **Runs**: `git` (including `fetch` to each touched repo's own upstream unless `--no-fetch`), `gh`
   and `docker` when installed, `ps`/`ss` on Linux or PowerShell/`netstat` on Windows, and
-  `plans.py absorb` read-only. Nothing through a shell.
+  `plans.py absorb` read-only. Nothing through a shell. **It never installs, re-installs or removes
+  a skill**: `skills-state` compares the installed copy with its source and reports the difference,
+  and deploying a fix is `skill-authoring`'s sequence, not this skill's.
 - **Writes**: **the script writes nothing.** The procedure writes, through the agent, only inside
   the set stated at the top of it — the session repo, its `plans/`, and the plans store through
   `plan-docs`. Never a deployed instructions file, never an installed skill copy, never another
@@ -142,47 +144,40 @@ harvest, because its report reads identical. Added 2026-08-29 after the user ask
 "with the latest versions" — behaviour the skill did not have, and could not have confirmed if
 asked.
 
-**A difference has four causes, and only one of them is the stale install this step assumes.** The
-subcommand prints the verdict; what matters is that you act on the right one:
+**A difference has four causes, and only one of them is a stale install.** The subcommand prints the
+verdict; report the row it names. **A harvest reports install state and never deploys** — pushing,
+installing and reloading a skill are `skill-authoring`'s sequence, including why each row below
+needs a different move — so the report says which row applies and whose move it is:
 
-| the checkout is              | what it means        | what to offer                       |
-| ---------------------------- | -------------------- | ----------------------------------- |
-| clean, level with the remote | the install is stale | a re-install — the assumed case     |
-| clean, ahead by commits      | unpushed skill work  | see the push-state paragraph below  |
-| **dirty**                    | work in progress     | nothing; report it and move on      |
-| **a linked worktree**        | edits on a branch    | a merge first; a push installs none |
+| the checkout is              | what it means        | what the report says                               |
+| ---------------------------- | -------------------- | -------------------------------------------------- |
+| clean, level with the remote | the install is stale | the installed copy is behind a published fix       |
+| clean, ahead by commits      | unpushed skill work  | the fix is unpublished, and whose commits it is    |
+| **dirty**                    | work in progress     | nothing to deploy; another session may be mid-edit |
+| **a linked worktree**        | edits on a branch    | the fix is on a branch no install reads from       |
 
-The last row is the one that reads as the first. `skills-state` prints a `worktree:` line naming the
-checkout it belongs to, because nothing else in its output distinguishes them: the checkout is
-clean, it is ahead by commits, and the natural remedy — push, then re-install — succeeds at every
-step and installs nothing. `skills add <owner>/<repo>` takes the remote's **default branch**, so
-until the worktree's branch is merged there is nothing new to install, and the verify step compares
-the installed copy against a checkout that was never published. Offer the merge, or the local-path
-install `skills add <path>` that `skill-authoring` documents for drafting.
-
-**Say plainly that a re-install cannot fix either of the last two**, because the natural mental
-model — "re-installing syncs them" — is wrong in both: the installer's source is the remote, not the
-working tree. Offering one against a dirty checkout is a no-op dressed as a remedy, and worse, it
-reframes another session's live restructure as an install-hygiene problem and invites exactly the
-cross-repo interference the global rules forbid. Confirmed 2026-08-29 on `plan-docs`, mid
-two-tier-store-split: 672 uncommitted insertions, nothing ahead of the remote — `git log` showed a
-settled history, and only `status --short` saw it. Confirmed in the other direction 2026-08-30: same
-non-empty diff, clean checkout level with the remote, two commits pushed minutes earlier — row one
-exactly as written, and a re-install was the right answer. The same diff meant opposite things a day
-apart.
+The last row reads as the first: `skills-state` prints a `worktree:` line naming the checkout it
+belongs to, because nothing else in its output distinguishes them. **Say plainly that the last three
+are not install problems.** A dirty checkout in particular is far more often another session's live
+restructure than install hygiene, and describing it as the second invites exactly the cross-repo
+interference the global rules forbid. Confirmed 2026-08-29 on `plan-docs`, mid two-tier-store-split:
+672 uncommitted insertions, nothing ahead of the remote — `git log` showed a settled history, and
+only `status --short` saw it. Confirmed in the other direction 2026-08-30: same non-empty diff,
+clean checkout level with the remote, two commits pushed minutes earlier — row one exactly as
+written. The same diff meant opposite things a day apart.
 
 **The verdict is a reading, not a fact, and re-running it costs one call.** Which row you are on can
 change while the harvest is still going, because another session commits or pushes into the same
 checkout — so quote a verdict taken at the top of a run and you may hand the user the previous
 answer. Confirmed twice on `plan-docs`, and the interval is the point: thirteen hours apart on
-2026-09-03, where "unpushed skill work — a re-install reinstalls the same stale copy" became
-"install is stale against a clean, pushed checkout — a re-install is the remedy", the **remedy
-inverting** from "cannot fix this" to "is exactly the fix"; and then **inside ninety seconds** on
-2026-09-05, two rows of the table apart, with a parallel session's commit landing at 23:44:21 in the
-gap between two calls at 23:43 and 23:45. So this is not a long-interval precaution — a fast run
-that resolves at the top and reports at the bottom is exposed too, and is exactly the run where
-nobody would think to re-check. The git ahead-count already carries this rule under step 5;
-`skills-state` is the check whose output most directly becomes advice, so it needs it more.
+2026-09-03, where "unpushed skill work" became "install is stale against a clean, pushed checkout",
+the **row changing** from one no install could fix to the one an install does; and then **inside
+ninety seconds** on 2026-09-05, two rows of the table apart, with a parallel session's commit
+landing at 23:44:21 in the gap between two calls at 23:43 and 23:45. So this is not a long-interval
+precaution — a fast run that resolves at the top and reports at the bottom is exposed too, and is
+exactly the run where nobody would think to re-check. The git ahead-count already carries this rule
+under step 5; `skills-state` is the check whose output most directly becomes advice, so it needs it
+more.
 
 A dirty checkout does **not** block the run. Both sessions above harvested correctly, because every
 command they ran was against the committed version. Confirm in passing that the commands this run
@@ -273,16 +268,12 @@ answers were current and only a hand-written diff could show it. When they _are_
 them from the checkout before trusting what you already collected; when the two copies cannot be
 compared at all, the verdict says that instead of reporting no difference.
 
-**When the checkout is ahead, its push state decides what may be offered as the remedy.** The
-installer clones from the remote, so a re-install cannot deliver a commit that has not been pushed —
-it reinstalls the identical stale copy, in a report that has just told the user re-installing is
-what resolves the staleness. If the commit that closes the staleness is unpushed, say so and name
-whose commit it is rather than closing on "re-install to pick this up": the push is outward-facing
-and belongs to whoever authored it, per step 5's rule about unpushed commits. Confirmed 2026-08-30:
-the checkout was `ahead 1`, and that one commit was exactly the one carrying the wording the run had
-just re-read. Note the asymmetry that makes this easy to miss — the session is not blocked, since
-reading the checkout is enough to run correctly. Only the remedy is broken, which is the part nobody
-re-checks.
+**When the checkout is ahead, name whose unpushed commit closes the staleness.** The push is
+outward-facing and belongs to whoever authored it, per step 5's rule about unpushed commits, so the
+report ends on that fact rather than on a remedy. Confirmed 2026-08-30: the checkout was `ahead 1`,
+and that one commit was exactly the one carrying the wording the run had just re-read. Note the
+asymmetry that makes this easy to miss — the session is not blocked, since reading the checkout is
+enough to run correctly. Only the next step is in question, which is the part nobody re-checks.
 
 **And when the session has already _acted_ on that skill, re-reading is only half the fix.** Ask
 whether anything already done was done under superseded wording. Re-reading corrects the next call;
@@ -1071,12 +1062,13 @@ problem. Confirmed 2026-08-30 by the failure — a harvest run from an unrelated
 correct, gate-green edits to this file and committed them in a repo it had no business writing to,
 left sitting in `git log` for whichever session pushed next.]
 
-**Deploying the skill edit.** Pushing and re-installing is outward-facing and always asked, because
-that is the step that changes what other sessions and machines load. Confirmed 2026-08-28:
+**Deploying the skill edit is not a harvest step.** The push is outward-facing and always asked,
+under step 5's rules; installing and reloading the skill afterwards are `skill-authoring`'s
+sequence, and the report names that as outstanding rather than performing it. Confirmed 2026-08-28:
 `Bash(git commit:*)` and `Bash(git push:*)` are both allowlisted on this machine, so no permission
-prompt guards either — the discipline is entirely instruction-side, deliberately (see `~/AGENTS.md`,
-"Proposing an enforcement mechanism for agent behavior"). Do not read the absence of a prompt as
-permission.
+prompt guards the push — the discipline is entirely instruction-side, deliberately (see
+`~/AGENTS.md`, "Proposing an enforcement mechanism for agent behavior"). Do not read the absence of
+a prompt as permission.
 
 ### 7. On friction, ask — then self-update the skill
 
@@ -1322,31 +1314,20 @@ the current session:
   `tests/unit/test_skill_layout.py` is part of that gate and enforces real limits (the description
   cap among them), so run it rather than eyeballing the frontmatter. Then tell the user what
   changed.
-- **A `scripts/` edit does not reach this session either, and that bites during the run rather than
-  after it.** Every `python3 ~/.agents/skills/<name>/scripts/<file>` call keeps executing the
-  installed copy until a re-install, so between committing a script change and re-installing, the
-  session is reading output from the code it just replaced. Confirmed 2026-08-30: a session renamed
-  `absorb`'s pairing output, committed it, then ran `absorb --apply` and got the old wording back —
-  harmless there, and it would not have been if the change had altered behaviour rather than a
-  string. Either call the checkout's copy for the rest of the run, or note which results predate the
-  re-install; do not re-derive the results from the new source and assume they match.
-- **Re-installing is not the last step when the edit is meant to take effect _in this session_.**
-  The install fixes the file on disk; the copy this session loaded at start is still the old one, so
-  a harvest that edits itself and then runs cannot use what it just wrote. Push, re-install, then
-  have the harness reload the skill — in Claude Code, `/reload-skills`, after which the skill has to
-  be invoked again to pick the new body up. Confirmed 2026-09-01: a session rewrote step 9, pushed,
-  re-installed, verified the installed copy matched the checkout, and still held the superseded
-  wording; the user supplied the missing move (`/reload-skills`, then "use it"). Say which of the
-  three is outstanding rather than reporting "re-installed" as though the loop were closed.
-- **Say plainly that a committed edit still reaches nothing.** The installer clones from the remote,
-  so the change takes effect only once it is pushed _and_ re-installed
-  (`npx skills add <owner>/<repo> --global --skill session-harvest`) — including for other projects
-  on the same machine, whose `~/.agents/skills/` copy is now stale against the source. **If the user
-  declines the re-install, that is not a licence to state what the machine is now running** — on a
-  machine with parallel sessions the installer may already have been run by one of them, so the
-  install state is shared and has to be measured before it is reported. Diff it (that is what
-  `skills-state` is for). Confirmed 2026-08-30: a harvest closed with "this one keeps running the
-  old copy", the user asked, and the installed copy already carried the fix, re-installed by another
+- **A `scripts/` edit does not reach this session's calls to the installed copy, and that bites
+  during the run rather than after it.** Every `python3 ~/.agents/skills/<name>/scripts/<file>` call
+  keeps executing the installed copy, so after committing a script change the session is reading
+  output from the code it just replaced. Confirmed 2026-08-30: a session renamed `absorb`'s pairing
+  output, committed it, then ran `absorb --apply` and got the old wording back — harmless there, and
+  it would not have been if the change had altered behaviour rather than a string. Either call the
+  checkout's copy for the rest of the run, or note which results predate the edit; do not re-derive
+  the results from the new source and assume they match.
+- **Say plainly that a committed edit reaches no installed copy yet**, this session's and other
+  projects' on the same machine included, and that deploying it is `skill-authoring`'s sequence.
+  **Then measure the install state before reporting what the machine runs** — on a machine with
+  parallel sessions another one may already have deployed it, so the state is shared. Diff it; that
+  is what `skills-state` is for. Confirmed 2026-08-30: a harvest closed with "this one keeps running
+  the old copy", the user asked, and the installed copy already carried the fix, deployed by another
   session twenty minutes earlier — a confident, specific, wrong sentence in the zone of the report
   reserved for what needs action.
 

@@ -32,9 +32,10 @@ considered and rejected).
   and deploying a fix is `skill-authoring`'s sequence, not this skill's.
 - **Writes**: **the script writes nothing.** The procedure writes, through the agent, only inside
   the set stated at the top of it — the session repo, its `plans/`, and the plans store through
-  `plan-docs`. Never a deployed instructions file, never an installed skill copy, never another
-  repo's tree. Killing an orphaned process the sweep found is the one non-file side effect, and it
-  is proposed, not done.
+  `plan-docs`. **It never edits, moves or deletes a plan somebody else filed for a different repo**;
+  evidence for one is filed as a new plan that names it. Never a deployed instructions file, never
+  an installed skill copy, never another repo's tree. Killing an orphaned process the sweep found is
+  the one non-file side effect, and it is proposed, not done.
 - **Network**: `git fetch` and `gh` only, to the repos' own remotes. Nothing is sent anywhere; every
   report goes to stdout.
 
@@ -114,16 +115,18 @@ agent runs without reading. The judgement below is the rest of the skill, and no
 
 **What a harvest may write, stated once.** Three places and nothing else: the repo the session is
 running in (ordinary edits and commits), that repo's `plans/` through `plan-docs`, and the plans
-store through `plan-docs` — including plans filed `--for` another repo. Outside it: a deployed
-instructions file, an installed skill copy, any other repo's working tree, and the sources of a
-generated `~/AGENTS.md` when they live in a repo the session is not in. A candidate for any of those
-is filed as a plan for the repo that owns it. Being _in_ the owning repo is what makes an edit
-ordinary work, so the skills repo and the instructions-fragment repo are not exceptions to this
-rule; they are the rule applied to a session that happens to be there. Stated by the user
-2026-09-03: _"harvest should exclusively edit things in the repo where the session is happening and,
-via plan docs, to the plans in the current session's and the plans in the central store repo"_ — and
-"instructions" there means the deployed file, not its fragment sources from inside their own repo.
-Killing an orphaned process the sweep found is a side effect, not a write, and step 8 governs it.
+store through `plan-docs` — new plans, including plans filed `--for` another repo, and corrections
+to plans this session wrote there. A plan somebody else filed for a different repo is read, cited
+and never edited. Outside it: a deployed instructions file, an installed skill copy, any other
+repo's working tree, and the sources of a generated `~/AGENTS.md` when they live in a repo the
+session is not in. A candidate for any of those is filed as a plan for the repo that owns it. Being
+_in_ the owning repo is what makes an edit ordinary work, so the skills repo and the
+instructions-fragment repo are not exceptions to this rule; they are the rule applied to a session
+that happens to be there. Stated by the user 2026-09-03: _"harvest should exclusively edit things in
+the repo where the session is happening and, via plan docs, to the plans in the current session's
+and the plans in the central store repo"_ — and "instructions" there means the deployed file, not
+its fragment sources from inside their own repo. Killing an orphaned process the sweep found is a
+side effect, not a write, and step 8 governs it.
 
 ### 0. Check the copy you are running is the current one
 
@@ -423,22 +426,29 @@ For what survives the significance test:
   repo.** On a machine running parallel sessions the likeliest explanation for a rule being broken
   is that somebody has already noticed — the same reasoning as step 5's already-owned bullet, which
   is written for the live-state sweep and is easy not to apply here. When it is owned, the session's
-  numbers are _evidence for that plan_, so they go into it rather than into a new file; `plan-docs`
-  prefers one plan per topic, and a second one splits the corpus the first is accumulating.
-  Confirmed 2026-08-30: a session measured its own Bash calls, found 36% piped through `head`/`tail`
-  and was about to file it — two plans already owned the contradiction, one of them citing "25–36%
-  for two other sessions the same day". What survived as genuinely new was one row nobody had
-  measured, and it landed in the existing plan as a fourth sample.
+  numbers are _evidence for that plan_, and where they go depends on whose plan it is. **A plan of
+  this repo's own takes them directly** — in its `plans/`, or in its store mirror when the repo
+  keeps its plans there — as ordinary work in the session's repo; `plan-docs` prefers one plan per
+  topic, and a second one splits the corpus the first is accumulating. Confirmed 2026-08-30: a
+  session measured its own Bash calls, found 36% piped through `head`/`tail` and was about to file
+  it — two plans already owned the contradiction, one of them citing "25–36% for two other sessions
+  the same day". What survived as genuinely new was one row nobody had measured, and it landed in
+  the existing plan as a fourth sample.
 
-  **Commit that edit in the same breath.** This rule sends you to edit a file you do not own, in a
-  directory several sessions write to at once, and between the edit and the commit another session
-  can absorb it — `absorb --apply` copies the plan into the target repo and deletes it from the
-  store, so `plans.py commit` then records a deletion under the message you wrote for an addition.
-  Confirmed 2026-09-04: 76 deletions, 0 insertions, and the content had survived, absorbed whole.
-  `commit` now says so when it happens and names where the file went, so a `(removed)` result is
-  information rather than an eight-minute investigation — but the interval is yours to keep short.
-  Every other race on this machine is handled by re-deriving state immediately before acting, and
-  this is that rule for a file you are editing rather than a count you are reading.
+  **A plan filed for another repo, which this session did not write, is never edited: file the
+  evidence `--for` that repo as a new plan whose opening line names the plan it belongs to.**
+  `absorb` pairs a filing with the plan it cites, and the session working in the owning repo merges
+  the two there. Confirmed 2026-09-13: a `repo-tasks` session filed a second occurrence this way,
+  asking to be merged, and the absorbing session folded it into its owner in one commit. Editing in
+  place was the earlier rule, and it cost twice over: it wrote into a directory several sessions
+  share, where `absorb --apply` could take the file between the edit and the commit (confirmed
+  2026-09-04, 76 deletions and 0 insertions recorded under a message announcing an addition), and it
+  made the skill able to change durable files it had not written, which a filing gets for free by
+  other means.
+
+  **Correcting a plan this session wrote is still an edit, and still races absorption**, so commit
+  it in the same breath. `commit` names where the file went when that happens, so a `(removed)`
+  result is information rather than an investigation, but the interval is yours to keep short.
 - **Already covered → skip.** If an existing doc already says this, don't write a duplicate — check
   first.
 - **Meta-conventions about how to build things in this ecosystem (e.g. "skills should do X by

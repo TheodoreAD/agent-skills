@@ -260,11 +260,58 @@ def test_shell_targets_read_cd_and_git_c():
             "assistant",
             [
                 {"type": "tool_use", "id": "a", "name": "Bash", "input": {"command": "cd /other/repo && git status"}},
-                {"type": "tool_use", "id": "b", "name": "Bash", "input": {"command": "git -C /third/repo log -1"}},
+                {"type": "tool_use", "id": "b", "name": "Bash", "input": {"command": "git -C /third/repo push"}},
             ],
         )
     ]
     assert sorted(p.as_posix() for p in harvest.shell_targets(entries)) == ["/other/repo", "/third/repo"]
+
+
+def test_a_repo_the_session_only_read_is_not_enrolled():
+    """Confirmed 2026-09-12: `git -C … status`, `git -C … log` and one `cd … && git check-ignore`
+    against `repo-tasks`, read to write a filed plan accurately, enrolled a repo the session changed
+    nothing in — and the sweep printed "a push here is a deploy there" for it.
+
+    A `cd` is the exception unless the harness reset it: a `cd` that sticks moves every later
+    unscoped command into the repo it named."""
+
+    def call(command: str, call_id: str, result: str = "") -> list[dict[str, object]]:
+        use = {"type": "tool_use", "id": call_id, "name": "Bash", "input": {"command": command}}
+        done = {"type": "tool_result", "tool_use_id": call_id, "content": result}
+        return [blocks_entry("assistant", [use]), blocks_entry("user", [done])]
+
+    entries = [
+        *call("git -C /read/repo status --short", "a"),
+        *call("git -C /read/repo log --oneline -5 | head -3; git -C /read/repo worktree list", "b"),
+        *call("cd /read/repo && git check-ignore -v x", "c", "x\n\nShell cwd was reset to /home/u/own"),
+        *call("cd /sticky/repo && git log -1", "d", "abc1234 a subject"),
+    ]
+    assert [p.as_posix() for p in harvest.shell_targets(entries)] == ["/sticky/repo"]
+
+
+@pytest.mark.parametrize(
+    ("command", "read_only"),
+    [
+        ("git -C /r status --short", True),
+        ("git --no-pager -C '/a path' log --format='%h|%s' -3", True),
+        ("git -C /r log --oneline 2>&1 | rg 'fix|feat' 2>/dev/null", True),
+        ("FOO=1 git -C /r rev-parse HEAD", True),
+        ("find /r -name '*.md'", True),
+        ("git -C /r worktree list", True),
+        ("git -C /r worktree add ../x", False),
+        ("git -C /r commit -m 'a | b'", False),
+        ("git -C /r log > /tmp/log.txt", False),
+        ("git -C /r show $(git -C /r rev-parse HEAD)", False),
+        ("git -C /r status && git -C /r push", False),
+        ("find /r -name '*.pyc' -delete", False),
+        ("cd /r && inv quality.precommit", False),
+        ("git -C /r fetch", False),
+    ],
+)
+def test_what_counts_as_a_read(command, read_only):
+    """A closed list, so anything unrecognised enrols: an omission is a row of noise, never a repo the
+    session changed going unswept."""
+    assert harvest.read_only_call(command) is read_only
 
 
 # --------------------------------------------------------------------------------------------

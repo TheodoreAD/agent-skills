@@ -671,7 +671,25 @@ def written_paths(entries: Iterable[dict[str, Any]]) -> list[Path]:
 
 
 def shell_targets(entries: Iterable[dict[str, Any]]) -> list[Path]:
-    """Directories the session pointed a command at: `cd <path>` and `git -C <path>`."""
+    """Directories the session pointed a command at — `cd <path>`, `git -C <path>` — that could have
+    changed something there.
+
+    **A read enrols nothing, for the same reason `written_paths` excludes the Read tool.** Confirmed
+    2026-09-12: a session read `repo-tasks` three times (`git -C … status`, `git -C … log`) to write a
+    filed plan accurately — which the cross-repo rules prescribe — and changed nothing there. The
+    sweep enrolled it anyway, listed another session's live commits as this session's unpushed work,
+    and printed the consumer warning, "a push here is a deploy there", for a repo with nothing to
+    push. That warning is the section's loudest line, and a false one teaches the next reader to skim
+    it. See `read_only_call` for what counts as a read.
+
+    **A `cd` is exempted only when the harness says it did not stick.** `git -C` scopes one command
+    and leaves nothing behind, but a `cd` can outlive its call, so a `cd <repo> && git log` followed by
+    an unscoped `git commit` changes the repo the read named — and that miss runs toward a repo the
+    session changed going unswept, which is worse than the noise the exemption removes. Claude Code
+    resets a `cd` out of the project and says so in that call's own result (`CWD_RESET_MARKER`);
+    the 2026-09-12 session's one `cd` into `repo-tasks` carries it. No marker, and the target enrols.
+    """
+    reset = cwd_reset_calls(entries)
     seen: dict[str, None] = {}
     for _, block in iter_blocks(entries):
         if block.get("type") != "tool_use" or block.get("name") != "Bash":
@@ -680,13 +698,80 @@ def shell_targets(entries: Iterable[dict[str, Any]]) -> list[Path]:
         if not isinstance(payload, dict):
             continue
         command = str(payload.get("command", ""))
-        for pattern in (CD_RE, GIT_C_RE):
+        if not read_only_call(command):
+            patterns: tuple[re.Pattern[str], ...] = (CD_RE, GIT_C_RE)
+        elif str(block.get("id")) in reset:
+            patterns = ()
+        else:
+            patterns = (CD_RE,)
+        for pattern in patterns:
             for match in pattern.finditer(command):
                 target = match.group(1).strip("'\"")
                 if target.startswith("-") or "$" in target:
                     continue
                 seen[str(Path(target).expanduser())] = None
     return [Path(p) for p in seen]
+
+
+# Closed lists on purpose: a command missing from them enrols its repo, so an omission costs one
+# row of noise in the sweep and never a repo the session changed. `sort` and `tree` are left out for
+# their `-o`, and `find` is admitted only without an action that writes or runs something.
+READ_ONLY_COMMANDS = frozenset(
+    {"cat", "cd", "cmp", "cut", "diff", "du", "echo", "fd", "file", "find", "grep", "head", "jq", "ls", "pwd"}
+    | {"readlink", "realpath", "rg", "stat", "tail", "test", "true", "uniq", "wc", "which"}
+)
+READ_ONLY_GIT = frozenset(
+    {"blame", "cat-file", "check-ignore", "describe", "diff", "for-each-ref", "grep", "log", "ls-files"}
+    | {"ls-remote", "merge-base", "rev-list", "rev-parse", "shortlog", "show", "status"}
+)
+# Subcommands that only read with one particular verb after them.
+READ_ONLY_GIT_VERBS = frozenset({("stash", "list"), ("worktree", "list")})
+CWD_RESET_MARKER = "Shell cwd was reset to "
+GIT_VALUED_OPTIONS = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
+FIND_ACTION_RE = re.compile(r"(?:^|\s)-(?:delete|exec|execdir|ok|okdir|fprint\w*|fls)\b")
+HARMLESS_REDIRECT_RE = re.compile(r"\d*>&\d|&?\d*>\s*/dev/null")
+SEGMENT_RE = re.compile(r"&&|\|\||[;|\n]")
+ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_]\w*=")
+
+
+def read_only_call(command: str) -> bool:
+    """Whether every part of one Bash call only reads files — so a `git -C` it names was looked at,
+    not changed. A `cd` counts as a read here; `shell_targets` enrols its target regardless.
+
+    Quoted spans are blanked to a placeholder word first, so a `|` inside a pattern does not split a
+    segment and a quoted `-C` path is still one argument. A command substitution or a redirect into
+    a file is never a read, since what it runs or writes is not visible from the words around it.
+    """
+    if "$(" in command or "`" in command:
+        return False
+    text = QUOTED_SPAN_RE.sub(" _ ", command)
+    for segment in SEGMENT_RE.split(text):
+        if ">" in HARMLESS_REDIRECT_RE.sub("", segment):
+            return False
+        words = segment.split()
+        while words and ENV_ASSIGNMENT_RE.match(words[0]):
+            words.pop(0)
+        if not words:
+            continue
+        if words[0] == "git":
+            index = 1
+            while index < len(words) and words[index].startswith("-"):
+                index += 2 if words[index] in GIT_VALUED_OPTIONS else 1
+            verb = tuple(words[index : index + 2])
+            if not verb or (verb[0] not in READ_ONLY_GIT and verb not in READ_ONLY_GIT_VERBS):
+                return False
+        elif words[0] not in READ_ONLY_COMMANDS or (words[0] == "find" and FIND_ACTION_RE.search(segment)):
+            return False
+    return True
+
+
+def cwd_reset_calls(entries: Iterable[dict[str, Any]]) -> set[str]:
+    """Tool-use ids whose own result says the harness put the shell's cwd back after the call."""
+    return {
+        str(block.get("tool_use_id"))
+        for _, block in iter_blocks(entries)
+        if block.get("type") == "tool_result" and CWD_RESET_MARKER in block_text(block.get("content"))
+    }
 
 
 def last_activity(entries: Iterable[dict[str, Any]]) -> str | None:

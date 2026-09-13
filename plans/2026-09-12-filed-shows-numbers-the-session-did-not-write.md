@@ -38,6 +38,12 @@ a commit was "another session's" when the check simply could not see the door it
 is the mirror — asserting a _line_ is this session's when the only evidence is that the session
 touched the file. Both read as specific and both are unfalsifiable from the output alone.]
 
+**Related, kept apart:** `2026-09-09-harvest-attribution-reads-a-path-as-authorship.md` is the
+commit-level form of the same error — `filed` crediting a commit because this session wrote or read
+a path in it. Separate because that one is about commits and command classification, this one about
+lines and a diff; but the label that plan settles on is the one this plan's hedge should reuse, so
+the two halves of `filed` do not hedge in two voices. Absorbed together 2026-09-13.
+
 ## Open questions
 
 [NEEDS CLARIFICATION: attribute by diff, or label and leave it? A diff of the session's own writes

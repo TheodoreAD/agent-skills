@@ -1043,3 +1043,31 @@ two calls, and every predicate here judges one command with no memory of the las
 the push alone would score every push a miss, including the careful ones — a verdict nobody can
 satisfy is one that gets ignored, which is why `grep-r-not-rg` has no expectation either. Named here
 so the gap is a decision rather than an oversight.
+
+## A resumed session was counted once per transcript (2026-09-13)
+
+**Every corpus figure above was taken with this live.** A resumed session writes a new transcript
+that repeats its parent's history, and `load_calls` concatenated every transcript in the window, so
+a call was counted once per descendant still inside it. Found by reading the `cut-message` samples,
+which printed two commands twice under two session ids with the same timestamp.
+
+The key was measured rather than chosen: over seven days, all 649 replayed calls kept their
+`tool_use` id, and id and `(timestamp, command)` agreed on every one. The copy kept is the one in
+the smallest transcript, since a descendant holds its parent's calls plus its own.
+
+What it did to the seven days to 2026-09-13, 9,513 loaded and 8,864 distinct:
+
+| row           | counted |  once | rate moved |
+| ------------- | ------: | ----: | ---------: |
+| `head/tail`   |   1,600 | 1,453 |    -0.43pp |
+| `exit-masked` |     978 |   875 |    -0.41pp |
+| `heredoc`     |     466 |   423 |    -0.13pp |
+| `git-add-all` |      19 |    12 |    -0.06pp |
+| `cut-message` |       7 |     5 |    -0.02pp |
+
+**Rates held within half a point, and counts did not.** The inflation is not uniform: it is whatever
+the resumed sessions happened to do, so the small count rows moved most — `git-add-all` by a third.
+The rates and verdicts recorded in earlier sections stand at that precision. The absolute counts —
+this corpus's 81, 174 and 6 on the parallel-session rows, and the "9 of 9,224" above — were each
+taken on a corpus that has since moved on, so they were not re-derived; read them as upper bounds. A
+baseline now records `replayed_dropped`, and `--compare` says so when reading one that lacks it.

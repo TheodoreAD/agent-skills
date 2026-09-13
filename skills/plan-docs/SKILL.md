@@ -969,7 +969,7 @@ plan at all.
 
 ## Attaching evidence to a plan
 
-A plan citing `~/Downloads/ci.log`, a scratch directory, or the transcript its own `source_session`
+A plan citing a log in Downloads, a scratch directory, or the transcript its own `source_session`
 names is citing something that stops existing — the transcript on a timer, the others the next time
 anyone tidies up. `attach` copies the file somewhere stable and writes a row into the plan saying
 what it took:

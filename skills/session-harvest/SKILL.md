@@ -800,12 +800,15 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   every rate at 0% while the session had typed `rg -rn …`, because `rg-replace` is in none of
   `audit.py`'s display sets. Both are filed. **A zero that agrees with what you hoped is the one to
   check**, and the tell is a zero on a row you have a specific reason to expect a hit on.
-- **Git state, every repo the session touched** — not just the primary one. An unpushed commit is
-  the most common real loose end, and a session that ends with one usually believes it pushed. The
-  sweep reads the upstream branch rather than typing `main` (measured 2026-08-30: 22 of 71 clones
-  were on `main`, fewer than were on `master`), runs the count unpiped so a wrong branch exits 128
-  rather than printing a calm `0`, and checks the `git fetch` succeeded before trusting either
-  answer — on this machine a fetch needs the Zenity SSH-passphrase dialog and fails with
+- **Git state, every repo the session touched** — not just the primary one. Touched means wrote
+  into, or ran something other than a read against: a repo only read through `git -C` to write a
+  filed plan accurately is not swept, nor is a `cd` the harness reset. If you changed a repo in a
+  way the transcript cannot show, pass it with `--repo`. An unpushed commit is the most common real
+  loose end, and a session that ends with one usually believes it pushed. The sweep reads the
+  upstream branch rather than typing `main` (measured 2026-08-30: 22 of 71 clones were on `main`,
+  fewer than were on `master`), runs the count unpiped so a wrong branch exits 128 rather than
+  printing a calm `0`, and checks the `git fetch` succeeded before trusting either answer — on this
+  machine a fetch needs the Zenity SSH-passphrase dialog and fails with
   `Permission denied (publickey)` when nobody is at the keyboard, leaving `origin/<branch>` exactly
   where it was so the ahead-count still prints a plausible number against a stale ref. When that
   happens the machine's own diagnostic names the fix (`inv ssh.check` here) — do not reach for
@@ -1125,22 +1128,28 @@ instead of two, the corpus would have taken the prefix as the session's row.
 **`python3 $H filed --until <the boundary>` is what replaces the remembering, and it runs on every
 harvest rather than only a second one.** It counts this session's own step-0 `boundary` calls, so
 "this is harvest #2" is read rather than recalled; lists the plan files this session wrote, each
-with the lines in it that carry a number; and lists every plans-store commit since session start,
-attributed to this session or explicitly not — the store is shared, so a commit inside the window is
-not yours by virtue of being there, and a row marked `(not attributed)` is reported, never edited.
+with the number-bearing lines this session wrote there and any others in the file marked
+`(authorship unestablished)`; and lists every plans-store commit since session start as this
+session's, `(authorship unestablished)` or `(not attributed)` — the store is shared, so a commit
+inside the window is not yours by virtue of being there, and a marked row is reported, never edited.
 
-**That row says the check could not tie the commit to this session, and no more than that.** It used
+**`(not attributed)` says the check could not tie the commit to this session, and no more.** It used
 to read `(another session)`, which asserted something the evidence never established and was wrong
 in the one direction the conservative reading was argued to be safe in: `plans.py absorb --apply`
 _moves_ a plan out of the store, so the session writes nothing at the store path and a write-path
 test calls its own removal commit a stranger's. Confirmed 2026-09-07 — a session absorbed three
 plans, committed each removal minutes later, and `filed` reported
 `0 commit(s) this session, 20 from
-elsewhere` with all three of its own among the twenty. The check
-now reads the session's own commands as well as its writes, so a commit whose file this session
-_named_ is attributed. **If a row is yours through a door the check cannot see, say so in the report
-rather than assuming either way** — and treat a `0 this session` with the same suspicion as any
-other plausible number nobody can falsify.
+elsewhere` with all three of its own among the twenty. Reading
+the session's commands as well as its writes fixed that and over-claimed the other way, through both
+doors: a filer was credited with the owning repo's absorption of its plan, with another session's
+correction of it, and — while running this step's own confirmation — with a commit it had only read
+the log of. **A commit is now this session's by its receipt**, the id its own commit command
+printed. A path match without one is `(authorship unestablished)`: usually the owning repo absorbing
+or correcting your filing, which means it landed and is worth saying so. **If a marked row is yours
+through a door the check cannot see — a commit piped through `tail` loses its receipt — say so in
+the report rather than assuming either way**, and treat a `0 this session` with the same suspicion
+as any other plausible number nobody can falsify.
 
 **On a first harvest it answers the report's opening groups instead**, which is why the command
 block does not gate it on a second run. Those groups are "where did everything go", and assembling
@@ -1150,11 +1159,11 @@ the subcommand — it listed five plan files written that session, correctly mar
 been retired as `MISSING`, and reported **0 store commits this session against 18 unattributed**, a
 ratio no participant would have guessed and which decided whether an edit to a shared store plan was
 safe to make at all. That run predates the deletion fix above, so its `0` is a floor rather than a
-count; the argument it settled does not turn on which way it moves. Re-derive each measurement it
-prints and **edit the file**, then write the delta. Correcting a plan in the store is inside the
-write set at the top of this procedure, one filed `--for` another repo included; a row marked
-`MISSING` has been absorbed into the repo that owns it, and there the correction is a new filing
-rather than an edit.
+count; the argument it settled does not turn on which way it moves. Re-derive each unmarked
+measurement it prints and **edit the file**, then write the delta. Correcting a plan in the store is
+inside the write set at the top of this procedure, one filed `--for` another repo included; a row
+marked `MISSING` has been absorbed into the repo that owns it, and there the correction is a new
+filing rather than an edit.
 
 **Open with where everything went**, as four groups, because "did this land somewhere durable, or is
 it still only in the chat?" is the question the whole report exists to answer:

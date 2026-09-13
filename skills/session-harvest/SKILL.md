@@ -1015,7 +1015,10 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   naming a source file this session wrote; they are **candidates, not a verdict**, on the same
   footing as `depends_on`, because a plan naming `quality.py` may be about something else. This
   repo's own `plans/` are not searched — a session is already reading those, and including them
-  turns an edit to a well-discussed file into a page of true-but-useless rows.
+  turns an edit to a well-discussed file into a page of true-but-useless rows. **Nor is a name every
+  package has its own copy of** (`__init__.py`, `pyproject.toml`, and the like, printed as
+  `not searched`) — the lesson the written-paths check above learned first. Confirmed 2026-09-13: 22
+  of 24 rows matched only those two names, and the two real rows sat below them.
 
 ### 6. Improve the skill on every run
 

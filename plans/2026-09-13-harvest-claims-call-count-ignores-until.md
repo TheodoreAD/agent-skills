@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 8e1ea2df-8de1-4cd1-873d-5a0f058aaa6d.jsonl
@@ -43,6 +43,9 @@ two instruments disagree about the size of the same window.
 None.
 
 ## Recommended direction
+
+Landed as `40914ed`, as described here including the optional excluded-count line; the JSON carries
+`bash_calls_excluded_by_until`.
 
 Apply `before(stamp, args.until)` to `total_bash` as well, so both halves of the line describe one
 window. Add a unit test in `tests/unit/test_harvest.py`: a transcript with calls on both sides of

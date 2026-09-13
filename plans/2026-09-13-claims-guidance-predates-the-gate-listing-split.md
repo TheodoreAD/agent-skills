@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 source_repo: github.com-personal/power-user-linux-setup
 source_session: feea009a-eef1-4312-9967-186504d96db7.jsonl
@@ -37,18 +37,17 @@ The one masked call is an audit dump, not a gate, and `audit.py` independently p
 risk — the body's cheap exit, reached without running `setopt` at all. The run followed `SKILL.md`
 and ignored the block the script printed underneath, which is the tell.
 
-## Open questions
+## Open questions, answered 2026-09-13
 
-[NEEDS CLARIFICATION: can `claims` compute the split itself, or should it only point at it? It
-matches raw commands and `audit.py` strips quoted spans and heredoc bodies, and `SKILL.md` already
-warns the two counts differ by design and must not be read as each other's check. Duplicating
-`GATE_RE` into `claims` would create a third number over the same population. Pointing at
-`audit.py`'s line costs nothing and keeps one owner for the classification.]
+Landed as `145174a`.
 
-[NEEDS CLARIFICATION: the same block's `setopt` advice is still correct and still needed when `m` is
-above zero, so this is a reordering rather than a deletion — but the block is printed
-unconditionally, before the reader knows which branch they are on. Whether it should be conditional
-on anything `claims` can see is the open part.]
+- **Compute the split, or point at it?** Point at it. The block names `audit.py`'s `exit-masked`
+  line as the first read, so the gate classification keeps one owner and no third count appears.
+- **Should the block be conditional on anything `claims` can see?** No. `claims` cannot see `m`
+  without computing the split, which the first answer rules out. So the block stays unconditional,
+  and the ordering does the work: the first instruction is the one that decides whether the second
+  applies. It also carries the body's newer caveat that `m` comes from a word list, so the samples
+  under it need reading before a zero is taken as the exit.
 
 ## Recommended direction
 

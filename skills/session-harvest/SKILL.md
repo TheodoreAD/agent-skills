@@ -196,15 +196,15 @@ comes back identical whenever the installer has already run — while the copy f
 session's context_ at load time is still the old one. No filesystem comparison reaches that. The
 consequence is worse than running stale code: it produces confident, specific, wrong statements
 about the very skills the harvest is auditing, in the report nobody re-checks. That is what
-`--since <session start>` answers: it compares the skill's last commit against the instant this
-session began, as instants rather than as strings. If the skill moved after the session started,
-**re-read the `SKILL.md` from disk before relying on it**, whatever the diff said — **from the
-checkout when the checkout is the one that is ahead.** Re-reading the installed copy is the fix for
-a stale _context_ against a current install; when the install is itself behind, it hands back the
-same superseded text the session already holds, and the instruction reads as satisfied. Confirmed
-2026-08-30: a harvest ran fourteen minutes after a commit to this very skill, re-read the installed
-copy as written, and got its own stale wording back; the checkout was clean, pushed, and two
-paragraphs ahead.
+`--since <session start>` answers: it lists every commit under the skill since the instant this
+session began, each marked with the parts it touched, and names each part that moved with its own
+remedy. If `SKILL.md` moved after the session started, **re-read it from disk before relying on
+it**, whatever the diff said — **from the checkout when the checkout is the one that is ahead.**
+Re-reading the installed copy is the fix for a stale _context_ against a current install; when the
+install is itself behind, it hands back the same superseded text the session already holds, and the
+instruction reads as satisfied. Confirmed 2026-08-30: a harvest ran fourteen minutes after a commit
+to this very skill, re-read the installed copy as written, and got its own stale wording back; the
+checkout was clean, pushed, and two paragraphs ahead.
 
 **One case makes the whole branch a no-op, and it is the common one in this repo: the commits that
 moved the skill are _this session's own_.** The subcommand lists them; when every one of them is

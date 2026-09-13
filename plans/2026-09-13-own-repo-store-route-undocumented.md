@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 8e1ea2df-8de1-4cd1-873d-5a0f058aaa6d.jsonl
@@ -52,6 +52,10 @@ and moved it with `move <file> --to store`. `absorb` offered it immediately afte
 None. Both changes below are additive.
 
 ## Recommended direction
+
+Landed as `452c89b` and `7ce55d8`, all three items including the optional one: the refusal names
+`--to store`, an unscoped create from inside a routed repo prints a note naming it, and `SKILL.md`
+has the command row and a paragraph beside the parallel-session guidance.
 
 1. **The refusal names both routes.** For example:
    `--for names the repo this session is already in; use plain \`new <topic>\`, or \`new <topic>

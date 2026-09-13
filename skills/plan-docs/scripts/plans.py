@@ -5344,7 +5344,15 @@ def build_parser() -> argparse.ArgumentParser:
     attach.set_defaults(func=cmd_attach)
 
     commit = add("commit", "commit these plans, alone, without taking a parallel session's staged work")
-    commit.add_argument("file", nargs="+", help="plan path(s) or bare filename(s), all in one repository")
+    # The help is where a caller looks when the command seems to need pointing somewhere else: a
+    # session that could not commit a store removal read `--path` here, was refused, and fell back to
+    # raw git (2026-09-13). So it says the store-relative spelling works and `--path` is not needed.
+    commit.add_argument(
+        "file",
+        nargs="+",
+        help="plan path(s) — absolute, relative to here, or relative to a store as absorb prints them, "
+        "so a store removal needs no --path — or bare filename(s) to search; all in one repository",
+    )
     commit.add_argument("-m", "--message", help="commit message (default: '<repo>: <topic>'; required for several)")
     commit.set_defaults(func=cmd_commit)
 

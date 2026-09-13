@@ -2860,6 +2860,17 @@ def test_commit_resolves_a_store_relative_path_in_the_store_not_by_basename_here
     assert removed == ["D", rel]
 
 
+def test_commit_help_says_a_store_relative_path_needs_no_path_flag(capsys):
+    """Confirmed 2026-09-13 in `repo-tasks`: a session that could not commit a store removal read
+    `commit --help`, saw only `--path`, was refused by it, and fell back to raw git. The help is where
+    the caller looks, so the spelling that works has to be stated there."""
+    with pytest.raises(SystemExit):
+        plans.main(["commit", "--help"])
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "relative to a store as absorb prints them" in help_text
+    assert "needs no --path" in help_text
+
+
 def test_commit_refuses_a_path_it_cannot_find_rather_than_guessing_by_basename(ws, capsys, monkeypatch):
     """The fallback that produced the empty commit, closed at the argument's shape: a path containing
     a separator names a location, so one that resolves nowhere is an error, not a filename search."""

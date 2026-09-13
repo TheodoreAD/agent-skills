@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-13
 ---
 
@@ -74,23 +74,21 @@ the silent half: a scripts-only change, the case this plan says matters most, is
 move. `subdirs_differing` does name `scripts/` there, but only as install-against-checkout, which
 says nothing about whether an earlier call in this session ran the old code.]
 
-The trigger and the sentence are one decision, so neither was changed alone. Firing on any part
-while the sentence still says `SKILL.md moved` would make it wrong on exactly the new rows. That is
-the second question below, which now has the real run that step 2 was waiting for.
+The trigger and the sentence are one decision, so they changed together, in `67d380b` and `774ae7b`:
+a move is any commit under the skill since the baseline, and the verdict gives one clause per part
+that moved. Re-run live, `session-bash-audit` reported `scripts/ moved … (1 commit(s))` and
+`references/ moved … (1 commit(s))`, each with its own remedy and no `SKILL.md` re-read.
 
-## Open questions
+## Open questions, answered 2026-09-13
 
-- **Split the list, or annotate?** Annotated — answered by step 1.
-
-[NEEDS CLARIFICATION: should the remedy sentence key on what this session actually used? It already
-knows, from the same `Skill`-call scan that sets the baseline: no `Skill` call plus N `scripts/`
-calls in the transcript means the `scripts/` remedy is the relevant one and the re-read is not. That
-would make the line right rather than merely complete, but it couples the subcommand to transcript
-resolution it does not currently need.]
-
-[NEEDS CLARIFICATION: does `references/` need the same treatment? The prose says it is inert for the
-verdict and stops being inert for a page this run opened. Same shape as the above, and the same scan
-answers it.]
+- **Split the list, or annotate?** Annotated, answered by step 1.
+- **Should the remedy sentence key on what this session actually used?** No, it keys on what moved.
+  Each part gets its own remedy: re-read `SKILL.md`, read the `scripts/` diff before trusting an
+  earlier call, and treat `references/` as stale only for a page already opened. The reader knows
+  which of those they held, so the line is right without the subcommand resolving the transcript,
+  which was the coupling this question was wary of.
+- **Does `references/` need the same treatment?** It gets its own clause, stated as the condition
+  under which it matters rather than as a verdict.
 
 ## Recommended direction
 

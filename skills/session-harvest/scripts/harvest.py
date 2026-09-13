@@ -1477,9 +1477,9 @@ def _with_move_check(
         state["moved_since_session_start"] = moved
         state["move_baseline"] = {"instant": since, "is": baseline}
         if moved:
-            moves = runner(
-                ["git", "-C", str(checkout), "log", f"--since={since}", "--format=%h %an %s", "--", rel]
-            ).lines
+            log = ["log", f"--since={since}", "--name-only", "--format=%x1e%h %an %s", "--", rel]
+            ran = runner(["git", "-C", str(checkout), *log])
+            moves = _annotated_moves(ran.out, rel)
             state["moves_since_session_start"] = moves
             # Re-reading exists for *another* session's commit landing under this one's feet. When
             # every move is this run's own, the context holding the newest text is not stale and the
@@ -1490,6 +1490,36 @@ def _with_move_check(
                 "whichever side is ahead, unless every one of those commits is this session's own"
             )
     return state
+
+
+def _annotated_moves(log: str, rel: str) -> list[str]:
+    """Each moved commit, followed by the parts of the skill it touched: `(SKILL.md, scripts/)`.
+
+    **The list used to be flattened to the skill, and the half that mattered was the quiet one.**
+    Confirmed 2026-09-13 in a `power-user-linux-setup` harvest: `plan-docs` showed seven commits
+    under a line naming `SKILL.md` and its remedy, re-read it, while that session had never loaded
+    `plan-docs`' `SKILL.md` and had run `plans.py` eight times. Four of the seven touched `scripts/`,
+    which is the code an earlier call may have run in its old form, and finding that out took a
+    hand-written `git log --name-only` against another repo. The verdict already compares install
+    and checkout per subdirectory; only this history was not split.
+
+    Annotated rather than split into lists, so a skill that moved a lot is still seen whole and the
+    subset is findable in it. The remedy sentence is left as it was until the annotation has been
+    read in a real run, since keying it on what this session used would couple the check to
+    transcript resolution it does not otherwise need.
+    """
+    moves: list[str] = []
+    prefix = f"{rel}/"
+    for chunk in log.split(COMMIT_RECORD):
+        lines = [line.strip() for line in chunk.splitlines() if line.strip()]
+        if not lines:
+            continue
+        parts: set[str] = set()
+        for path in lines[1:]:
+            inside = path.removeprefix(prefix).split("/")
+            parts.add(inside[0] if len(inside) == 1 else f"{inside[0]}/")
+        moves.append(f"{lines[0]} ({', '.join(sorted(parts))})" if parts else lines[0])
+    return moves
 
 
 def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:

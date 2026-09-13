@@ -910,6 +910,35 @@ def test_a_skill_that_moved_after_the_session_began_is_named(tmp_path):
     assert state["move_baseline"] == {"instant": "2026-09-02T09:00:00Z", "is": "this session began"}
 
 
+def test_each_moved_commit_says_which_part_of_the_skill_it_touched(tmp_path):
+    """Confirmed 2026-09-13: `plan-docs` showed seven commits under a line naming `SKILL.md`, to a
+    session that had never loaded that file and had run `plans.py` eight times. Four of the seven
+    touched `scripts/` — the code it had executed — and nothing in the output said which four."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    make_skill(checkout, "demo", "same\n")
+    make_installed(installed_root, "demo", "same\n")
+    log = (
+        "\x1e15ab22d Me say what the first call does\n\nskills/demo/SKILL.md\n"
+        "\x1ed7f1184 Me commit takes a set\n\nskills/demo/SKILL.md\nskills/demo/scripts/plans.py\n"
+        "\x1e6b0e71d Me a reference note\n\nskills/demo/references/rationale.md\n"
+    )
+    runner = FakeRunner(
+        {
+            f"git -C {checkout} log -1 --format=%cI": (0, "2026-09-02T15:00:00+03:00\n", ""),
+            f"git -C {checkout} log --since=": (0, log, ""),
+        }
+    )
+
+    state = harvest.skill_state(runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z")
+
+    assert state["moves_since_session_start"] == [
+        "15ab22d Me say what the first call does (SKILL.md)",
+        "d7f1184 Me commit takes a set (SKILL.md, scripts/)",
+        "6b0e71d Me a reference note (references/)",
+    ]
+
+
 def test_the_move_baseline_is_named_in_the_verdict_it_produced(tmp_path):
     """Session start is the wrong instant for the skill doing the asking. Confirmed 2026-09-07: a
     harvest invoked in a session's last minutes had its own body enter context *after* the three

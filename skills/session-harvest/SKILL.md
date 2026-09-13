@@ -720,6 +720,16 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   **0 of them a gate**, and 8 green-gate claims that had all come from unpiped runs. Only when `m`
   is above zero does the shell's state decide anything.
 
+  **`m` is a word list's answer, not a fact, so read the samples before taking the cheap exit.**
+  `audit.py`'s `GATE_RE` recognises test, lint and type-check runners, and every gate nobody had in
+  mind when that list was written scores as a listing. Confirmed 2026-09-13: a harvest was handed
+  `0 wrapped a gate, 3 a listing` for three calls that were all `plans.py scan` behind a `head -5` —
+  the **confidentiality** gate, whose failure publishes a client's name irreversibly, and the one
+  gate in this family whose exit code matters most. The samples print directly underneath the
+  verdict, which is what made it two seconds of reading rather than a command; the zero was caught
+  by the rule three paragraphs down about checking a zero you have reason to doubt, not by this one.
+  `plans/2026-09-13-gate-re-has-no-term-for-the-confidentiality-scan.md` owns the fix.
+
   **If a masked call did wrap a gate, ask the shell before paying for a re-run.** One call:
 
   ```shell

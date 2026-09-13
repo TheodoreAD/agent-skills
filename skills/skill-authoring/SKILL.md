@@ -134,6 +134,16 @@ finding the source repo.
    healthy. Check the link itself (`ls -l ~/.claude/skills`); if it is missing, point it at the hub
    (`ln -s ~/.agents/skills ~/.claude/skills`).]
 
+8. **Reload, when the change is meant to take effect in the session that made it.** A re-install
+   fixes the file on disk; the copy the running session loaded at start is still the old one, so a
+   session that edits a skill and then follows it is following what it replaced. In Claude Code,
+   `/reload-skills`, then invoke the skill again to pick the new body up. Confirmed 2026-09-01: a
+   session rewrote a step of `session-harvest`, pushed, re-installed, verified the installed copy
+   matched the checkout, and still held the superseded wording until the user supplied the reload.
+   Say which of push, re-install and reload is outstanding rather than reporting "re-installed" as
+   though the loop were closed. Moved here from `session-harvest` 2026-09-13, which reports install
+   state and no longer carries this sequence.
+
 **Renaming or deleting a skill needs a second step.** Installing is additive: the CLI adds and
 updates what the source publishes and never removes what it no longer does, so a renamed skill stays
 installed under its old name indefinitely, alongside the new one. Measured 2026-08-28 renaming one

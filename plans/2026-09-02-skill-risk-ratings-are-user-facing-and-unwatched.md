@@ -563,6 +563,29 @@ these commits, reading `analyzedAt` to confirm the verdict is for a scan newer t
 that `session-harvest` was not re-scanned after two later pushes the same afternoon while
 `plan-docs` and `session-bash-audit` were, so a re-scan may lag the push by hours.]
 
+### After the fix was pushed: `session-harvest` is not being re-scanned, and `skill-authoring` moved
+
+The five commits went out at 15:45:31Z and were polled every two minutes for forty. **No new
+`session-harvest` scan arrived**, while `skill-authoring`, changed in the same push, was scanned
+within a minute. The same thing had happened at the 14:39:21Z push: `plan-docs` and
+`session-bash-audit` were scanned at 14:40Z, and `session-harvest`, also changed in it, was not.
+
+[PITFALL: **a push re-scans some changed skills within a minute and silently skips others**, and the
+skipped one here is the one carrying a `critical`. It does not follow every push either:
+`skill-authoring` changed on 2026-09-12 and kept its 2026-09-06 verdict until today's push. So
+"push, then read the verdict" cannot be the monitor's model — it has to read `analyzedAt` against
+the content it expects, and treat "not re-scanned" as its own state rather than as the old verdict
+still applying. Whether a flagged skill is held back from re-scanning is unknown and not
+discoverable from outside.]
+
+**`skill-authoring` went from `safe` to `ath: medium` on that first scan since 2026-09-06**; Socket
+safe, Snyk low. Gen publishes no alert text (its page 404s), so the cause is a reading only. The
+content it had not seen includes `scripts/names.py` (2026-09-12, +268 lines), which queries
+`skills.sh/api/search` over the network and reads the `SKILL.md` of installed skills, and a 10-line
+reload step moved in from `session-harvest` today. The script is the larger and likelier change, and
+the skill already discloses its network access in `compatibility` and in its disclosure section.
+Nothing was changed in response, since without the finding there is nothing to test against need.
+
 **Seen in the same query and not yet looked at:** `research-library` now carries `ath: high`,
 analyzed 2026-09-06T00:53Z — worse than the `safe` implied by the 2026-09-06 re-query's "1 of 14
 non-safe", which read scans from 2026-09-04, and from a later bulk re-scan wave that stamped several

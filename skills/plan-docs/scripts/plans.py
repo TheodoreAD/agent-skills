@@ -2509,7 +2509,15 @@ def cmd_new(args: argparse.Namespace, ws: Workspace) -> int:
     if args.unscoped:
         if args.to or args.for_repo:
             raise PlanError("--unscoped belongs to no repo, so it cannot be combined with --to or --for")
-        return write_plan(cfg.unscoped, args.topic, args.status, "unscoped", None, cfg)
+        code = write_plan(cfg.unscoped, args.topic, args.status, "unscoped", None, cfg)
+        inside = ws.routing
+        if inside.rule is not None and inside.repo_root is not None:
+            # A plan created unscoped from inside a routed repo is very likely that repo's, and the
+            # unscoped area is where `absorb` never looks. Confirmed 2026-09-13: filed there to keep a
+            # busy tree clean, it sat unoffered for three hours until a harvest moved it.
+            print(f"note:    you are in {inside.rel or inside.repo_root} — if this is that repo's plan,")
+            print(f"         `new {args.topic} --to store` keeps it out of the tree and absorb offers it there")
+        return code
     if args.for_repo:
         return file_for_repo(args, ws)
     routing = ws.routing
@@ -2567,7 +2575,14 @@ def file_for_repo(args: argparse.Namespace, ws: Workspace) -> int:
 
     here = ws.routing.repo_root
     if here is not None and here.resolve() == routing.repo_root.resolve():
-        raise PlanError(f"--for names the repo this session is already in; use plain `new {args.topic}`")
+        # Both routes named, because `--for` is reached for two reasons and plain `new` answers only
+        # one. A session told to stay out of a busy tree tried `--for` for exactly that, was sent to
+        # plain `new` — which writes into that tree — and filed the plan unscoped instead, where
+        # `absorb` never looked, for three hours (2026-09-13).
+        raise PlanError(
+            f"--for names the repo this session is already in; use plain `new {args.topic}`, or "
+            f"`new {args.topic} --to store` to keep it out of a working tree another session is holding"
+        )
     store_dir = routing.store_dir
     if store_dir is None:
         raise PlanError(

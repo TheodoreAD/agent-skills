@@ -1277,6 +1277,32 @@ def test_filing_accepts_an_absolute_path_and_refuses_the_current_repo(ws, capsys
     assert plans.main(["new", "here", "--for", str(ws.personal), "--to", "store", "--path", str(ws.client)]) == 1
 
 
+def test_refusing_for_on_the_current_repo_names_the_store_route_too(ws, capsys):
+    """`--for` is reached for two reasons, and plain `new` answers only the first. Confirmed
+    2026-09-13: a session asked to keep a plan out of a tree another session was writing tried `--for`,
+    was told to use plain `new` — which writes into that tree — and filed it unscoped instead, where
+    `absorb` never looked, for three hours."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    assert plans.main(["new", "here", "--for", str(ws.personal), "--path", str(ws.personal)]) == 1
+    assert "`new here --to store` to keep it out of a working tree" in capsys.readouterr().err
+
+
+def test_an_unscoped_plan_made_inside_a_routed_repo_points_at_the_store_route(ws, capsys):
+    """The unscoped area is where that plan went, and `absorb` never looks there. From inside a
+    routed repo the likelier owner is that repo, so the create says how to keep it out of the tree and
+    still have it offered."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    assert plans.main(["new", "busy-tree", "--unscoped", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "you are in github.com-personal/agent-skills" in out
+    assert "`new busy-tree --to store`" in out
+
+    loose = ws.home / "not-a-repo"
+    loose.mkdir()
+    assert plans.main(["new", "half-an-idea", "--unscoped", "--path", str(loose)]) == 0
+    assert "you are in" not in capsys.readouterr().out
+
+
 def test_filing_for_a_store_routed_repo_is_at_home_not_in_transit(ws, capsys):
     """A client repo's plans live in the store permanently, so nothing is owed and the note must not
     claim the file is waiting to be absorbed."""

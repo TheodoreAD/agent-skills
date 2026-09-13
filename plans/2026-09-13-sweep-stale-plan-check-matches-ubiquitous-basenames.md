@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 source_repo: github.com-personal/repo-tasks
 source_session: 5de331c8-e7f0-4bcb-a86f-c242683a382d.jsonl
@@ -56,20 +56,29 @@ does not. That wording asks the reader to judge whether a plan naming `quality.p
 judgement; it is a match on a filename that carries no subject, and no amount of reading turns it
 into a verdict either way.]
 
-## Open questions
+## Open questions, answered 2026-09-13
 
-[NEEDS CLARIFICATION: exclude a fixed list, or require the match to be discriminating? A stop-list
-(`__init__.py`, `pyproject.toml`, `README.md`, `conftest.py`, `tasks.py`) is the cheap version and
-is what the sibling check does. The alternative is to drop any basename this session's own repo has
-more than one of, or that appears in more than N of the searched repos — self-tuning, and it would
-have caught `tasks.py` here without anyone listing it. The stop-list is probably right for the same
-reason the sibling check's three filenames were: it is auditable, and the cost of missing one is a
-row of noise rather than a missed finding.]
+Landed as `0c249f9` and `4924cf0`, following the recommended direction below. The re-run against
+this session returned exactly the two `selfinstall.py` rows, out of 24 the unchanged check printed
+that day.
 
-[NEEDS CLARIFICATION: should the row say what it matched on? The current output prints
-`names: __init__.py`, which is already the whole tell — a reader who knows to distrust that basename
-can skim correctly. If the fix is a stop-list, that display is redundant; if it is a heuristic, the
-row should probably say why it survived.]
+- **A fixed list, or a discriminating match?** A fixed list of package scaffolding, names a tool
+  fixes for every package and whose content is always that package's own (`SUBJECTLESS_NAMES`),
+  chosen after measuring both self-tuning shapes. Counting plan mentions would drop `plans.py`,
+  named by 38 plans in five repos because it is one shared file. Counting checkouts that track a
+  name separates `__init__.py` (36 of 71) from `selfinstall.py` (1) today, but a canonical file one
+  repo propagates — `ruff.toml` at 6, `dprint.json` at 9 — gains a checkout with every consumer, so
+  any fixed threshold eventually drops exactly the file whose consumers' plans may really be about
+  the change. `README.md` was never searched, since `.md` is excluded.
+
+[PITFALL: **tool config looks like scaffolding and is not.** `pytest.ini` has a name as fixed as
+`conftest.py` and sits in 19 checkouts, so the first draft of the list carried it. `repo-tasks`
+distributes a canonical `pytest.ini` to its consumers, together with `ruff.toml` and `dprint.json`,
+so a change there is precisely what a consumer's plan naming it may be about. The list holds only
+scaffolding, and a test pins `pytest.ini` as searched.]
+
+- **Should the row say what it matched on?** It keeps its `names:` line, and the section now also
+  prints the skipped names as `not searched`, so the filter is visible rather than silent.
 
 ## Recommended direction
 

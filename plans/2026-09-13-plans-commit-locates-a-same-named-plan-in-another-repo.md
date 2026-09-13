@@ -3,9 +3,7 @@ status: idea
 updated: 2026-09-13
 ---
 
-# `plans.py commit` can resolve a store path to a same-named plan in the current repo, and commit
-
-nothing
+# `plans.py commit` can resolve a store path to a same-named plan here, and commit nothing
 
 ## Context
 
@@ -66,9 +64,22 @@ to a basename match in a different repository and commit the result.
 `plans.py commit --path /home/tdumitrescu/plans <store-relative path> -m '...'` exits 3 with
 `verdict: needs-decision` — _"/home/tdumitrescu/plans is not under projects_root
 (/home/tdumitrescu/projects), so its store path cannot be mirrored"_. That is `require_routable()`
-treating the store as a project repo to route rather than as the store. So on this machine there is
-no invocation of `commit` that commits a store removal from a session whose cwd is elsewhere, which
-is precisely the situation every absorption creates.
+treating the store as a project repo to route rather than as the store.
+
+**An absolute store path does work from another repo, so "no invocation works" overstates it.**
+Confirmed 2026-09-13 by the `agent-skills` session that absorbed this plan: from cwd `agent-skills`,
+`plans.py commit /home/tdumitrescu/plans/github.com-personal/agent-skills/<four files> -m '...'`
+committed `8ee9226` in the store, printed each file as `(removed)`, and added the note saying each
+plan was absorbed rather than deleted. The path is missing, so it skips `is_file()` and reaches
+`deleted_plan`, which resolves its repository from the absolute path itself; `locate` is never
+consulted. The gap is the **store-relative** spelling, and that is the one the caller had to hand.
+
+[PITFALL: **`absorb --apply` never prints the absolute store path it removed.** Its lines read
+`absorbed: <basename> -> <destination in this repo>`, and its closing text says only
+`plans.py commit <path> <path> ...`. A caller assembling the paths writes them relative to the store
+it was just told about — the one spelling that falls through to `locate`. So the smallest fix may be
+in `absorb`'s output rather than in `commit`'s resolution: print the exact command, absolute paths
+filled in.]
 
 ## Open questions
 
@@ -86,9 +97,9 @@ unnecessary.]
 
 [NEEDS CLARIFICATION: what should `commit` do when cwd is not the store and the target is? This is
 the common case after every `absorb`, `absorb`'s own closing text prescribes the command, and
-neither the bare form nor `--path` currently works from there. A `--store` flag, or
-`require_routable()` recognising `$PLANS_HOME` as a store rather than as an unroutable project, are
-the two obvious shapes.]
+neither the store-relative form nor `--path` works from there — only an absolute path does. A
+`--store` flag, `require_routable()` recognising `$PLANS_HOME` as a store rather than as an
+unroutable project, or `absorb` printing the absolute command are the three shapes.]
 
 ## Recommended direction
 

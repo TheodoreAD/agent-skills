@@ -3213,14 +3213,25 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     for call in payload["masked_calls"]:
         print(f"    masked: {call['command'][:160]}")
     if masked and claims:
+        # The same order as the body, which reached it a revision earlier: the split is the cheap,
+        # stronger exit and the shell check is the branch after it. Printed in the old order, a run
+        # that read this block ran a command the body said it did not need — confirmed 2026-09-13,
+        # a harvest that followed the body instead and ignored this. The split is pointed at rather
+        # than computed here, so `audit.py`'s gate classification keeps one owner.
         print(
-            "\nAsk the shell first: `setopt | rg pipefail` (zsh) or `set -o | rg pipefail` (bash), as a\n"
-            "Bash call in this session — a pipeline under pipefail reports the rightmost non-zero status,\n"
-            "so those greens stood on real exit codes and no re-run is owed. The option can be guarded on\n"
-            "a harness variable, so a config file is not the answer and neither is another shell.\n"
-            "Without it, re-run the repo's own gate unpiped before believing any of those greens, and\n"
-            "report the count with the re-run's verdict attached — the claims are in the conversation\n"
-            "either way, and the conversation is the one artefact a later commit cannot amend."
+            "\nRead the gate/listing split first: `audit.py --session <id> --until <boundary>` prints\n"
+            "`exit-masked  n  m wrapped a gate, k a listing`. When m is zero no green claim rested on a\n"
+            "masked exit code, whatever the shell does — but read the samples under it before taking\n"
+            "that exit, since m comes from a list of gate names and a gate missing from it scores as a\n"
+            "listing.\n"
+            "\nWhen a masked call did wrap a gate, ask the shell: `setopt | rg pipefail` (zsh) or\n"
+            "`set -o | rg pipefail` (bash), as a Bash call in this session — a pipeline under pipefail\n"
+            "reports the rightmost non-zero status, so those greens stood on real exit codes and no re-run\n"
+            "is owed. The option can be guarded on a harness variable, so a config file is not the answer\n"
+            "and neither is another shell. Without it, re-run the repo's own gate unpiped before believing\n"
+            "any of those greens, and report the count with the re-run's verdict attached — the claims are\n"
+            "in the conversation either way, and the conversation is the one artefact a later commit\n"
+            "cannot amend."
         )
     elif not masked:
         print("\nno masked exits: the session's own green results stand on unfiltered evidence")

@@ -1697,6 +1697,25 @@ def test_green_claims_are_counted_against_the_masked_exits(tmp_path, monkeypatch
     assert [claim["line"] for claim in payload["green_claims"]] == ["Gate green, committing now."]
 
 
+def test_the_printed_claims_advice_puts_the_gate_split_before_the_shell_check(tmp_path, monkeypatch, capsys):
+    """The body says to read `audit.py`'s gate/listing split first, because a zero there needs no
+    command at all; the printed block said "ask the shell first". Confirmed 2026-09-13: a harvest
+    followed the body and ignored the block, which is the tell that the block was behind."""
+    path = write_transcript(
+        tmp_path / "s.jsonl",
+        [
+            bash_entry("inv quality.precommit 2>&1 | tail -30"),
+            blocks_entry("assistant", [{"type": "text", "text": "Gate green, committing now."}]),
+        ],
+    )
+    args = harvest.build_parser().parse_args(["claims", "--session", str(path)])
+    monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
+    harvest.cmd_claims(args, FakeRunner())
+    out = capsys.readouterr().out
+    assert "Ask the shell first" not in out
+    assert out.index("gate/listing split first") < out.index("setopt | rg pipefail")
+
+
 def test_the_claims_ratio_counts_one_window_on_both_sides(tmp_path, monkeypatch, capsys):
     """Confirmed 2026-09-13: `claims --until <boundary>` printed `0 of 39` where `audit.py --until`
     on the same boundary counted 32 calls. The numerator honoured the cutoff and the denominator did

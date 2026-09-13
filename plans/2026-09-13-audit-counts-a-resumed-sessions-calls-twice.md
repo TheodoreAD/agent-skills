@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-13
 source_repo: github.com-personal/power-user-linux-setup
 source_session: feea009a-eef1-4312-9967-186504d96db7.jsonl
@@ -62,24 +62,21 @@ session's _harvest report_ quoted the command as prose. The audit does not count
 Counting transcript hits rather than parsed tool-call records would over-correct in the other
 direction.]
 
-## Open questions
+## Open questions, answered 2026-09-13
 
-[NEEDS CLARIFICATION: what is the dedupe key? `(timestamp, cmd)` is what was measured here and it is
-cheap, but two genuinely distinct calls could collide if a session issues the same command twice
-inside one millisecond — unlikely, and the cost of a false merge is one lost tag rather than a wrong
-attribution. The `tool_use` id, if it survives into the resumed transcript unchanged, is the exact
-key; if resume rewrites ids then it is useless and `(timestamp, cmd)` is the only option. Needs a
-read of what a resumed transcript actually stores before choosing.]
+Landed as `28099cd` (the dedupe) and `692a391` (the research note), as the recommended direction
+below describes, with the key the first question left open.
 
-[NEEDS CLARIFICATION: does deduplication change any conclusion already recorded in
-`references/research.md`? Several of its rates were measured with this defect live. The 7.2% figure
-is one day's corpus and says nothing about the corpora those numbers came from — each would need
-re-running with the fix to know.]
-
-[NEEDS CLARIFICATION: should `--save-baseline` record the duplication rate it measured, the way it
-records `days` and `note`? A baseline taken before the fix cannot be compared to one taken after
-without it, and the existing refusal-to-overwrite logic already treats a baseline as a measurement
-of a corpus that cannot be re-taken.]
+- **What is the dedupe key?** The `tool_use` id. Measured before choosing, over the same seven-day
+  window: every one of the 649 replayed calls kept its id, and id and `(timestamp, cmd)` agreed on
+  all of them. The copy kept is the one in the smallest transcript, since a descendant holds its
+  parent's calls plus its own.
+- **Does deduplication change a conclusion in `references/research.md`?** Not at the precision the
+  file states rates to: on this window no rate moved more than 0.43pp. Counts did, most on the small
+  rows (`git-add-all` 19 → 12). The earlier corpora cannot be re-taken, so the file now says its
+  counts are upper bounds and its rates stand.
+- **Should `--save-baseline` record the duplication?** Yes, as `replayed_dropped`. Its absence marks
+  a baseline taken before the fix, and `--compare` says so when reading one.
 
 ## Recommended direction
 

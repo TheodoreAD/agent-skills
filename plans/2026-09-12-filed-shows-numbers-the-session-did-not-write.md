@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-12
+updated: 2026-09-13
 source_repo: github.com-personal/repo-tasks
 source_session: db005386-041e-4f80-acbe-6e944677e6fa.jsonl
 source_moment: 2026-09-12T09:12:00Z
@@ -37,6 +37,13 @@ down**, which is why it is worth fixing rather than living with. That fix stoppe
 a commit was "another session's" when the check simply could not see the door it came through; this
 is the mirror — asserting a _line_ is this session's when the only evidence is that the session
 touched the file. Both read as specific and both are unfalsifiable from the output alone.]
+
+**Reproduced 2026-09-13 on this plan itself.** The `agent-skills` session that absorbed it added one
+paragraph — the cross-reference below — and its harvest's `filed` then listed this file with the
+three number-bearing lines from the evidence block above: `294 unit tests`, `353 tests`, `27 tests`.
+None were that session's writes; all three came from the filing session in `repo-tasks`. A second
+repo and a second session, and the smallest possible edit, which is the case the label or diff has
+to get right.
 
 **Related, kept apart:** `2026-09-09-harvest-attribution-reads-a-path-as-authorship.md` is the
 commit-level form of the same error — `filed` crediting a commit because this session wrote or read

@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-10
+updated: 2026-09-13
 source_repo: github.com-personal/power-user-linux-setup
 source_session: b494b3ef-0114-4463-b5c6-c73187080e11.jsonl
 source_moment: 2026-09-09T21:05:00Z
@@ -61,6 +61,16 @@ checked" and a zero reads as "checked".
 but it is also not this session's to reason about, and the sweep already has the parallel-session
 caveat elsewhere. Leaning: collapse it to a count too, under a separate label, since the recovery
 question is equally meaningless there.]
+
+[NEEDS CLARIFICATION: **a background job has a second scratch location, and the prefix above misses
+it.** Confirmed 2026-09-13 by the `agent-skills` harvest of job `519cf236`: the step's one row was
+`~/.claude/jobs/519cf236/tmp/live-attach.sh`, a throwaway end-to-end check. The job's own
+environment names that directory — `$CLAUDE_JOB_DIR/tmp`, "cleaned up when the job is deleted" — and
+tells the session to use it instead of `/tmp`, so it is exactly as ephemeral by design as the
+scratchpad, sits nowhere near `claude-<uid>/`, and would still be reported individually by the
+filter as written. Is the match "each harness-declared scratch location this session was given"
+rather than one prefix? The job's `state.json`, which `harvest.py` already reads to resolve the
+transcript, is the natural place to learn it.]
 
 [NEEDS CLARIFICATION: is `/tmp` in general safe to collapse? No — a session that writes to `/tmp`
 directly, outside the scratchpad, has written somewhere with no recovery path _and_ no guarantee of

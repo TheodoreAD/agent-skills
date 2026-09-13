@@ -705,7 +705,10 @@ It is silent when the store holds nothing for this repo and nothing is owed reti
 nothing on the sessions where it does not apply. When it does print filed plans, **put the set to
 the user with `AskUserQuestion` before applying** — one question for the set, not one per plan —
 then apply, run the repo's quality gate, and commit **twice**: this repo for the additions, the
-store for the removals. Then carry on with whatever the session was for.
+store for the removals. `--apply` prints the store's commit with its paths filled in; run it with
+your message rather than assembling the paths, and note that `commit` resolves a path where it
+points and never by basename — a store-relative path committed an absorption's removal as an empty
+commit in the wrong repo until 2026-09-13. Then carry on with whatever the session was for.
 
 Once per session, not once per command. The script is stateless and cannot tell a first call from a
 fifth; you can, so the rule lives here. `list` also prints a one-line footer when plans are waiting,

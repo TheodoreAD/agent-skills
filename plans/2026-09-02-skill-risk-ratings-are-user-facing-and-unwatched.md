@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-13
+updated: 2026-09-15
 source_repo: github.com-personal/power-user-linux-setup
 source_session: cd4f9f9e-379a-4bb2-986c-1a99e0f84ac0.jsonl
 source_moment: 2026-09-02T20:05:00+03:00
@@ -577,6 +577,13 @@ skipped one here is the one carrying a `critical`. It does not follow every push
 the content it expects, and treat "not re-scanned" as its own state rather than as the old verdict
 still applying. Whether a flagged skill is held back from re-scanning is unknown and not
 discoverable from outside.]
+
+**Re-checked 2026-09-15, 41 hours later, after one more push that changed `session-harvest`'s
+script: only Snyk re-scanned it** (`low`, 09:42:36Z). Gen and Socket still carry the 2026-09-13
+14:04–14:05Z verdicts, and nothing in the repo was re-scanned during the 41 hours between. So the
+three scanners are triggered independently, and it is specifically Socket — the `critical` — and Gen
+that are not re-reading this skill. A dispute or re-scan request goes to them, not to skills.sh as a
+whole.
 
 **`skill-authoring` went from `safe` to `ath: medium` on that first scan since 2026-09-06**; Socket
 safe, Snyk low. Gen publishes no alert text (its page 404s), so the cause is a reading only. The

@@ -1,9 +1,10 @@
 # Agent instructions for agent-skills
 
 Cross-tool instructions for AI coding agents working in this repo. Universal conventions live in
-`~/AGENTS.md` — nothing there is repeated here, only what is specific to this repo. `CLAUDE.md` is a
-plain symlink to this file, not a wrapper that imports it, so every harness reads byte-identical
-content.
+whichever home-level instructions file your agent loads — `~/.agents/AGENTS.md` where that
+convention is followed, `~/AGENTS.md` elsewhere — and nothing there is repeated here, only what is
+specific to this repo. `CLAUDE.md` is a plain symlink to this file, not a wrapper that imports it,
+so every harness reads byte-identical content.
 
 ## What this repo is
 

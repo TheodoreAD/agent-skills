@@ -604,3 +604,57 @@ exists now, but the corpus it scanned also changed, so a worse verdict cannot be
 disclosure, the new code, or a detector update. What it does settle is the monitor question: **a
 push re-scans within minutes and can move a verdict to `critical`**, and the only reason anyone
 knows is that a reinstall happened to print the summary.
+
+### 2026-09-16: all three did re-scan, the fix is in the scanned content, and the rating stands
+
+Re-queried 2026-09-16 15:20 +03:00. Every timestamp for `session-harvest` is now from 2026-09-15:
+Snyk `low` at 09:42:36Z, Gen `medium` at 09:43:27Z, Socket `critical`, 1 alert, score 90, at
+09:44:40Z. Nothing has been pushed to this repo since 09:43:39Z that day, and no scan has moved in
+the 30 hours since.
+
+[PITFALL: **the section above read the endpoint in the middle of a scan wave and drew a conclusion
+from it.** Its "only Snyk re-scanned it" was true at the instant of the query and false a minute
+later — Gen finished 51 seconds after Snyk, Socket 2m04s after, all three triggered by the 09:42Z
+push. The claim that Gen and Socket specifically are not re-reading this skill is withdrawn. What
+holds instead: **a wave is not atomic, and the three scanners land seconds to minutes apart**, so a
+single read during one returns a per-scanner mix of new and old verdicts that is indistinguishable
+from the stale-verdict case the section was describing. A monitor has to compare each scanner's own
+`analyzedAt` against the push instant, and treat a scanner still older than the push as _pending_
+rather than as an answer. The 40-minute poll after the 2026-09-13 15:45:31Z push was sound and its
+finding stands: that push produced no `session-harvest` scan at all.]
+
+**So the `[UNVERIFIED:]` above is answered, and the answer is no.** The 09-15 scans read the fixed
+body — the three cuts went out at 15:45:31Z on 09-13, two days before — and `session-harvest` is
+still Gen `medium` / Socket `critical`. The fix did not clear the rating.
+
+Socket's alert is a fresh reading rather than the one from 09-13, and the difference is exactly the
+cut that was made. Verbatim, from the lowercase per-scanner URL, Anomaly, confidence 86%, severity
+56%:
+
+> unusually powerful: it reads wide local state, inspects shared stores and multiple repos, and may
+> write or locally commit durable files. No malicious exfiltration, hidden execution, or untrusted
+> installer chain is evident, yet the breadth and autonomy are somewhat disproportionate for a
+> 'harvest' helper and warrant caution.
+
+Against 09-13's "unusually powerful for a 'harvest' helper: it reads broad local state, can
+influence durable files across plan stores, and includes transitive skill install/reinstall
+guidance", three things moved. **The install/reinstall ground is gone** — the one concern the fix
+targeted, and the judge no longer names it; the new text goes further and states that no untrusted
+installer chain is evident. **The other two grounds survive verbatim in substance**: broad local
+reads, and durable writes across stores, now widened to "multiple repos". And the numbers went
+86%/56% against 88%/53%, so **removing one of three named grounds moved severity slightly up and the
+rendered verdict not at all.**
+
+[DECISION: **nothing further is cut on this evidence.** The two surviving grounds are the skill —
+reading wide local state is what a harvest does, and writing plans through `plan-docs` is what it is
+for, both disclosed in the body and in `compatibility`. A change that made either one smaller would
+make the skill worse at its job in exchange for a rating movement that the one measured cut did not
+produce. The remaining levers are outward: a dispute or re-scan request to Socket, which needs the
+user's say-so because it is contact with a third party, and it is now the only untried one.]
+
+[UNVERIFIED: **whether `critical` is the correct rendering of this alert at all.** Socket's own
+fields are Anomaly / LOW severity-class / 56%, and the prose explicitly clears the skill of
+exfiltration, hidden execution and installer chains — yet skills.sh renders the skill `critical`
+with a score of 90. Whether the rendering is Socket's or skills.sh's, and against what mapping, is
+not discoverable from either page. It is the first thing to ask in a dispute, because if the mapping
+is skills.sh's then the alert text is not the thing to argue with.]

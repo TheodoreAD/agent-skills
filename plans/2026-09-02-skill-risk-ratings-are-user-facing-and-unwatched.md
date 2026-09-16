@@ -623,6 +623,13 @@ from the stale-verdict case the section was describing. A monitor has to compare
 rather than as an answer. The 40-minute poll after the 2026-09-13 15:45:31Z push was sound and its
 finding stands: that push produced no `session-harvest` scan at all.]
 
+One weak datum on what triggers a wave, taken the same afternoon: a push carrying only `plans/` and
+`AGENTS.md`, nothing under `skills/`, produced no re-scan of anything in the four minutes after it,
+where the 09-15 push that did change a skill's script triggered all three scanners inside three.
+Four minutes is far too short to call it, since the 09-13 push changed a skill and produced nothing
+in forty — but it is consistent with the trigger being changed skill content rather than a push, and
+it is one query to extend next time.
+
 **So the `[UNVERIFIED:]` above is answered, and the answer is no.** The 09-15 scans read the fixed
 body — the three cuts went out at 15:45:31Z on 09-13, two days before — and `session-harvest` is
 still Gen `medium` / Socket `critical`. The fix did not clear the rating.

@@ -25,7 +25,7 @@ import signal
 import subprocess
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -681,8 +681,10 @@ def _job_transcript(session: str) -> Path | None:
     return path if path is not None and path.is_file() else None
 
 
-def load_session(session: str) -> list[Call]:
-    """Every Bash call from one transcript, named by session id or by path.
+def load_session(session: str) -> tuple[list[Call], Path | None]:
+    """Every Bash call from one transcript, named by session id or by path, and the file they came
+    from — the path so a caller can read the same transcript for something the calls do not carry,
+    without resolving an id twice over a directory of thousands of files.
 
     The one measurement that arrives while the session can still act on it. Everything else in this
     script looks across sessions after the fact, which is right for a trend and wrong for "you are
@@ -706,10 +708,38 @@ def load_session(session: str) -> list[Call]:
         else:
             matches = [p for p in PROJECTS_DIR.rglob("*.jsonl") if p.stem == session or p.stem.startswith(session)]
             if not matches:
-                return []
+                return [], None
             path = max(matches, key=lambda p: p.stat().st_mtime)
     print(f"# transcript: {path}")
-    return _parse_transcript(path, path.relative_to(PROJECTS_DIR).parts[0] if PROJECTS_DIR in path.parents else "")
+    project = path.relative_to(PROJECTS_DIR).parts[0] if PROJECTS_DIR in path.parents else ""
+    return _parse_transcript(path, project), path
+
+
+def compaction_instants(path: Path) -> list[str]:
+    """When a compaction wrote a continuation turn into this transcript, oldest first.
+
+    **Read `isCompactSummary` on the entry, never the sentence it contains.** The continuation turn
+    does open "This session is being continued from a previous conversation", and matching that text
+    is what a reader reaches for first — measured 2026-09-18 on one 10 MB transcript, it returns
+    three entries and only one of them is a compaction: the other two are the session's own
+    assistant turns quoting the sentence while discussing this very check, and a second transcript
+    matched once with no compaction in it at all. The flag is set by the harness on the user entry
+    it writes, it is absent everywhere else, and it does not move when the wording does.
+
+    A transcript with no compaction returns an empty list, which is the common case and not an error.
+    """
+    found: list[str] = []
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if "isCompactSummary" not in line:  # cheap reject before parsing a megabyte of JSON
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("isCompactSummary") and entry.get("timestamp"):
+                found.append(entry["timestamp"])
+    return sorted(found)
 
 
 def load_calls(days: float, project_filter: str | None) -> tuple[list[Call], int]:
@@ -974,7 +1004,13 @@ def instrument_commit() -> str | None:
 
 
 def save_baseline(
-    calls: list[Call], path: Path, days: float, note: str, force: bool = False, replayed: int = 0
+    calls: list[Call],
+    path: Path,
+    days: float,
+    note: str,
+    force: bool = False,
+    replayed: int = 0,
+    window: tuple[str | None, str | None] = (None, None),
 ) -> None:
     """Write this run's per-model rates, refusing to destroy a baseline already at `path`.
 
@@ -1006,6 +1042,10 @@ def save_baseline(
     payload = {
         "saved": datetime.now().astimezone().isoformat(timespec="seconds"),
         "days": days,
+        # A run bounded by --since/--until covers less than its --days says, and a baseline that
+        # recorded only the days would be compared against as a full window years after anyone
+        # remembers which flags were passed.
+        **({"window": {"since": window[0], "until": window[1]}} if any(window) else {}),
         "note": note,
         "instrument": instrument_commit(),
         "replayed_dropped": replayed,
@@ -1039,6 +1079,10 @@ def _print_compare_header(baseline_path: Path, baseline: dict, source: str, days
     elif theirs is not None and float(theirs) != float(days):
         print(f"   windows differ: this run --days {days:g}, the baseline --days {float(theirs):g} — counts below")
         print("   cover a different span, so compare rates and hits/population cells, never a bare count")
+    window = baseline.get("window") or {}
+    if window:
+        bounds = _window_words(window.get("since"), window.get("until"))
+        print(f"   the baseline itself was taken over {bounds}, so its --days overstates what it saw")
     if "replayed_dropped" not in baseline:
         print("   this baseline predates replay dedupe: its rates counted each call a resumed transcript")
         print("   replayed once per copy (7.2% of one 7-day corpus), which moves any row a resumed session")
@@ -1296,20 +1340,91 @@ def _before(calls: list[Call], until: str) -> list[Call]:
     A call whose transcript entry carried no timestamp is kept rather than dropped: it cannot be
     placed on either side, and silently discarding it would bias the rate it is being used to judge.
     """
-    cutoff = datetime.fromisoformat(until)
-    if cutoff.tzinfo is None:
-        cutoff = cutoff.astimezone()
-    kept: list[Call] = []
+    cutoff = _instant(until)
+    return [c for c in calls if not c.timestamp or _instant(c.timestamp) < cutoff]
+
+
+def _after(calls: list[Call], since: str) -> list[Call]:
+    """Calls made at or after `since` — the other end of the window, on the same terms as `_before`.
+
+    Symmetry is the whole point: a window was one flag and a subtraction until 2026-09-18, and a
+    subtraction gives back counts and nothing else. Confirmed on a seven-day background job that a
+    compaction had split into two sessions with opposite rates (67% chains before it, 1% after):
+    running to each end and subtracting produced the after-half's counts, while its samples, its
+    gate-versus-listing split and its truncation line still described the whole prefix, because
+    those are not differences of two numbers.
+
+    A call with no timestamp is kept at both ends, as `_before` keeps it: it cannot be placed, and
+    dropping it would bias the rate rather than narrow the window.
+    """
+    start = _instant(since)
+    return [c for c in calls if not c.timestamp or _instant(c.timestamp) >= start]
+
+
+def _windowed(calls: list[Call], since: str | None, until: str | None) -> tuple[list[Call], dict[str, int]]:
+    """Both ends of the window applied, and how many calls each end removed — separately, because
+    one total tells a reader a window was applied and not which flag applied it."""
+    dropped = {"since": 0, "until": 0}
+    if until:
+        kept = _before(calls, until)
+        dropped["until"] = len(calls) - len(kept)
+        calls = kept
+    if since:
+        kept = _after(calls, since)
+        dropped["since"] = len(calls) - len(kept)
+        calls = kept
+    return calls, dropped
+
+
+def _window_words(since: str | None, until: str | None) -> str:
+    """The window in the words an empty result should be reported with."""
+    if since and until:
+        return f"the window {since} to {until}"
+    if until:
+        return f"the window before {until}"
+    if since:
+        return f"the window at or after {since}"
+    return "this session"
+
+
+def _in_window(instant: str, since: str | None, until: str | None) -> bool:
+    """Whether a moment the transcript recorded falls in the window being measured."""
+    stamped = _instant(instant)
+    if until and stamped >= _instant(until):
+        return False
+    return not (since and stamped < _instant(since))
+
+
+def _instant(value: str) -> datetime:
+    """An ISO timestamp as an aware datetime, naive values read as this machine's local time.
+
+    One parser for both ends and for the compaction split, because a comparison between a naive and
+    an aware datetime raises rather than answers, and the three call sites had no reason to disagree
+    about which zone a bare `2026-09-16T15:06:05` is in.
+    """
+    # `fromisoformat` reads the transcript's `Z` suffix directly on 3.11+, which this script already
+    # required: every call it filters carries one.
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.astimezone()
+
+
+def _split_by_compaction(calls: list[Call], instants: Sequence[str]) -> tuple[list[list[Call]], int]:
+    """The calls in each span a compaction cuts the session into, and how many could not be placed.
+
+    An unstamped call is counted in no span rather than in every one — the opposite of `_before`'s
+    rule, and for the same reason it exists: there it would bias a rate, here it would inflate two
+    rates at once and make the spans sum to more than the session.
+    """
+    cuts = [_instant(i) for i in instants]
+    spans: list[list[Call]] = [[] for _ in range(len(cuts) + 1)]
+    unplaced = 0
     for call in calls:
         if not call.timestamp:
-            kept.append(call)
+            unplaced += 1
             continue
-        stamped = datetime.fromisoformat(call.timestamp)
-        if stamped.tzinfo is None:
-            stamped = stamped.astimezone()
-        if stamped < cutoff:
-            kept.append(call)
-    return kept
+        stamped = _instant(call.timestamp)
+        spans[sum(1 for cut in cuts if stamped >= cut)].append(call)
+    return spans, unplaced
 
 
 # What counts as "the gate" behind a masked exit code. A name list rather than the more general "was
@@ -1380,7 +1495,34 @@ def rg_replace_flags(calls: list[Call]) -> Counter[str]:
     return found
 
 
-def _print_session_rows(calls: list[Call]) -> None:
+def _print_compaction_segments(calls: list[Call], instants: Sequence[str]) -> None:
+    """Each side of a compaction, beside the whole-session rows rather than instead of them.
+
+    **A long session that was compacted is exactly the one whose whole-session row misleads**, and
+    nothing prompted looking for the split. Confirmed 2026-09-13 on a seven-day background job: 67%
+    chains, 48% head/tail and 32% heredoc before its continuation turn, 1%, 0% and 0% after it, and
+    the row the harvest read — 47%, 33%, 22% — described neither half. It was noticed only because
+    the session's own recent calls looked nothing like its totals, which is not a check.
+
+    Printed only when the split actually separates calls: a compaction with every call on one side
+    of it says the same thing twice and buries the rows that differ.
+    """
+    spans, unplaced = _split_by_compaction(calls, instants)
+    if sum(1 for span in spans if span) < 2:
+        return
+    where = ", ".join(instants)
+    print(f"\n== compacted {len(instants)}x, at {where} ==")
+    print("   the whole-session rows above average across the split; these are the halves it made")
+    if unplaced:
+        print(f"   {unplaced} call(s) carried no timestamp and sit in no span, so the spans sum to less")
+    for n, span in enumerate(spans):
+        if not span:
+            continue
+        edge = "before the first continuation turn" if n == 0 else f"after continuation turn {n}"
+        _print_session_rows(span, edge)
+
+
+def _print_session_rows(calls: list[Call], heading: str = "this session") -> None:
     """The session view: one row per line, count first, rate after.
 
     A count is what a session-sized denominator wants. Rates print as `:.0%`, so at a median session
@@ -1395,7 +1537,7 @@ def _print_session_rows(calls: list[Call]) -> None:
     gates = len(masked_gate(calls))
     cut = len(truncation_events(calls))
     flags = rg_replace_flags(calls)
-    print(f"\n== this session, {n} calls ==")
+    print(f"\n== {heading}, {n} calls ==")
     for row in SESSION_ROWS:
         hits = counts[row]
         note = ""
@@ -1419,20 +1561,24 @@ def report_session(args: argparse.Namespace) -> list[Call]:
     Returns the calls it reported on, filtered by `--until`, so the caller can dump the same set
     `--json` asks for rather than re-deriving it from `load_calls`.
     """
-    calls = load_session(args.session)
+    calls, path = load_session(args.session)
     if not calls:
         print(f"no Bash calls found for session {args.session!r}")
         return []
-    whole = len(calls)
-    if args.until:
-        calls = _before(calls, args.until)
-        if not calls:
-            print(f"no Bash calls before {args.until} for session {args.session!r}")
-            return []
+    calls, dropped = _windowed(calls, args.since, args.until)
+    if not calls:
+        print(f"no Bash calls in {_window_words(args.since, args.until)} for session {args.session!r}")
+        return []
     print(f"# this session: {len(calls)} Bash calls")
     if args.until:
-        print(f"#   excluding {whole - len(calls)} at or after {args.until} — the run's own sweep")
+        print(f"#   excluding {dropped['until']} at or after {args.until} — the run's own sweep")
+    if args.since:
+        print(f"#   excluding {dropped['since']} before {args.since}")
     _print_session_rows(calls)
+    if path is not None:
+        inside = [i for i in compaction_instants(path) if _in_window(i, args.since, args.until)]
+        if inside:
+            _print_compaction_segments(calls, inside)
     # Comparison first, samples after. The samples run to dozens of lines and the comparison is one
     # block, so printing the comparison last put the only judged output behind the bulk. Confirmed
     # 2026-09-02: a harvest ran this exact command as `… --compare … | head -12`, saw the rates line
@@ -1485,7 +1631,16 @@ def main() -> None:
         "--until",
         help="ignore calls at or after this ISO timestamp, so a run measuring itself can exclude its own sweep",
     )
+    ap.add_argument(
+        "--since",
+        help="ignore calls before this ISO timestamp — with --until, a window both ends of the output describe",
+    )
     args = ap.parse_args()
+
+    if args.since and args.until and _instant(args.since) >= _instant(args.until):
+        # Refused rather than reported as an empty corpus, which is what the pair produces and what
+        # a reader then debugs as a missing transcript.
+        ap.error(f"--since {args.since} is not before --until {args.until}: that window holds nothing")
 
     if args.probe:
         print_probes()
@@ -1503,16 +1658,28 @@ def main() -> None:
         return
 
     calls, replayed = load_calls(args.days, args.project)
-    if args.until:
-        calls = _before(calls, args.until)
+    calls, dropped = _windowed(calls, args.since, args.until)
     if not calls:
-        print("no Bash calls found — check --days / --project / --until")
+        print("no Bash calls found — check --days / --project / --since / --until")
         return
+    if dropped["since"] or dropped["until"]:
+        print(
+            f"# window: {_window_words(args.since, args.until)} — "
+            f"excluding {dropped['since']} before it and {dropped['until']} at or after it"
+        )
     wanted = load_expectations(args.expectations) if args.compare else None
     report(calls, args.samples, args.compare, wanted, replayed, args.days)
     if args.save_baseline is not False:
         default = state_dir() / f"{time.strftime('%Y-%m-%d', time.gmtime())}.json"
-        save_baseline(calls, args.save_baseline or default, args.days, args.note, args.force, replayed)
+        save_baseline(
+            calls,
+            args.save_baseline or default,
+            args.days,
+            args.note,
+            args.force,
+            replayed,
+            (args.since, args.until),
+        )
     if args.json:
         dump_json(calls, args.json)
 

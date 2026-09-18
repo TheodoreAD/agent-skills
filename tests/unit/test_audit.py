@@ -852,3 +852,165 @@ def test_the_commit_this_row_was_written_from_is_tagged():
     stopped at `said the`, and the shell then failed on the remainder."""
     real = 'git commit -m "absorb\'s own report said "the removals" in the plural one line above"'
     assert "cut-message" in _call(real).tags
+
+
+# --------------------------------------------------------------------------------------------
+# a compacted session is two sessions, and the window that separates them
+
+
+def _transcript_with_decoys(tmp_path: Path, entries: list[dict[str, object]]) -> Path:
+    """A transcript of whole entries, for a test about what marks a compaction rather than calls."""
+    path = tmp_path / "1a1b1c1d-5555-6666-7777-888899990000.jsonl"
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8")
+    return path
+
+
+CONTINUATION = "This session is being continued from a previous conversation that ran out of context."
+
+
+def test_the_compaction_turn_is_found_by_its_flag_not_by_the_sentence_it_contains(tmp_path):
+    """Measured 2026-09-18 on a real 10 MB transcript: grepping the continuation sentence returns
+    three entries, and two are the session's own assistant turns quoting it while discussing this
+    check; a second transcript matched once with no compaction in it at all. `isCompactSummary` is
+    set by the harness on the entry it writes and appears nowhere else."""
+    path = _transcript_with_decoys(
+        tmp_path,
+        [
+            {
+                "type": "user",
+                "isCompactSummary": True,
+                "timestamp": "2026-09-16T12:09:22.256Z",
+                "message": {"role": "user", "content": CONTINUATION + " The summary below covers…"},
+            },
+            {  # the session talking about compaction — the false positive a text match cannot avoid
+                "type": "assistant",
+                "timestamp": "2026-09-16T13:00:00.000Z",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": f"I read {CONTINUATION!r}"}]},
+            },
+            {  # the sentence arriving as tool output, from a session reading another transcript
+                "type": "user",
+                "timestamp": "2026-09-16T14:00:00.000Z",
+                "message": {"role": "user", "content": [{"type": "tool_result", "content": CONTINUATION}]},
+            },
+        ],
+    )
+
+    assert audit.compaction_instants(path) == ["2026-09-16T12:09:22.256Z"]
+
+
+def test_a_transcript_with_no_compaction_reports_none_rather_than_failing(tmp_path):
+    path = _transcript_with_decoys(
+        tmp_path,
+        [{"type": "assistant", "timestamp": "2026-09-16T09:00:00.000Z", "message": {"content": []}}],
+    )
+
+    assert audit.compaction_instants(path) == []
+
+
+def test_a_window_is_two_flags_and_each_end_reports_what_it_removed(monkeypatch, tmp_path, capsys):
+    """The plan this came from had to run the audit twice and subtract, which returns counts and
+    leaves every other section describing the whole prefix."""
+    transcript = _transcript(
+        tmp_path,
+        [
+            ("2026-09-13T08:00:00+03:00", "cat notes.md | head -5"),
+            ("2026-09-13T12:00:00+03:00", "git status && git log"),
+            ("2026-09-13T20:00:00+03:00", "python3 audit.py --session x"),
+        ],
+    )
+
+    _run(
+        monkeypatch,
+        [
+            "--session",
+            str(transcript),
+            "--since",
+            "2026-09-13T10:00:00+03:00",
+            "--until",
+            "2026-09-13T18:00:00+03:00",
+            "--samples",
+            "0",
+        ],
+    )
+    out = capsys.readouterr().out
+
+    assert "# this session: 1 Bash calls" in out
+    assert "excluding 1 at or after 2026-09-13T18:00:00+03:00" in out
+    assert "excluding 1 before 2026-09-13T10:00:00+03:00" in out
+    assert "cat-view" in out, "every row prints, including the zeros"
+    assert "  cat-view                     0" in out, "the early cat call is outside the window"
+
+
+def test_a_window_whose_ends_cross_is_refused_rather_than_reported_empty(monkeypatch, tmp_path):
+    """An empty corpus reads as a missing transcript, and that is what gets debugged."""
+    transcript = _transcript(tmp_path, [("2026-09-13T08:00:00+03:00", "git status")])
+
+    with pytest.raises(SystemExit):
+        _run(
+            monkeypatch,
+            ["--session", str(transcript), "--since", "2026-09-13T12:00:00+03:00", "--until", "2026-09-13T09:00:00"],
+        )
+
+
+def test_an_unstamped_call_sits_in_no_span_rather_than_in_every_one():
+    """`_before` keeps an unplaceable call at both ends, because dropping it biases the rate it is
+    used to judge. A span is the opposite case: counting it on both sides of a compaction makes the
+    halves sum to more than the session that contains them."""
+    stamped_early = _call("git status")
+    stamped_early.timestamp = "2026-09-16T09:00:00+03:00"
+    stamped_late = _call("git log | head -3")
+    stamped_late.timestamp = "2026-09-16T18:00:00+03:00"
+    unstamped = _call("ls")
+    unstamped.timestamp = ""
+
+    spans, unplaced = audit._split_by_compaction(
+        [stamped_early, unstamped, stamped_late], ["2026-09-16T12:00:00+03:00"]
+    )
+
+    assert [len(s) for s in spans] == [1, 1]
+    assert unplaced == 1
+
+
+def test_the_segment_rows_print_only_when_the_split_actually_separates_calls(capsys):
+    """A compaction with every call on one side of it prints the same rows twice under two headings,
+    which buries the case the whole check exists for."""
+    one_side = []
+    for n in range(3):
+        call = _call("git status")
+        call.timestamp = f"2026-09-16T1{n}:00:00+03:00"
+        one_side.append(call)
+
+    audit._print_compaction_segments(one_side, ["2026-09-16T08:00:00+03:00"])
+
+    assert capsys.readouterr().out == ""
+
+
+def test_the_halves_of_a_compacted_session_print_beside_the_whole(monkeypatch, tmp_path, capsys):
+    """The shape the seven-day job needed: 67% chains before its continuation turn and 1% after, with
+    the whole-session row describing neither half."""
+    transcript = _transcript(
+        tmp_path,
+        [
+            ("2026-09-16T09:00:00+03:00", "git status && git log"),
+            ("2026-09-16T09:30:00+03:00", "cat notes.md | head -5"),
+            ("2026-09-16T18:00:00+03:00", "git status"),
+        ],
+    )
+    entries = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+    entries.append(
+        {
+            "type": "user",
+            "isCompactSummary": True,
+            "timestamp": "2026-09-16T12:00:00+03:00",
+            "message": {"role": "user", "content": CONTINUATION},
+        }
+    )
+    transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8")
+
+    _run(monkeypatch, ["--session", str(transcript), "--samples", "0"])
+    out = capsys.readouterr().out
+
+    assert "== this session, 3 calls ==" in out
+    assert "== compacted 1x, at 2026-09-16T12:00:00+03:00 ==" in out
+    assert "== before the first continuation turn, 2 calls ==" in out
+    assert "== after continuation turn 1, 1 calls ==" in out

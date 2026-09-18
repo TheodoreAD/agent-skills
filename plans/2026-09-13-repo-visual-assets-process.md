@@ -173,6 +173,45 @@ script:
 slot's state, and the manual steps nobody has done. This is "track the needs we define for each
 repo".
 
+**The state has to survive days and several sessions, because generating is a human errand run at
+human pace.** Asked 2026-09-18: _"where does the status of the image generation progress live? it
+might take a few days to generate all those images"_. The manifest is the answer and already holds
+it — it is committed, so the per-slot ladder `wanted → prompted → choosing → accepted → published`
+and the `pending` list of manual steps are ordinary repo state that no session owns and none can
+lose. Nothing perishable is involved, which is the whole reason the record is a file in the repo
+rather than a conversation.
+
+Two things a multi-day run exposes that the sketch above does not cover, both about the **waiting**
+half rather than the finished half:
+
+- **Nothing surfaces a stalled slot.** `status --all` answers when it is asked, and a slot sitting
+  at `prompted` for a week is invisible until someone thinks to ask. The machine that surfaces
+  dangling work in these repos is `session-harvest`'s sweep — unpushed commits, CI, plans filed and
+  not taken — and a half-finished slot is the same class of thing with no check looking at it. The
+  cheap version is the sweep reading a manifest where one exists and naming slots that have not
+  moved; that is a `session-harvest` change, so it is a filing rather than something this skill can
+  do to itself.
+- **An untriaged batch has no slot to belong to, and that is the part that decays.** Generate thirty
+  images over three days from six prompts and the downloads are thirty filenames that say nothing.
+  The manifest binds a file to a slot **at triage**, so between generating and handing over, the
+  association lives only in the user's memory — exactly what a few days erodes, and exactly what the
+  handoff sentence _"these three are for the link card, from C3 on Flux"_ is reconstructing by hand.
+
+**This is what makes the embedded-metadata question load-bearing rather than a nicety.** If a
+download carries its prompt text, routing is mechanical at any distance in time: match the embedded
+prompt against the prompt files and every image knows its own slot, however long the folder sat. If
+it does not, the manifest has to record the batch **when the prompt is handed out** —
+`status =
+"prompted"`, the prompt file, the expected count, the date — so that a later handoff has
+something to attach candidates to rather than a memory to interrogate.
+
+[NEEDS CLARIFICATION: **does a stalled slot deserve a prompt, and from what?** The options are the
+sweep reading manifests (one more thing for `session-harvest` to own, and it already declines to
+carry other skills' checks), `status --all` growing an age column so the answer is there whenever it
+is asked, or nothing at all on the argument that image work is not urgent and a nagging check is the
+alarm-fatigue shape this family keeps rejecting. Decide after the pilot, which is the first run that
+will actually have a slot sit for days.]
+
 ### 6. Checks a gate can run
 
 Accepted files exist and match their recorded hash; sizes and bytes are within the surface's spec;

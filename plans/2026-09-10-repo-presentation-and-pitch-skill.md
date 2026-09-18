@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-12
+updated: 2026-09-18
 ---
 
 # Making these repos legible to a stranger, and pitching them without writing slop
@@ -378,7 +378,17 @@ skills at 10,981 chars plus 8,656 the harness charges first, against an **8,000-
 **measured, not argued**: `trigger.py split --proposal` scores how real requests distribute across a
 proposed split, and `--dry-run` costs nothing. My prior is **two** skills, not four — one owning the
 repo-as-storefront (README, metadata, assets, catalogue) and one owning outward-facing writing
-(pitch ladder, post and article material) — but that is a hypothesis to test, not a decision.]
+(pitch ladder, post and article material) — but that is a hypothesis to test, not a decision.
+
+**Partly answered 2026-09-18, on the assets half.** `trigger.py split` scored a proposed
+`repo-assets` against the installed set with `repo-pitch` present: 18 of 19 cases, `repo-assets`
+taking 21 of its 24 runs at precision 1.0, no contested case against `repo-pitch`, and no false
+positive on any of the four should-not-trigger cases. Suite:
+`skills/repo-pitch/evals/storefront-boundary.json`; the reasoning and the drafted description are in
+`plans/2026-09-13-repo-visual-assets-process.md`. So **the images are their own trigger surface**,
+and the prior's "repo-as-storefront (README, metadata, assets, catalogue)" is at least splittable at
+the assets line. The other two jobs — distribution and long-form content — were not in the suite and
+remain open here.]
 
 [NEEDS CLARIFICATION: **where does the pitch source-of-truth file live, and does it need to exist at
 all?** standard-readme already defines the artifact and the three targets, so a separate file may be

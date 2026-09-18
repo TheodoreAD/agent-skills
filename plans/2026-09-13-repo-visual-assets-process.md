@@ -244,11 +244,42 @@ text of either law.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **a skill of its own, or the image half of the storefront skill?** The
-presentation plan's open question 1 decides this by measurement (`trigger.py split --proposal`), and
-its prior is two skills, one of them "the repo-as-storefront (README, metadata, assets, catalogue)".
-This process fits that one. Settle it there, with this plan's catalogue and handoff phrases as cases
-in the suite.]
+[DECISION: **an assets skill of its own, measured 2026-09-18 rather than argued.**
+`trigger.py split` over 19 cases at 3 runs each — the suite is
+`skills/repo-pitch/evals/storefront-boundary.json`, which ships and can be re-run — scored a
+proposed `repo-assets` against the whole installed set with `repo-pitch` still present. **18 of 19
+cases passed; `repo-assets` took 21 of its 24 runs at precision 1.0, and the boundary with
+`repo-pitch` was never once contested.** Not a single false positive anywhere: every one of the four
+should-not-trigger cases returned nothing, including the two written as traps — "resize this
+screenshot to 800px so I can attach it to a bug report", which a greedy image description would
+take, and "write the release notes for v2.1", which a greedy storefront one would.
+`session-bash-audit`, `plan-docs` and `session-harvest` each held their own case 3 of 3, so the new
+description costs no contention elsewhere.
+
+The drafted description, kept here because the proposal file was scratch:
+
+> Use when a repo needs an image and somebody has to decide what it needs, what to prompt for, or
+> which generated candidate to keep — a README banner, a social or link-preview card, a docs hero, a
+> logomark or favicon, feature-card icons, a demo screenshot or recording. Use when handing
+> generated images to an agent ('here are three for the link card, keep the second'), when asking
+> what a repo is still missing, what size or byte budget a surface takes, what may legally be shown
+> of another project's logo, or which prompt and model produced the image already in use. Tracks
+> each surface's state and keeps the reason a candidate was rejected, so the next attempt is a
+> correction rather than a re-roll. Does not generate images, and does not write the repo's words.]
+
+**What the measurement does not settle**, stated because the aggregate reads as more than it is: it
+cut `repo-pitch` against `repo-assets`, which is two of the four jobs the presentation plan's open
+question 1 lists. Whether distribution and long-form content are a third skill, or belong to the
+pitch one, is untested and still that plan's question.
+
+[NEEDS CLARIFICATION: **two situations the description names and still loses.** "Make a favicon set
+from the logo" went to nothing in 1 run of 3, and "add a screenshot of the CLI running to the
+README" in 2 of 3 — the only failing case. Both are named in the description, so this is not an
+omission: the request reads as a mechanical conversion rather than as a question about what the repo
+shows, and no skill looks necessary. Worth one `candidate`-mode re-measure of a wording that names
+the _act_ ("derive the favicon set", "capture a terminal demo for the README") rather than the
+artifact, before either is treated as out of scope. Selection is non-deterministic and this is 3
+runs, so a 1-of-3 miss is weak evidence on its own.]
 
 [NEEDS CLARIFICATION: **the manifest's format and path.** TOML matches this family (`setup.toml`,
 `pyproject.toml`); YAML sits beside `_brand.yml`, which has a schema and consumers. The path could

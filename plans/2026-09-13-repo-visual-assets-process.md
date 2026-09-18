@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-13
+updated: 2026-09-18
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 81f41ac7-aec7-45e2-8d84-aad642024a13.jsonl
 source_moment: 2026-09-13T16:14:15Z
@@ -79,7 +79,9 @@ the user asked for, and it is the one thing no existing plan or skill holds.
   not a tracker.
 - Two web searches for a tool tracking per-repo image needs with provenance found prompt libraries
   and generators, and no tracker. **That negative is search-summary depth**; the global rule asks
-  for a real prior-art pass before a new skill is finalised, and this is not one yet.
+  for a real prior-art pass before a new skill is finalised, and this is not one yet. Done
+  2026-09-18 over the local clones — see "The prior-art pass, done over clones" below, which
+  sustains the negative and adds one finding the searches missed.
 
 ## Design sketch
 
@@ -193,6 +195,53 @@ generator by gaining a file.
 - The NightCafe prompt rules: power-user-linux-setup commit `437e347`.
 - The unrecorded rejected batch: `scaffoldapy/plans/2026-08-19-logo-banner.md`, "Progress so far".
 
+## The prior-art pass, done over clones 2026-09-18
+
+**The negative holds, and it is now a measurement rather than a search summary.** Scanned every
+`SKILL.md` in the research library's clones — the four skill corpora (`anthropics/skills`,
+`anthropics/claude-plugins-official` and `-community`, `github/awesome-copilot`,
+`VoltAgent/awesome-agent-skills`, `agentskills/agentskills`, `vercel-labs/skills`,
+`softaworks/agent-toolkit`, `phuryn/pm-skills`, `JimLiu/baoyu-skills`,
+`thatrebeccarae/claude-marketing`, `openai/codex`'s bundled samples) for files naming a visual
+surface **and** a tracking word. **27 files match, and none of them tracks a repo's image needs or
+records which candidate was kept.**
+
+The two that come closest both confirm the gap from the inside:
+
+- **`openai/codex`'s `imagegen` sample** is the most developed image skill in the corpus, and it
+  states the opposite policy outright: _"Discarded variants do not need to be kept unless
+  requested."_ It is built for generating and iterating, and the reject is garbage to it. That is
+  the sentence this plan exists to disagree with.
+- **`softaworks/agent-toolkit`'s `gepetto`** matched on `manifest` and is a false positive — a
+  section-manifest planning skill with no image in it. Recorded so the next pass does not re-read
+  it.
+
+**What the searches missed: the file the user hands over may already carry half the record.** Major
+generators now embed a C2PA manifest — tool, model and timestamp, cryptographically signed — and
+Stable-Diffusion-family pipelines write the prompt, negative prompt, seed, sampler and model into a
+PNG text chunk. NightCafe runs SD-family models. If that holds for the user's own downloads, then
+`model`, `generated` and possibly `prompt` in the `[[slots.*.tried]]` block are **read from the
+file** rather than typed at handoff, and what the user actually has to supply is the one thing no
+file can carry: **why this one and not that one.**
+
+[UNVERIFIED: **what a real NightCafe download actually carries.** The claim above rests on a web
+search whose results were mostly metadata-remover SEO pages, so it is search-summary depth and no
+better. Settling it needs one real file, which only the user has — the pilot's first step, and
+cheap: dump the PNG chunk names and look for `tEXt`/`iTXt`/`caBX`. Note the machine fact that makes
+this a design constraint rather than a detail: **no `exiftool`, no `c2patool` and no Pillow are
+installed here**, so a stdlib PNG chunk reader is the only zero-install route. It can read the text
+chunks and detect that a C2PA manifest is present; it cannot verify the signature, and should not
+claim to.]
+
+[DEFERRED: **the disclosure question has a regulatory half the plan did not have.** EU AI Act
+Article 50 and California SB 942 both push machine-readable disclosure of AI-generated content, and
+C2PA is the layer the ecosystem settled on — Facebook, Instagram, LinkedIn and YouTube read it and
+label on it. Whether any of that binds a personal repo's README banner is a different question and
+almost certainly no. What it changes here is the default direction: **stripping the credential is
+now the action that needs a reason**, where the plan had treated embedding one as the step needing
+justification. Search-summary depth, flagged as such, and not a rule until someone reads the actual
+text of either law.]
+
 ## Open questions
 
 [NEEDS CLARIFICATION: **a skill of its own, or the image half of the storefront skill?** The
@@ -216,8 +265,22 @@ either way.]
 cites a third-party roundup. The design assumes manual generation regardless, so this changes only
 whether a later API step is possible on the user's current generator.]
 
-[UNVERIFIED: **the favicon set's sizes** — 16, 32, 180, 192 and 512 pixels, plus an ICO — are from a
-search summary. Verify against a maintained generator's source before the catalogue states them.]
+**The favicon set's sizes, read from a maintained generator's source 2026-09-18** —
+`itgalaxy/favicons`, `master@44c80b6`, `src/platforms/`. The guess above them was close and wrong in
+three details, which is the argument for reading a generator rather than a summary:
+
+| file                    | sizes it emits                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `favicon.ico`           | **16, 24, 32, 48, 64 packed into the one file**                                       |
+| `favicon-*.png`         | 16, 32, **48**                                                                        |
+| `favicon.svg`           | optional, source rendered at 1024                                                     |
+| `apple-touch-icon*.png` | 57, 60, 72, 76, 114, 120, 144, 152, 167, 180, 1024; the unsuffixed default is **180** |
+| `android-chrome-*.png`  | 36, 48, 72, 96, 144, 192, 256, 384, 512                                               |
+
+The guessed set named one ICO rather than five packed sizes, dropped 48 from the base PNGs, and read
+180 as a standalone entry rather than as the Apple default among eleven. The catalogue should state
+the base row — `favicon.ico`, 16/32/48 PNG, an optional SVG, `apple-touch-icon.png` at 180 — and
+name the generator as the source for anything wider, rather than restating a list that will drift.
 
 [DEFERRED: **disclosure of AI-generated images.** Whether to embed IPTC's digital-source-type
 metadata, and whether any venue in the presentation plan's §8 has rules for generated images as

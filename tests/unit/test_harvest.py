@@ -2064,6 +2064,76 @@ def test_a_path_match_is_contact_with_a_file_not_authorship_of_a_commit(tmp_path
         assert f"(authorship unestablished) {sha}" in out
 
 
+def test_a_store_swept_as_a_repo_prints_its_unpushed_commits_once(capsys):
+    """The store is a git repository, so a session that touched it gets both sections: `== repo ==`
+    for the git state and `== store ==` for what plan-docs means by it. Confirmed 2026-09-18: 32
+    unpushed commits printed in both, about 64 lines of one report, and the length is set by the
+    store's backlog rather than by the session. Both notes stay — each answers what the other does
+    not — and the rows print in the section that timestamps them.
+
+    A double-digit ahead-count is the fixture on purpose: the duplication is invisible at 0 and 1."""
+    shas = [f"{i:04x}a0{i:02d}" for i in range(12)]
+    payload = {
+        "repos": [
+            {
+                "path": "/home/u/plans",
+                "branch": "main",
+                "upstream": "origin/main",
+                "fetch": "ok",
+                "dirty": [],
+                "ahead": [
+                    {"sha": sha, "when": "2026-09-18T10:00:00+03:00", "author": "T", "subject": f"filed a plan, {n}"}
+                    for n, sha in enumerate(shas)
+                ],
+                "overlap": [],
+                "notes": [],
+            }
+        ],
+        "stores": [
+            {
+                "store": "plans",
+                "path": "/home/u/plans",
+                "present": True,
+                "dirty": [],
+                "unpushed": [f"{sha} T filed a plan, {n}" for n, sha in enumerate(shas)],
+            }
+        ],
+    }
+
+    harvest._print_sweep(payload)
+    out = capsys.readouterr().out
+
+    for sha in shas:
+        assert out.count(sha) == 1, f"{sha} is printed by both sections"
+    assert "unpushed: 12 commit(s), listed with their timestamps under == repo /home/u/plans ==" in out
+    assert "costs off-machine backup and nothing else" in out, "the store's own note is not the duplicate"
+    assert "parallel sessions the ahead-count is not necessarily this session's work" in out
+
+
+def test_a_store_that_was_not_swept_as_a_repo_still_lists_its_own_commits(capsys):
+    """The count-and-point line is only sound while something else printed the rows. A sweep scoped
+    with --only stores, or one whose session never touched the store's own tree, has no `== repo ==`
+    section to point at, and dropping the rows there would lose them."""
+    payload = {
+        "repos": [],
+        "stores": [
+            {
+                "store": "plans",
+                "path": "/home/u/plans",
+                "present": True,
+                "dirty": [],
+                "unpushed": ["ab50b00 T agent-skills: filed a finding"],
+            }
+        ],
+    }
+
+    harvest._print_sweep(payload)
+    out = capsys.readouterr().out
+
+    assert "unpushed: ab50b00 T agent-skills: filed a finding" in out
+    assert "listed with their timestamps" not in out
+
+
 def test_a_receipt_counts_only_as_tool_output_at_a_line_start():
     """A session that quotes a commit line in its own prose, or reads a log that prints the id bare,
     did not make that commit."""

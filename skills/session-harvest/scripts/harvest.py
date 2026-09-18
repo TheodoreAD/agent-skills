@@ -2869,6 +2869,15 @@ def _checkout_or_none(explicit: str | None) -> Path | None:
         return None
 
 
+def _resolved(path: object) -> str:
+    """Two sections of one report name the same directory, and a store reached through a symlinked
+    or `~`-spelled configuration does not compare equal to the git root the sweep walked to."""
+    try:
+        return str(Path(str(path)).resolve())
+    except OSError:
+        return str(path)
+
+
 def _print_sweep(payload: dict[str, Any]) -> None:
     """The grouped report. One printer per section, because the sections are read separately."""
     print(f"# boundary: {payload.get('boundary') or '(none passed — pass --boundary)'}")
@@ -2884,8 +2893,9 @@ def _print_sweep(payload: dict[str, Any]) -> None:
         _print_repo(state)
     for repo, result in (payload.get("ci") or {}).items():
         _print_ci(repo, result)
+    swept_as_repos = {_resolved(state.get("path")) for state in payload.get("repos", [])}
     for state in payload.get("stores", []):
-        _print_store(state)
+        _print_store(state, _resolved(state.get("path")) in swept_as_repos)
     for repo, result in (payload.get("absorb") or {}).items():
         _print_absorb(repo, result)
     for repo, tagged in (payload.get("depends_on") or {}).items():
@@ -3067,26 +3077,42 @@ def _print_ci(repo: str, result: dict[str, Any]) -> None:
         print(f"  {len(result['in_flight'])} run(s) still in flight — perishable, name it in the report")
 
 
-def _print_store(state: dict[str, Any]) -> None:
+def _print_store_rows(state: dict[str, Any], key: str, listed_as_repo: bool) -> None:
+    """One of the store's four row sets, with the note that says what that state costs."""
+    rows = state.get(key) or []
+    if key == "unpushed" and rows and listed_as_repo:
+        print(f"  unpushed: {len(rows)} commit(s), listed with their timestamps under == repo {state['path']} ==")
+    else:
+        for line in rows:
+            print(f"  {key}: {line}")
+    if not rows:
+        return
+    if key == "dirty":
+        print("    ^ every other session is in plan-docs' add-a-new-file fallback until this is")
+        print("      committed — a live concurrency cost, and the urgent half of this row")
+    if key == "unpushed":
+        # The cost, printed rather than left to the reader — because the one run that had to
+        # supply it invented "no future session gets offered them by absorb", which is false:
+        # absorb reads a local directory and plans.py contains no fetch, pull or ls-remote.
+        # A row that names only a state gets a consequence invented for it, and a small cost
+        # stated cannot be inflated while an unstated one can.
+        print("    ^ costs off-machine backup and nothing else: the store is the only copy of")
+        print("      plans that live in no repo. Not a handoff failure — absorb reads this")
+        print("      directory locally, so a filed plan is already visible to every session here")
+
+
+def _print_store(state: dict[str, Any], listed_as_repo: bool = False) -> None:
+    """`listed_as_repo` says this store's path was also swept as a git repo, so its unpushed commits
+    are already printed above with their timestamps. Both sections stay — each note answers a
+    question the other does not — but the rows print once. Confirmed 2026-09-18: a store 32 commits
+    behind its remote filled about 64 lines of one report with the same 32 shas, and it is the store
+    backlog rather than the session that sets how long that gets."""
     print(f"\n== store {state['store']} {state['path']} ==")
     if not state.get("present"):
         print("  not present")
         return
     for key in ("dirty", "unpushed", "changed_by_this_session", "entries_without_provenance"):
-        for line in state.get(key, []):
-            print(f"  {key}: {line}")
-        if key == "dirty" and state.get(key):
-            print("    ^ every other session is in plan-docs' add-a-new-file fallback until this is")
-            print("      committed — a live concurrency cost, and the urgent half of this row")
-        if key == "unpushed" and state.get(key):
-            # The cost, printed rather than left to the reader — because the one run that had to
-            # supply it invented "no future session gets offered them by absorb", which is false:
-            # absorb reads a local directory and plans.py contains no fetch, pull or ls-remote.
-            # A row that names only a state gets a consequence invented for it, and a small cost
-            # stated cannot be inflated while an unstated one can.
-            print("    ^ costs off-machine backup and nothing else: the store is the only copy of")
-            print("      plans that live in no repo. Not a handoff failure — absorb reads this")
-            print("      directory locally, so a filed plan is already visible to every session here")
+        _print_store_rows(state, key, listed_as_repo)
     others = state.get("changed_by_something_else") or []
     if others:
         # A count, not a list. A refresher moving every entry's mtime is the store working as

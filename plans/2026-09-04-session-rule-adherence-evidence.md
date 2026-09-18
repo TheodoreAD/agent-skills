@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-12
+updated: 2026-09-18
 ---
 
 # Evidence from one repo-tasks session: three rules broken, two of them measurable
@@ -474,3 +474,46 @@ replied "Continue" without saying which. So the before/after split measures the 
 _believed_ it had been corrected on. If the correction meant something else, the split still stands
 as evidence that a stated commitment did not move behaviour, but not as evidence about that specific
 correction.]
+
+## A tenth sample, 2026-09-13/18 — one session, one mode, and a compaction between two behaviours
+
+An `agent-skills` background job, measured at 2026-09-18T14:08:03+03:00 with its own last call
+excluded: **n=622**, and it is the first sample taken with `audit.py`'s compaction split, which the
+same session had written an hour earlier. The whole-session row is the one a harvest would have
+read:
+
+| row          | whole session (622) | before the compaction (532) | after it (90)   |
+| ------------ | ------------------- | --------------------------- | --------------- |
+| chain        | 4%                  | 1%                          | **22%**         |
+| head/tail    | 2%                  | 0%                          | **16%**         |
+| search\|head | 2%                  | 0%                          | **13%**         |
+| exit-masked  | 0%                  | 0%                          | 3% (3 listings) |
+| heredoc      | 0%                  | 0%                          | 2%              |
+
+**4% and 2% describe neither half**, which is the claim the split was built on, now measured on the
+session that built it. Every other row is 0 on both sides.
+
+**The mode did not change across the split, and that is evidence on the ninth sample's open
+question.** The auto-mode note — the one telling the agent to read files with `cat`, `head` or
+`sed -n` and search with `grep`/`find` — is attached at `2026-09-13T13:34:46Z`, seventeen lines into
+the transcript, and re-attached at `2026-09-16T12:09:37Z`, fifteen seconds after the compaction. So
+auto mode was in force for the 0% half and the 16% half alike, in one session, one model, one repo,
+on comparable work. That does not clear auto mode as a contributor across sessions — the eighth and
+ninth samples are different sessions and the comparison there still has the confound — but **inside
+this session it cannot be the difference**, because it did not differ.
+
+**What did differ is the compaction**, and the rules were not lost in it: the instruction files were
+re-read and re-injected after the boundary, in full, ahead of every call in the 90. The session
+could have quoted the rule against `| head` at any point in that half — it had just finished editing
+a skill that states it. Habit, not knowledge, is what the boundary took.
+
+**The direction is not fixed, which is the part that makes the whole-session row useless rather than
+merely imprecise.** The seven-day job that prompted the split ran 67% chains before its compaction
+and 1% after; this one runs 1% before and 22% after. Two instances, opposite directions, both large.
+Averaging them gives a number nobody produced.
+
+[DEFERRED: **a corpus-wide count of how many sessions carry a compaction at all**, and what the
+split looks like across them. Two instances are not a rate, and `compaction_instants` now makes the
+sweep cheap — one pass over the transcripts already loaded by `--days`. The two here were each found
+by accident, which is the sampling bias to expect: a split gets noticed when someone is already
+looking at the session for another reason.]

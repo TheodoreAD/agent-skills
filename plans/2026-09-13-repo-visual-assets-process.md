@@ -140,6 +140,48 @@ convention; GitHub's own documentation says 1280×640, which is 2:1. The two sur
 different shapes, and a skill that states one number for both would be wrong on one of them every
 time.]
 
+### 1c. Resolutions: generate once per aspect ratio, derive every surface
+
+Asked 2026-09-18. **The pilot repo's brief already fixes this, and the skill should carry the rule
+rather than restate its numbers**, since the numbers are per repo and the rule is not:
+
+- **Generate at an aspect ratio, never at a surface.** That brief's table keeps a `generate at`
+  column separate from `final size` — 16:9 for heroes and slot grids, 21:9 for wide heroes, 1:1 for
+  marks and for the card sheet, and the 2:1 social card cropped from a 16:9 generation. Four
+  generations cover ten surfaces.
+- **One sheet, then slice.** A four-icon card set is generated as a single two-by-two 1:1 sheet and
+  cut into 4 × 800×800, because four separate generations drift in angle, scale and lighting.
+- **Upscale before cropping, never after**, and only where a generation came out under its final
+  size.
+
+The sizes that brief plans for: hero and slot grid **1920×1080**, wide hero **2520×1080**, drift
+banner **2400×800**, social card **1280×640**, card set **4 × 800×800** from a 1600×1600 sheet, mark
+square.
+
+**Those pixel sizes have never been checked against the byte budget, and the budget binds first.**
+GitHub's own image standard, which the presentation plan measured, is **750–1000 px wide and ≤250
+KB** — and a 1920×1080 photorealistic render is nowhere near 250 KB as a PNG. Two consequences the
+design has to state rather than leave to whoever exports:
+
+- **Display width and asset width are different numbers.** Display is 750–1000 px, so a crisp asset
+  on a 2× screen is 1500–2000 px wide, held to the display size in markup with `<img width>`. The
+  brief's 1920 is already right for that. What it is not is a PNG.
+- **Format is forced, and differently per surface.** README and docs images have to be JPEG or WebP
+  to reach 250 KB at those dimensions. The **social preview cannot be WebP** — GitHub takes PNG, JPG
+  or GIF only, under 1 MB, which is comfortable at 1280×640 as JPEG. A `<picture>` light/dark pair
+  doubles the bytes of whichever surface uses it.
+
+[NEEDS CLARIFICATION: **the export step is unowned.** Something has to take a 1920-wide master to a
+≤250 KB deliverable, and this machine has no Pillow, no ImageMagick and no `cwebp` (verified
+2026-09-18). Options: declare export a manual step beside generation, declare an optional dependency
+and check for it, or accept larger files and drop the budget. The byte check in §6 catches a
+violation either way, and that is the part that must not be optional.]
+
+[UNVERIFIED: **what resolutions NightCafe actually offers, and at what credit cost.** The brief's
+own `[UNVERIFIED:]` says its 21:9 and its model list are search-summary depth, unchecked in the app.
+Generation is manual, so this is the user's to confirm once — and it decides whether the upscale
+step is needed at all.]
+
 ### 2. One file per repo that says what it needs and what it has
 
 The tracking the user asked for. Shape below; four things about it were decided 2026-09-18.

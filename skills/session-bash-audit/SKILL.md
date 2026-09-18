@@ -164,8 +164,25 @@ masking forty listings has no reader, masking one gate run and then saying "gree
 turns a case-insensitive file-list search into a case-sensitive line search, and a lone `-r` is
 usually the deliberate `rg -o -r ''` extraction idiom rather than a mistake at all.
 
-`--json <path>` works in this mode too, and dumps the same `--until`-filtered set the printed report
-is about. Until 2026-09-06 the `--session` path returned before the flag was read, so the dump was
+**A compacted session is two sessions, and the whole-session row describes neither.** Where the
+transcript carries a continuation turn, the report prints the rows for each side of it beneath the
+whole. Confirmed 2026-09-13 on a seven-day background job: 67% chains, 48% `head/tail` and 32%
+heredoc before its compaction, 1%, 0% and 0% after — read as one session, 47%, 33% and 22%, which is
+nobody's behaviour. It was noticed only because the session's recent calls looked nothing like its
+totals, and that is not a check. The split is taken from the harness's own `isCompactSummary` flag
+rather than from the sentence the continuation turn opens with: matching that sentence on one real
+10 MB transcript returned three entries, two of them the session quoting it while discussing this.
+
+**`--since` is the other end of `--until`**, so a window is two flags rather than two runs and a
+subtraction. Counts subtract; samples, the gate-versus-listing split and the truncation line do not,
+and those described the whole prefix in every run that tried it.
+
+```shell
+python3 $S/scripts/audit.py --session <session-id> --since <the continuation turn's instant> --samples 4
+```
+
+`--json <path>` works in this mode too, and dumps the same window-filtered set the printed report is
+about. Until 2026-09-06 the `--session` path returned before the flag was read, so the dump was
 unavailable in precisely the mode `session-harvest` always uses, with no error and no file.
 `--save-baseline` is refused here rather than skipped — one session's rates are not a corpus
 baseline, and a flag that silently does nothing is worse than one that says so.

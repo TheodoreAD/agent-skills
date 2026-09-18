@@ -69,7 +69,15 @@ the user asked for, and it is the one thing no existing plan or skill holds.
 - **`posit-dev/brand-yml`** (clone): one file for identity — `logo` as small/medium/large, each
   optionally light/dark, `color.palette`, typography — with a published JSON Schema and real
   consumers. It covers identity and nothing about needs, candidates or provenance. Copy its shape
-  for identity rather than inventing one; the presentation plan already says so.
+  for identity rather than inventing one; the presentation plan already says so. **Whose it is,
+  asked 2026-09-18:** it is Posit's — the company behind RStudio — published on PyPI as `brand-yml`,
+  with the stated goal of "unified, branded theming for all of Posit's open source tools". **Quarto
+  reads it natively from v1.6**, Shiny for Python and Shiny for R (through `bslib`) theme from it.
+  So it is a real community artifact with consumers rather than a proposal. **It is YAML, and that
+  settles how much of it to take**: this family ships stdlib-only skills and the standard library
+  has no YAML reader, so the file itself cannot be parsed without a dependency. Take its
+  **vocabulary** — logo sizes, light/dark pairs, palette — into the TOML tracker if identity is ever
+  needed, and leave the file to the tools that already read it.
 - **`thatrebeccarae/claude-marketing`'s `social-preview` skill** (clone): renders one surface, the
   1280×640 card, from HTML templates, with an audit mode. One surface, no candidates, no record.
 - **`JimLiu/baoyu-skills`' `baoyu-cover-image`** (clone): writes each prompt to its own file, with
@@ -107,9 +115,61 @@ several surfaces must never be generated at all.
 Specs come from the presentation plan where it measured them, and are marked unverified where it did
 not.
 
+### 1b. The same surfaces in pixels, each number with where it came from
+
+Asked for directly 2026-09-18. **Every row says whether the number is verified, a convention, or a
+guess**, because three of them were wrong in the first draft of this plan and one contradicted a
+primary source.
+
+| surface          | where it renders                             | pixels                                                                                                                                        | source                                                                                    |
+| ---------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `social-preview` | the card when a repo link is pasted anywhere | **1280×640**, minimum 640×320, **under 1 MB**, PNG/JPG/GIF                                                                                    | **verified** at GitHub's own docs page, 2026-09-18                                        |
+| site `og:image`  | the card when a _docs site_ link is pasted   | **1200×630** (1.91:1)                                                                                                                         | convention, not a protocol rule — `og:image` mandates no size                             |
+| `readme-banner`  | top of `README.md`, on github.com            | ship 1280–1600 wide, display at ~900 via `<img width>`; ≤250 KB                                                                               | **no official spec exists**; the README column is ~894 px, search-summary depth           |
+| `docs-hero`      | top of the docs front page                   | 1600–2000 wide                                                                                                                                | guess — depends on a site generator nobody has chosen                                     |
+| `logomark`       | README, docs nav, favicon source             | SVG, square; 512 PNG fallback                                                                                                                 | convention                                                                                |
+| `favicon`        | browser tab, home-screen icon                | `.ico` packing **16, 24, 32, 48, 64**; PNG **16, 32, 48**; optional SVG; `apple-touch-icon.png` **180**; `android-chrome` **192** and **512** | **verified** from `itgalaxy/favicons` source, `master@44c80b6`                            |
+| `card-icons`     | feature or use-case cards in README or docs  | square, 256 or 512 each, generated as one sheet                                                                                               | design choice, unverified                                                                 |
+| `demo`           | README, docs page                            | 1000–1200 wide                                                                                                                                | width is convention; **the format is measured** — animated SVG 127 KB against GIF 4.45 MB |
+| `diagram`        | README, docs page                            | none — mermaid or d2 text, rendered natively by GitHub                                                                                        | **verified**: GitHub renders mermaid in markdown                                          |
+| `listing`        | a directory's own submission form            | per directory, and not researched                                                                                                             | unverified                                                                                |
+
+[PITFALL: **the search summary contradicted the primary source on the one number that matters
+most.** An SEO page put GitHub's social preview at a 1.91:1 aspect ratio, which is the Open Graph
+convention; GitHub's own documentation says 1280×640, which is 2:1. The two surfaces genuinely take
+different shapes, and a skill that states one number for both would be wrong on one of them every
+time.]
+
 ### 2. One file per repo that says what it needs and what it has
 
-The tracking the user asked for. Illustrative shape, format still open:
+The tracking the user asked for. Shape below; four things about it were decided 2026-09-18.
+
+[DECISION: **its own file, never a section inside `pyproject.toml` or `setup.toml`.** User's call.
+Those files belong to the packaging and machine-setup tools that read them, and a tracker that
+borrows one inherits its lifecycle, its schema arguments and its audience for no gain.]
+
+[DECISION: **it lives at the repo root**, in the shape of `mkdocs.yml` and every other root-level
+project config. User's call, and one measured argument reinforces it: a site generator publishes
+what sits under its source directory — `mkdocs` walks `docs_dir` and nothing else — so a tracker
+placed in `docs/` would be **copied into the built site** unless something excluded it. A progress
+file is not site content, and the root is where it cannot accidentally become some.]
+
+[DECISION: **it tracks the process and is never an input to rendering.** User's call. The images are
+referenced by ordinary markdown links in `README.md` and in whatever the site's source turns out to
+be, so both surfaces work with the file absent, deleted or never written. That keeps it an
+**auditable record rather than a dependency**, and means a repo can adopt or drop the process
+without touching a single image reference.]
+
+[DECISION: **TOML, and the cost is named rather than discovered.** User's call, for the reason that
+`tomllib` is in the standard library from 3.11 and this family's skills ship stdlib-only. **The
+catch, verified here: `tomllib` reads and cannot write** — it has `load`/`loads` and no `dump`. The
+skill writes this file on every accept and every reject, so TOML means a **small hand-rolled writer
+for this one schema** (strings, integers, string arrays, arrays of tables, one nested table),
+somewhere near a hundred lines with tests, and not a general TOML serializer. The alternative that
+needs no writer is JSON, which costs comments and hand-editability — the two things this file is
+most likely to want. Take the writer.]
+
+Illustrative shape:
 
 ```toml
 brand = "_brand.yml" # identity, in brand-yml's shape
@@ -143,6 +203,43 @@ pending = ["upload in GitHub Settings: the social preview has no API"]
 scaffoldapy's plan states the lesson and its rejected batch is the counterexample. **`published` is
 checkable**: a README or docs reference for most surfaces, and for the social preview the
 presentation plan found `usesCustomOpenGraphImage` in `gh repo view --json`.
+
+### 2b. Where the kept images live, and why the corpus cannot answer it
+
+**There is no convention to follow, measured rather than assumed.** Across the research library's
+143 clones with a README, 43 reference a local image file, and they scatter: `docs/` 12, `assets/`
+6, the repo root 4, `images/` 4, `.github/` 3, `img/` 3, then singletons (`public/`, `artwork/`,
+`screenshots/`, `.docs/`). So imitation gives no answer, and the decision has to come from a
+constraint instead.
+
+**The constraint is that one path has to satisfy two renderers.** GitHub renders `README.md` from
+the repo, resolving a relative path against the repo tree. A site generator serves only what sits
+under its own source root — read from `mkdocs`'s source, `get_files()` is
+`os.walk(config['docs_dir'])` and nothing outside it exists as far as the build is concerned. So:
+
+- **images under the site's source directory** (`docs/assets/` for a `docs/`-rooted site) satisfy
+  both with one copy and no configuration: the site serves them, and `README.md` reaches them at
+  `docs/assets/…` because that path is real in the repo.
+- **images at a root-level `assets/`** satisfy GitHub and are invisible to the site until something
+  copies them in. One detail makes this cheaper than it sounds: mkdocs walks with
+  `followlinks=True`, so `docs/assets` as a **symlink** to `../assets` is served correctly, and
+  costs one line rather than a build step.
+- `.github/assets/` keeps images out of both the package and the site, and is the option 3 of 43
+  repos took. It is also a **vendor directory**, which this family admits only as a distribution
+  shim, so it loses on the repo's own stated principle rather than on ergonomics.
+
+[DECISION: **the rule, not the directory, because the site's source is not chosen yet.** Kept images
+go **under whatever directory will be the site's source root**, and `README.md` links them through
+the path that exists in the repo. Where no site exists or the choice is still open, that is
+`docs/assets/` — the plurality of the corpus, the zero-config answer for a `docs/`-rooted generator,
+and recoverable by symlink if the site later roots somewhere else. The tracker records `path` per
+slot, so a move is a recorded change rather than a hunt.]
+
+[NEEDS CLARIFICATION: **the rejects are a different question and stay open.** They are not repo
+assets and should not be binary churn in git, which is what the sketch above means by storing a
+hash. The candidates remain `plans.py attach --local` (already copies outside every repo and records
+a sha256, but binds to a plan that will retire), an XDG data directory keyed by repo, or keeping
+only the reason. The pilot decides, because it is the first run that will actually hold rejects.]
 
 ### 3. Prompts are files
 

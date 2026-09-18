@@ -1,0 +1,38 @@
+{
+  "cases": [
+    {
+      "prompt": "the About box on this repo and the README's first sentence say different things — make them one string",
+      "expect": "repo-pitch"
+    },
+    { "prompt": "write the one-line description for this repo before I publish it to PyPI", "expect": "repo-pitch" },
+    { "prompt": "is this draft tagline any good: a toolkit for toolkits", "expect": "repo-pitch" },
+    { "prompt": "how long can the GitHub About box actually be?", "expect": "repo-pitch" },
+
+    {
+      "prompt": "here are three images for the link card, from prompt C3 on Flux — keep the second, the first has lens flare",
+      "expect": "repo-assets"
+    },
+    { "prompt": "what does this repo still need image-wise? we have no banner and no logo", "expect": "repo-assets" },
+    { "prompt": "what size should the social preview be, and can I put text in it?", "expect": "repo-assets" },
+    {
+      "prompt": "I generated a new hero image — where does the file go and what do I have to credit?",
+      "expect": "repo-assets"
+    },
+    { "prompt": "which prompt and model produced the banner we are using?", "expect": "repo-assets" },
+    { "prompt": "make a favicon set from the logo", "expect": "repo-assets" },
+    { "prompt": "add a screenshot of the CLI running to the README", "expect": "repo-assets" },
+    {
+      "prompt": "can I show the Docker whale in our card icons or is that a licence problem?",
+      "expect": "repo-assets"
+    },
+
+    { "prompt": "resize this screenshot to 800px so I can attach it to a bug report", "expect": null },
+    { "prompt": "write the release notes for v2.1", "expect": null },
+    { "prompt": "what is the capital of France?", "expect": null },
+    { "prompt": "run the test suite and tell me what fails", "expect": null },
+
+    { "prompt": "measure how this session has been using the Bash tool", "expect": "session-bash-audit" },
+    { "prompt": "file a plan for the other repo about its stale pins", "expect": "plan-docs" },
+    { "prompt": "anything worth saving before I compact this session?", "expect": "session-harvest" }
+  ]
+}

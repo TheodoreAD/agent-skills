@@ -182,6 +182,96 @@ own `[UNVERIFIED:]` says its 21:9 and its model list are search-summary depth, u
 Generation is manual, so this is the user's to confirm once — and it decides whether the upscale
 step is needed at all.]
 
+### 1d. The one image tool, researched 2026-09-18
+
+**No PyPI wrapper ships either candidate's CLI**, checked against PyPI's own metadata rather than a
+search summary, so the house preference for `uv-tool` cannot be satisfied and `apt` is the install
+method. `magick` on PyPI is a dead 2013-era binding, one release, no wheels; `imagemagick-binary`,
+`imagemagick-cli`, `vips`, `oxipng` and `cwebp` do not exist there at all; `wand` and `pyvips` are
+**bindings that need the real library installed**, and `pyvips-binary` ships the shared library in 8
+MB wheels but no command-line tool. A Python binding is also the wrong shape here for a second
+reason: these skills are stdlib-only, so the script must **shell out to a CLI** rather than import
+anything.
+
+What this machine's distro actually offers, read from `apt-cache policy`:
+
+| package                  | version    | gives                                                          |
+| ------------------------ | ---------- | -------------------------------------------------------------- |
+| `imagemagick`            | **6.9.12** | `convert`, `identify`, `mogrify`, `montage` — **not `magick`** |
+| `libvips-tools`          | 8.15.1     | `vips`, `vipsthumbnail`, `vipsheader`                          |
+| `webp`                   | 1.3.2      | `cwebp`, `dwebp` — exact byte targeting via `-size`            |
+| `libimage-exiftool-perl` | 12.76      | the metadata specialist, including copy-across-conversion      |
+| `potrace`                | 1.16       | raster → SVG tracing                                           |
+
+[DECISION: **ImageMagick is the single tool, and the version is part of the decision.** One binary
+covers every operation this design needs — resize, crop to an aspect, slice the 2×2 card sheet,
+convert with a byte target (`-define webp:target-size`), and read a PNG's text chunks at intake with
+`identify -verbose`. It is also the tool with by far the deepest presence in model training data,
+which matters for the improvised command the script does not own.
+
+**The trap is that Ubuntu ships ImageMagick 6, where `magick` does not exist.** Every command an
+agent writes from memory is IM7-shaped (`magick input.png -resize …`), and on this machine that is a
+command-not-found. So: prefer installing IM7 where PULSE can, and either way the skill's script
+**detects which binary is present and spells its own commands accordingly**, rather than trusting
+either habit.]
+
+**What one tool does not cover, stated so "single tool" is not read as more than it is.** Raster
+manipulation is ImageMagick's; **vectorising a logomark is `potrace`'s** (the catalogue already says
+a mark is generated to explore and then redrawn as SVG), and **a terminal demo is `vhs`'s**. Those
+are different jobs, not missing features.
+
+[NEEDS CLARIFICATION: **whether `exiftool` is a second install or an avoided one.** It matters only
+if a credential has to survive export — see the metadata pitfall below. `cwebp -metadata all` is the
+alternative and comes with the `webp` package; doing neither is also a position, as long as it is
+taken deliberately.]
+
+[PITFALL: **the export step destroys exactly the provenance this design plans to read.** A
+PNG-to-WebP or JPEG conversion drops the PNG `tEXt` chunk, which is where SD-family pipelines write
+the prompt, seed and sampler — recent ImageMagick preserves ICC, EXIF and XMP, and a PNG text chunk
+is none of those. C2PA is not in that preserved list either, and nothing in ImageMagick's
+documentation claims to carry a manifest across a conversion. **So intake must read the metadata
+before anything converts the file**, and the record has to hold what was read rather than a promise
+that the file still holds it.]
+
+### 1e. Where the exploratory images live
+
+[DECISION: **a content-addressed store under `$XDG_DATA_HOME`, with an env override, following this
+family's own pattern.** User's first pick was the `.local` convention and it is the right one.
+`$REPO_ASSETS_HOME`, defaulting to `$XDG_DATA_HOME/repo-assets` (so `~/.local/share/repo-assets`),
+laid out as `<host>--<owner>--<repo>/<sha256>.<ext>` — the same entry-naming rule `research-library`
+already uses, so two stores on one machine do not invent two conventions.
+
+**Data rather than state or cache**, deliberately: `~/.local/state` is for what a tool can lose
+without harm and `~/.cache` is for what anything may delete, while these files are **the referents
+of a committed record** — the manifest stores a hash, and a missing blob turns a rejection with a
+reason into a rejection with a dangling pointer. Hash-named because the same image handed over twice
+is then recognisably the same image, which is the cheapest possible defence against a multi-day
+handoff.]
+
+[NEEDS CLARIFICATION: **retention, and what is not backed up.** The store grows without bound, and
+`~/.local/share` is not in any backup this design knows of. A `prune` that drops rejected blobs
+older than some age while keeping their manifest rows is the obvious answer — the reason is the
+valuable part and it lives in the repo, not in the blob. Decide in the pilot, once there is a real
+pile.]
+
+### 1f. Handing over a URL instead of a file
+
+Asked 2026-09-18: the user wants to paste one or more URLs and have the skill do the rest, rather
+than download and move files by hand. The shape, stdlib-only:
+
+`assets.py fetch <url>… --slot <name>` — download with a timeout and a size cap, **sniff the magic
+bytes rather than trusting the extension or the `Content-Type`**, compute the sha256, store it in
+the blob store above under that name, and **skip the write when the hash is already there**, so
+pasting the same URL twice is free rather than duplicated. Then, in the same pass and **before any
+conversion**, read the intake metadata and append a `tried` row carrying the source URL, the fetch
+timestamp, and whatever the file itself yielded — prompt, seed, model — leaving `verdict` and `why`
+empty, because those are the two fields no download can supply.
+
+[UNVERIFIED: **whether a NightCafe image URL is publicly fetchable**, or whether it sits behind a
+session cookie or a signed, expiring link. If it needs authentication, the flow degrades to the user
+saving the file and handing over a path — which the same command should accept, so the two cases are
+one command rather than two.]
+
 ### 2. One file per repo that says what it needs and what it has
 
 The tracking the user asked for. Shape below; four things about it were decided 2026-09-18.
@@ -240,6 +330,25 @@ bytes = 412000
 credits = ["Git Logo by Jason Long is licensed under CC BY 3.0"]
 pending = ["upload in GitHub Settings: the social preview has no API"]
 ```
+
+**Four fields the sketch is missing, found 2026-09-18 by asking what the design does not cover.**
+Each is a hole in the schema rather than a preference:
+
+- **`alt` per slot, and it is content rather than decoration.** Every image needs alt text, a human
+  writes it, and nothing in the sketch has a place to put it — while the presentation plan's own
+  40-line linter found that VHS's two hero images and freeze's hero have **no `alt` attribute at
+  all**, which is the state this design would otherwise reproduce with a tracker on top.
+- **`path` cannot be a single string once `<picture>` is involved.** Theme-aware images need a light
+  file and a dark file for one surface, and `<picture>` is the only supported mechanism. The slot
+  needs a pair, and the byte budget applies to each half.
+- **`seed` belongs beside `model`.** A prompt and a model do not reproduce an image; the seed does,
+  and SD-family pipelines write it into the same text chunk the intake step already reads. Recording
+  the two that do not reproduce anything, while dropping the one that does, would be an odd record
+  to keep on purpose.
+- **The accepted file needs a stable name, not its hash.** `README.md` and the site link to a path,
+  so a hash-named file in the repo churns every link on every re-accept. Hash-named blobs belong in
+  the exploratory store; the repo gets `docs/assets/social-preview.png` and the manifest carries the
+  hash.
 
 **Rejections are recorded with a reason, because that is what turns a re-roll into a correction** —
 scaffoldapy's plan states the lesson and its rejected batch is the counterexample. **`published` is

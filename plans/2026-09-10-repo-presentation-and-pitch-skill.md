@@ -390,6 +390,24 @@ and the prior's "repo-as-storefront (README, metadata, assets, catalogue)" is at
 the assets line. The other two jobs — distribution and long-form content — were not in the suite and
 remain open here.]
 
+[NEEDS CLARIFICATION: **nothing deterministic checks the text side of a repo's representation, and
+the user asked whether something already did.** Checked 2026-09-18 across all 15 installed skills:
+`repo-pitch` is the only candidate and it is deliberately narrow — `check`, `surfaces`, `readme`,
+`drift`, all of them about **one string** and its consistency across GitHub, README and a registry.
+Nothing checks what this plan's own measurements say is missing across these repos: zero topics on
+27 of 27, no homepage URL anywhere, `repo-tasks` public with an empty description, README section
+completeness against `standard-readme`, whether a LICENSE and CONTRIBUTING exist, whether images
+carry alt text, whether links still resolve. That is a **second deterministic surface beside the
+pitch**, and it is what was being done by hand in `power-user-linux-setup`.
+
+Prior art is already cloned and should be read before anything is drafted:
+`thatrebeccarae/claude-marketing` ships both a `repo-health` and a `github-readme` skill.
+
+It is also the untested part of the split above: the 19-case suite cut pitch against assets and
+contains no storefront-metadata case at all, so whether this is a third skill, a mode of
+`repo-pitch`, or the storefront skill the prior named is **unmeasured**. Extending the suite is the
+cheap next step, since the harness and the proposal format already exist.]
+
 [NEEDS CLARIFICATION: **where does the pitch source-of-truth file live, and does it need to exist at
 all?** standard-readme already defines the artifact and the three targets, so a separate file may be
 redundant: the README's own short-description line could be the source, with the check comparing it

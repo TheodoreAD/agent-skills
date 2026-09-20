@@ -361,6 +361,45 @@ Default delivery is 310,931 bytes; `?tr=orig-true` is 627,995 — **both 1600×1
 is an image-CDN transform, so a recorded hash is a hash _of one URL form_. The manifest must record
 which form it fetched, or a later re-download will disagree with a hash that was never wrong.]
 
+### 1g-bis. Do software projects have heroes? Measured 2026-09-20, and mostly not
+
+Asked directly, with an instinct attached — an asciinema-style demo early makes sense, a full-screen
+hero maybe not for libraries, skills and MCP servers — and an invitation to push back. **The
+evidence supports the instinct and goes one step further than it did.**
+
+**What four real developer-tool front pages put above the fold**, read today:
+
+| site                      | what occupies the first screen                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| `docs.astral.sh/uv`       | logo, one-line tagline, then a **benchmark bar chart** in light and dark variants        |
+| `python-httpx.org`        | the butterfly **logomark**, a tagline, then a code block and `pip install`               |
+| `modelcontextprotocol.io` | text, then a **simple architecture diagram**, then cards                                 |
+| `vite.dev`                | a real hero section: logo, headline, two buttons, install snippet, **abstract gradient** |
+
+**The pattern is consistent and it is not a picture.** Above the fold is the name or logomark, one
+line saying what it is, and then **immediate proof** — a chart, a diagram, a code block, an install
+command. Where a large visual exists it is either the logomark, an abstract gradient, or
+**information**. Not one of the four shows a photorealistic illustrated scene, which is exactly what
+the pilot repo's brief plans to generate.
+
+**And in this corpus, a top-of-README image is a coin flip rather than a norm.** Of 144 READMEs, 66
+(**46%**) open with a non-badge image in the first twelve lines — a logo or a banner — and only 9
+(**6%**) contain a terminal demo anywhere, though that figure undercounts demos whose filenames say
+something else.
+
+[DECISION: **no `docs-hero` is generated, and any large visual is informational.** The full-screen
+hero belongs to company-backed frameworks with a marketing site and an adoption target, which is not
+what a skills repo is. Where a big visual earns its place here it should be a **benchmark chart, an
+architecture diagram, or a terminal recording** — the shapes the sites that work actually use. The
+user's asciinema instinct is the well-evidenced half of the question.]
+
+[PITFALL: **the demo format the evidence favours has the broken toolchain.** The presentation plan
+measured an animated terminal SVG at 127 KB against an equivalent GIF at 4.45 MB, and also found
+that `svg-term-cli`, the tool that made such SVGs, last published in 2018 with no maintained
+replacement. `vhs` produces GIFs, and asciinema's own player is JavaScript that GitHub will not run
+in a README. So the choices are a heavy GIF, a light SVG from a dead tool, or a static screenshot —
+and this is the one place where a cheap static frame may beat the thing everybody wants.]
+
 ### 1h. 1600 is enough, and the oversized targets were for a site that does not exist
 
 Asked 2026-09-20, after the 1600 ceiling turned up: can the generator go higher, and if that is

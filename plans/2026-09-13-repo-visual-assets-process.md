@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-18
+updated: 2026-09-20
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 81f41ac7-aec7-45e2-8d84-aad642024a13.jsonl
 source_moment: 2026-09-13T16:14:15Z
@@ -265,12 +265,12 @@ directory no backup covers.
 layout and the hash-naming stand. **`$REPO_ASSETS_HOME` still overrides**, and is what a machine
 without durable access to the generator would point at a real directory.]
 
-[NEEDS CLARIFICATION: **this rests on one unverified property, and it fails silently.** Whether a
-NightCafe image URL is stable, public and non-expiring, and whether creations are retained
-indefinitely — including after a plan change or a credit balance running out. A signed or expiring
-URL does not announce itself at recording time; it announces itself months later when somebody
-clicks a `tried` row and gets a 403. Check it in the pilot, and until it is checked **keep the
-blobs**: a cache that cannot be refilled is a store with the wrong name.]
+**The property it rests on was checked 2026-09-20 and holds** — see §1g: the image host serves a
+plain unauthenticated request, and a three-year-old creation is still there with its prompt. The
+caution the earlier draft carried, that an expiring URL would fail silently months later, is
+answered for this generator and stays true as a rule for any other. **What is not covered by that
+evidence** is an account that lapses or is closed, which no external check can test, and which is
+the reason the accepted image and the prompt files are committed to the repo regardless.
 
 [PITFALL: **a re-download that does not match the recorded hash is the expected case, not
 corruption.** If the generator re-encodes, resizes or re-compresses what it serves, the same
@@ -302,10 +302,55 @@ conversion**, read the intake metadata and append a `tried` row carrying the sou
 timestamp, and whatever the file itself yielded — prompt, seed, model — leaving `verdict` and `why`
 empty, because those are the two fields no download can supply.
 
-[UNVERIFIED: **whether a NightCafe image URL is publicly fetchable**, or whether it sits behind a
-session cookie or a signed, expiring link. If it needs authentication, the flow degrades to the user
-saving the file and handing over a path — which the same command should accept, so the two cases are
-one command rather than two.]
+### 1g. Measured against the real generator, 2026-09-20
+
+The user supplied three of their own creations — one recent, two three years old — and every open
+question about NightCafe above is now answered from the artifacts rather than from a search summary.
+
+**Durability holds, which is what the archive decision rests on.** A three-year-old creation page
+still resolves and still shows its prompt (_"A stat in a forest. A creek is in the center.
+Impressionist."_) and its model (DreamShaper v8), alongside the user's own report of creations
+surviving more than a year untouched.
+
+**Two hosts, two access rules, and this decides how the fetch command is written.**
+
+| host                       | what it serves                       | plain `curl`                                         |
+| -------------------------- | ------------------------------------ | ---------------------------------------------------- |
+| `images.nightcafe.studio`  | the image bytes, no auth, no cookie  | **200** — stdlib `urllib` is enough                  |
+| `creator.nightcafe.studio` | the creation page and its parameters | **403** on both old URLs — blocked as a naive client |
+
+So the script downloads bytes happily and **must not plan to scrape the page**; a browser-shaped
+fetch reads it, a stdlib one does not.
+
+[DECISION: **the file carries no provenance, so the page is the only metadata source and the batch
+record is mandatory.** Walked the delivered JPEG byte by byte: `FF D8 FF DB` — straight from
+start-of-image to a quantisation table, **no EXIF, no XMP, no JUMBF/C2PA, no text segment**.
+Requesting the untransformed original with `?tr=orig-true` returns a larger file (627,995 bytes
+against 310,931) whose only additional segments are a JFIF header and a comment reading
+`CREATOR: gd-jpeg v1.0 (using IJG JPEG v6…)` — **the delivered file is a GD re-encode**, which is
+exactly where any generator metadata was lost.
+
+This kills the branch §1c and the prior-art section were hoping for. Prompt, seed and model are
+**not** readable from the download for this generator, so the manifest cannot derive them, and the
+**batch has to be recorded when the prompt is handed out** rather than reconstructed at triage. The
+`seed` field stays in the schema because other generators write it; for NightCafe it will be empty,
+since the creation page does not show a seed either.]
+
+**What the creation page does show, publicly:** the full prompt, the model name ("Muse Image" on the
+recent one), the aspect ratio, an `Initial Resolution: High` label with no pixel figure, and a
+relative date. Not the seed.
+
+[PITFALL: **the same creation has two byte streams, and the hash depends on which URL you used.**
+Default delivery is 310,931 bytes; `?tr=orig-true` is 627,995 — **both 1600×1600**. The `tr=` query
+is an image-CDN transform, so a recorded hash is a hash _of one URL form_. The manifest must record
+which form it fetched, or a later re-download will disagree with a hash that was never wrong.]
+
+[PITFALL: **1600×1600 is what came back even as the original, and the size table assumes more.** For
+a 1:1 creation at the account's "High" resolution, both URL forms are 1600 on the long edge — so a
+1920×1080 hero, a 2520×1080 wide hero and a 2400×800 banner **cannot be filled from a source like
+this without upscaling**, and a 21:9 crop of a 1600 square is 1600×686. What a 16:9 generation
+returns, and what the account's upscale step produces, is the one thing still unmeasured — and it is
+now the pilot's first question rather than the metadata dump, which is answered.]
 
 ### 2. One file per repo that says what it needs and what it has
 
@@ -546,14 +591,16 @@ PNG text chunk. NightCafe runs SD-family models. If that holds for the user's ow
 file** rather than typed at handoff, and what the user actually has to supply is the one thing no
 file can carry: **why this one and not that one.**
 
-[UNVERIFIED: **what a real NightCafe download actually carries.** The claim above rests on a web
-search whose results were mostly metadata-remover SEO pages, so it is search-summary depth and no
-better. Settling it needs one real file, which only the user has — the pilot's first step, and
-cheap: dump the PNG chunk names and look for `tEXt`/`iTXt`/`caBX`. Note the machine fact that makes
-this a design constraint rather than a detail: **no `exiftool`, no `c2patool` and no Pillow are
-installed here**, so a stdlib PNG chunk reader is the only zero-install route. It can read the text
-chunks and detect that a C2PA manifest is present; it cannot verify the signature, and should not
-claim to.]
+**Answered 2026-09-20, and the answer is none** — see §1g. A real download was walked segment by
+segment: no EXIF, no XMP, no C2PA, no text chunk, and a comment identifying the file as a GD
+re-encode. **So the paragraph above is wrong about this generator and right as a general claim**,
+and the distinction matters for the skill: other pipelines do write a prompt into the file, and the
+intake reader is still worth having, but nothing in this design may _depend_ on it.
+
+The machine fact that shaped the check stands: **no `exiftool`, no `c2patool` and no Pillow are
+installed here**, so a stdlib reader is the only zero-install route. It was enough — walking JPEG
+segments and PNG chunks needs `struct` and nothing else, which is also the argument for keeping that
+reader in the skill rather than reaching for a dependency the moment metadata is mentioned.
 
 [DEFERRED: **the disclosure question has a regulatory half the plan did not have.** EU AI Act
 Article 50 and California SB 942 both push machine-readable disclosure of AI-generated content, and

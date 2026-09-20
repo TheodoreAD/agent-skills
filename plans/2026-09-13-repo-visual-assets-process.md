@@ -115,6 +115,22 @@ several surfaces must never be generated at all.
 Specs come from the presentation plan where it measured them, and are marked unverified where it did
 not.
 
+**Where a reader learns this vocabulary, asked 2026-09-20.** The skill should point at worked
+examples rather than define the words twice:
+
+- **`matiassingers/awesome-readme`** (already in the research library) is the best match for these
+  surfaces, because **every entry names the visual elements it is being praised for** — "project
+  banner with informative badges", "project logo, clear description, screenshot", "banner with
+  GIFs", "screenshot gallery of the docs site". The vocabulary arrives attached to a real page a
+  reader can open, which is what a glossary cannot do.
+- **`metatags.io`** renders any URL's link card as Google, Facebook, X, LinkedIn, Pinterest and
+  Slack each show it — free, no signup, verified 2026-09-20. One paste is a faster explanation of
+  `social-preview` and `og:image` than any prose, and pasting one of this family's own repos shows
+  the default grey card that the whole surface exists to replace.
+- **The logo words are three and worth stating once**: a **logomark** is the symbol alone, a
+  **wordmark** is the name set in type, and a **combination mark** locks the two together. Only the
+  first is generated here; the catalogue already says a wordmark is real type and never generated.
+
 ### 1b. The same surfaces in pixels, each number with where it came from
 
 Asked for directly 2026-09-18. **Every row says whether the number is verified, a convention, or a

@@ -345,6 +345,42 @@ Default delivery is 310,931 bytes; `?tr=orig-true` is 627,995 — **both 1600×1
 is an image-CDN transform, so a recorded hash is a hash _of one URL form_. The manifest must record
 which form it fetched, or a later re-download will disagree with a hash that was never wrong.]
 
+### 1h. 1600 is enough, and the oversized targets were for a site that does not exist
+
+Asked 2026-09-20, after the 1600 ceiling turned up: can the generator go higher, and if that is
+hard, should the sizes come down instead. **The sizes come down.**
+
+**What the generator offers, from its own pages rather than a summary.** The FAQ states the cap
+plainly — _"The resolution limits are to do with the amount of memory required by the different
+algorithms. There's no paid tier that will enable higher resolutions than what's displayed in the
+options"_ — and an `Enhance` button upscales after generation, with the Clarity Upscaler advertising
+_"up to 4x"_. **No pixel figures or credit costs are published anywhere public**; they are visible
+only inside the app, so the exact options remain the user's to read. What that establishes is enough
+for the decision: a path to 3200 or 6400 exists and costs credits, and nothing suggests a bigger
+native generation.
+
+**The arithmetic says none of that is needed.** Every surface that renders today fits inside 1600 on
+the long edge, with no upscale at all:
+
+| surface        | from a 1600 source                                 | upscale needed |
+| -------------- | -------------------------------------------------- | -------------- |
+| social preview | crop 1600×800 (2:1), scale to 1280×640             | no             |
+| README banner  | crop to 3:1 or 21:9, ship ≤1600 wide, display ~900 | no             |
+| card icons     | a 1600×1600 two-by-two sheet slices to 4 × 800×800 | no, exactly    |
+| logomark       | square, redrawn as SVG anyway                      | no             |
+| favicon set    | every size from 16 to 512, down-scaled             | no             |
+
+**The three targets that do not fit — the 1920×1080 hero, the 2520×1080 wide hero and the 2400×800
+banner — are all docs-site surfaces, and no repo in this family has a docs site.** They were sized
+for a site that has never been built, against a generator nobody had measured.
+
+[DECISION: **cut the size table to what renders, and defer the rest to the day a site exists.** The
+shipped catalogue states 1600 as the working source size, and a docs hero is marked as needing
+either an upscale pass or a lower target **at the time somebody builds the site** — not now, and not
+as a blocker. This is the cheap half of the user's own framing: the effort has to stay
+proportionate, and the expensive half of the table was buying resolution for pages that do not
+exist.]
+
 [PITFALL: **1600×1600 is what came back even as the original, and the size table assumes more.** For
 a 1:1 creation at the account's "High" resolution, both URL forms are 1600 on the long edge — so a
 1920×1080 hero, a 2520×1080 wide hero and a 2400×800 banner **cannot be filled from a source like
@@ -686,8 +722,41 @@ name the generator as the source for anything wider, rather than restating a lis
 metadata, and whether any venue in the presentation plan's §8 has rules for generated images as
 opposed to generated text, was not researched.]
 
+## Is this worth doing at all, scoped 2026-09-20
+
+The user's own framing, and it deserves a number rather than a reassurance: _"we are not planning to
+use this for commercial gain for now, so if the effort to get each skill and repo fitted with images
+becomes very large, this whole effort is not worth it."_
+
+**The minimum that changes anything is two images per public repo** — a social preview, because it
+is what every pasted link renders and every repo here currently shows GitHub's default grey card,
+and one README banner. Four public repos is **eight images**, or roughly thirty generations at four
+candidates each: one evening of generating, and the triage is minutes per slot once the tracker
+exists.
+
+**The version that is not worth it is per-skill imagery.** Fifteen skills with a card each is
+fifteen more surfaces, none of which anyone has asked for and none of which appears on a page a
+stranger reaches. The catalogue keeps `card-icons` as a surface because the vocabulary should be
+complete; **nothing should generate one until a page exists that shows them.**
+
+[DECISION: **scope the production to two images per public repo, and let everything else wait for a
+page that needs it.** The process is still worth building because it is cheap — a tracker file, a
+fetch command and a check — and because its real product is the **reason a candidate lost**, which
+is what makes the second attempt a correction. The expensive half was never the tracker; it was the
+image count, and the image count is now eight.]
+
+**And the honest comparison, since the effort question is really about payoff.** The presentation
+plan measured this family's actual state: **~380 installs against 0 stars**, zero topics on all 27
+repos, no homepage URL anywhere, a public repo with an empty description, and every README carrying
+no images at all. Of those, the **text and metadata fixes are free and measurably absent** — topics
+and a description are minutes of work with no generation step. Images are the expensive half with
+the least evidence of payoff. **If only one half gets done, do the text half**, which is also the
+half that still has no deterministic checker.
+
 ## Recommended direction
 
+0. **Do the free text-side fixes first** — topics, homepage, description, the README opener — since
+   they cost minutes, are measurably missing, and need no generator at all.
 1. **Absorb this beside the presentation plan**, and let its skill-count measurement decide whether
    this becomes part of the storefront skill or its own.
 2. **Pilot by hand on power-user-linux-setup first**, per the house rule that a convention is

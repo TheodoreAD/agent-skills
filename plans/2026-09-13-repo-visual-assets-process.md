@@ -400,6 +400,56 @@ replacement. `vhs` produces GIFs, and asciinema's own player is JavaScript that 
 in a README. So the choices are a heavy GIF, a light SVG from a dead tool, or a static screenshot —
 and this is the one place where a cheap static frame may beat the thing everybody wants.]
 
+### 1g-ter. The banner is the one generated surface, and it is a theme with variations
+
+Stated by the user 2026-09-20, and it settles what the images are actually _for_: _"i like it when
+github repos start with an image that sets the mood, but not a hero per se, something small enough
+to be a banner, but not a very short one with just a name, something evocative - a scene, a
+character, a graphical design. We could reuse that across the docs site, maybe keeping it as a theme
+and having variations on the theme if a docs site gets larger, or a product has several important
+modules or features."_
+
+[DECISION: **`readme-banner` is the primary generated surface, and it carries a scene rather than a
+nameplate.** Three shapes were on the table and this picks the middle one: not a full-screen hero,
+which the four measured sites do not use either; not a thin strip with the project name, which is a
+wordmark in disguise and which the catalogue already says is real type rather than a generation; but
+a **wide, short, evocative image** — a scene, a character, a graphic composition — deep enough to
+set a mood and short enough that the README's first sentence is still on screen. The social card is
+then usually **a crop of the same image** rather than a separate generation, which is the whole
+argument for generating at an aspect ratio rather than per surface.]
+
+[DECISION: **one theme per repo, with variations per module.** The banner establishes a look; a
+larger docs site or a product with distinct parts — the user's example is bare metal, WSL and dev
+container — gets **variations on that theme rather than unrelated images**. This is the same
+mechanism the pilot repo's brief already uses for its three directions, where a shared "look"
+paragraph is pasted after every scene prompt so the prompts cannot drift apart on materials and
+mood, extended from one repo to one repo's sections.]
+
+**Consistency across variations is the part that fails, and the brief already measured why.** Its
+card set is generated as a **single two-by-two sheet and then sliced**, in its own words because
+four separate generations "drift in angle, scale and lighting". Wide banners cannot be sheeted that
+way — a 1600 source sliced into three banners gives each one a third of the height. So the
+variations need the other mechanisms:
+
+- the **shared look paragraph and shared tail**, which the brief already carries;
+- the **same model**, recorded per slot, since a model change is a style change;
+- **one sitting**, because the generator's own defaults drift between sessions;
+- and, where the generator supports it, a **start image or style reference** from the accepted
+  banner, which is the only mechanism that makes a variation provably of the same family rather than
+  merely prompted alike.
+
+[UNVERIFIED: **whether NightCafe offers a start image or style reference on the models in use.** Its
+terms of service discuss input images explicitly — the intellectual-property transfer is conditioned
+on holding the rights to any input image — so the feature exists in some form; which models accept
+one, and whether it is a style reference or an image-to-image strength, is unchecked. This matters
+more than any other open question about the generator, because it is what turns "variations on a
+theme" from a hope into a procedure.]
+
+**Schema consequence:** a slot is no longer identified by surface alone. `readme-banner` and
+`docs-banner` for bare metal, WSL and dev container are four slots of two surfaces, so the manifest
+keys on **surface plus variant**, and the variant carries which module it belongs to and which
+accepted image it is a variation of.
+
 ### 1h. 1600 is enough, and the oversized targets were for a site that does not exist
 
 Asked 2026-09-20, after the 1600 ceiling turned up: can the generator go higher, and if that is

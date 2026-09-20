@@ -248,11 +248,46 @@ reason into a rejection with a dangling pointer. Hash-named because the same ima
 is then recognisably the same image, which is the cheapest possible defence against a multi-day
 handoff.]
 
-[NEEDS CLARIFICATION: **retention, and what is not backed up.** The store grows without bound, and
-`~/.local/share` is not in any backup this design knows of. A `prune` that drops rejected blobs
-older than some age while keeping their manifest rows is the obvious answer — the reason is the
-valuable part and it lives in the repo, not in the blob. Decide in the pilot, once there is a real
-pile.]
+**Superseded the same day by a better answer, kept because the reasoning still bounds it.** Asked
+2026-09-18: _"do we agree that nightcafe stays the store for all of the images and we just download
+them when processing and deciding if we actually keep them?"_
+
+[DECISION: **the generator is the archive; the local directory is a cache.** The bytes of a rejected
+candidate have no value the repo needs — the **reason** is the valuable part and it is committed —
+and the generator already holds every image it made, beside the prompt that made it. So the manifest
+records the **URL, the hash and the reason**, a candidate is downloaded when somebody is deciding,
+and the local copy may be dropped the moment the slot is settled. That dissolves the retention
+question above rather than answering it: nothing accumulates, and nothing that matters is only in a
+directory no backup covers.
+
+**This reclassifies the directory**: something re-fetchable is a cache by definition, so
+`$XDG_CACHE_HOME/repo-assets` is the correct home and `$XDG_DATA_HOME` was the wrong reading. The
+layout and the hash-naming stand. **`$REPO_ASSETS_HOME` still overrides**, and is what a machine
+without durable access to the generator would point at a real directory.]
+
+[NEEDS CLARIFICATION: **this rests on one unverified property, and it fails silently.** Whether a
+NightCafe image URL is stable, public and non-expiring, and whether creations are retained
+indefinitely — including after a plan change or a credit balance running out. A signed or expiring
+URL does not announce itself at recording time; it announces itself months later when somebody
+clicks a `tried` row and gets a 403. Check it in the pilot, and until it is checked **keep the
+blobs**: a cache that cannot be refilled is a store with the wrong name.]
+
+[PITFALL: **a re-download that does not match the recorded hash is the expected case, not
+corruption.** If the generator re-encodes, resizes or re-compresses what it serves, the same
+creation yields a different sha256. So a mismatch means "this is a re-encoding of that candidate",
+and the tool must say that rather than reporting a tampered file — while a **matching** hash is what
+makes a re-fetched reject provably the one the reason was written about.]
+
+**What this does not move.** The accepted image is committed to the repo, the prompt files are
+committed to the repo, and the metadata read at intake is written into the manifest, because all
+three have to survive the generator entirely. Relying on it for the rejects is a small, bounded
+dependency; relying on it for the kept work would not be.
+
+**One property of the archive worth naming**, since the design now leans on it: NightCafe holds a
+perpetual, royalty-free licence to show creations on its own site and social media, recorded in the
+pilot repo's own decision. So the archive's operator may display its contents — which is already
+true of every image generated there, and is not a new cost of using it as the store, but it does
+mean an unreleased mark is not private while it sits there.
 
 ### 1f. Handing over a URL instead of a file
 

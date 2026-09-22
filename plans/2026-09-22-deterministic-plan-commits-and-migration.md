@@ -285,6 +285,17 @@ speed_ is exactly the artifact being asked for, since the alternative is opening
 the retirement case is not restatement at all: the file is gone from the tip, so the commit is the
 only thing there. Settling this properly means re-measuring the rate after the rule ships.]
 
+[UNVERIFIED: **and the sharper version of that, raised by the user: the 97% came from agents writing
+whole messages after `-m`, never from anyone writing a `--why`.** So the open question is not only
+whether the rate holds but whether the _quality_ does, and there is a mechanism for it not to. `-m`
+reads as "write a commit message", which a model has enormous priors for; a flag named `--why` with
+a placeholder reading "the reason" reads as a sentence fragment. The wording at all three prompts
+now states the body standard for exactly that reason, but the only evidence either way is five
+`--why` bodies written in the session that designed the flag — 257 to 1,156 characters against a
+corpus median of 716 for repo-held plan commits. Comparable, and worthless as a sample:
+self-selected, primed, and the thinnest of them was the first one written. Re-measure body length
+**and** whether bodies still name an alternative, which is the part a thin one drops first.]
+
 [DECISION: a status change is worth asking about after all, against the initial guess that it is not
 — but the reason is that it is **rare**, not that it is rich. Seven status-only commits exist in
 1,639, and all seven carry a body averaging 443 characters, because a status bump almost never gets

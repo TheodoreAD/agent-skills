@@ -88,14 +88,23 @@ classify the transition:
 and the file already carries a human sentence one line into the body. Falling back to the stem only
 when there is no H1 keeps the old behaviour as the floor rather than the default.]
 
-`--why <text>` means one thing — the reason — and the script decides where it goes: the body under a
-derived subject, and the subject itself where nothing could be derived. `-m` keeps overriding both,
-so nothing that works today stops working.
+`--why <text>` is the body and goes under the derived subject. `-m` remains the whole message,
+verbatim, and is what the unreadable cases take.
 
-[DECISION: `--why` places itself rather than being two flags. The first draft made it strictly the
-body, which left a prose-only edit unable to commit at all with the one flag documented for it —
-caught by its own test. Inventing a filler subject (`<repo>: update <topic>`) to sit above the
-reason was the alternative, and it is worse: a line that reads as information and carries none.]
+[DECISION: **`--why` is a body and only a body; `-m` is the whole message, verbatim.** Reversed once
+and then reversed back, which is worth recording because the middle position looked right. The first
+draft made `--why` strictly the body, which left a prose-only edit unable to commit with the one
+flag documented for it. The fix was to let `--why` become the subject when nothing could be derived
+— and the user then asked whether that made it identical to `-m`. Near enough: the only difference
+was the label prefix, so two flags converged on one behaviour with the meaning of one depending on
+the diff. Measured before changing it back, since a rare wart is tolerable: **153 of 1,643 plan
+commits, 9%, have no derivable subject** — one in eleven, and the samples are commits where the
+subject carries the news. So each flag means one thing, and where no subject can be read the command
+offers the one part it still knows, the label, handing it over in the refusal. That beat applying
+the label to `-m` automatically, which would have made the two identical again and paid for it by
+silently rewriting what the author typed. Inventing a filler subject (`<repo>: update <topic>`) was
+rejected throughout: a line that reads as information and carries none. The cost is real — the 9%
+now types a subject and a body through `-m`.]
 
 [DECISION: the `<label>:` prefix names **which part of the repository changed**, which reads as
 `plans:` in a repo that keeps its own and as `<repo>:` in a store mirror. Both halves are read from

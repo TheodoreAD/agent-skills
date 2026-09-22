@@ -188,14 +188,16 @@ the coverage gate runs first and why the offer goes to the user rather than to t
 Three more hand-rolled shapes, measured in the same pass and left alone deliberately. Each is a
 candidate rather than a decision, and none is blocked by anything above.
 
-[DEFERRED: **a `push` that scans first.** The store's own README prescribes `scan --mode history`
-before the first push and `scan --mode staged` before each one after. Measured 2026-09-22 over the
-transcripts: **101 pushes to a plans store, 32 of them (32%) with no `scan` anywhere in the eight
-calls before.** A rule stated in a README is a rule read once, at install time, and never again at
-the moment it applies. The objection to scripting it is that a push is the irreversible
-outward-facing step and wrapping it risks making it feel routine; the counter is that the wrapper is
-the only thing that can make the scan non-optional, and a third of pushes is what optional looks
-like. Not resolved here.]
+[DECISION: **a `push` that scans first — built.** The store's own README prescribed
+`scan --mode history` before the first push and `scan --mode staged` before each one after. Measured
+2026-09-22 over the transcripts: **101 pushes to a plans store, 32 of them (32%) with no `scan`
+anywhere in the eight calls before.** A rule stated in a README is read once at install time and
+never again at the moment it applies. The objection — that a push is the irreversible outward-facing
+step, so wrapping it risks making it feel routine — lost to the observation that the push was
+already routine and the scan was the part that was not. A command rather than a git hook, per the
+house rule that an agent should know what to run instead of being corrected behind its back. It
+scans the **outgoing range** rather than the working tree, since that is what a push actually
+publishes and is exactly the case `--mode tree` cannot see.]
 
 [DEFERRED: **the raw-git fallback has not been re-measured.** 88 `git commit` and 42 `git add` /
 `git rm` calls naming plan paths sat within two Bash calls of a `plans.py commit` — the shared-index
@@ -240,16 +242,27 @@ local, private and frequently remote-less, and nothing does archaeology in it �
 content back, never messages — while a repo's history is published, is read by later sessions
 through `git log`, and is the artifact the user named as the reason to want bodies at all.]
 
-[PITFALL: **the gate this shipped with is inverted against that finding, on both sides.** It refuses
-a prose-only edit for lack of `--why` — including in the store, where only 32% of such commits ever
-had a body — and commits a repo-side addition, retirement or status change silently, where 97%, 88%
-and 100% did. So the one thing it asks for is asked in the wrong place, and the three places history
-asks for it are the three it does not.]
+[PITFALL: **a subject requirement and a body expectation are two rules, and reading them as one
+produced a wrong conclusion here first.** The refusal this shipped with — no `--why`, no commit, for
+a prose-only edit — is about the **subject**: nothing can be derived, so the script has nothing to
+put on the first line, and that is true in the store exactly as in a repo. It is not evidence about
+bodies, and the store's 32% does not argue against it, because all 87 of those commits necessarily
+had a subject. The first draft of this section called the gate "inverted on both sides" on that
+misreading. It is wrong on one side only.]
 
-The correction is one rule, not a table: **expect `--why` wherever the commit lands in a repo, and
-never in the store.** `-m` stays the escape hatch for the genuine minority, and it is deliberately
-the more expensive path to type, so it is not the lazy default — an opt-out cheaper than compliance
-is the opt-out everyone takes.
+So the correction is a single new case rather than a redesign. Composed against the destination
+finding, the four quadrants are:
+
+| where    | subject derivable? | today                | should be                      |
+| -------- | ------------------ | -------------------- | ------------------------------ |
+| store    | yes                | commits silently     | unchanged — 22% ever bodied    |
+| store    | no                 | refuses, wants text  | unchanged — it needs a subject |
+| **repo** | **yes**            | **commits silently** | **expect `--why`** — 97%       |
+| repo     | no                 | refuses, wants text  | unchanged                      |
+
+One quadrant moves. `-m` stays the escape hatch for the genuine minority, and it is deliberately the
+more expensive path to type, so it is not the lazy default — an opt-out cheaper than compliance is
+the opt-out everyone takes.
 
 [UNVERIFIED: the 97% is strong evidence of practice and weaker evidence of necessity. Every one of
 those bodies was written when the author had to write the whole message anyway, so the marginal cost
@@ -268,3 +281,32 @@ deliberate triage sweeps — "four in-progress plans that nothing here can move"
 status, landed is" — where the status line is the residue and the judgment is the point. Asking
 there costs seven prompts across a corpus and catches the one case where the frontmatter genuinely
 cannot say why it moved.]
+
+### 6. `rename`, because a plan's filename is not only its own name
+
+Three things are keyed on a plan's stem and none of them is visible from the file being moved: its
+committed attachments (a directory beside it, named for the stem), its local attachments
+(`<store>/_attachments/<rel>/<stem>/`), and every plan citing it by filename — which is how this
+convention asks plans to reference each other in the first place.
+
+[DECISION: a command rather than advice, because the local-attachments half fails **silently**. Git
+never sees that directory, so a hand-rolled `git mv` leaves the plan's own `## Attachments` rows
+naming files that are no longer where the rows say, and nothing in the toolchain ever reports it.
+The committed half at least shows up as an untracked directory; the local half shows up as nothing
+at all.]
+
+[DECISION: citations are reported and rewritten only under `--update-refs`, not by default. A
+filename substitution is right for a link and wrong for a sentence — a reference that quoted a
+section title still points at the old wording — and some hits are prose _about_ the plan rather than
+a pointer to it. Same judgement the retirement procedure already asks for at step 5, and the same
+reason it is not automatic there.]
+
+[DECISION: `commit` learns the rename rather than `rename --commit` being the only way to record
+one. A rename arrives as a deletion plus an addition, which the mixed-set refusal would reject —
+correctly by its own logic and uselessly. Content decides it: the removed path's blob in `HEAD`
+against the added path's bytes. An edit made in the same breath does not match and stays a mixed
+set, which is honest, since that genuinely is two changes and no one sentence covers both.]
+
+[PITFALL: every collision is checked before the first move. A rename that relocated the plan and
+then found its attachments directory blocked would leave the two halves under different names, with
+the plan's rows pointing at neither — a worse state than either doing it or refusing.]

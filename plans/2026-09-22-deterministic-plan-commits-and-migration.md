@@ -188,12 +188,14 @@ the coverage gate runs first and why the offer goes to the user rather than to t
 Three more hand-rolled shapes, measured in the same pass and left alone deliberately. Each is a
 candidate rather than a decision, and none is blocked by anything above.
 
-[DEFERRED: **a `push` that scans first.** 529 `git push` and 256 `git fetch` calls sat near plan
-work, and the store's own README already prescribes `scan --mode history` before the first push and
-`scan --mode staged` before each one after — a rule stated in a README nobody re-reads while
-pushing. The objection to scripting it is that a push is the irreversible outward-facing step, so
-wrapping it risks making it feel routine; the counter is that the wrapper is what makes the scan
-non-optional. Not resolved here.]
+[DEFERRED: **a `push` that scans first.** The store's own README prescribes `scan --mode history`
+before the first push and `scan --mode staged` before each one after. Measured 2026-09-22 over the
+transcripts: **101 pushes to a plans store, 32 of them (32%) with no `scan` anywhere in the eight
+calls before.** A rule stated in a README is a rule read once, at install time, and never again at
+the moment it applies. The objection to scripting it is that a push is the irreversible
+outward-facing step and wrapping it risks making it feel routine; the counter is that the wrapper is
+the only thing that can make the scan non-optional, and a third of pushes is what optional looks
+like. Not resolved here.]
 
 [DEFERRED: **the raw-git fallback has not been re-measured.** 88 `git commit` and 42 `git add` /
 `git rm` calls naming plan paths sat within two Bash calls of a `plans.py commit` — the shared-index
@@ -201,8 +203,68 @@ hazard reopened by hand. The messages and the verification either side of the ca
 reasons for reaching past it, so the right next step is to re-run the audit after this change rather
 than to add anything.]
 
-[DEFERRED: **the gate runs in the wrong order.** 79 `inv quality.precommit` calls came _after_ a
-`plans.py commit` rather than before it, which is the sequencing SKILL.md already states and
-sessions already miss. Whether `commit` should run the repo's gate itself is a real question with a
-real objection — it would make a plan commit in the store run a work repo's toolchain, which is
-exactly what the store exists to avoid.]
+[DEFERRED: **the gate runs in the wrong order.** 95 `inv quality.precommit` calls came _after_ a
+`plans.py commit` against 42 before it. The first reading of that — sessions committing before
+gating — does not survive its own check: of the 95, only **2** re-committed the same plan, while 89
+went on to commit a _different_ one, which is a batch rhythm rather than a mistake. The real
+evidence is elsewhere and is weaker but genuine: `power-user-linux-setup` carries four reflow-only
+cleanup commits against plan files (`e79bb6b`, `7869a38`, `f195fef`, and `ddec24d`'s tail) and one,
+`bb74cce`, whose subject records "4 dprint-shaped CI failures". The cost is paid a push later, not a
+call later, which is why the transcript window could not see it. Whether `commit` should run the
+repo's gate itself still has its objection — it would make a plan commit in the store run a work
+repo's toolchain, which is what the store exists to avoid.]
+
+### 5. What the derived subject costs, measured after the fact
+
+The change above makes `--why` optional wherever a subject can be derived. Asked what that loses,
+this pass read every commit that ever touched a plan file across four repos and both store tiers —
+1,639 commits — and classified each by what its **diff** did rather than by what its subject said.
+(The first attempt classified on subject words and put "the sweep asks whether this session landed a
+plan it never bumped" in the status-change bucket; the number below is from the patch.)
+
+| operation    | in the store | in a repo  |
+| ------------ | ------------ | ---------- |
+| added        | 22% of 249   | 97% of 202 |
+| content-edit | 32% of 87    | 97% of 752 |
+| deleted      | 14% of 119   | 88% of 106 |
+| status-only  | —            | 100% of 7  |
+| mixed        | 50% of 4     | 99% of 113 |
+| **overall**  | **22%**      | **97%**    |
+
+(the share of commits carrying a body longer than 80 characters)
+
+[DECISION: **destination predicts the body; the operation barely moves it.** Every operation splits
+the same way and by the same factor, so the per-operation table this plan started from was measuring
+where a commit landed. The explanation is the two histories' different readerships: a store is
+local, private and frequently remote-less, and nothing does archaeology in it — `archive` reads
+content back, never messages — while a repo's history is published, is read by later sessions
+through `git log`, and is the artifact the user named as the reason to want bodies at all.]
+
+[PITFALL: **the gate this shipped with is inverted against that finding, on both sides.** It refuses
+a prose-only edit for lack of `--why` — including in the store, where only 32% of such commits ever
+had a body — and commits a repo-side addition, retirement or status change silently, where 97%, 88%
+and 100% did. So the one thing it asks for is asked in the wrong place, and the three places history
+asks for it are the three it does not.]
+
+The correction is one rule, not a table: **expect `--why` wherever the commit lands in a repo, and
+never in the store.** `-m` stays the escape hatch for the genuine minority, and it is deliberately
+the more expensive path to type, so it is not the lazy default — an opt-out cheaper than compliance
+is the opt-out everyone takes.
+
+[UNVERIFIED: the 97% is strong evidence of practice and weaker evidence of necessity. Every one of
+those bodies was written when the author had to write the whole message anyway, so the marginal cost
+of a body was near zero; now that the subject is free, the rate might have fallen on its own without
+anything being lost. Two things argue it would not. A body's vocabulary is a median 73% already
+present in the plan it commits, so most of them are restatement — and restatement _at `git log`
+speed_ is exactly the artifact being asked for, since the alternative is opening forty files. And
+the retirement case is not restatement at all: the file is gone from the tip, so the commit is the
+only thing there. Settling this properly means re-measuring the rate after the rule ships.]
+
+[DECISION: a status change is worth asking about after all, against the initial guess that it is not
+— but the reason is that it is **rare**, not that it is rich. Seven status-only commits exist in
+1,639, and all seven carry a body averaging 443 characters, because a status bump almost never gets
+committed alone: it rides along with the edit that justified it. The seven that stand alone are
+deliberate triage sweeps — "four in-progress plans that nothing here can move", "done is not a
+status, landed is" — where the status line is the residue and the judgment is the point. Asking
+there costs seven prompts across a corpus and catches the one case where the frontmatter genuinely
+cannot say why it moved.]

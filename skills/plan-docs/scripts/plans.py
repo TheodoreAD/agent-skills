@@ -4312,7 +4312,11 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     message = args.message or compose_message(label, changes, args.why)
     if message is None:
         raise PlanError(_undeducible(changes, bool(args.why)))
-    if not args.message and not args.why and not is_in_transit(cfg, repo, named[0]):
+    # `all`, not the first path. One store commit can legitimately name a plan in transit and an
+    # unscoped plan whose only record this is, and reading the exemption off `named[0]` would let
+    # argument order decide whether the permanent one gets a reason.
+    in_transit = all(is_in_transit(cfg, repo, path) for path in named)
+    if not args.message and not args.why and not in_transit:
         raise PlanError(_body_expected(message, changes))
 
     commit = commit_paths(repo, targets, message)

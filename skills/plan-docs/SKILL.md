@@ -1091,6 +1091,30 @@ reasoning belongs. Everything else stops and asks, handing you the subject it re
 the half it cannot. `-m` commits without a body — and it is deliberately the more expensive thing to
 type, because an opt-out cheaper than compliance is the opt-out everyone takes.
 
+**Two independent gates decide this, and confusing them is easy.** One is about the _subject_ and
+fires when nothing can be derived; the other is about the _body_ and fires when the commit is a
+plan's permanent record. `-m` satisfies both at once:
+
+| the commit               | subject derivable? | `--why`      | which gate refuses      |
+| ------------------------ | ------------------ | ------------ | ----------------------- |
+| a plan in transit        | yes                | **optional** | —                       |
+| a plan in transit        | no                 | **required** | subject: nothing to say |
+| its own permanent record | yes                | **required** | body: 97% carry one     |
+| its own permanent record | no                 | **required** | both                    |
+
+A subject is derivable for every transition in the table above; it is **not** for a mixed set, for
+several plans whose statuses or edits differ, or for a content edit that opened and closed no tag
+and added no section — the case where the diff is only prose.
+
+"In transit" means the plan sits in the store mirror of a repo whose own route writes to `repo`, so
+`absorb` has it ahead of it. A commit naming several plans is exempt only if **every** one of them
+is in transit; otherwise the permanent one would have its reason decided by argument order.
+
+[PITFALL: `rename --commit` and `migrate finish --delete-sources` commit through neither gate. They
+build their own subject from an operation they performed themselves and carry no body, which is the
+deliberate shape for "just the rename" — but it does mean a rename of a repo-held plan records no
+reason. Where the rename needs one, run `rename` without `--commit` and commit it yourself.]
+
 Measured 2026-09-22 across this machine's transcripts: of 403 `plans.py commit` calls, **369 passed
 a hand-written `-m`** — because the old default was the filename stem, a date-prefixed slug that
 described nothing — and **a third of those messages were the diff read back in words**: 97 said some

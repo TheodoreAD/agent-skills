@@ -3036,6 +3036,30 @@ def test_only_a_plan_in_transit_is_excused_from_giving_a_reason(ws, capsys, monk
     assert plans.main(["commit", str(mine), "--why", "because", "--path", str(ws.personal)]) == 0
 
 
+def test_a_set_mixing_transit_and_permanent_is_asked_for_a_reason(ws, capsys, monkeypatch):
+    """One store commit can name a plan in transit and an unscoped plan whose only record this is.
+    Reading the exemption off the first path would let argument order decide whether the permanent
+    one gets a reason, so it is read off all of them."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.store, check=True)
+    monkeypatch.chdir(ws.personal)
+    plans.main(["new", "passing-through", "--to", "store", "--path", str(ws.personal)])
+    plans.main(["new", "no-repo-yet", "--unscoped", "--path", str(ws.personal)])
+    transit = next((ws.store / "github.com-personal" / "agent-skills").glob("*-passing-through.md"))
+    permanent = next((ws.store / "_unscoped").glob("*-no-repo-yet.md"))
+    capsys.readouterr()
+
+    for order in ((transit, permanent), (permanent, transit)):
+        argv = ["commit", *[str(path) for path in order], "--path", str(ws.personal)]
+        assert plans.main(argv) == 1, "argument order must not decide this"
+        assert "permanent record" in capsys.readouterr().err
+
+    # and the transit plan alone is still exempt, so the rule did not just widen to everything
+    assert plans.main(["commit", str(transit), "--path", str(ws.personal)]) == 0
+
+
 def test_every_prompt_for_a_why_asks_for_a_body_rather_than_a_clause(ws, capsys, monkeypatch):
     """The flag's name is the one thing about it that misleads. `-m` reads as "write a commit
     message" and gets one, because the model has seen millions; `--why "<reason>"` reads as a

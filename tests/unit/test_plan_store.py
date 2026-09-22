@@ -2516,7 +2516,7 @@ def test_commit_takes_only_its_own_plan_when_another_session_has_staged_work(ws,
     theirs.write_text("---\nstatus: idea\n---\n\n## Context\n")
     subprocess.run(["git", "add", "--", str(theirs.relative_to(store_repo))], cwd=store_repo, check=True)
 
-    assert plans.main(["commit", str(mine), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(mine), "--why", "the reason", "--path", str(ws.personal)]) == 0
     assert "and nothing else" in capsys.readouterr().out
 
     touched = subprocess.run(
@@ -2552,7 +2552,7 @@ def test_commit_leaves_the_shared_index_agreeing_with_head(ws, capsys):
     capsys.readouterr()
     plan = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-solo.md"))
 
-    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(plan), "--why", "the reason", "--path", str(ws.personal)]) == 0
     capsys.readouterr()
     status = subprocess.run(
         ["git", "status", "--porcelain", "--", str(plan.relative_to(ws.sensitive))],
@@ -2596,7 +2596,7 @@ def test_commit_extends_history_rather_than_replacing_it(ws, capsys):
     filed = sorted((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*.md"))
 
     for plan in filed:
-        assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 0
+        assert plans.main(["commit", str(plan), "--why", "the reason", "--path", str(ws.personal)]) == 0
     capsys.readouterr()
 
     subjects = subprocess.run(
@@ -2622,7 +2622,7 @@ def test_commit_takes_a_retirement_deletion_in_either_half_staged_state(ws, caps
     plans.main(["new", "retiring", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
     capsys.readouterr()
     plan = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-retiring.md"))
-    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(plan), "--why", "the reason", "--path", str(ws.personal)]) == 0
     capsys.readouterr()
     rel = plan.relative_to(ws.sensitive).as_posix()
 
@@ -2763,7 +2763,7 @@ def test_commit_derives_one_subject_for_a_set_doing_the_same_thing(ws, capsys):
     capsys.readouterr()
     filed = sorted((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*.md"))
 
-    assert plans.main(["commit", *[str(p) for p in filed], "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", *[str(p) for p in filed], "--why", "the reason", "--path", str(ws.personal)]) == 0
     out = capsys.readouterr().out
     assert "message:   api: file one and two" in out, out
     assert "derived:   from 2 added" in out
@@ -2781,7 +2781,7 @@ def test_commit_refuses_a_set_whose_paths_are_doing_different_things(ws, capsys)
         plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
     capsys.readouterr()
     doomed = next(path for path in mirror.glob("*doomed.md"))
-    assert plans.main(["commit", str(doomed), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(doomed), "--why", "the reason", "--path", str(ws.personal)]) == 0
     doomed.unlink()
     fresh = next(path for path in mirror.glob("*kept.md"))
     capsys.readouterr()
@@ -2800,7 +2800,7 @@ def filed_and_committed(ws, capsys, topic: str) -> Path:
         subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
     plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
     path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob(f"*-{topic}.md"))
-    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(path), "--why", "the reason", "--path", str(ws.personal)]) == 0
     capsys.readouterr()
     return path
 
@@ -2815,7 +2815,8 @@ def test_the_label_names_which_part_of_the_repository_changed(ws, capsys, monkey
     plan = next((repo / "plans").glob("*-labelling.md"))
     capsys.readouterr()
 
-    assert plans.main(["commit", str(plan), "--path", str(repo)]) == 0
+    argv = ["commit", str(plan), "--why", "so the prefix is visible", "--path", str(repo)]
+    assert plans.main(argv) == 0
     assert "message:   plans: Labelling" in capsys.readouterr().out
 
 
@@ -2833,7 +2834,7 @@ def test_commit_reads_the_subject_off_the_plans_own_title(ws, capsys):
     path.write_text(text.replace("# Retry budget", "# One retry budget for every outbound call"), encoding="utf-8")
     capsys.readouterr()
 
-    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(path), "--why", "the reason", "--path", str(ws.personal)]) == 0
     assert "message:   api: One retry budget for every outbound call" in capsys.readouterr().out
 
 
@@ -2859,7 +2860,7 @@ def test_only_a_leading_article_is_lowercased_in_a_derived_subject(ws, capsys, t
     path.write_text(path.read_text(encoding="utf-8").replace("# Voice", title), encoding="utf-8")
     capsys.readouterr()
 
-    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(path), "--why", "the reason", "--path", str(ws.personal)]) == 0
     assert f"message:   {subject}" in capsys.readouterr().out
 
 
@@ -2871,7 +2872,7 @@ def test_commit_names_the_status_a_transition_moved_to(ws, capsys):
     assert plans.main(["set-status", str(path), "in-progress", "--path", str(ws.personal)]) == 0
     capsys.readouterr()
 
-    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(path), "--why", "the reason", "--path", str(ws.personal)]) == 0
     assert "message:   api: cutover is now in-progress" in capsys.readouterr().out
 
 
@@ -2886,7 +2887,7 @@ def test_commit_counts_the_tags_an_edit_opened_and_closed(ws, capsys):
         encoding="utf-8",
     )
 
-    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(path), "--why", "the reason", "--path", str(ws.personal)]) == 0
     assert "message:   api: queueing opens 2 DECISION" in capsys.readouterr().out
 
 
@@ -2942,7 +2943,7 @@ def test_commit_tells_a_retirement_from_a_bare_removal(ws, capsys):
     capsys.readouterr()
     path.unlink()
 
-    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(path), "--why", "the reason", "--path", str(ws.personal)]) == 0
     assert "message:   api: retire legacy-poller, migrated to docs/polling.md" in capsys.readouterr().out
 
 
@@ -2958,7 +2959,8 @@ def test_commit_reports_what_is_still_uncommitted_and_unpushed(ws, capsys):
     mirror = ws.sensitive / "client.com-bitbucket" / "team" / "api"
     capsys.readouterr()
 
-    assert plans.main(["commit", str(next(mirror.glob("*-first.md"))), "--path", str(ws.personal)]) == 0
+    argv = ["commit", str(next(mirror.glob("*-first.md"))), "--why", "the reason", "--path", str(ws.personal)]
+    assert plans.main(argv) == 0
     out = capsys.readouterr().out
     assert "remaining: 1 uncommitted here" in out
     assert "second.md" in out
@@ -2991,6 +2993,95 @@ def test_pending_says_so_when_there_is_nothing_to_commit(ws, capsys):
 
     assert plans.main(["pending", "--path", str(ws.client)]) == 0
     assert "nothing pending" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------------------------
+# the body expectation, rename, and push
+
+
+# The fixture's client root is literally named `client.com-bitbucket`, so "client" is one of the
+# derived private terms — and the store README `install` writes uses the word in its ordinary
+# English sense ("a client's name inside any file"). That is exactly the case the scan's own advice
+# names: a term that is a generic word rather than an identity belongs in `[private] ignore`, never
+# silenced by widening `public_roots`. Without it, `push` refuses every store on the README alone.
+IGNORING_THE_WORD_CLIENT = tiered('[private]\nignore = ["client"]\n')
+
+
+def test_only_a_plan_in_transit_is_excused_from_giving_a_reason(ws, capsys, monkeypatch):
+    """The exemption is permanence, not location. A plan filed for a repo that keeps its own plans
+    is staging — `absorb` will move it and the repo-side commit carries the reasoning — so nothing
+    is asked there. A plan whose permanent record this commit *is* gets asked, in a repo or not."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.store, check=True)
+    # in transit: filed against agent-skills, which is routed to its own plans/
+    monkeypatch.chdir(ws.client)
+    plans.main(["new", "filed", "--for", "github.com-personal/agent-skills", "--path", str(ws.client)])
+    filed = next((ws.store / "github.com-personal" / "agent-skills").glob("*-filed.md"))
+    capsys.readouterr()
+    assert plans.main(["commit", str(filed), "--why", "the reason", "--path", str(ws.client)]) == 0
+
+    # the permanent record: the same derivable subject, and now a reason is expected
+    monkeypatch.chdir(ws.personal)
+    plans.main(["new", "mine", "--to", "repo", "--path", str(ws.personal)])
+    mine = next((ws.personal / "plans").glob("*-mine.md"))
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(mine), "--path", str(ws.personal)]) == 1
+    err = capsys.readouterr().err
+    assert "permanent record" in err
+    assert "subject:  plans: Mine" in err, "the derived subject is handed over, not withheld"
+
+    assert plans.main(["commit", str(mine), "--why", "because", "--path", str(ws.personal)]) == 0
+
+
+def test_a_store_held_plan_is_asked_for_a_reason_like_any_other_permanent_record(ws, capsys):
+    """The correction this rule needed. A repo that cannot take a `plans/` directory keeps its plans
+    in the store permanently: there is no later repo commit, so that history is the only record
+    those plans will ever have. Measuring "in a store" instead of "in transit" would have exempted
+    exactly the population whose reasoning is least recoverable."""
+    write_config(ws, 'default = "store"\npublic_roots = ["github.com-personal"]\n')
+    plans.main(["install", "--path", str(ws.client)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "permanent", "--path", str(ws.client)])
+    plan = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-permanent.md"))
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(plan), "--path", str(ws.client)]) == 1
+    assert "permanent record" in capsys.readouterr().err
+
+    assert plans.main(["commit", str(plan), "--why", "the reason", "--path", str(ws.client)]) == 0
+
+
+def test_an_unscoped_plan_is_asked_too_because_nothing_will_absorb_it(ws, capsys):
+    """An idea belonging to no repo yet has no absorb ahead of it, so the store commit is its record
+    until it graduates. Measured at 70% bodied with a median of 1,146 characters — it behaves like a
+    repo-held plan, which is what a permanent record is."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.store, check=True)
+    plans.main(["new", "loose-idea", "--unscoped", "--path", str(ws.personal)])
+    plan = next((ws.store / "_unscoped").glob("*-loose-idea.md"))
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 1
+    assert "permanent record" in capsys.readouterr().err
+
+
+def test_m_is_the_escape_hatch_for_a_repo_commit_that_wants_no_body(ws, capsys, monkeypatch):
+    """The 3% that legitimately carry none. `-m` is deliberately the more expensive thing to type:
+    an opt-out cheaper than compliance is the opt-out everyone takes."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.personal)
+    plans.main(["new", "terse", "--path", str(ws.personal)])
+    plan = next((ws.personal / "plans").glob("*-terse.md"))
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(plan), "-m", "plans: a terse one", "--path", str(ws.personal)]) == 0
+    assert "message:   plans: a terse one" in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------------------------
@@ -3257,7 +3348,7 @@ def test_consolidating_plans_names_their_destination_before_deleting_them(ws, ca
         "---\nstatus: idea\nupdated: 2026-09-01\n---\n\n# Older\n\n[DECISION: keep the retry budget at three]\n",
         encoding="utf-8",
     )
-    assert plans.main(["commit", str(older), "--path", str(repo)]) == 0
+    assert plans.main(["commit", str(older), "--why", "the older plan", "--path", str(repo)]) == 0
     argv = ["migrate", "start", "merged", "--from", older.relative_to(repo).as_posix(), "--path", str(repo)]
     assert plans.main(argv) == 0
     plan = next((repo / "plans").glob("*-merged.md"))
@@ -3316,7 +3407,7 @@ def test_commit_says_a_path_is_gone_because_absorb_took_it_not_because_you_delet
     plans.main(["new", "shared-subject", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
     capsys.readouterr()
     filed = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-shared-subject.md"))
-    assert plans.main(["commit", str(filed), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(filed), "--why", "the reason", "--path", str(ws.personal)]) == 0
     capsys.readouterr()
 
     # What a parallel session's `absorb --apply` leaves behind: the file in the target repo's own
@@ -3348,7 +3439,7 @@ def test_a_plain_retirement_gets_no_absorbed_note(ws, capsys):
     plans.main(["new", "ordinary", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
     capsys.readouterr()
     plan = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-ordinary.md"))
-    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(plan), "--why", "the reason", "--path", str(ws.personal)]) == 0
     capsys.readouterr()
     plan.unlink()
 
@@ -3750,7 +3841,7 @@ def test_commit_takes_a_plan_and_its_attachments_as_one_change(ws, capsys):
 
     # No -m: one plan was named, so the generated message still applies — the attachments riding
     # with it must not be counted as a second plan demanding a message that describes a set.
-    assert plans.main(["commit", str(filed), "--path", str(ws.personal)]) == 0
+    assert plans.main(["commit", str(filed), "--why", "the reason", "--path", str(ws.personal)]) == 0
 
     listed = subprocess.run(
         ["git", "show", "--name-only", "--format=", "HEAD"], cwd=ws.store, capture_output=True, text=True, check=True

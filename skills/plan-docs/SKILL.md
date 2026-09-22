@@ -24,11 +24,11 @@ case none of them solves cheaply — is
   under `projects_root` (to derive the private terms `scan` gates on — names only, never contents),
   git history of the session repo and the stores, and, on Claude Code, the transcript path named by
   `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
-- **Runs**: `git` — read commands everywhere; `git commit` through `commit` and through
-  `migrate finish --delete-sources`, in the repository the named paths are in, which is the store
-  for a store-held plan and the session repo for a repo-held one. Never any other repository. The
-  history-purge sequence in "Never let a client's identity reach a repo you publish" is printed for
-  you to run; the script never runs it.
+- **Runs**: `git` — read commands everywhere. It commits through three commands and no others:
+  `commit` and `migrate finish --delete-sources`. Each commits in the repository the named paths are
+  already in, which is the store for a store-held plan and the session repo for a repo-held one, and
+  never in any other repository. The history-purge sequence in "Never let a client's identity reach
+  a repo you publish" is printed for you to run; the script never runs it.
 - **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
   files in the session repo's `plans/` and in both stores — `new`, `migrate start`, `set-status`,
   `move`, `absorb --apply`, `graduate`, and the retirement you perform by hand. The store
@@ -1008,6 +1008,33 @@ python3 <path> commit <file>... -m "<whole msg>" # override both, for the case n
 **`--why` is the reason, and the script decides where it belongs**: the body under a derived
 subject, or the subject itself where nothing could be derived. So there is one thing to write and
 never a question of how to format it.
+
+**`--why` is expected wherever this commit is the plan's permanent record — which is everywhere
+except a plan in transit.** Measured 2026-09-22 across the 1,639 commits that have ever touched a
+plan file in this family, classified by what the diff did and by what each plan's route says:
+
+| the commit is…                                         | commits | carried a body |
+| ------------------------------------------------------ | ------- | -------------- |
+| a repo's own `plans/`                                  | 1,180   | **97%**        |
+| an unscoped plan in the store, until it graduates      | 10      | **70%**        |
+| a store-held plan for a repo routed to the store       | 0       | no evidence    |
+| **a plan in transit**, awaiting `absorb` into its repo | 449     | **21%**        |
+
+[PITFALL: **"is it in the store" is the wrong question, and it is the one this corpus asked first.**
+A store holds two populations with opposite needs. A repo that cannot take a `plans/` directory at
+all keeps its plans there **permanently** — there is no later repo commit, so the store's history is
+the only record those plans will ever have, and their commits deserve a reason more than a repo's
+do, not less. The 22% a store-versus-repo split reports is almost entirely the transit half:
+unscoped plans, whose only record is also the store, sit at 70% with a median body of 1,146
+characters and behave like repo-held plans. The permanently-store-held population had **no commits
+at all** on the machine measured, so exempting stores would have been generalising from a population
+of zero — and exempting exactly the plans whose reasoning is least recoverable.]
+
+So the exemption is narrow and it is about permanence. A plan filed with `--for` against a repo that
+keeps its own plans is staging: `absorb` will move it, and the repo-side commit is where the
+reasoning belongs. Everything else stops and asks, handing you the subject it read so you write only
+the half it cannot. `-m` commits without a body — and it is deliberately the more expensive thing to
+type, because an opt-out cheaper than compliance is the opt-out everyone takes.
 
 Measured 2026-09-22 across this machine's transcripts: of 403 `plans.py commit` calls, **369 passed
 a hand-written `-m`** — because the old default was the filename stem, a date-prefixed slug that

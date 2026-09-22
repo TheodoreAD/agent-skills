@@ -4165,18 +4165,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     # A plan's attachments ride with it, and are counted separately below: they are part of the one
     # change being committed, not a second plan that would demand a message describing a set.
     targets = with_attachments(named)
-    repos = {repo_root_for(target) for target in targets}
-    if None in repos:
-        loose = [str(t) for t in targets if repo_root_for(t) is None]
-        raise PlanError(f"not inside a git repository, so there is nothing to commit to: {', '.join(loose)}")
-    if len(repos) > 1:
-        listed = ", ".join(sorted(str(r) for r in repos if r is not None))
-        raise PlanError(
-            f"these paths are in {len(repos)} different repositories ({listed}) — one commit cannot "
-            "span them. Run this once per repository."
-        )
-    repo = next(iter(repos))
-    assert repo is not None  # narrowed by the `None in repos` guard above
+    repo = one_repository(targets)
 
     # The subject is read from what git will record, never guessed from the plan's own frontmatter,
     # and `-m` still overrides it whole. A set is no longer refused outright: the old refusal was
@@ -4188,6 +4177,8 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     message = args.message or compose_message(label, changes, args.why)
     if message is None:
         raise PlanError(_undeducible(changes, bool(args.why)))
+    if not args.message and not args.why and not is_in_transit(cfg, repo, named[0]):
+        raise PlanError(_body_expected(message, changes))
 
     commit = commit_paths(repo, targets, message)
     subject, _, body = message.partition("\n\n")
@@ -4218,6 +4209,23 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     return 0
 
 
+def one_repository(targets: list[Path]) -> Path:
+    """The single repository these paths belong to, or the reason they cannot be one commit."""
+    repos = {repo_root_for(target) for target in targets}
+    if None in repos:
+        loose = [str(target) for target in targets if repo_root_for(target) is None]
+        raise PlanError(f"not inside a git repository, so there is nothing to commit to: {', '.join(loose)}")
+    if len(repos) > 1:
+        listed = ", ".join(sorted(str(repo) for repo in repos if repo is not None))
+        raise PlanError(
+            f"these paths are in {len(repos)} different repositories ({listed}) — one commit cannot "
+            "span them. Run this once per repository."
+        )
+    repo = next(iter(repos))
+    assert repo is not None  # narrowed by the `None in repos` guard above
+    return repo
+
+
 def commit_label(cfg: Config, repo: Path, path: Path) -> str:
     """The subject's `<label>:` prefix — one rule, which reads differently in the two places.
 
@@ -4232,10 +4240,8 @@ def commit_label(cfg: Config, repo: Path, path: Path) -> str:
     sensitive tier has no remote, and the shareable one mirrors only roots already publishable.
     """
     resolved = repo.resolve()
-    for store in cfg.stores():
-        root = store.path.expanduser().resolve()
-        if resolved != root:
-            continue
+    if is_store(cfg, repo):
+        root = resolved
         try:
             rel = path.resolve().parent.relative_to(root)
         except ValueError:
@@ -4243,6 +4249,41 @@ def commit_label(cfg: Config, repo: Path, path: Path) -> str:
         return "unscoped" if rel.name == UNSCOPED_DIR else (rel.name or repo.name)
     parent = path.resolve().parent
     return parent.name if parent != resolved else repo.name
+
+
+def is_store(cfg: Config, repo: Path) -> bool:
+    """Whether this repository *is* a plans store, rather than a project that keeps its own plans."""
+    resolved = repo.resolve()
+    return any(store.path.expanduser().resolve() == resolved for store in cfg.stores())
+
+
+def is_in_transit(cfg: Config, repo: Path, path: Path) -> bool:
+    """Whether this commit is a staging step rather than the plan's permanent record.
+
+    True for exactly one shape: a plan sitting in the store mirror of a repo whose own route writes
+    to `repo`. `absorb` will move it into that repo's `plans/`, and the repo-side commit is where
+    the reasoning belongs — the same condition `absorbable` uses to decide what is in transit.
+
+    [PITFALL: **"in a store" is not the same question, and answering that one instead is a mistake
+    this corpus made first.** A store holds two populations with opposite needs. A repo that cannot
+    take a `plans/` directory at all keeps its plans here permanently: there is no later repo
+    commit, so the store's history is the only record those plans will ever have, and their commits
+    deserve a reason more than a repo's do rather than less. Measured 2026-09-22 and the aggregate
+    is what misled: store commits carried a body 22% of the time, but splitting by route showed
+    that was 21% across 449 **transit** commits, while unscoped plans — whose only record is also
+    the store — sat at 70% with a median body of 1,146 characters, behaving like a repo. The
+    permanently-store-held population had **no commits at all** on the machine measured, so a rule
+    exempting stores would have been generalising from a population of zero.]
+    """
+    if not is_store(cfg, repo):
+        return False
+    try:
+        rel = path.resolve().parent.relative_to(repo.resolve())
+    except ValueError:
+        return False
+    if not rel.parts or rel.parts[0] == UNSCOPED_DIR:
+        return False  # belongs to no repo yet, so nothing will ever absorb it
+    return getattr(match_rule(cfg, rel.as_posix()).rule, "write", None) == "repo"
 
 
 def _kinds_phrase(changes: list[Change]) -> str:
@@ -4275,6 +4316,32 @@ def _undeducible(changes: list[Change], had_why: bool) -> str:
         f"the diff is prose, so only you can say what it is for:\n{listed}\n"
         "  Pass --why '<the reason>' — it becomes the subject here, and the body wherever a subject "
         "can be derived — or -m to write the whole message yourself."
+    )
+
+
+def _body_expected(subject: str, changes: list[Change]) -> str:
+    """Why a commit that is a plan's permanent record wants a reason, even with a good subject.
+
+    Measured 2026-09-22 across the 1,639 commits that ever touched a plan file in this family: 97%
+    of the 1,180 made in a repo carried a body, and every operation split the same way — additions
+    97%, content edits 97%, retirements 88%, status changes 7 of 7. Unscoped plans, whose only
+    record is also the store, sat at 70% with a median body of 1,146 characters. The one population
+    that does not is a plan in transit, which `is_in_transit` exempts and explains.
+
+    The reason is who reads the history. A permanent record's `git log` is how a later session
+    reconstructs a decision without opening forty files, which is the whole reason to want bodies.
+
+    `-m` remains the way to commit one with no body, and it is deliberately the more expensive thing
+    to type. An opt-out cheaper than compliance is the opt-out everyone takes.
+    """
+    return (
+        "this commit is the permanent record of that plan, and 97% of those carry a reason.\n"
+        f"  subject:  {subject}\n"
+        f"  from:     {_kinds_phrase(changes)}\n"
+        "  Add --why '<what this is for, what it beat>' — the subject above is kept and your text\n"
+        "  becomes the body. Use -m to write the whole message instead, body included or not.\n"
+        "  Nothing is asked for a plan in transit, where absorb will move it and the repo-side\n"
+        "  commit is where the reasoning belongs."
     )
 
 

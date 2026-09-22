@@ -665,3 +665,39 @@ exfiltration, hidden execution and installer chains — yet skills.sh renders th
 with a score of 90. Whether the rendering is Socket's or skills.sh's, and against what mapping, is
 not discoverable from either page. It is the first thing to ask in a dispute, because if the mapping
 is skills.sh's then the alert text is not the thing to argue with.]
+
+### 2026-09-22: Gen cleared `session-harvest` on a script-only change, and the worst verdict moved
+
+Re-queried at the session's end, five skills this time rather than three:
+
+| skill                | Gen (`ath`)           | Socket                    | Snyk | scanned    |
+| -------------------- | --------------------- | ------------------------- | ---- | ---------- |
+| `session-harvest`    | **safe** (was medium) | **critical**, 1 alert, 90 | low  | 2026-09-18 |
+| `research-library`   | **safe** (was high)   | safe                      | low  | 2026-09-18 |
+| `session-bash-audit` | safe                  | safe                      | low  | 2026-09-15 |
+| `plan-docs`          | **high**              | safe                      | low  | 2026-09-15 |
+| `skill-authoring`    | medium                | safe                      | low  | 2026-09-13 |
+
+**Gen moved `session-harvest` from `medium` to `safe` on a scan whose only content change was a
+printing fix in `harvest.py`.** The 09-18 push carried `78ed4dd` — the store's unpushed commits
+printed once instead of twice — plus a plan deletion, and nothing in `SKILL.md`, the disclosure or
+the description moved. A verdict that improves on that is a verdict that was never measuring the
+thing the earlier sections spent days trying to change.
+
+[PITFALL: **so the two scanners are not two readings of the same risk, and only one of them is
+stable.** Across this one re-scan Socket held `critical` with the same single alert and the same
+score of 90, while Gen crossed two levels. Treat a Gen movement as noise unless the content that
+moved explains it, and note the asymmetry for any future dispute: the scanner that will not move is
+the one with a published alert to argue with, and the one that moves freely publishes nothing.]
+
+**`research-library`'s `high` is gone, and the cause is confounded rather than clean** — its content
+did change between the two scans, on 2026-09-07 and 2026-09-08 (the clone lifecycle commands, the
+text-only default), so the improvement cannot be attributed to the scanner alone. Recorded because
+the earlier sections carried it as an open item for a future session, and that item is closed
+whichever half did it.
+
+**`plan-docs` at `high` is new, and is now the family's worst verdict.** Scanned 2026-09-15, on
+content including the 09-12 attachments work and the 09-13 store-routing changes. Nothing has been
+looked at; it inherits the method the `session-harvest` sections established — retrieve the alert
+text first, test each named concern against what the skill needs, and change only what fails that
+test.

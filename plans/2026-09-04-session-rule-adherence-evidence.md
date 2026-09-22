@@ -477,21 +477,36 @@ correction.]
 
 ## A tenth sample, 2026-09-13/18 — one session, one mode, and a compaction between two behaviours
 
-An `agent-skills` background job, measured at 2026-09-18T14:08:03+03:00 with its own last call
-excluded: **n=622**, and it is the first sample taken with `audit.py`'s compaction split, which the
-same session had written an hour earlier. The whole-session row is the one a harvest would have
-read:
+An `agent-skills` background job, and the first sample taken with `audit.py`'s compaction split,
+which the same session had written an hour before measuring itself with it.
 
-| row          | whole session (622) | before the compaction (532) | after it (90)   |
-| ------------ | ------------------- | --------------------------- | --------------- |
-| chain        | 4%                  | 1%                          | **22%**         |
-| head/tail    | 2%                  | 0%                          | **16%**         |
-| search\|head | 2%                  | 0%                          | **13%**         |
-| exit-masked  | 0%                  | 0%                          | 3% (3 listings) |
-| heredoc      | 0%                  | 0%                          | 2%              |
+**Corrected 2026-09-22 at the session's end, and the correction is the point of the row.** The
+figures first filed here were taken at 2026-09-18T14:08:03+03:00 — mid-session — and a mid-session
+measurement is a **prefix**, not a smaller version of the whole. The session ran four more days:
 
-**4% and 2% describe neither half**, which is the claim the split was built on, now measured on the
-session that built it. Every other row is 0 on both sides.
+| row          | whole session (745) | before the compaction (532) | after it (213)   |
+| ------------ | ------------------- | --------------------------- | ---------------- |
+| chain        | 7%                  | 1%                          | **21%**          |
+| head/tail    | 4%                  | 0%                          | **13%**          |
+| search\|head | 2%                  | 0%                          | **8%**           |
+| exit-masked  | 2%                  | 0%                          | 6% (12 listings) |
+| heredoc      | 2%                  | 0%                          | **6%**           |
+| sed-n        | 0%                  | 0%                          | 1% (2)           |
+| cd-own-repo  | 1 call              | 0                           | 1 call           |
+
+The filed prefix read `n=622`, whole-session `chain=4% head/tail=2%`, and the after-half at 90 calls
+with `chain=22% head/tail=16%`. **Every whole-session rate rose** as the smaller, worse half grew
+from 90 calls to 213 — while the before-half is byte-identical, because a prefix of a finished phase
+is that phase. **The after-half's own rates fell slightly** (22→21, 16→13): the later work was the
+same kind of work, so the extra calls diluted nothing and confirmed the shape.
+
+**4% and 2% described neither half, and 7% and 4% do not either**, which is the claim the split was
+built on, measured twice on the session that built it.
+
+**The `cd-own-repo` miss is the prescribed recovery for the seventh time**, and it arrived the way
+the corpus predicts: a sanctioned `cd <other dir> && <command>` moved the working directory, the
+harness announced the move, and the next call `cd`-ed back into the session's own repo — the banned
+shape, used as the documented cure. It is the only expectation of seventeen that missed.
 
 **The mode did not change across the split, and that is evidence on the ninth sample's open
 question.** The auto-mode note — the one telling the agent to read files with `cat`, `head` or

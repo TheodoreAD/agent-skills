@@ -1060,9 +1060,8 @@ satisfy it is the padding this warns against.]
 | a status transition               | `<repo>: <topic> is now <status>`                  |
 | tags opened or closed             | `<repo>: <topic> opens 2 DECISION`                 |
 
-**`--why` is the reason, and the script decides where it belongs**: the body under a derived
-subject, or the subject itself where nothing could be derived. So there is one thing to write and
-never a question of how to format it.
+**`--why` is the body, always and only** — it goes under the derived subject and never replaces it.
+So there is one thing to write and never a question of how to format it.
 
 **`--why` is expected wherever this commit is the plan's permanent record — which is everywhere
 except a plan in transit.** Measured 2026-09-22 across the 1,639 commits that have ever touched a
@@ -1091,20 +1090,26 @@ reasoning belongs. Everything else stops and asks, handing you the subject it re
 the half it cannot. `-m` commits without a body — and it is deliberately the more expensive thing to
 type, because an opt-out cheaper than compliance is the opt-out everyone takes.
 
-**Two independent gates decide this, and confusing them is easy.** One is about the _subject_ and
-fires when nothing can be derived; the other is about the _body_ and fires when the commit is a
-plan's permanent record. `-m` satisfies both at once:
+**Two independent gates decide this, and each flag has exactly one meaning.** `--why` is a body;
+`-m` is the whole message, taken verbatim. Neither ever stands in for the other:
 
-| the commit               | subject derivable? | `--why`      | which gate refuses      |
-| ------------------------ | ------------------ | ------------ | ----------------------- |
-| a plan in transit        | yes                | **optional** | —                       |
-| a plan in transit        | no                 | **required** | subject: nothing to say |
-| its own permanent record | yes                | **required** | body: 97% carry one     |
-| its own permanent record | no                 | **required** | both                    |
+| the diff               | the commit               | what you pass              |
+| ---------------------- | ------------------------ | -------------------------- |
+| a subject can be read  | a plan in transit        | **nothing**                |
+| a subject can be read  | its own permanent record | **`--why`** — the body     |
+| no subject can be read | either                   | **`-m`** — the whole thing |
 
-A subject is derivable for every transition in the table above; it is **not** for a mixed set, for
+A subject can be read for every transition in the table above. It **cannot** for a mixed set, for
 several plans whose statuses or edits differ, or for a content edit that opened and closed no tag
-and added no section — the case where the diff is only prose.
+and added no section — a change that is only prose. That last case is 9% of this corpus's plan
+commits, so it is a path you will meet, not a corner.
+
+[DECISION: **`--why` does not rescue the unreadable case, though an earlier version let it.** It
+became the subject there, on the reasoning that the reason is then the only thing anyone can say.
+The cost was that `--why` and `-m` produced the same commit apart from the `<label>:` prefix, on one
+commit in eleven — two flags converging on one behaviour, with the meaning of one of them depending
+on the diff. So the command now offers the only thing it still knows, which is the label, and hands
+it over in the refusal rather than applying it to your `-m`. Nothing rewrites what you typed.]
 
 "In transit" means the plan sits in the store mirror of a repo whose own route writes to `repo`, so
 `absorb` has it ahead of it. A commit naming several plans is exempt only if **every** one of them

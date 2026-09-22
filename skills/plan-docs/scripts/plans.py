@@ -4254,27 +4254,24 @@ def derive_subject(label: str, changes: list[Change]) -> str | None:
 
 
 def compose_message(label: str, changes: list[Change], why: str | None) -> str | None:
-    """The whole message: a derived subject, and the author's reason placed where it belongs.
+    """The derived subject, with `--why` under it as the body — or None when nothing can be derived.
 
-    `--why` means one thing — "the reason I made this change" — and this decides where that reason
-    lands, which is the composition a session would otherwise do by hand and get wrong in one
-    direction or the other:
+    **`--why` is the body and only ever the body.** An earlier version let it become the subject too
+    when nothing could be derived, on the reasoning that the reason is then the only thing anyone can
+    say. That was wrong for a reason worth keeping: in exactly that case `--why` and `-m` produced
+    the same commit apart from the `<label>: ` prefix, so two flags converged on one behaviour and
+    the meaning of one of them depended on the diff. Measured 2026-09-22: the underivable case is
+    **153 of 1,643 plan commits, 9%** — one in eleven, far too common for a flag to change meaning
+    on it.
 
-    - **subject derivable**: the derived fact is the subject, because that is what a reader scanning
-      `git log --oneline` needs, and the reason becomes the body. That is the house commit shape.
-    - **subject not derivable**: the change is prose, so the reason *is* the only thing anyone can
-      say about it, and it becomes the subject under the label. No filler subject is invented to sit
-      above it — `<label>: update <topic>` would be a line that reads as information and carries
-      none.
+    So each flag now has one meaning: `--why` is a body, `-m` is the whole message verbatim. Where
+    no subject can be derived the command has nothing to offer but the label, and it hands that over
+    in the refusal rather than applying it — `-m` never rewrites what the author typed.
     """
     derived = derive_subject(label, changes)
-    if not why:
-        return derived
-    if derived is not None:
-        return f"{derived}\n\n{why}"
-    head, _, rest = why.partition("\n\n")
-    subject = " ".join(head.split())
-    return f"{label}: {subject}\n\n{rest}" if rest else f"{label}: {subject}"
+    if derived is None:
+        return None
+    return f"{derived}\n\n{why}" if why else derived
 
 
 def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
@@ -4311,7 +4308,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     changes = merge_rename(repo, [classify_change(cfg, repo, path) for path in named])
     message = args.message or compose_message(label, changes, args.why)
     if message is None:
-        raise PlanError(_undeducible(changes, bool(args.why)))
+        raise PlanError(_undeducible(label, changes))
     # `all`, not the first path. One store commit can legitimately name a plan in transit and an
     # unscoped plan whose only record this is, and reading the exemption off `named[0]` would let
     # argument order decide whether the permanent one gets a reason.
@@ -4430,33 +4427,34 @@ def _kinds_phrase(changes: list[Change]) -> str:
     return ", ".join(f"{count} {kind}" if count > 1 else kind for kind, count in sorted(counted.items()))
 
 
-def _undeducible(changes: list[Change], had_why: bool) -> str:
-    """Why no subject could be read, in terms of what was actually seen.
+def _undeducible(label: str, changes: list[Change]) -> str:
+    """Why no subject could be read, in terms of what was actually seen, and what to type instead.
 
-    The facts go in the error deliberately. A session told only "pass -m" writes the facts back out
-    of the diff by hand, which is the work this command exists to remove; a session told *which*
-    facts were read writes the one clause it alone has, which is the reason.
+    Two things go in the error deliberately. The **facts**, because a session told only "pass -m"
+    writes them back out of the diff by hand, which is the work this command exists to remove. And
+    the **label**, because it is the one part of the subject that stays derivable when the rest is
+    not — `plans:` in a repo that keeps its own plans, the repo's name in a store mirror, a
+    distinction read from measured history that nobody reproduces reliably from memory. Handing it
+    over costs a line; applying it to `-m` would mean rewriting what the author typed.
     """
     listed = "\n".join(
         f"  {change.path.name}: {change.kind}{f' ({change.detail})' if change.detail else ''}" for change in changes
     )
-    tail = (
-        "  Commit them separately — one call each, each subject derived — or pass -m with a message "
-        "that genuinely describes all of it."
+    shape = (
+        f'  Use -m "{label}: <the one-line answer>" with the reasoning under a blank line.\n'
+        f"  The {label!r} prefix is the part still derivable here; the rest only you can write."
     )
     if len({change.kind for change in changes}) > 1:
-        return f"these paths are doing different things, and no one sentence covers a mixed set:\n{listed}\n{tail}"
-    if had_why:
-        # `--why` alone reaches here only for a set whose members did the same *kind* of thing with
-        # different details — two status changes to two different statuses, say. One reason cannot
-        # be the subject of two unrelated transitions.
-        return f"one reason cannot be the subject of a set that is not one change:\n{listed}\n{tail}"
-    return (
-        f"the diff is prose, so only you can say what it is for:\n{listed}\n"
-        "  Pass --why with what the change is for, what it beat and what it cost. Here its first\n"
-        "  line becomes the subject and the rest the body, so lead with the one-line answer and put\n"
-        "  the reasoning under a blank line. Or -m to write the whole message yourself."
-    )
+        return (
+            f"these paths are doing different things, and no one sentence covers a mixed set:\n{listed}\n"
+            f"  Commit them separately — one call each, each subject derived — or:\n{shape}"
+        )
+    if len(changes) > 1:
+        return (
+            f"one subject cannot cover a set that is not one change:\n{listed}\n"
+            f"  Commit them separately — one call each, each subject derived — or:\n{shape}"
+        )
+    return f"the diff is prose, so only you can say what it is for:\n{listed}\n{shape}"
 
 
 def _body_expected(subject: str, changes: list[Change]) -> str:
@@ -6632,8 +6630,8 @@ def build_parser() -> argparse.ArgumentParser:
     wording.add_argument(
         "--why",
         metavar="BODY",
-        help="a commit body: what the change is for, what it beat, what it cost. Becomes the body "
-        "under the derived subject, or the subject itself when nothing could be derived",
+        help="a commit body: what the change is for, what it beat, what it cost. Goes under the "
+        "derived subject and never replaces it — where no subject can be derived, use -m",
     )
     commit.set_defaults(func=cmd_commit)
 

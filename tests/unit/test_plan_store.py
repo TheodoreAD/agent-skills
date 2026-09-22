@@ -2891,10 +2891,14 @@ def test_commit_counts_the_tags_an_edit_opened_and_closed(ws, capsys):
     assert "message:   api: queueing opens 2 DECISION" in capsys.readouterr().out
 
 
-def test_commit_asks_for_the_reason_when_the_diff_is_only_prose(ws, capsys):
-    """The one case neither half can answer: the script cannot read why, and a session told merely
-    "pass -m" writes the facts back out by hand. So the refusal carries the facts and asks for the
-    reason, which is the only part the author actually has."""
+def test_a_prose_only_diff_hands_over_the_label_and_asks_for_m(ws, capsys):
+    """Where nothing can be derived the command has one thing left to offer — the label — and it
+    hands that over rather than applying it, because `-m` never rewrites what the author typed.
+
+    `--why` deliberately does NOT rescue this case. An earlier version let it become the subject,
+    which made the two flags produce the same commit apart from the prefix on 9% of plan commits
+    (153 of 1,643): two flags converging on one behaviour, with the meaning of one depending on the
+    diff."""
     write_config(ws, TIERED)
     plans.main(["install", "--path", str(ws.personal)])
     path = filed_and_committed(ws, capsys, "throughput")
@@ -2903,14 +2907,18 @@ def test_commit_asks_for_the_reason_when_the_diff_is_only_prose(ws, capsys):
     assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 1
     err = capsys.readouterr().err
     assert "the diff is prose" in err
-    assert "--why" in err
+    assert 'Use -m "api: <the one-line answer>"' in err, "the derivable half is handed over"
 
-    assert plans.main(["commit", str(path), "--why", "the numbers moved", "--path", str(ws.personal)]) == 0
-    assert "message:   api: the numbers moved" in capsys.readouterr().out
+    # --why alone still refuses here: it is a body, and a body cannot stand in for a subject
+    assert plans.main(["commit", str(path), "--why", "the numbers moved", "--path", str(ws.personal)]) == 1
+    assert "the diff is prose" in capsys.readouterr().err
+
+    argv = ["commit", str(path), "-m", "api: the numbers moved\n\nbecause the cache warmed", "--path"]
+    assert plans.main([*argv, str(ws.personal)]) == 0
     subject = subprocess.run(
         ["git", "log", "-1", "--format=%s"], cwd=ws.sensitive, capture_output=True, text=True, check=True
     ).stdout
-    assert subject.strip() == "api: the numbers moved", "with nothing to derive, the reason is the subject"
+    assert subject.strip() == "api: the numbers moved", "-m is taken verbatim, label and all"
 
 
 def test_why_is_the_body_wherever_a_subject_can_be_derived(ws, capsys):
@@ -3083,13 +3091,15 @@ def test_every_prompt_for_a_why_asks_for_a_body_rather_than_a_clause(ws, capsys,
     assert "not a clause" in expected
     assert "padding reads as reasoning" in expected, "the floor must not read as a quota"
 
-    # the refusal a prose-only diff gets, which is a different code path with its own wording
+    # a prose-only diff is a different code path and asks for something else entirely: there is no
+    # subject to put a body under, so it hands over the label and points at -m
     assert plans.main(["commit", str(plan), "--why", "filed", "--path", str(ws.personal)]) == 0
     plan.write_text(plan.read_text(encoding="utf-8") + "\nA paragraph opening no tag.\n", encoding="utf-8")
     capsys.readouterr()
     assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 1
     prose = capsys.readouterr().err
-    assert "what the change is for, what it beat and what it cost" in prose
+    assert 'Use -m "plans: <the one-line answer>"' in prose
+    assert "--why" not in prose, "--why cannot stand in for a subject, so it must not be offered here"
 
     # and the help, which is where an agent looks before it has been refused anything. argparse
     # rewraps to the terminal width, so the phrase is matched against collapsed whitespace rather

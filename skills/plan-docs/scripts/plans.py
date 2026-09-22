@@ -4410,6 +4410,457 @@ def cmd_pending(args: argparse.Namespace, ws: Workspace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------------------------
+# migration: several documents and a session's worth of reasoning, consolidated without loss
+
+
+# The carried block is delimited rather than merely headed, because `check` has to be able to
+# *exclude* it. A check that compared the sources against a file still holding them verbatim would
+# pass by construction — the failure it exists to catch would be invisible at exactly the moment it
+# was happening.
+CARRIED_BEGIN = "<!-- plan-docs:carried BEGIN — rewrite the content above, then delete this block -->"
+CARRIED_END = "<!-- plan-docs:carried END -->"
+
+# The escape hatch, as a section rather than a flag: anything named here counts as accounted for.
+# Same shape as `## Migrated to` in the retirement procedure, so it reads as the convention rather
+# than as a way around it, and it leaves the decision in the file where the next reader finds it.
+DROPPED_HEADING = "## Deliberately dropped"
+
+# What a migration is gated on. A tag line is this convention's own unit of costly knowledge, and a
+# dated line is its form for evidence — "Confirmed live 2026-08-23: …". Prose is deliberately not
+# gated: rewording is the job, and a verbatim-coverage metric would forbid it.
+DATED_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+# How much of a gated item's vocabulary one paragraph of the new plan must carry for that item to
+# count as migrated. Loose on purpose — the item is expected to be reworded — and the measured ratio
+# is printed for every miss, so a near miss is visible rather than a bare fail.
+MATCH_RATIO = 0.6
+
+# Words that carry no subject matter, so a sentence built mostly from them cannot match on them.
+NOISE_WORDS = frozenset({
+    "about", "after", "also", "because", "been", "before", "from", "have", "here", "into", "only",
+    "ours", "over", "same", "such", "than", "that", "their", "them", "then", "there", "these",
+    "they", "this", "those", "under", "was", "were", "what", "when", "which", "while", "with",
+    "your",
+})  # fmt: skip
+
+
+def strip_carried(text: str) -> str:
+    """The plan without its carried block — what `check` compares the sources against."""
+    start = text.find(CARRIED_BEGIN)
+    if start == -1:
+        return text
+    end = text.find(CARRIED_END, start)
+    return text[:start] + (text[end + len(CARRIED_END) :] if end != -1 else "")
+
+
+def migration_items(text: str) -> list[str]:
+    """The lines a migration may not silently lose: every tag, and every line carrying a date.
+
+    Frontmatter is skipped whole — `updated:` and `source_moment:` are dates about the file rather
+    than evidence in it, and gating on them would make every migration fail on bookkeeping.
+    """
+    lines = text.splitlines()
+    start = 0
+    if lines and lines[0].strip() == "---":
+        closing = next((index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"), 0)
+        start = closing + 1
+    found: list[str] = []
+    for line in lines[start:]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("<!--", "```")):
+            continue
+        if TAG_RE.match(line) or DATED_RE.search(stripped):
+            found.append(stripped)
+    return list(dict.fromkeys(found))
+
+
+def significant(text: str) -> set[str]:
+    """The words a line is actually about: long enough to carry meaning, and not pure connective."""
+    return {word for word in re.findall(r"[a-z0-9][a-z0-9_.-]{3,}", text.lower()) if word not in NOISE_WORDS}
+
+
+def coverage(item: str, paragraphs: list[str]) -> float:
+    """How much of one item's vocabulary the best-matching paragraph carries, 0.0 to 1.0.
+
+    Per paragraph rather than against the whole file: a decision's words scattered across four
+    unrelated sections is not that decision surviving, and a whole-file test would call it one.
+    """
+    wanted = significant(item)
+    if not wanted:
+        return 1.0
+    return max((len(wanted & significant(para)) / len(wanted) for para in paragraphs), default=0.0)
+
+
+class Unaccounted(NamedTuple):
+    source: str
+    item: str
+    ratio: float
+
+
+def check_migration(plan: Path, sources: dict[str, str]) -> list[Unaccounted]:
+    """Every gated item of every source that the plan does not carry and does not say it dropped."""
+    target = strip_carried(plan.read_text(encoding="utf-8"))
+    paragraphs = [block for block in re.split(r"\n\s*\n", target) if block.strip()]
+    missing: list[Unaccounted] = []
+    for name, text in sources.items():
+        for item in migration_items(text):
+            if item in target:
+                continue
+            ratio = coverage(item, paragraphs)
+            if ratio < MATCH_RATIO:
+                missing.append(Unaccounted(name, item, ratio))
+    return missing
+
+
+def migration_sources(plan: Path, repo: Path | None, ws: Workspace) -> dict[str, str]:
+    """Each recorded source's content, read live from disk or back out of `HEAD`.
+
+    No manifest file, deliberately. Reading the sources every time means the comparison can never
+    go stale against an edit made after `start`, and it avoids adding a second lifecycle store with
+    no retirement of its own — the objection this convention already makes to parking anything
+    outside `plans/`. A source already deleted is read from `HEAD`; one that is neither on disk nor
+    in a history is reported, never quietly treated as empty.
+    """
+    recorded = parse_depends_on(parse_frontmatter(plan.read_text(encoding="utf-8")).get("migrated_from", ""))
+    roots = [root for root in (repo, ws.routing.repo_root, Path.cwd()) if root is not None]
+    found: dict[str, str] = {}
+    for name in recorded:
+        candidates = [Path(name), *(root / name for root in roots)]
+        path = next((candidate for candidate in candidates if candidate.is_file()), None)
+        if path is not None:
+            found[name] = path.read_text(encoding="utf-8")
+            continue
+        blob = next(
+            (text for root in roots if (text := head_blob(root, root / name)) is not None),
+            None,
+        )
+        if blob is None:
+            raise PlanError(
+                f"{name} is neither on disk nor in any history this session can read, so the "
+                "migration cannot be checked against it. Restore it, or drop it from migrated_from."
+            )
+        found[name] = blob
+    return found
+
+
+def _migrate_sources(names: list[str], repo: Path | None) -> list[Path]:
+    """The named sources, checked up front and refused if any lies outside this repository.
+
+    The boundary is the same one every other command here draws, for the same reason: `finish`
+    offers to delete these, and a delete in a tree another session is holding is silent by
+    construction. A document worth consolidating from another repo is that repo's plan to file.
+    """
+    found: list[Path] = []
+    for name in names:
+        # Against the repository before cwd. Every other command here takes `--path` and never reads
+        # the process's directory for anything that matters, and a source named `DESIGN.md` means
+        # the one in the repo being migrated — not whichever file of that name the caller happens to
+        # be standing next to.
+        given = Path(name).expanduser()
+        candidates = [given, *([repo / given] if repo is not None and not given.is_absolute() else [])]
+        path = next((candidate for candidate in candidates if candidate.is_file()), None)
+        if path is None:
+            raise PlanError(f"no file at {given} to migrate from")
+        resolved = path.resolve()
+        if repo is not None and repo_root_for(resolved) != repo:
+            raise PlanError(
+                f"{resolved} is not in this repository ({repo}) — migrate reads and then offers to "
+                "delete its sources, which is not a thing to do in a tree this session does not own"
+            )
+        found.append(resolved)
+    return found
+
+
+def _migrate_start(args: argparse.Namespace, ws: Workspace) -> int:
+    """Write the canonical plan, with every source's content carried into it verbatim.
+
+    Verbatim and in the file, rather than summarised into it or left for the agent to remember. The
+    failure this exists to prevent is a lossy summary, and an agent editing content that is already
+    in front of it is doing a different job from one recalling content it read earlier: the first
+    can delete a paragraph on purpose, and the second can lose one without ever knowing it existed.
+    """
+    if not TOPIC_RE.match(args.target):
+        raise PlanError(f"topic {args.target!r} must be kebab-case: lowercase letters, digits and single hyphens")
+    cfg = ws.config
+    routing = ws.require_routable()
+    if routing.rule and routing.rule.write == "repo" and is_foreign(routing.repo_root, cfg):
+        # The same refusal `new` makes, for a stronger reason: this writes a plan *and* offers to
+        # delete the documents it read, in a tree a parallel session may be holding.
+        raise PlanError(
+            f"this would consolidate into {routing.repo_root}, which is not the repo this session "
+            "is in — a migration reads, rewrites and then deletes, none of which belongs in another "
+            "session's tree. Run it from inside that repo."
+        )
+    sources = _migrate_sources(args.sources, routing.repo_root)
+
+    if args.to is None:
+        target, where = routing.write_dir, (routing.rule.write if routing.rule else "")
+    else:
+        chosen = routing.dir_for(args.to)
+        if chosen is None:
+            raise PlanError(f"cannot write to {args.to!r} for this repo: {routing.reason or 'no such directory'}")
+        target, where = chosen, args.to
+
+    path = target / f"{today()}-{args.target}.md"
+    if path.exists():
+        raise PlanError(f"{path} already exists — consolidate into it rather than opening a second file")
+
+    named = [_source_label(source, routing.repo_root) for source in sources]
+    lines = [
+        "---",
+        f"status: {args.status}",
+        f"updated: {today()}",
+        f"migrated_from: [{', '.join(named)}]",
+        "---",
+        "",
+        f"# {args.target.replace('-', ' ').capitalize()}",
+        "",
+        "## Context",
+        "",
+        "## Open questions",
+        "",
+        "## Recommended direction",
+        "",
+    ]
+    if sources:
+        lines += [
+            DROPPED_HEADING,
+            "",
+            "<!-- Anything from a source that does not belong in this plan, one bullet each, with the",
+            "     reason. `migrate check` counts an item named here as accounted for — that is what",
+            "     makes dropping something a decision on the record rather than an omission. -->",
+            "",
+            CARRIED_BEGIN,
+            "",
+        ]
+        for source, label in zip(sources, named, strict=True):
+            lines += [f"### Carried from `{label}`", "", source.read_text(encoding="utf-8").rstrip(), ""]
+        lines += [CARRIED_END, ""]
+
+    target.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"created:   {path}")
+    print(f"where:     {where}")
+    for label in named:
+        print(f"carried:   {label}")
+    print(f"\n{len(named)} source(s) carried in verbatim, below the {CARRIED_END} marker's block.")
+    print("Rewrite the sections above out of that block, then delete the block. Nothing is lost by")
+    print("summarising badly, because nothing is being summarised from memory.")
+    print(f"\nnext:      plans.py migrate check {path.name}")
+    return 0
+
+
+def _source_label(source: Path, repo: Path | None) -> str:
+    """How a source is recorded in `migrated_from`: repo-relative wherever it can be.
+
+    A relative path is stable across clones and, unlike an absolute one, cannot carry a client
+    directory name into a plan that may be committed to a repo you publish.
+    """
+    if repo is not None:
+        try:
+            return source.relative_to(repo.resolve()).as_posix()
+        except ValueError:
+            pass
+    return str(source)
+
+
+def _migrate_check(args: argparse.Namespace, ws: Workspace) -> int:
+    cfg = ws.config
+    routing = ws.require_routable()
+    plan = locate(cfg, routing, args.target)
+    sources = migration_sources(plan.path, repo_root_for(plan.path), ws)
+    missing = check_migration(plan.path, sources)
+    carried = CARRIED_BEGIN in plan.path.read_text(encoding="utf-8")
+
+    if args.json:
+        payload = {
+            "plan": str(plan.path),
+            "sources": sorted(sources),
+            "carried_block_present": carried,
+            "unaccounted": [
+                {"source": entry.source, "item": entry.item, "best_match": round(entry.ratio, 2)} for entry in missing
+            ],
+        }
+        print(json.dumps(payload, indent=2))
+        return 1 if missing else 0
+
+    total = sum(len(migration_items(text)) for text in sources.values())
+    print(f"plan:      {plan.path}")
+    print(f"sources:   {len(sources)} — {', '.join(sorted(sources))}")
+    print(f"gated:     {total} tagged or dated item(s) across them")
+    if carried:
+        print("\ncarried:   the verbatim block is still in the file, so the rewrite is not finished.")
+        print("           `migrate finish` refuses while it is there.")
+    if not missing:
+        print(f"\nverdict:   every gated item is carried or named under {DROPPED_HEADING!r}")
+        return 0
+    print(f"\n{len(missing)} unaccounted — carried nowhere, and not named as dropped:\n")
+    for entry in missing:
+        print(f"  {entry.source}  (best paragraph match {entry.ratio:.0%})")
+        print(f"    {entry.item[:150]}")
+    print(f"\nEither work each one into the plan, or list it under {DROPPED_HEADING!r} with the reason.")
+    return 1
+
+
+class SourceVerdict(NamedTuple):
+    path: Path
+    label: str
+    tracked: bool
+    offer: bool
+    reason: str
+
+
+def classify_sources(plan: Path, sources: list[str], repo: Path | None) -> list[SourceVerdict]:
+    """Which sources may be offered for deletion, and why the rest may not.
+
+    Untracked, and it is offered: the file exists nowhere else, the gate above has just established
+    that its content does, and leaving it behind is how two copies of one thing start diverging.
+
+    Tracked, and the plan landed in this repo: offered. The deletion is recoverable from the same
+    history that now holds the plan, so the trail from the file to its replacement stays readable.
+
+    Tracked, and the plan landed in the store: **not** offered, and this is the row worth the
+    paragraph. The repo's history would hold a deletion pointing at nothing while the store holds a
+    plan the repo cannot see — one lifecycle split across two histories, which is precisely the
+    failure the "absorb before retiring" rule exists to prevent.
+    """
+    in_repo = repo is not None and repo_root_for(plan) == repo
+    roots = [repo] if repo is not None else []
+    found: list[SourceVerdict] = []
+    for label in sources:
+        # Resolved, always. A label is recorded repo-relative, so `Path(label)` alone is a path
+        # relative to *cwd* — which reads as a file, deletes correctly, and then cannot be made
+        # relative to the repo for the commit. Caught 2026-09-22 with two sources already deleted
+        # and the commit refusing, which is the worst possible half-state for this command to reach.
+        candidates = [Path(label).expanduser(), *(root / label for root in roots)]
+        path = next((candidate.resolve() for candidate in candidates if candidate.is_file()), None)
+        if path is None:
+            continue
+        owner = repo_root_for(path)
+        tracked = owner is not None and head_blob(owner, path) is not None
+        if not tracked:
+            reason, offer = "untracked — this is the only copy", True
+        elif in_repo:
+            reason, offer = "tracked, and the plan is in this repo's history", True
+        else:
+            reason, offer = (
+                "tracked, but the plan landed in the store — deleting it here would split one "
+                "lifecycle across two histories",
+                False,
+            )
+        found.append(SourceVerdict(path, label, tracked, offer, reason))
+    return found
+
+
+def _migrate_finish(args: argparse.Namespace, ws: Workspace) -> int:
+    cfg = ws.config
+    routing = ws.require_routable()
+    plan = locate(cfg, routing, args.target)
+    repo = routing.repo_root
+    text = plan.path.read_text(encoding="utf-8")
+    if CARRIED_BEGIN in text:
+        raise PlanError(
+            f"{plan.path.name} still holds its carried block, so the rewrite is unfinished. Work the "
+            f"content into the sections above, delete the block, then re-run — or run `migrate check "
+            f"{plan.path.name}` to see what is still only in the block."
+        )
+    sources = migration_sources(plan.path, repo_root_for(plan.path), ws)
+    missing = check_migration(plan.path, sources)
+    if missing:
+        raise PlanError(
+            f"{len(missing)} gated item(s) are carried nowhere and named as dropped nowhere — "
+            f"run `migrate check {plan.path.name}` for the list. Deleting the sources now would lose them."
+        )
+
+    verdicts = classify_sources(plan.path, sorted(sources), repo)
+    offered = [verdict for verdict in verdicts if verdict.offer]
+    if args.json:
+        payload = [
+            {"source": v.label, "tracked": v.tracked, "offer_deletion": v.offer, "reason": v.reason} for v in verdicts
+        ]
+        print(json.dumps({"plan": str(plan.path), "sources": payload}, indent=2))
+        return 0
+
+    print(f"plan:      {plan.path}")
+    print(f"verdict:   every gated item of {len(sources)} source(s) is accounted for\n")
+    for verdict in verdicts:
+        mark = "may be deleted" if verdict.offer else "keep"
+        print(f"  {mark:<15} {verdict.label}  — {verdict.reason}")
+    if not offered:
+        print("\nNothing is offered for deletion. The plan is the canonical copy; the sources stay.")
+        return 0
+    if args.delete_sources:
+        return _delete_sources(cfg, plan.path, offered, repo)
+    print(f"\n{len(offered)} file(s) may be deleted. That is the user's call, not this command's —")
+    print("put it to them, and if they agree:")
+    print(f"\n  plans.py migrate finish {plan.path.name} --delete-sources")
+    print("\nwhich deletes them, records where their content went, and commits the change.")
+    return 0
+
+
+def _delete_sources(cfg: Config, plan: Path, offered: list[SourceVerdict], repo: Path | None) -> int:
+    """Delete the approved sources, leaving the trail the retirement procedure asks for.
+
+    A source that is itself a plan gets its `## Migrated to` section written and **committed before**
+    the deletion, which is step 4 of that procedure and the step that is skipped by hand: add and
+    delete in one commit means the section naming the destination is never in any history at all.
+    """
+    # Every path checked against the repository *before* the first unlink. A deletion that succeeds
+    # and a commit that then refuses is the worst state this command could reach — the content gone
+    # from the tree and nothing in the history saying so.
+    if repo is not None:
+        for verdict in offered:
+            if verdict.tracked and repo_root_for(verdict.path) != repo:
+                raise PlanError(f"{verdict.path} is tracked in another repository — refusing to delete it here")
+
+    # A plan by its filename, not by where it sits: `PLAN.md` at a repo root is a legacy document
+    # and gets no `## Migrated to` section, while `plans/2026-…-topic.md` is a plan whose retirement
+    # this is, and the procedure for that one is written down.
+    plan_sources = [verdict for verdict in offered if verdict.tracked and PLAN_NAME_RE.fullmatch(verdict.path.name)]
+    if plan_sources and repo is not None:
+        for verdict in plan_sources:
+            body = verdict.path.read_text(encoding="utf-8").rstrip()
+            verdict.path.write_text(
+                f"{body}\n\n## Migrated to\n\n- `{plan.name}` — consolidated there on {today()}\n", encoding="utf-8"
+            )
+        marked = [verdict.path for verdict in plan_sources]
+        label = commit_label(cfg, repo, marked[0])
+        sha = commit_paths(repo, marked, f"{label}: name where {plan_topic(plan)} took its content from")
+        print(f"recorded:  {sha[:12]} — {len(marked)} source plan(s) now name their destination")
+
+    for verdict in offered:
+        verdict.path.unlink()
+        print(f"deleted:   {verdict.label}")
+
+    tracked = [verdict.path for verdict in offered if verdict.tracked]
+    if not tracked or repo is None:
+        print("\nNothing deleted was tracked, so there is no deletion to commit.")
+        print(f"next:      plans.py commit {plan.name}")
+        return 0
+    label = commit_label(cfg, repo, plan)
+    counted = "one source" if len(tracked) == 1 else f"{len(tracked)} sources"
+    sha = commit_paths(repo, [plan, *tracked], f"{label}: consolidate {counted} into {plan_topic(plan)}")
+    print(f"\ncommitted: {sha[:12]} in {repo} — the plan and the deletions, as one change")
+    _report_after_commit(cfg, repo, [plan, *tracked])
+    return 0
+
+
+def cmd_migrate(args: argparse.Namespace, ws: Workspace) -> int:
+    """Consolidate a session's plans and loose documents into one plan, and prove nothing was lost.
+
+    The lossy summary is the failure mode, and it is silent: the output reads as finished whether or
+    not half the reasoning survived. Reported by this user 2026-09-22 after hitting it twice in one
+    day on another machine. So the shape is gather → check → finish rather than one call: the middle
+    step is the only one that can catch what the first two cannot see.
+    """
+    if args.action == "start":
+        return _migrate_start(args, ws)
+    if args.action == "check":
+        return _migrate_check(args, ws)
+    return _migrate_finish(args, ws)
+
+
 def cmd_refs(args: argparse.Namespace, ws: Workspace) -> int:
     routing = ws.require_routable()
     name = Path(args.file).name
@@ -5824,6 +6275,27 @@ def build_parser() -> argparse.ArgumentParser:
     pending = add("pending", "plan files git does not agree with, and what committing each would say")
     pending.add_argument("--json", action="store_true")
     pending.set_defaults(func=cmd_pending)
+
+    migrate = add("migrate", "consolidate plans and loose docs into one plan, and prove nothing was lost")
+    migrate.add_argument("action", choices=("start", "check", "finish"))
+    migrate.add_argument("target", help="start: the kebab-case topic. check/finish: the plan")
+    migrate.add_argument(
+        "--from",
+        dest="sources",
+        nargs="+",
+        default=[],
+        metavar="FILE",
+        help="start: the plans and documents to consolidate, all in this repository",
+    )
+    migrate.add_argument("--status", default="idea", help="start: frontmatter status (default: idea)")
+    migrate.add_argument("--to", choices=("repo", "store"), help="start: override the configured write target")
+    migrate.add_argument(
+        "--delete-sources",
+        action="store_true",
+        help="finish: delete the sources it offered, once the user has said yes",
+    )
+    migrate.add_argument("--json", action="store_true")
+    migrate.set_defaults(func=cmd_migrate)
 
     refs = add("refs", "inbound references to a plan, across the repo and the store")
     refs.add_argument("file", help="plan path or bare filename")

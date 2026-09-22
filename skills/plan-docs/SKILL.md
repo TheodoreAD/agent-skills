@@ -1,6 +1,6 @@
 ---
 name: plan-docs
-description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, migrating a legacy PLAN.md/DESIGN.md onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME); an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
+description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, consolidating a session's plans and loose notes into one plan without loss, migrating a legacy PLAN.md/DESIGN.md onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME); an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
 compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard; any other harness exports PLAN_DOCS_SESSION_REPO instead. No network access.
 ---
 
@@ -24,18 +24,22 @@ case none of them solves cheaply — is
   under `projects_root` (to derive the private terms `scan` gates on — names only, never contents),
   git history of the session repo and the stores, and, on Claude Code, the transcript path named by
   `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
-- **Runs**: `git` — read commands everywhere; `git commit` through `commit`, in the repository the
-  named paths are in, which is the store for a store-held plan and the session repo for a repo-held
-  one. Never any other repository. The history-purge sequence in "Never let a client's identity
-  reach a repo you publish" is printed for you to run; the script never runs it.
+- **Runs**: `git` — read commands everywhere; `git commit` through `commit` and through
+  `migrate finish --delete-sources`, in the repository the named paths are in, which is the store
+  for a store-held plan and the session repo for a repo-held one. Never any other repository. The
+  history-purge sequence in "Never let a client's identity reach a repo you publish" is printed for
+  you to run; the script never runs it.
 - **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
-  files in the session repo's `plans/` and in both stores — `new`, `set-status`, `move`,
-  `absorb --apply`, `graduate`, and the retirement you perform by hand. The store directories and
-  their READMEs, created `0700`. Through `attach`: a copy of each file you name, either in a
-  directory beside the plan or in the store's `_attachments/`, the plan's own `## Attachments` rows,
-  and one line in the store's `.git/info/exclude`. Never a file in any other repo's working tree —
-  `new` refuses and names `--for`. `archive`, `list`, `tags`, `refs`, `pending`, `doctor`, `scan`
-  and `where` write nothing.
+  files in the session repo's `plans/` and in both stores — `new`, `migrate start`, `set-status`,
+  `move`, `absorb --apply`, `graduate`, and the retirement you perform by hand. The store
+  directories and their READMEs, created `0700`. Through `attach`: a copy of each file you name,
+  either in a directory beside the plan or in the store's `_attachments/`, the plan's own
+  `## Attachments` rows, and one line in the store's `.git/info/exclude`. **Deletes files only
+  through `migrate finish --delete-sources`**, and only the ones it has just listed as deletable, in
+  the session's own repository, after its coverage gate has passed — never on its own initiative and
+  never without that flag. Never a file in any other repo's working tree: `new` refuses and names
+  `--for`, and `migrate` refuses a source outside this repository. `archive`, `list`, `tags`,
+  `refs`, `pending`, `migrate check`, `doctor`, `scan` and `where` write nothing.
 - **Network**: none. Pushing a store is your command, behind the scan.
 
 ## Run the script, don't re-derive it
@@ -102,6 +106,9 @@ python3 <path> set-status <file> planned    # refuses if the gate for that statu
 python3 <path> tags --tag DEFERRED          # anchored, across every plan this repo can see
 python3 <path> move <file> --to store       # a repo switching where it keeps plans
 python3 <path> attach <plan> <file>...      # copy evidence somewhere stable, and record it
+python3 <path> migrate start <topic> --from <file>...  # several documents into one plan, losslessly
+python3 <path> migrate check <plan>         # what of each source the rewrite has not accounted for
+python3 <path> migrate finish <plan>        # the gate, then which sources may be deleted
 
 # retiring it, and getting it back
 python3 <path> refs <file>                  # inbound references, before retiring
@@ -1411,11 +1418,66 @@ Three things worth knowing before trusting a result:
   tiers keep full history precisely so this stays true for client plans, which are the ones with no
   other copy.
 
+## Consolidating a session's plans and loose documents into one
+
+**Use `migrate`, and do not consolidate by summarising.** A session ends with a plan file, two
+scratch documents and a body of reasoning that reached neither. Asked to pull that together, an
+agent summarises — and a summary is lossy in a way nothing detects, because the output reads as
+finished either way. Reported by this user 2026-09-22 after hitting it twice in one day.
+
+```shell
+python3 <path> migrate start <topic> --from <file>...   # the plan, with every source carried in verbatim
+# …rewrite it, then delete the carried block
+python3 <path> migrate check <plan>                     # what of each source is still unaccounted for
+python3 <path> migrate finish <plan>                    # the gate, then which sources may be deleted
+```
+
+**`start` carries every source into the new plan verbatim**, under a delimited block, and writes
+`migrated_from:` into the frontmatter. Then you rewrite the standard sections _out of that block_
+and delete it. That is deliberately a different act from recalling what the sources said: editing
+content that is in front of you can drop a paragraph on purpose, and recalling content you read
+earlier can lose one without anyone knowing it existed.
+
+**Anything the session itself decided — reasoning that is in the conversation and in no file — is
+yours to write into the plan.** `migrate` cannot see it and never claims to; what it guarantees is
+that nothing which _was_ in a file went missing.
+
+**`check` gates on the two things whose loss is expensive and silent**: every `[TAG: …]` line, and
+every line carrying a `YYYY-MM-DD` date. Prose is deliberately not gated — rewording is the job, and
+a verbatim-coverage test would forbid it. It reads the sources live from disk (or out of `HEAD` if
+one is already deleted), so the comparison can never go stale, and it ignores the carried block: a
+check run against a file that still holds its sources verbatim would pass by construction.
+
+**Dropping something is a decision on the record, not an omission.** Put it under
+`## Deliberately dropped` with the reason and `check` counts it as accounted for — the same shape as
+`## Migrated to` in the retirement procedure, and it leaves the reasoning in the file where the next
+reader finds it rather than in a flag nobody kept.
+
+**`finish` decides which sources may be deleted, and never deletes on its own.** Put its offer to
+the user and pass `--delete-sources` only once they agree:
+
+| the source                                | offered? | why                                                  |
+| ----------------------------------------- | -------- | ---------------------------------------------------- |
+| untracked                                 | yes      | this is the only copy, and the gate says it survived |
+| tracked, and the plan landed in this repo | yes      | the deletion and the plan share one history          |
+| tracked, and the plan landed in the store | **no**   | it would split one lifecycle across two histories    |
+
+[DECISION: the third row is why `finish` classifies rather than just deleting. A tracked file whose
+replacement lives outside the repo leaves that repo's history holding a deletion that points
+nowhere, while the store holds a plan the repo cannot see — the same failure the "absorb before
+retiring" rule exists to prevent, arrived at from the other direction.]
+
+A source that is itself a plan gets its `## Migrated to` section written and **committed before** it
+is deleted, which is step 4 of the retirement procedure and the step most often skipped by hand:
+add-and-delete in one commit means the section naming the destination is in no history at all.
+
 ## Migrating a legacy single plan file
 
 A repo predating this convention often has one big `PLAN.md`/`DESIGN.md`/`NOTES.md` mixing unrelated
 threads at different lifecycle stages. Don't retire it as a unit — split by thread first, then apply
-the lifecycle above to each piece:
+the lifecycle above to each piece. Where the split lands on **one** consolidated plan rather than
+several, `migrate` above is the mechanism; where it lands on several, run these steps and let each
+thread reach `migrate start` or `new` on its own:
 
 1. Sort its sections into threads: implemented and verified (→ `landed`), genuinely still undecided
    or stalled (→ its own new plan file, `status: idea` or `blocked on <reason>`), and simply

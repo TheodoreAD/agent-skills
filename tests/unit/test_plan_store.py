@@ -2993,6 +2993,298 @@ def test_pending_says_so_when_there_is_nothing_to_commit(ws, capsys):
     assert "nothing pending" in capsys.readouterr().out
 
 
+# --------------------------------------------------------------------------------------------
+# migration
+
+
+LEGACY = """\
+# Old design notes
+
+[DECISION: SQLite over Postgres — one file, no server, and one row a minute of write volume]
+
+Confirmed live 2026-03-04: the nightly job took 41 seconds against 900k rows.
+
+[PITFALL: the ORM's Numeric type silently truncates past ten significant digits]
+
+Ordinary prose describing how the loop was written, which nobody needs to keep.
+"""
+
+LOOSE = """\
+[DEFERRED: the backfill for rows written before this year]
+
+Measured 2026-05-19: 1.2 GB of history, so the backfill is an hour of wall clock.
+"""
+
+
+def migrate_repo(ws, monkeypatch) -> Path:
+    """A personal repo routed to its own `plans/`, holding one tracked legacy doc and one untracked
+    scratch file — the two source kinds whose deletion verdicts differ.
+
+    `chdir` into it, because `migrate start` writes a plan and therefore carries the same
+    foreign-repo guard `new` does: with the suite's cwd left at the real repo, every call here
+    would be refused as a write into a tree this session is not in — which is the guard working."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    commit(ws.personal, "DESIGN.md", LEGACY)
+    (ws.personal / "TODO.md").write_text(LOOSE, encoding="utf-8")
+    monkeypatch.chdir(ws.personal)
+    return ws.personal
+
+
+def consolidated(plan: Path, *, dropping: str = "") -> None:
+    """Stand in for the agent's rewrite: the plan as it looks once the carried block is worked in."""
+    plan.write_text(
+        "---\nstatus: planned\nupdated: 2026-09-22\nmigrated_from: [DESIGN.md, TODO.md]\n---\n\n"
+        "# Storage consolidation\n\n## Context\n\n"
+        "[DECISION: SQLite over Postgres — one file, no server, and one row a minute of write volume]\n\n"
+        "Confirmed live 2026-03-04: the nightly job took 41 seconds against 900k rows.\n\n"
+        "[PITFALL: the ORM's Numeric type silently truncates past ten significant digits]\n\n"
+        "[DEFERRED: the backfill for rows written before this year]\n\n"
+        "Measured 2026-05-19: 1.2 GB of history, so the backfill is an hour of wall clock.\n"
+        + (f"\n## Deliberately dropped\n\n- {dropping}\n" if dropping else ""),
+        encoding="utf-8",
+    )
+
+
+def test_migrate_start_carries_every_source_in_verbatim(ws, capsys, monkeypatch):
+    """The lossy summary is the failure mode, and it is silent. An agent editing content already in
+    front of it can delete a paragraph on purpose; one recalling content it read earlier can lose a
+    paragraph without ever knowing it existed."""
+    repo = migrate_repo(ws, monkeypatch)
+
+    argv = ["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)]
+    assert plans.main(argv) == 0
+    plan = next((repo / "plans").glob("*-storage.md"))
+    text = plan.read_text(encoding="utf-8")
+    assert "migrated_from: [DESIGN.md, TODO.md]" in text
+    assert "Ordinary prose describing how the loop was written" in text, "verbatim means verbatim"
+    assert plans.CARRIED_BEGIN in text
+    assert plans.CARRIED_END in text
+
+
+def test_migrate_check_ignores_the_carried_block_it_wrote(ws, capsys, monkeypatch):
+    """A check comparing the sources against a file that still holds them verbatim would pass by
+    construction — the failure it exists to catch would be invisible while it was happening."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 1
+    out = capsys.readouterr().out
+    assert "5 unaccounted" in out
+    assert "SQLite over Postgres" in out
+    assert "the verbatim block is still in the file" in out
+
+
+def test_migrate_check_passes_on_a_rewrite_that_rewords_but_keeps(ws, capsys, monkeypatch):
+    """Rewording is the job, so prose is not gated; the tags and the dated evidence are."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    consolidated(plan)
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 0
+    assert "every gated item is carried" in capsys.readouterr().out
+
+
+def test_migrate_check_catches_a_decision_the_rewrite_dropped(ws, capsys, monkeypatch):
+    """The whole point. A consolidation that loses a DECISION is the failure, and it looks finished."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    consolidated(plan)
+    plan.write_text(
+        plan.read_text(encoding="utf-8").replace(
+            "[DECISION: SQLite over Postgres — one file, no server, and one row a minute of write volume]\n\n", ""
+        ),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 1
+    out = capsys.readouterr().out
+    assert "1 unaccounted" in out
+    assert "SQLite over Postgres" in out
+
+
+def test_a_dropped_item_counts_as_accounted_for_when_the_plan_says_so(ws, capsys, monkeypatch):
+    """The escape hatch is a section rather than a flag, so the decision stays in the file where the
+    next reader finds it instead of in a command line nobody kept."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    consolidated(plan, dropping="")
+    text = plan.read_text(encoding="utf-8").replace(
+        "Measured 2026-05-19: 1.2 GB of history, so the backfill is an hour of wall clock.\n", ""
+    )
+    plan.write_text(text, encoding="utf-8")
+    capsys.readouterr()
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 1
+    capsys.readouterr()
+
+    plan.write_text(
+        text + "\n## Deliberately dropped\n\n- The 2026-05-19 measurement of 1.2 GB of history and an hour of\n"
+        "  backfill wall clock: superseded, the table was pruned and the figure would mislead.\n",
+        encoding="utf-8",
+    )
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 0
+
+
+def test_migrate_finish_refuses_while_the_carried_block_is_there(ws, capsys, monkeypatch):
+    """The block's presence is the signal that the rewrite has not happened, and `finish` is the
+    step that offers to delete the originals."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "finish", str(plan), "--path", str(repo)]) == 1
+    assert "still holds its carried block" in capsys.readouterr().err
+
+
+def test_migrate_finish_refuses_to_delete_sources_it_cannot_account_for(ws, capsys, monkeypatch):
+    """Deleting an untracked source is the one irreversible step in the procedure, so the gate runs
+    before the offer rather than after it."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    plan.write_text(
+        "---\nstatus: planned\nupdated: 2026-09-22\nmigrated_from: [DESIGN.md, TODO.md]\n---\n\n"
+        "# Storage consolidation\n\n## Context\n\nWe decided to use a database.\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "finish", str(plan), "--path", str(repo)]) == 1
+    err = capsys.readouterr().err
+    assert "carried nowhere" in err
+    assert (repo / "TODO.md").exists(), "a refused finish must not have deleted anything"
+
+
+def test_migrate_finish_offers_both_source_kinds_and_deletes_only_on_request(ws, capsys, monkeypatch):
+    """An untracked source is the only copy; a tracked one is recoverable from the same history the
+    plan now sits in. Both are offered here, and neither goes without being asked for."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    consolidated(plan)
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "finish", str(plan), "--path", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "may be deleted  DESIGN.md" in out
+    assert "may be deleted  TODO.md" in out
+    assert "That is the user's call" in out
+    assert (repo / "DESIGN.md").exists()
+    assert (repo / "TODO.md").exists()
+
+    assert plans.main(["migrate", "finish", str(plan), "--delete-sources", "--path", str(repo)]) == 0
+    assert not (repo / "DESIGN.md").exists()
+    assert not (repo / "TODO.md").exists()
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout
+    assert subject.strip() == "plans: consolidate one source into storage"
+
+
+def test_a_tracked_source_is_not_offered_when_the_plan_landed_in_the_store(ws, capsys, monkeypatch):
+    """The repo's history would hold a deletion pointing at nothing while the store holds a plan the
+    repo cannot see — one lifecycle across two histories, which is what "absorb before retiring"
+    exists to prevent."""
+    write_config(ws, 'public_roots = ["github.com-personal"]\n[roots]\n"github.com-personal" = "store"\n')
+    repo = ws.personal
+    commit(repo, "DESIGN.md", LEGACY)
+    (repo / "TODO.md").write_text(LOOSE, encoding="utf-8")
+    monkeypatch.chdir(repo)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((ws.store / "github.com-personal" / "agent-skills").glob("*-storage.md"))
+    consolidated(plan)
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "finish", str(plan), "--path", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "keep            DESIGN.md" in out
+    assert "split one lifecycle across two histories" in out
+    assert "may be deleted  TODO.md" in out
+
+
+def test_migrate_refuses_a_source_in_another_repository(ws):
+    """`finish` offers to delete these, and a delete in a tree another session is holding is silent
+    by construction — the same boundary every other command here draws."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    foreign = ws.client / "NOTES.md"
+    foreign.write_text("# theirs\n", encoding="utf-8")
+
+    argv = ["migrate", "start", "storage", "--from", str(foreign), "--path", str(ws.personal)]
+    assert plans.main(argv) == 1
+
+
+def test_migrate_reads_a_source_back_out_of_history_when_it_is_already_gone(ws, capsys, monkeypatch):
+    """No manifest file: the comparison reads the sources live, so it cannot go stale — and a source
+    deleted between `start` and `check` is read out of `HEAD` rather than treated as empty."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    consolidated(plan)
+    (repo / "DESIGN.md").unlink()
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 0
+    assert "sources:   2" in capsys.readouterr().out
+
+
+def test_migrate_says_which_source_it_cannot_read_rather_than_passing(ws, capsys, monkeypatch):
+    """An unreadable source is reported, never quietly counted as having nothing in it — that would
+    turn the one command whose job is detecting loss into a way of hiding it."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(["migrate", "start", "storage", "--from", "TODO.md", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-storage.md"))
+    (repo / "TODO.md").unlink()
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 1
+    assert "neither on disk nor in any history" in capsys.readouterr().err
+
+
+def test_consolidating_plans_names_their_destination_before_deleting_them(ws, capsys, monkeypatch):
+    """Step 4 of the retirement procedure, run deterministically: add-and-delete in one commit means
+    the section naming the destination is never in any history at all."""
+    repo = migrate_repo(ws, monkeypatch)
+    older = repo / "plans" / "2026-09-01-older.md"
+    older.parent.mkdir(parents=True, exist_ok=True)
+    older.write_text(
+        "---\nstatus: idea\nupdated: 2026-09-01\n---\n\n# Older\n\n[DECISION: keep the retry budget at three]\n",
+        encoding="utf-8",
+    )
+    assert plans.main(["commit", str(older), "--path", str(repo)]) == 0
+    argv = ["migrate", "start", "merged", "--from", older.relative_to(repo).as_posix(), "--path", str(repo)]
+    assert plans.main(argv) == 0
+    plan = next((repo / "plans").glob("*-merged.md"))
+    plan.write_text(
+        f"---\nstatus: planned\nupdated: 2026-09-22\nmigrated_from: [{older.relative_to(repo).as_posix()}]\n---\n\n"
+        "# Merged\n\n## Context\n\n[DECISION: keep the retry budget at three]\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert plans.main(["migrate", "finish", str(plan), "--delete-sources", "--path", str(repo)]) == 0
+    assert not older.exists()
+    subjects = subprocess.run(
+        ["git", "log", "-2", "--format=%s"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.split("\n")
+    assert "consolidate one source into merged" in subjects[0]
+    assert "name where merged took its content from" in subjects[1]
+    marked = subprocess.run(
+        ["git", "show", f"HEAD~1:{older.relative_to(repo).as_posix()}"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "## Migrated to" in marked, "the destination must be recorded in a commit of its own"
+
+
 def test_commit_refuses_paths_that_span_two_repositories(ws, capsys):
     """One commit cannot span two repositories, and the failure to catch it would be a git error
     naming a path outside the repo rather than the reason. The two stores are the realistic pair:

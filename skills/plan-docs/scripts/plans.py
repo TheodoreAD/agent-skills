@@ -5071,6 +5071,120 @@ def _delete_sources(cfg: Config, plan: Path, offered: list[SourceVerdict], repo:
     return 0
 
 
+def cmd_push(args: argparse.Namespace, ws: Workspace) -> int:
+    """Push a plans store, after scanning exactly what the push would publish.
+
+    The store's own README prescribes this — `scan --mode history` before the first push, `staged`
+    before each one after — and a rule stated in a README is read once at install time and never
+    again at the moment it applies. Measured 2026-09-22 over the transcripts: **101 pushes to a
+    plans store, 32 of them (32%) with no `scan` anywhere in the eight preceding calls.** A third
+    of pushes is what a documented-but-unenforced gate looks like.
+
+    A command rather than a git hook, deliberately: an agent should know what to run, not be
+    corrected behind its back by something it cannot see.
+
+    What is scanned is the outgoing range, not the working tree. A push ships commits, so a plan
+    that named a client and was reworded afterwards leaves a clean tree behind a dirty history —
+    which is the exact case `--mode tree` cannot see and the README calls out.
+    """
+    cfg = ws.config
+    routing = ws.require_routable()
+    terms = ws.private_terms
+    stores = [store for store in cfg.stores() if store.path.expanduser().is_dir()]
+    targets = [store for store in stores if git(["remote"], store.path.expanduser())]
+    del routing
+
+    if not stores:
+        raise PlanError("no plans store exists on this machine yet — run: plans.py install")
+    if not targets:
+        print("nothing to push: no store on this machine has a remote.")
+        print("  That is the documented state for the sensitive tier, which is local by design.")
+        return 0
+
+    if not terms:
+        raise PlanError(
+            "no private terms could be derived, so the scan would pass vacuously. Set "
+            f"public_roots (and [private] extra) in {cfg.path} before pushing a store."
+        )
+    return 1 if sum(_push_one(store, terms, args) for store in targets) else 0
+
+
+def _push_one(store: Store, terms: list[str], args: argparse.Namespace) -> bool:
+    """Scan and push one store. True when it did not publish and should have."""
+    root = store.path.expanduser()
+    print(f"store:     {root}  [{store.tier}]")
+    ahead = outgoing_range(root)
+    if ahead is None:
+        print("           nothing to push — the remote already has this branch's tip\n")
+        return False
+    span, count = ahead
+    print(f"outgoing:  {count} commit(s) — scanning {span}")
+
+    hits = list(scan_text(git(["log", *span.split(), "-p"], root) or "", terms))
+    if hits:
+        for hit in hits[: args.samples]:
+            print(f"  {span}:{hit.line}: [{hit.term}] {hit.text[:150]}")
+        if len(hits) > args.samples:
+            print(f"  ... {len(hits) - args.samples} more (raise --samples to see them)")
+        print(f"\nREFUSED: {len(hits)} private name(s) in what this push would publish.")
+        print("         A push cannot be taken back by a later edit — the content stays in the")
+        print("         history, and a repo's history is as readable as its tip. Redact and")
+        print("         rewrite those commits, or add a generic term to [private] ignore.\n")
+        return True
+    print(f"scanned:   clean, against {len(terms)} private term(s)")
+    if args.dry_run:
+        print("dry run:   not pushing\n")
+        return False
+    try:
+        command = push_command(root)
+    except PlanError as exc:
+        print(f"REFUSED:   {exc}\n")
+        return True
+    if git(command, root) is None:
+        print(f"FAILED:    git {' '.join(command)} did not succeed\n")
+        return True
+    print("pushed:    ok\n")
+    return False
+
+
+def push_command(repo: Path) -> list[str]:
+    """`push`, or the `--set-upstream` form a branch that has never been pushed actually needs.
+
+    A bare `git push` on a branch with no upstream fails rather than guessing, which is git being
+    careful and is also the one case a store reaches most often: the first push of a store is the
+    push this command most wants to gate. Resolved only when there is exactly one remote — with
+    several, which one publishes a store is a decision, and a store going to the wrong remote is
+    the failure this whole scan exists to prevent.
+    """
+    if git(["rev-parse", "--abbrev-ref", "@{upstream}"], repo) is not None:
+        return ["push"]
+    remotes = [line for line in (git(["remote"], repo) or "").splitlines() if line.strip()]
+    branch = git(["rev-parse", "--abbrev-ref", "HEAD"], repo)
+    if not branch or branch == "HEAD":
+        raise PlanError("this store is on a detached HEAD — check out a branch before pushing")
+    if len(remotes) != 1:
+        named = ", ".join(remotes) or "none"
+        raise PlanError(
+            f"{branch} has no upstream and this store has {len(remotes)} remotes ({named}), so which "
+            f"one publishes it is your decision: git -C {repo} push --set-upstream <remote> {branch}"
+        )
+    return ["push", "--set-upstream", remotes[0], branch]
+
+
+def outgoing_range(repo: Path) -> tuple[str, int] | None:
+    """What a push would publish, as a rev range and a count — or None when there is nothing.
+
+    A branch with no upstream is the first push, and its whole history is outgoing. `--all` rather
+    than the current branch there, because the first push of a store publishes every ref it has and
+    scanning only one of them would report clean about a branch nobody looked at.
+    """
+    if git(["rev-parse", "--abbrev-ref", "@{upstream}"], repo) is None:
+        count = git(["rev-list", "--count", "--all"], repo)
+        return ("--all", int(count)) if count and count != "0" else None
+    count = git(["rev-list", "--count", "@{upstream}..HEAD"], repo)
+    return ("@{upstream}..HEAD", int(count)) if count and count != "0" else None
+
+
 def cmd_migrate(args: argparse.Namespace, ws: Workspace) -> int:
     """Consolidate a session's plans and loose documents into one plan, and prove nothing was lost.
 
@@ -6475,6 +6589,11 @@ def build_parser() -> argparse.ArgumentParser:
     rename.add_argument("--update-refs", action="store_true", help="rewrite the filename in every file citing it")
     rename.add_argument("--commit", action="store_true", help="commit the rename on its own once it is done")
     rename.set_defaults(func=cmd_rename)
+
+    push = add("push", "scan what a push would publish, then push the store")
+    push.add_argument("--dry-run", action="store_true", help="scan and report, push nothing")
+    push.add_argument("--samples", type=int, default=20, help="how many hit lines to print (default: 20)")
+    push.set_defaults(func=cmd_push)
 
     attach = add("attach", "copy evidence somewhere stable and record it in the plan")
     attach.add_argument("plan", help="plan path or bare filename")

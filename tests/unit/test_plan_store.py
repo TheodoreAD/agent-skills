@@ -3174,6 +3174,53 @@ def test_rename_refuses_a_name_another_plan_already_has(ws, capsys, monkeypatch)
     assert "already exists" in capsys.readouterr().err
 
 
+def test_push_refuses_when_the_outgoing_range_names_a_client(ws, capsys):
+    """A push ships commits, so a plan that named a client and was reworded afterwards leaves a
+    clean tree behind a dirty history — the case `--mode tree` cannot see."""
+    write_config(ws, IGNORING_THE_WORD_CLIENT)
+    plans.main(["install", "--path", str(ws.personal)])
+    store = ws.store
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=store, check=True)
+    remote = ws.home / "remote.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=store, check=True)
+    leak = store / "_unscoped" / "2026-01-01-leak.md"
+    leak.parent.mkdir(parents=True, exist_ok=True)
+    leak.write_text("---\nstatus: idea\n---\n\n# Leak\n\nAbout the team/api work.\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=store, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "leak"], cwd=store, check=True)
+    capsys.readouterr()
+
+    assert plans.main(["push", "--path", str(ws.personal)]) == 1
+    out = capsys.readouterr().out
+    assert "REFUSED" in out
+    assert "cannot be taken back" in out
+
+
+def test_push_scans_the_outgoing_range_and_pushes_when_it_is_clean(ws, capsys):
+    """The 32 of 101 store pushes measured with no scan in the eight calls before them."""
+    write_config(ws, IGNORING_THE_WORD_CLIENT)
+    plans.main(["install", "--path", str(ws.personal)])
+    store = ws.store
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=store, check=True)
+    remote = ws.home / "remote.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=store, check=True)
+    clean = store / "_unscoped" / "2026-01-01-clean.md"
+    clean.parent.mkdir(parents=True, exist_ok=True)
+    clean.write_text("---\nstatus: idea\n---\n\n# Clean\n\nNothing private here.\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=store, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "clean"], cwd=store, check=True)
+    capsys.readouterr()
+
+    assert plans.main(["push", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "scanned:   clean" in out
+    assert "pushed:    ok" in out
+
+
 # --------------------------------------------------------------------------------------------
 # migration
 

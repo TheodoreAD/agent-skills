@@ -27,9 +27,10 @@ case none of them solves cheaply — is
 - **Runs**: `git` — read commands everywhere. It commits through three commands and no others:
   `commit`, `rename --commit`, and `migrate finish --delete-sources`. Each commits in the repository
   the named paths are already in, which is the store for a store-held plan and the session repo for
-  a repo-held one, and never in any other repository. `rename` also runs `git mv`. The history-purge
-  sequence in "Never let a client's identity reach a repo you publish" is printed for you to run;
-  the script never runs it.
+  a repo-held one, and never in any other repository. `rename` also runs `git mv`. **`git push` runs
+  only through `push`, only against a plans store, and only once the scan of that push's own
+  outgoing commits comes back clean.** The history-purge sequence in "Never let a client's identity
+  reach a repo you publish" is printed for you to run; the script never runs it.
 - **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
   files in the session repo's `plans/` and in both stores — `new`, `migrate start`, `set-status`,
   `move`, `absorb --apply`, `graduate`, and the retirement you perform by hand. The store
@@ -41,7 +42,9 @@ case none of them solves cheaply — is
   never without that flag. Never a file in any other repo's working tree: `new` refuses and names
   `--for`, and `migrate` refuses a source outside this repository. `archive`, `list`, `tags`,
   `refs`, `pending`, `migrate check`, `doctor`, `scan` and `where` write nothing.
-- **Network**: none. Pushing a store is your command, behind the scan.
+- **Network**: only `push`, and only to publish a plans store to the remote that store already has.
+  It never adds a remote, never pushes a repo, and refuses rather than publishing when the scan of
+  its own outgoing commits finds a private name. Every other command is offline.
 
 ## Run the script, don't re-derive it
 
@@ -118,6 +121,7 @@ python3 <path> archive --search <words>     # a retired plan, back out of git hi
 
 # keeping the machine right
 python3 <path> scan                         # no private name reaches a repo you publish
+python3 <path> push                         # scan what the push would publish, then push the store
 python3 <path> orgs                         # whose repo each directory is, from its own remote
 python3 <path> install --explain            # set the machine up, one decision at a time
 ```
@@ -548,6 +552,31 @@ Failure modes to handle correctly:
 Confirmed live 2026-08-28: this repo had already published a plan whose measurement table listed six
 employer/client root directory names, plus one client's internal `<project>/<repo>` path — written
 by an agent with no rule telling it not to, into a repo whose own README advertises it as public.
+
+### Pushing a store: `push`, not `git push`
+
+```shell
+python3 <path> push             # scan the outgoing commits, then push
+python3 <path> push --dry-run   # scan and report, publish nothing
+```
+
+**It scans the range the push would publish — not the working tree.** A push ships commits, so a
+plan that named a client and was reworded afterwards leaves a clean tree behind a dirty history, and
+that is precisely what `--mode tree` cannot see. On a branch with no upstream the whole history is
+outgoing, so the first push scans `--all`.
+
+On a hit it **refuses and publishes nothing**, naming the lines. A push cannot be taken back by a
+later edit: the content stays in the history, and a repo's history is as readable as its tip.
+
+Measured 2026-09-22: **101 pushes to a plans store, 32 of them (32%) with no `scan` anywhere in the
+eight calls before.** The rule had been stated in the store's own README, which is read once at
+install time and never again at the moment it applies. This is a command rather than a git hook on
+purpose — an agent should know what to run, not be corrected behind its back by something it cannot
+see.
+
+It pushes only a store, only to a remote that store already has, and it never adds one. A store with
+no remote is reported as nothing to push, which is the documented and permanent state of the
+sensitive tier rather than a problem to fix.
 
 ## Something that belongs to a repo you are not in
 

@@ -4329,7 +4329,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     if body:
         print(f"body:      {body.splitlines()[0]}")
     if not args.message:
-        print(f"derived:   from {_kinds_phrase(changes)} — -m overrides it, --body states the reason")
+        print(f"derived:   from {_kinds_phrase(changes)} — -m replaces it, --body goes under it")
     tail = " — and nothing else, whatever else was staged"
     for target in targets:
         rel = target.relative_to(repo).as_posix()

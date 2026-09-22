@@ -2110,6 +2110,17 @@ def test_a_store_swept_as_a_repo_prints_its_unpushed_commits_once(capsys):
     assert "parallel sessions the ahead-count is not necessarily this session's work" in out
 
 
+def test_a_store_with_nothing_to_report_says_so_rather_than_printing_a_bare_heading(capsys):
+    """Every other section of the sweep states what it found, so a heading with nothing under it
+    reads as a check that did not run rather than as one that came back clean. Confirmed 2026-09-22
+    on a store that was committed and pushed by the time the harvest ran."""
+    harvest._print_store({"store": "plans", "path": "/home/u/plans", "present": True})
+    out = capsys.readouterr().out
+
+    assert "== store plans /home/u/plans ==" in out
+    assert "clean: nothing uncommitted, nothing unpushed, no entry changed" in out
+
+
 def test_a_store_that_was_not_swept_as_a_repo_still_lists_its_own_commits(capsys):
     """The count-and-point line is only sound while something else printed the rows. A sweep scoped
     with --only stores, or one whose session never touched the store's own tree, has no `== repo ==`

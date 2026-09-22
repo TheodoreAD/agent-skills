@@ -3111,9 +3111,15 @@ def _print_store(state: dict[str, Any], listed_as_repo: bool = False) -> None:
     if not state.get("present"):
         print("  not present")
         return
-    for key in ("dirty", "unpushed", "changed_by_this_session", "entries_without_provenance"):
+    rows = ("dirty", "unpushed", "changed_by_this_session", "entries_without_provenance")
+    for key in rows:
         _print_store_rows(state, key, listed_as_repo)
     others = state.get("changed_by_something_else") or []
+    if not (others or state.get("note") or any(state.get(key) for key in rows)):
+        # A heading with nothing under it reads as a check that did not run. Confirmed 2026-09-22:
+        # a clean store printed its heading and four blank-looking lines of nothing, in a report
+        # whose every other section says what it found.
+        print("  clean: nothing uncommitted, nothing unpushed, no entry changed")
     if others:
         # A count, not a list. A refresher moving every entry's mtime is the store working as
         # designed, and printing twenty-five names buries the handful that are this session's.

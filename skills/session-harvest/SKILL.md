@@ -1170,6 +1170,20 @@ inside the write set at the top of this procedure, one filed `--for` another rep
 marked `MISSING` has been absorbed into the repo that owns it, and there the correction is a new
 filing rather than an edit.
 
+**Two kinds of number are printed there, and only one of them goes stale by the session running
+longer.** A measurement **of the session** — an adherence row, a call count, anything `--until`
+bounded — is a prefix by construction, so a later boundary changes it and it is re-derived every
+harvest. A measurement **of the world** — a corpus scanned, a spec read, a file's bytes — is not
+touched by this session continuing, and re-deriving it pays for a full re-scan to confirm a number
+nothing moved. Say which of the two each figure is, and re-derive the second kind only when its
+subject changed. Confirmed 2026-09-22: one harvest's `filed` printed both, the session-scoped row
+had moved on every rate, and the corpus row beside it — 46% of 144 READMEs — could not have.
+
+**A published verdict is the case that looks like the world and behaves like the session**, because
+the thing that re-runs is somebody else's scanner rather than your session. Re-query it every time.
+Same harvest: a rating filed four days earlier had crossed two levels, on content whose only change
+was a printing fix.
+
 **Open with where everything went**, as four groups, because "did this land somewhere durable, or is
 it still only in the chat?" is the question the whole report exists to answer:
 

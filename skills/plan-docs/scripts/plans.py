@@ -3868,7 +3868,7 @@ def _print_attached(plan: Path, entries: list[Attached]) -> None:
         print("      tell it from a different file of the same name. Keep the original until the")
         print("      plan is retired if losing it would matter.")
     if any(entry.committed for entry in entries):
-        print(f"\ncommit:   plans.py commit {plan} --why '<what this evidence shows, and what it settles>'")
+        print(f"\ncommit:   plans.py commit {plan} --body '<what this evidence shows, and what it settles>'")
         print("          which takes the plan and its attachments together.")
 
 
@@ -4253,25 +4253,31 @@ def derive_subject(label: str, changes: list[Change]) -> str | None:
     return f"{label}: {body}"
 
 
-def compose_message(label: str, changes: list[Change], why: str | None) -> str | None:
-    """The derived subject, with `--why` under it as the body — or None when nothing can be derived.
+def compose_message(label: str, changes: list[Change], body: str | None) -> str | None:
+    """The derived subject with `--body` under it — or None when no subject can be derived.
 
-    **`--why` is the body and only ever the body.** An earlier version let it become the subject too
-    when nothing could be derived, on the reasoning that the reason is then the only thing anyone can
-    say. That was wrong for a reason worth keeping: in exactly that case `--why` and `-m` produced
-    the same commit apart from the `<label>: ` prefix, so two flags converged on one behaviour and
-    the meaning of one of them depended on the diff. Measured 2026-09-22: the underivable case is
-    **153 of 1,643 plan commits, 9%** — one in eleven, far too common for a flag to change meaning
-    on it.
+    **`--body` is the body and only ever the body.** An earlier version let it become the subject
+    too when nothing could be derived, on the reasoning that the reason is then the only thing
+    anyone can say. That was wrong for a reason worth keeping: in exactly that case it and `-m`
+    produced the same commit apart from the `<label>: ` prefix, so two flags converged on one
+    behaviour and the meaning of one of them depended on the diff. Measured 2026-09-22: the
+    underivable case is **153 of 1,643 plan commits, 9%** — one in eleven, far too common for a flag
+    to change meaning on it.
 
-    So each flag now has one meaning: `--why` is a body, `-m` is the whole message verbatim. Where
-    no subject can be derived the command has nothing to offer but the label, and it hands that over
-    in the refusal rather than applying it — `-m` never rewrites what the author typed.
+    So each flag has one meaning: `--body` is a body, `-m` is the whole message verbatim. Where no
+    subject can be derived the command has nothing to offer but the label, and it hands that over in
+    the refusal rather than applying it — `-m` never rewrites what the author typed.
+
+    [DECISION: the flag was called `--why` until 2026-09-22, and the rename is the fix its own
+    documentation kept describing. Three prompts had to explain that "why" meant a commit body
+    rather than a clause, which is a name arguing with its help text; `--body` sits beside
+    `--message` so the pair reads as commit anatomy, and matches `gh pr create --body`. Not
+    `--commit-body`: the subcommand is already `commit`.]
     """
     derived = derive_subject(label, changes)
     if derived is None:
         return None
-    return f"{derived}\n\n{why}" if why else derived
+    return f"{derived}\n\n{body}" if body else derived
 
 
 def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
@@ -4306,14 +4312,14 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     # different things, which is the case no single sentence covers.
     label = commit_label(cfg, repo, named[0])
     changes = merge_rename(repo, [classify_change(cfg, repo, path) for path in named])
-    message = args.message or compose_message(label, changes, args.why)
+    message = args.message or compose_message(label, changes, args.body)
     if message is None:
         raise PlanError(_undeducible(label, changes))
     # `all`, not the first path. One store commit can legitimately name a plan in transit and an
     # unscoped plan whose only record this is, and reading the exemption off `named[0]` would let
     # argument order decide whether the permanent one gets a reason.
     in_transit = all(is_in_transit(cfg, repo, path) for path in named)
-    if not args.message and not args.why and not in_transit:
+    if not args.message and not args.body and not in_transit:
         raise PlanError(_body_expected(message, changes))
 
     commit = commit_paths(repo, targets, message)
@@ -4323,7 +4329,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     if body:
         print(f"body:      {body.splitlines()[0]}")
     if not args.message:
-        print(f"derived:   from {_kinds_phrase(changes)} — -m overrides it, --why states the reason")
+        print(f"derived:   from {_kinds_phrase(changes)} — -m overrides it, --body states the reason")
     tail = " — and nothing else, whatever else was staged"
     for target in targets:
         rel = target.relative_to(repo).as_posix()
@@ -4476,10 +4482,10 @@ def _body_expected(subject: str, changes: list[Change]) -> str:
         "this commit is the permanent record of that plan, and 97% of those carry a reason.\n"
         f"  subject:  {subject}\n"
         f"  from:     {_kinds_phrase(changes)}\n"
-        "  Add --why with a commit BODY — what the change is for, what it beat, what it cost —\n"
-        "  not a clause. The subject above is kept and your text goes underneath it; blank lines\n"
-        "  inside the argument are real paragraph breaks. One clause is right only where the\n"
-        "  change is one clause; padding reads as reasoning and is worse than a bare subject.\n"
+        "  Add --body: what the change is for, what it beat, what it cost. The subject above is\n"
+        "  kept and your text goes underneath it; blank lines inside the argument are real\n"
+        "  paragraph breaks. One clause is right only where the change is one clause —\n"
+        "  padding reads as reasoning and is worse than a bare subject.\n"
         "  Or use -m to write the whole message yourself. Nothing is asked for a plan in transit,\n"
         "  where absorb will move it and the repo-side commit is where the reasoning belongs."
     )
@@ -4629,7 +4635,7 @@ def cmd_pending(args: argparse.Namespace, ws: Workspace) -> int:
     for entry in entries:
         subject = derive_subject(commit_label(cfg, entry.repo, entry.path), [entry.change])
         print(f"{entry.state:<9} {entry.where:<8} {entry.path.name}")
-        print(f"                   would commit as: {subject or '(needs --why — the diff is prose)'}")
+        print(f"                   would commit as: {subject or '(needs --body — the diff is prose)'}")
     if entries:
         print(f"\n{len(entries)} pending in {len(repos)} repositor{'y' if len(repos) == 1 else 'ies'}")
         for repo in repos:
@@ -6628,10 +6634,10 @@ def build_parser() -> argparse.ArgumentParser:
     # The standard, not just the placement. "the reason" invites a clause, while `-m` invites a
     # commit message and gets one — the asymmetry is in the flag's name, so the help has to close it.
     wording.add_argument(
-        "--why",
-        metavar="BODY",
-        help="a commit body: what the change is for, what it beat, what it cost. Goes under the "
-        "derived subject and never replaces it — where no subject can be derived, use -m",
+        "--body",
+        metavar="TEXT",
+        help="the commit body: what the change is for, what it beat, what it cost. Goes under "
+        "the derived subject, never replaces it — where no subject can be derived, use -m",
     )
     commit.set_defaults(func=cmd_commit)
 

@@ -1024,14 +1024,19 @@ plan at all.
 
 ```shell
 python3 <path> commit <file>...                  # the subject is derived
-python3 <path> commit <file>... --why "<reason>" # …and your reason goes with it
+python3 <path> commit <file>... --body "<body>"  # …with your commit body under it
 python3 <path> commit <file>... -m "<whole msg>" # override both, for the case neither covers
 ```
 
-**`--why` takes a commit body, not a clause: what the change is for, what it beat, what it cost.**
-The flag's name is the one thing about it that misleads — "why" reads as a sentence fragment, while
-`-m` reads as "write a commit message" and gets one. Same standard, fewer words asked for. Write
-what you would have written after `-m`, minus the subject line, which is the part already derived.
+**`--body` is a commit body: what the change is for, what it beat, what it cost.** Write what you
+would have written after `-m`, minus the subject line, which is the part already derived.
+
+[DECISION: called `--why` until 2026-09-22, and the rename is the fix its own documentation kept
+describing. Three separate prompts had to explain that "why" meant a commit body rather than a
+clause — a name arguing with its help text, and the explanation is the tell. `--body` sits beside
+`--message` so the pair reads as commit anatomy, and it matches `gh pr create --body`, which is the
+spelling already used for this on this machine. Not `--commit-body`: the subcommand is `commit`, so
+the prefix would restate its own context.]
 
 What belongs inside the quotes, for a plan that settled where plans go when a repo cannot hold one:
 
@@ -1049,7 +1054,7 @@ alternatives worth naming.
 [PITFALL: **the floor is not a quota, and padding is worse than a short answer.** A formatting fix's
 why is one clause and should stay one clause — filler reads as reasoning, which misleads a later
 reader more than a bare subject would. That is also why nothing here measures the length of a
-`--why` and why no length gate should ever be added: it would enforce form, and the only way to
+`--body` and why no length gate should ever be added: it would enforce form, and the only way to
 satisfy it is the padding this warns against.]
 
 | what the diff is                  | what it commits as                                 |
@@ -1060,10 +1065,10 @@ satisfy it is the padding this warns against.]
 | a status transition               | `<repo>: <topic> is now <status>`                  |
 | tags opened or closed             | `<repo>: <topic> opens 2 DECISION`                 |
 
-**`--why` is the body, always and only** — it goes under the derived subject and never replaces it.
+**`--body` is the body, always and only** — it goes under the derived subject and never replaces it.
 So there is one thing to write and never a question of how to format it.
 
-**`--why` is expected wherever this commit is the plan's permanent record — which is everywhere
+**`--body` is expected wherever this commit is the plan's permanent record — which is everywhere
 except a plan in transit.** Measured 2026-09-22 across the 1,639 commits that have ever touched a
 plan file in this family, classified by what the diff did and by what each plan's route says:
 
@@ -1090,13 +1095,13 @@ reasoning belongs. Everything else stops and asks, handing you the subject it re
 the half it cannot. `-m` commits without a body — and it is deliberately the more expensive thing to
 type, because an opt-out cheaper than compliance is the opt-out everyone takes.
 
-**Two independent gates decide this, and each flag has exactly one meaning.** `--why` is a body;
+**Two independent gates decide this, and each flag has exactly one meaning.** `--body` is a body;
 `-m` is the whole message, taken verbatim. Neither ever stands in for the other:
 
 | the diff               | the commit               | what you pass              |
 | ---------------------- | ------------------------ | -------------------------- |
 | a subject can be read  | a plan in transit        | **nothing**                |
-| a subject can be read  | its own permanent record | **`--why`** — the body     |
+| a subject can be read  | its own permanent record | **`--body`** — the body    |
 | no subject can be read | either                   | **`-m`** — the whole thing |
 
 A subject can be read for every transition in the table above. It **cannot** for a mixed set, for
@@ -1104,12 +1109,13 @@ several plans whose statuses or edits differ, or for a content edit that opened 
 and added no section — a change that is only prose. That last case is 9% of this corpus's plan
 commits, so it is a path you will meet, not a corner.
 
-[DECISION: **`--why` does not rescue the unreadable case, though an earlier version let it.** It
+[DECISION: **`--body` does not rescue the unreadable case, though an earlier version let it.** It
 became the subject there, on the reasoning that the reason is then the only thing anyone can say.
-The cost was that `--why` and `-m` produced the same commit apart from the `<label>:` prefix, on one
-commit in eleven — two flags converging on one behaviour, with the meaning of one of them depending
-on the diff. So the command now offers the only thing it still knows, which is the label, and hands
-it over in the refusal rather than applying it to your `-m`. Nothing rewrites what you typed.]
+The cost was that `--body` and `-m` produced the same commit apart from the `<label>:` prefix, on
+one commit in eleven — two flags converging on one behaviour, with the meaning of one of them
+depending on the diff. So the command now offers the only thing it still knows, which is the label,
+and hands it over in the refusal rather than applying it to your `-m`. Nothing rewrites what you
+typed.]
 
 "In transit" means the plan sits in the store mirror of a repo whose own route writes to `repo`, so
 `absorb` has it ahead of it. A commit naming several plans is exempt only if **every** one of them
@@ -1133,7 +1139,7 @@ make that mistake — which is the single strongest reason to stop writing these
 
 **Two cases still refuse, and both name what they saw.** A set whose paths are doing _different_
 things has no one honest sentence; a content edit whose diff is only prose has no fact to read, so
-the refusal lists the transitions it found and asks for `--why`. Neither is a nudge to reach for
+the refusal lists the transitions it found and asks for `--body`. Neither is a nudge to reach for
 `-m` and retype the facts.
 
 ### Don't ask git what is uncommitted — ask `pending`

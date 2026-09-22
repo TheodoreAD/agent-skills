@@ -2661,7 +2661,13 @@ def write_plan(
             "source_moment: # ISO timestamp of the turn",
             "source_plan: # the filing repo's plan that owns this decision, or blank if it reports a fact",
         ]
-    lines += ["---", "", "## Context", ""]
+    # The `# ` title, scaffolded rather than left to habit. 39 of this corpus's 48 plans had grown
+    # one anyway and nothing ever asked for it, so the nine without were the drift — and since
+    # 2026-09-22 it is load-bearing: `commit` reads the title for the subject of the commit that
+    # files the plan, and falls back to this slug, which is the unusable default that made 369 of
+    # 403 measured calls pass `-m` by hand. Seeded from the topic so the fallback is never worse
+    # than the old behaviour, and phrased as a placeholder because a slug is not a sentence.
+    lines += ["---", "", f"# {topic.replace('-', ' ').capitalize()}", "", "## Context", ""]
     if source_repo is not None:
         lines += [
             "## Evidence",
@@ -3728,7 +3734,7 @@ def _print_attached(plan: Path, entries: list[Attached]) -> None:
         print("      tell it from a different file of the same name. Keep the original until the")
         print("      plan is retired if losing it would matter.")
     if any(entry.committed for entry in entries):
-        print(f"\ncommit:   plans.py commit {plan} -m '<what this evidence is>'")
+        print(f"\ncommit:   plans.py commit {plan} --why '<what this evidence shows>'")
         print("          which takes the plan and its attachments together.")
 
 
@@ -3896,6 +3902,246 @@ def _commit_argument(cfg: Config, routing: Routing, name: str) -> Path:
     return locate(cfg, routing, name).path
 
 
+def head_blob(repo: Path, path: Path) -> str | None:
+    """A file's content as `HEAD` has it, or None when `HEAD` does not have it at all.
+
+    The `git` helper's falsy-versus-None distinction matters here in the ordinary case rather than
+    the exotic one: an empty tracked file and an untracked one are both falsy, and the whole
+    classification below turns on which of them this is.
+    """
+    try:
+        rel = path.resolve().relative_to(repo.resolve()).as_posix()
+    except ValueError:
+        return None
+    return git(["show", f"HEAD:{rel}"], repo)
+
+
+def plan_title(text: str) -> str:
+    """The plan's own first `# ` heading — the sentence a human already wrote for it.
+
+    A leading article is lowercased, and nothing else is. A heading is written as a heading and
+    capitalised; a subject in this corpus is not ("agent-skills: a skill for writing stubs…"), so a
+    title dropped in verbatim reads in a different voice from every line around it in `git log`.
+    Restricted to `A`/`An`/`The` on purpose — a blanket lowercase would maim a title opening with a
+    proper noun or an acronym, which is the commoner case by far.
+    """
+    for line in text.splitlines():
+        if line.startswith("# "):
+            title = line[2:].strip()
+            first, _, rest = title.partition(" ")
+            return f"{first.lower()} {rest}" if first in ("A", "An", "The") and rest else title
+    return ""
+
+
+def plan_topic(path: Path) -> str:
+    """The filename with its date prefix removed: `2026-09-13-visual-assets` -> `visual-assets`.
+
+    The slug rather than a prettified form, because that is how sessions already cite a plan to each
+    other and it is what a later `git log --grep` is typed with.
+    """
+    stem = path.stem
+    return stem[11:] if re.match(r"^\d{4}-\d{2}-\d{2}-", stem) else stem
+
+
+def migrated_destinations(text: str) -> list[str]:
+    """What a plan's `## Migrated to` section names, for a retirement's subject line.
+
+    Backticked paths first, since step 4 of the retirement procedure writes them that way; a bullet
+    without one falls back to its leading words. Returns [] for a plan with no such section, which
+    is what separates a retirement from a plain removal.
+    """
+    lines = text.splitlines()
+    start = next((index for index, line in enumerate(lines) if MIGRATED_RE.match(line)), None)
+    if start is None:
+        return []
+    found: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.startswith("#"):
+            break
+        stripped = line.strip()
+        if not stripped.startswith(("-", "*")):
+            continue
+        body = stripped.lstrip("-* ").strip()
+        quoted = re.findall(r"`([^`]+)`", body)
+        found.append(quoted[0] if quoted else body.split(" — ")[0].split(" - ")[0].strip())
+    return [name for name in found if name]
+
+
+def absorbed_from(cfg: Config, repo: Path, added: Path) -> Path | None:
+    """The store path an added plan came out of, when this addition is the far half of an absorption.
+
+    The mirror of `absorbed_to`, and answerable for the same reason: the store path is
+    `<store>/<rel>/<name>` where `<rel>` is the repo's path under `projects_root`, so an addition in
+    `<repo>/plans/` has exactly one place it could have been absorbed from. Both halves of the
+    store's state count — the file still sitting there (the move not yet committed on that side) and
+    one `HEAD` still holds (the removal already staged) — because `absorb --apply` and the two
+    commits it owes are routinely three different moments.
+    """
+    try:
+        rel = added.resolve().parent.parent.relative_to(cfg.projects_root.resolve())
+    except ValueError:
+        return None
+    source = cfg.store_for(rel.as_posix()).path / rel / added.name
+    if source.is_file():
+        return source
+    return deleted_plan(source)
+
+
+class Change(NamedTuple):
+    """What git will record for one path, as far as it can be read rather than guessed.
+
+    `kind` is the transition; `detail` carries whatever that kind needs for a subject line — a
+    title, a destination repo, the new status. Everything here is read from `HEAD` and the working
+    tree, never from the plan's own frontmatter alone: an absorption is an addition on one side and
+    a deletion on the other, and a frontmatter-only reading cannot tell which side it is on. That
+    mistake has been made in this corpus — see `absorbed_to`.
+    """
+
+    path: Path
+    kind: str
+    detail: str
+
+    @property
+    def topic(self) -> str:
+        return plan_topic(self.path)
+
+
+def classify_change(cfg: Config, repo: Path, path: Path) -> Change:
+    """One path's transition, read from `HEAD` against the working tree."""
+    before = head_blob(repo, path)
+    after = path.read_text(encoding="utf-8") if path.is_file() else None
+
+    if after is None:
+        text = before or ""
+        gone = absorbed_to(cfg, repo, path)
+        if gone is not None:
+            destination, _ = gone
+            owner = repo_root_for(destination)
+            return Change(path, "absorbed-out", owner.name if owner else destination.parent.name)
+        destinations = migrated_destinations(text)
+        if destinations:
+            named = ", ".join(destinations[:2])
+            more = f" and {len(destinations) - 2} more" if len(destinations) > 2 else ""
+            return Change(path, "retired", f"{named}{more}")
+        return Change(path, "removed", "")
+
+    if before is None:
+        source = absorbed_from(cfg, repo, path)
+        if source is not None:
+            return Change(path, "absorbed-in", "")
+        return Change(path, "added", plan_title(after) or plan_topic(path))
+
+    was = parse_frontmatter(before).get("status", "")
+    now = parse_frontmatter(after).get("status", "")
+    if was != now and now:
+        return Change(path, "status", now)
+    return Change(path, "edited", _edit_detail(before, after))
+
+
+def _edit_detail(before: str, after: str) -> str:
+    """What an edit did, in the terms this convention already counts: tags, then sections.
+
+    Deliberately narrow. A tag appearing or disappearing is a real event in this vocabulary — a
+    question answered, a decision recorded — and a new `##` section is a structural change anyone
+    can check. Anything else an edit might be is prose, which no diff reading can summarise
+    honestly, so this returns "" and `commit` asks the author for the reason instead.
+    """
+    was = Counter(match.group(1) for match in TAG_RE.finditer(before))
+    now = Counter(match.group(1) for match in TAG_RE.finditer(after))
+    opened = [f"{count} {name}" for name, count in sorted((now - was).items())]
+    closed = [f"{count} {name}" for name, count in sorted((was - now).items())]
+    parts: list[str] = []
+    if opened:
+        parts.append(f"opens {', '.join(opened)}")
+    if closed:
+        parts.append(f"closes {', '.join(closed)}")
+    if parts:
+        return " and ".join(parts)
+
+    had = set(_sections(before))
+    fresh = [head for head in _sections(after) if head not in had]
+    if fresh:
+        return f"adds {', '.join(head.removeprefix('## ') for head in fresh[:2])}"
+    return ""
+
+
+def _sections(text: str) -> list[str]:
+    """The `## ` headings of a plan, in order."""
+    return [line.strip() for line in text.splitlines() if line.startswith("## ")]
+
+
+def _joined(topics: list[str], limit: int = 3) -> str:
+    """`a, b and c`, collapsing a longer list to a count rather than a wall of slugs."""
+    if len(topics) <= limit:
+        return topics[0] if len(topics) == 1 else f"{', '.join(topics[:-1])} and {topics[-1]}"
+    return f"{', '.join(topics[:limit])} and {len(topics) - limit} more"
+
+
+# How one transition reads as a subject, for a single path and for a set of the same kind. `{n}` is
+# the count, `{topics}` the joined slugs, `{detail}` whatever `classify_change` attached.
+SUBJECTS: dict[str, tuple[str, str]] = {
+    "added": ("{detail}", "file {topics}"),
+    "absorbed-in": ("absorb {topics} out of the store", "absorb {n} plans out of the store"),
+    "absorbed-out": ("absorbed into {detail}, removed from the store", "absorbed into their repos, {n} removed here"),
+    "retired": ("retire {topics}, migrated to {detail}", "retire {n} plans, each migrated first"),
+    "removed": ("remove {topics}", "remove {n} plans"),
+    "status": ("{topics} is now {detail}", "{n} plans are now {detail}"),
+    "edited": ("{topics} {detail}", "{topics}: {detail}"),
+}
+
+
+def derive_subject(label: str, changes: list[Change]) -> str | None:
+    """`<repo>: <what git will record>`, or None when only prose can say what happened.
+
+    Refusing is the point of the return type. The old default — the filename stem — was overridden
+    by 369 of 403 measured calls (2026-09-22) because a date-prefixed slug describes nothing, and a
+    default nobody takes is worse than no default: it is a wrong message one forgotten flag away. So
+    this answers only where the answer is read rather than guessed, and `commit` asks for a reason
+    in the one case that is neither — an edit whose diff is prose.
+    """
+    kinds = {change.kind for change in changes}
+    if len(kinds) > 1:
+        return None
+    kind = kinds.pop()
+    single, several = SUBJECTS[kind]
+    details = {change.detail for change in changes}
+    if len(changes) > 1 and len(details) > 1 and kind in ("status", "edited"):
+        return None
+    if kind == "edited" and not changes[0].detail:
+        return None
+    template = single if len(changes) == 1 else several
+    body = template.format(
+        n=len(changes),
+        topics=_joined([change.topic for change in changes]),
+        detail=changes[0].detail,
+    )
+    return f"{label}: {body}"
+
+
+def compose_message(label: str, changes: list[Change], why: str | None) -> str | None:
+    """The whole message: a derived subject, and the author's reason placed where it belongs.
+
+    `--why` means one thing — "the reason I made this change" — and this decides where that reason
+    lands, which is the composition a session would otherwise do by hand and get wrong in one
+    direction or the other:
+
+    - **subject derivable**: the derived fact is the subject, because that is what a reader scanning
+      `git log --oneline` needs, and the reason becomes the body. That is the house commit shape.
+    - **subject not derivable**: the change is prose, so the reason *is* the only thing anyone can
+      say about it, and it becomes the subject under the label. No filler subject is invented to sit
+      above it — `<label>: update <topic>` would be a line that reads as information and carries
+      none.
+    """
+    derived = derive_subject(label, changes)
+    if not why:
+        return derived
+    if derived is not None:
+        return f"{derived}\n\n{why}"
+    head, _, rest = why.partition("\n\n")
+    subject = " ".join(head.split())
+    return f"{label}: {subject}\n\n{rest}" if rest else f"{label}: {subject}"
+
+
 def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     """Commit these plans on their own, which is the step sessions were doing by hand 142 times.
 
@@ -3932,16 +4178,25 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     repo = next(iter(repos))
     assert repo is not None  # narrowed by the `None in repos` guard above
 
-    # A generated message names one plan's topic, and there is no honest single-file default for
-    # several. Requiring `-m` for a set is the constraint that keeps the multi-file form from
-    # producing the thing it exists to prevent: one message that describes a third of its own diff.
-    if len(named) > 1 and not args.message:
-        raise PlanError("-m is required when committing more than one plan: no default message describes a set")
-    message = args.message or f"{routing.rel or repo.name}: {named[0].stem}"
+    # The subject is read from what git will record, never guessed from the plan's own frontmatter,
+    # and `-m` still overrides it whole. A set is no longer refused outright: the old refusal was
+    # right about a *guessed* message and wrong about an enumerated one — "absorb 4 plans out of the
+    # store" describes an absorption exactly — so what refuses now is a set whose paths are doing
+    # different things, which is the case no single sentence covers.
+    label = commit_label(cfg, repo, named[0])
+    changes = [classify_change(cfg, repo, path) for path in named]
+    message = args.message or compose_message(label, changes, args.why)
+    if message is None:
+        raise PlanError(_undeducible(changes, bool(args.why)))
 
     commit = commit_paths(repo, targets, message)
+    subject, _, body = message.partition("\n\n")
     print(f"committed: {commit[:12]} in {repo}")
-    print(f"message:   {message}")
+    print(f"message:   {subject}")
+    if body:
+        print(f"body:      {body.splitlines()[0]}")
+    if not args.message:
+        print(f"derived:   from {_kinds_phrase(changes)} — -m overrides it, --why states the reason")
     tail = " — and nothing else, whatever else was staged"
     for target in targets:
         rel = target.relative_to(repo).as_posix()
@@ -3959,6 +4214,199 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
         print(f"      It is now {destination}, added{where} — this commit records the store-side")
         print("      removal, under the message you wrote. If that message announced an addition,")
         print("      the addition is in that repo and this diff is a pure deletion.")
+    _report_after_commit(cfg, repo, named)
+    return 0
+
+
+def commit_label(cfg: Config, repo: Path, path: Path) -> str:
+    """The subject's `<label>:` prefix — one rule, which reads differently in the two places.
+
+    It always names *which part of this repository changed*, which is the ordinary git subject
+    prefix. In a repo that keeps its own plans that is the plans directory, so `plans: …`; in the
+    store, where every commit would otherwise carry the store's own name, the mirror layout gives
+    the repo the plan belongs to, so `<repo>: …`.
+
+    Both halves are read from this corpus's own history rather than chosen: store commits were
+    measured as `api:`, `invoke-stubs:`, `agent-skills:` and repo commits as `plans:`, and the house
+    commit rule states the store form outright. Safe to print in either tier by construction — the
+    sensitive tier has no remote, and the shareable one mirrors only roots already publishable.
+    """
+    resolved = repo.resolve()
+    for store in cfg.stores():
+        root = store.path.expanduser().resolve()
+        if resolved != root:
+            continue
+        try:
+            rel = path.resolve().parent.relative_to(root)
+        except ValueError:
+            return repo.name
+        return "unscoped" if rel.name == UNSCOPED_DIR else (rel.name or repo.name)
+    parent = path.resolve().parent
+    return parent.name if parent != resolved else repo.name
+
+
+def _kinds_phrase(changes: list[Change]) -> str:
+    counted = Counter(change.kind for change in changes)
+    return ", ".join(f"{count} {kind}" if count > 1 else kind for kind, count in sorted(counted.items()))
+
+
+def _undeducible(changes: list[Change], had_why: bool) -> str:
+    """Why no subject could be read, in terms of what was actually seen.
+
+    The facts go in the error deliberately. A session told only "pass -m" writes the facts back out
+    of the diff by hand, which is the work this command exists to remove; a session told *which*
+    facts were read writes the one clause it alone has, which is the reason.
+    """
+    listed = "\n".join(
+        f"  {change.path.name}: {change.kind}{f' ({change.detail})' if change.detail else ''}" for change in changes
+    )
+    tail = (
+        "  Commit them separately — one call each, each subject derived — or pass -m with a message "
+        "that genuinely describes all of it."
+    )
+    if len({change.kind for change in changes}) > 1:
+        return f"these paths are doing different things, and no one sentence covers a mixed set:\n{listed}\n{tail}"
+    if had_why:
+        # `--why` alone reaches here only for a set whose members did the same *kind* of thing with
+        # different details — two status changes to two different statuses, say. One reason cannot
+        # be the subject of two unrelated transitions.
+        return f"one reason cannot be the subject of a set that is not one change:\n{listed}\n{tail}"
+    return (
+        f"the diff is prose, so only you can say what it is for:\n{listed}\n"
+        "  Pass --why '<the reason>' — it becomes the subject here, and the body wherever a subject "
+        "can be derived — or -m to write the whole message yourself."
+    )
+
+
+def _report_after_commit(cfg: Config, repo: Path, committed: list[Path]) -> None:
+    """The two questions sessions ask git immediately after this command, answered by the process
+    that already knows: what is still uncommitted, and what is unpushed.
+
+    Measured 2026-09-22 across the transcript store: 83 `git status` and 30 `git log @{u}..HEAD`
+    calls naming a plan or a store sat within two Bash calls of a `plans.py commit`. Both are
+    re-derivations of state this function is holding.
+
+    Read from the directories just committed to rather than from the ones this session *reads*: a
+    plan filed with `--for` lives in another repo's store mirror, which is deliberately outside the
+    filing session's view, so the visible-directory list would report nothing for exactly the
+    commit that most needs the answer.
+    """
+    left = [
+        entry
+        for directory in sorted({path.parent for path in committed})
+        for entry in pending_in(cfg, directory, "here")
+    ]
+    if left:
+        print(f"\nremaining: {len(left)} uncommitted here — {', '.join(entry.path.name for entry in left)}")
+        print("           plans.py pending says what each one would commit as")
+    unpushed = unpushed_summary(repo)
+    if unpushed:
+        print(f"\nunpushed:  {unpushed}")
+
+
+class Pending(NamedTuple):
+    """One plan file git and the working tree disagree about, and what committing it would say."""
+
+    path: Path
+    repo: Path
+    where: str
+    state: str
+    change: Change
+
+
+def pending_in(cfg: Config, directory: Path, where: str) -> list[Pending]:
+    """Every plan in one directory that git and the working tree disagree about.
+
+    [PITFALL: **not `git status --porcelain`.** Its format puts the index and worktree flags in
+    fixed columns one and two, so an unstaged modification's line *begins with a space* — and the
+    `git` helper strips its output, which eats that space on the first line only. Fixed-column
+    parsing then reads the flags one character off and the path with its first letter missing, for
+    one row out of N, which is the shape of bug a test with a single dirty file cannot see. Caught
+    2026-09-22 writing this. `diff --name-status` and `ls-files` are tab-separated and
+    whitespace-free, so both survive the strip.]
+    """
+    repo = repo_root_for(directory)
+    if repo is None:
+        return []
+    try:
+        rel = directory.resolve().relative_to(repo.resolve()).as_posix()
+    except ValueError:
+        return []
+
+    states: dict[Path, str] = {}
+    for line in (git(["diff", "--name-status", "HEAD", "--", rel], repo) or "").splitlines():
+        code, _, name = line.partition("\t")
+        if name:
+            states[(repo / name.strip()).resolve()] = "deleted" if code.startswith("D") else "modified"
+    for name in (git(["ls-files", "--others", "--exclude-standard", "--", rel], repo) or "").splitlines():
+        if name.strip():
+            states.setdefault((repo / name.strip()).resolve(), "untracked")
+
+    return [
+        Pending(path, repo, where, state, classify_change(cfg, repo, path))
+        for path, state in states.items()
+        if path.suffix == ".md" and path.name != "README.md" and path.parent == directory.resolve()
+    ]
+
+
+def pending_changes(cfg: Config, routing: Routing) -> list[Pending]:
+    """Every plan this session can see that is not committed, across the repo and the store."""
+    found: list[Pending] = []
+    seen: set[Path] = set()
+    for where, directory in visible_dirs(cfg, routing):
+        for entry in pending_in(cfg, directory, where):
+            if entry.path not in seen:
+                seen.add(entry.path)
+                found.append(entry)
+    return sorted(found, key=lambda entry: (entry.where, entry.path.name))
+
+
+def cmd_pending(args: argparse.Namespace, ws: Workspace) -> int:
+    """What is written but not committed, and what `commit` would say about each one.
+
+    The pre-commit half of the verification sessions hand-roll: 83 `git status --short` calls
+    against a store or a plans directory sat within two Bash calls of a `plans.py commit`, measured
+    2026-09-22. Read-only, and it answers the question in this convention's own terms rather than
+    git's — which file, in which repo, and the subject line it would land under.
+
+    Its own command rather than a flag on `list`, deliberately. `list` answers "what is open", a
+    lifecycle question about content; this answers "what is uncommitted", a git question about
+    files. The same plan appears in both with different meanings, and one row cannot carry both.
+    """
+    cfg = ws.config
+    routing = ws.require_routable()
+    entries = pending_changes(cfg, routing)
+    repos = sorted({entry.repo for entry in entries})
+
+    if args.json:
+        payload = [
+            {
+                "path": str(entry.path),
+                "repo": str(entry.repo),
+                "where": entry.where,
+                "state": entry.state,
+                "kind": entry.change.kind,
+                "subject": derive_subject(commit_label(cfg, entry.repo, entry.path), [entry.change]),
+            }
+            for entry in entries
+        ]
+        unpushed = {str(repo): unpushed_summary(repo) for repo in repos}
+        print(json.dumps({"pending": payload, "unpushed": unpushed}, indent=2))
+        return 0
+
+    if not entries:
+        print("nothing pending: every plan this repo can see matches its git history")
+    for entry in entries:
+        subject = derive_subject(commit_label(cfg, entry.repo, entry.path), [entry.change])
+        print(f"{entry.state:<9} {entry.where:<8} {entry.path.name}")
+        print(f"                   would commit as: {subject or '(needs --why — the diff is prose)'}")
+    if entries:
+        print(f"\n{len(entries)} pending in {len(repos)} repositor{'y' if len(repos) == 1 else 'ies'}")
+        for repo in repos:
+            print(f"  {repo}")
+    for repo in repos:
+        if (unpushed := unpushed_summary(repo)) is not None:
+            print(f"\nWARNING: {unpushed}")
     return 0
 
 
@@ -5368,8 +5816,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="plan path(s) — absolute, relative to here, or relative to a store as absorb prints them, "
         "so a store removal needs no --path — or bare filename(s) to search; all in one repository",
     )
-    commit.add_argument("-m", "--message", help="commit message (default: '<repo>: <topic>'; required for several)")
+    wording = commit.add_mutually_exclusive_group()
+    wording.add_argument("-m", "--message", help="the whole message, overriding the derived subject")
+    wording.add_argument("--why", help="the reason, as the body; the subject is still derived from the diff")
     commit.set_defaults(func=cmd_commit)
+
+    pending = add("pending", "plan files git does not agree with, and what committing each would say")
+    pending.add_argument("--json", action="store_true")
+    pending.set_defaults(func=cmd_pending)
 
     refs = add("refs", "inbound references to a plan, across the repo and the store")
     refs.add_argument("file", help="plan path or bare filename")

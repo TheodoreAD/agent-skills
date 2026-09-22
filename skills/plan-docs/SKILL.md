@@ -1,6 +1,6 @@
 ---
 name: plan-docs
-description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, choosing or advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, migrating a repo's legacy monolithic plan file (PLAN.md, DESIGN.md, ...) onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME), routed per repo by config; an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
+description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, migrating a legacy PLAN.md/DESIGN.md onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME); an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
 compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard; any other harness exports PLAN_DOCS_SESSION_REPO instead. No network access.
 ---
 
@@ -24,17 +24,18 @@ case none of them solves cheaply — is
   under `projects_root` (to derive the private terms `scan` gates on — names only, never contents),
   git history of the session repo and the stores, and, on Claude Code, the transcript path named by
   `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
-- **Runs**: `git` — read commands everywhere; `git commit` only on the store, through `commit`. The
-  history-purge sequence in "Never let a client's identity reach a repo you publish" is printed for
-  you to run; the script never runs it.
+- **Runs**: `git` — read commands everywhere; `git commit` through `commit`, in the repository the
+  named paths are in, which is the store for a store-held plan and the session repo for a repo-held
+  one. Never any other repository. The history-purge sequence in "Never let a client's identity
+  reach a repo you publish" is printed for you to run; the script never runs it.
 - **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
   files in the session repo's `plans/` and in both stores — `new`, `set-status`, `move`,
   `absorb --apply`, `graduate`, and the retirement you perform by hand. The store directories and
   their READMEs, created `0700`. Through `attach`: a copy of each file you name, either in a
   directory beside the plan or in the store's `_attachments/`, the plan's own `## Attachments` rows,
-  and one line in the store's `.git/info/exclude`. Commits to the **store** through `commit`; never
-  a commit in the session repo, and never a file in any other repo's working tree — `new` refuses
-  and names `--for`. `archive`, `list`, `tags`, `refs`, `doctor`, `scan` and `where` write nothing.
+  and one line in the store's `.git/info/exclude`. Never a file in any other repo's working tree —
+  `new` refuses and names `--for`. `archive`, `list`, `tags`, `refs`, `pending`, `doctor`, `scan`
+  and `where` write nothing.
 - **Network**: none. Pushing a store is your command, behind the scan.
 
 ## Run the script, don't re-derive it
@@ -91,7 +92,8 @@ python3 <path> where                        # which directories this repo reads 
 python3 <path> repos --search <words>       # what each repo is for, to route a plan by
 python3 <path> new <topic> --for <repo>     # something belonging to a repo you are not in
 python3 <path> new <topic> --to store       # this repo's plan, kept out of a tree another session holds
-python3 <path> commit <file>... -m "<msg>"  # commit these plans alone, whatever else is staged
+python3 <path> commit <file>...             # commit these plans alone, subject read from the diff
+python3 <path> pending                      # what is written but not committed, and what it would say
 python3 <path> new <topic> --unscoped       # an idea with no repo yet
 python3 <path> graduate <file> --to <repo>  # …once it has one
 
@@ -978,6 +980,60 @@ applies to it. Commit it there anyway, in the same session that wrote it: the st
 only record that plan has, and an uncommitted file in a directory nobody browses is the same as no
 plan at all.
 
+### The message has two halves, and the script owns one of them
+
+**Don't write the subject. `commit` reads it from what git is about to record.**
+
+```shell
+python3 <path> commit <file>...                  # the subject is derived
+python3 <path> commit <file>... --why "<reason>" # …and your reason goes with it
+python3 <path> commit <file>... -m "<whole msg>" # override both, for the case neither covers
+```
+
+| what the diff is                  | what it commits as                                 |
+| --------------------------------- | -------------------------------------------------- |
+| a new plan                        | `<repo>: <the plan's own # title>`                 |
+| the store side of an absorption   | `<repo>: absorbed into <repo>, removed from store` |
+| a deletion after `## Migrated to` | `<repo>: retire <topic>, migrated to <where>`      |
+| a status transition               | `<repo>: <topic> is now <status>`                  |
+| tags opened or closed             | `<repo>: <topic> opens 2 DECISION`                 |
+
+**`--why` is the reason, and the script decides where it belongs**: the body under a derived
+subject, or the subject itself where nothing could be derived. So there is one thing to write and
+never a question of how to format it.
+
+Measured 2026-09-22 across this machine's transcripts: of 403 `plans.py commit` calls, **369 passed
+a hand-written `-m`** — because the old default was the filename stem, a date-prefixed slug that
+described nothing — and **a third of those messages were the diff read back in words**: 97 said some
+form of "absorbed", 17 "filed", 10 named a status the frontmatter already carried.
+
+[PITFALL: **an absorption is an addition in one repo and a deletion in the other, and a hand-written
+message routinely describes the wrong one.** Confirmed 2026-09-04: a commit carried 76 deletions and
+0 insertions under a message announcing an addition, and establishing that the content had survived
+took eight minutes. A derived subject reads `HEAD` in the repo the path is actually in, so it cannot
+make that mistake — which is the single strongest reason to stop writing these by hand.]
+
+**Two cases still refuse, and both name what they saw.** A set whose paths are doing _different_
+things has no one honest sentence; a content edit whose diff is only prose has no fact to read, so
+the refusal lists the transitions it found and asks for `--why`. Neither is a nudge to reach for
+`-m` and retype the facts.
+
+### Don't ask git what is uncommitted — ask `pending`
+
+```shell
+python3 <path> pending        # every plan git disagrees with, and the subject each would land under
+```
+
+It names the file, its state, the repo it belongs to, and what `commit` would say about it, plus any
+unpushed commits. `commit` prints the same two facts on the way out, so neither side of the call
+needs a `git status`. Measured 2026-09-22: **83 `git status` and 30 `git log @{u}..HEAD`** calls
+naming a plan or a store sat within two Bash calls of a `plans.py commit`, every one of them
+re-deriving state the script was already holding.
+
+[PITFALL: **a plan filed with `--for` lives in a mirror this session deliberately cannot see**, so
+`pending` does not list it — that is the isolation working, not a gap. `commit` still reports what
+is left beside anything it just committed, which is where that plan turns up.]
+
 ## Attaching evidence to a plan
 
 A plan citing a log in Downloads, a scratch directory, or the transcript its own `source_session`
@@ -1304,12 +1360,15 @@ Code contracts and verification logs are usually the bulk of the deletable volum
    - **`commit` takes the deletion too**, and is still the right way to make it: the store's index
      is shared whether the change is an addition or a removal.
      ```shell
-     python3 <path> commit <the plan that is now gone> -m "retire <topic>"
+     python3 <path> commit <the plan that is now gone>
      ```
-     Pass the path, not a bare filename — nothing can search for a file that no longer exists. It
-     works whether the deletion is staged (`git rm`) or the file was simply removed, and `git rm`
-     also prunes the directory it just emptied, which is ordinary for a store mirror holding one
-     last plan. Retiring several at once is one call and one message, same as an absorption.
+
+     No message needed: step 4 put `## Migrated to` in `HEAD`, so the derived subject is
+     `<repo>: retire <topic>, migrated to <where it went>`. Pass the path, not a bare filename —
+     nothing can search for a file that no longer exists. It works whether the deletion is staged
+     (`git rm`) or the file was simply removed, and `git rm` also prunes the directory it just
+     emptied, which is ordinary for a store mirror holding one last plan. Retiring several at once
+     is one call and one message, same as an absorption.
    - Don't blindly swap the old path for the new one at every hit. A reference to a specific quoted
      section title needs that title updated to match where the content actually landed — a valid
      path aimed at a renamed heading still dangles. Some cited content is already duplicated at a

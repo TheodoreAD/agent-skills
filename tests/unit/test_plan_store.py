@@ -2751,18 +2751,246 @@ def test_commit_takes_a_whole_absorption_as_one_commit(ws, capsys):
     assert theirs.relative_to(ws.sensitive).as_posix() in still_staged, "their staged work was disturbed"
 
 
-def test_commit_refuses_a_set_with_no_message_because_no_default_describes_one(ws, capsys):
-    """The generated message names one plan's topic. Letting a set fall back to it would produce
-    exactly what the multi-file form exists to prevent: one message describing a third of its diff."""
+def test_commit_derives_one_subject_for_a_set_doing_the_same_thing(ws, capsys):
+    """The old refusal — "no default message describes a set" — was right about a *guessed* message
+    and wrong about an enumerated one. Two filings are one filing of two, and saying so is exact."""
     write_config(ws, TIERED)
     plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
     for topic in ("one", "two"):
         plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
     capsys.readouterr()
     filed = sorted((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*.md"))
 
-    assert plans.main(["commit", *[str(p) for p in filed], "--path", str(ws.personal)]) == 1
-    assert "-m is required" in capsys.readouterr().err
+    assert plans.main(["commit", *[str(p) for p in filed], "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "message:   api: file one and two" in out, out
+    assert "derived:   from 2 added" in out
+
+
+def test_commit_refuses_a_set_whose_paths_are_doing_different_things(ws, capsys):
+    """What a set genuinely cannot have is one sentence covering an addition and a retirement at
+    once — and the refusal names the kinds it saw, so the caller splits rather than guesses."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    mirror = ws.sensitive / "client.com-bitbucket" / "team" / "api"
+    for topic in ("kept", "doomed"):
+        plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+    doomed = next(path for path in mirror.glob("*doomed.md"))
+    assert plans.main(["commit", str(doomed), "--path", str(ws.personal)]) == 0
+    doomed.unlink()
+    fresh = next(path for path in mirror.glob("*kept.md"))
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(fresh), str(doomed), "--path", str(ws.personal)]) == 1
+    err = capsys.readouterr().err
+    assert "doing different things" in err
+    assert "added" in err
+    assert "removed" in err
+
+
+def filed_and_committed(ws, capsys, topic: str) -> Path:
+    """One plan in the client mirror, already in the store's history — the starting state for every
+    transition below, since a transition is only readable against what `HEAD` holds."""
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob(f"*-{topic}.md"))
+    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+    return path
+
+
+def test_the_label_names_which_part_of_the_repository_changed(ws, capsys, monkeypatch):
+    """One rule reading differently in the two places, both halves taken from measured history: a
+    repo's own plans directory gives `plans:`, and a store mirror gives the repo it belongs to."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    repo = ws.personal
+    monkeypatch.chdir(repo)
+    plans.main(["new", "labelling", "--path", str(repo)])
+    plan = next((repo / "plans").glob("*-labelling.md"))
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(plan), "--path", str(repo)]) == 0
+    assert "message:   plans: Labelling" in capsys.readouterr().out
+
+
+def test_commit_reads_the_subject_off_the_plans_own_title(ws, capsys):
+    """The old default was the filename stem — a date-prefixed slug, overridden by 369 of 403
+    measured calls. The file already carries a human sentence one line into the body."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "retry-budget", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-retry-budget.md"))
+    text = path.read_text(encoding="utf-8")
+    assert "# Retry budget" in text, "new scaffolds the title the subject is read from"
+    path.write_text(text.replace("# Retry budget", "# One retry budget for every outbound call"), encoding="utf-8")
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert "message:   api: One retry budget for every outbound call" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("title", "subject"),
+    [
+        ("# The gate that cannot lie", "api: the gate that cannot lie"),
+        ("# A second store tier", "api: a second store tier"),
+        ("# SQLite beats Postgres here", "api: SQLite beats Postgres here"),
+        ("# The", "api: The"),
+    ],
+)
+def test_only_a_leading_article_is_lowercased_in_a_derived_subject(ws, capsys, title, subject):
+    """A heading is capitalised and a subject in this corpus is not, so a title dropped in verbatim
+    reads in a different voice from every line around it. Blanket-lowercasing would maim the
+    commoner case: a title opening with a proper noun or an acronym."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    plans.main(["new", "voice", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-voice.md"))
+    path.write_text(path.read_text(encoding="utf-8").replace("# Voice", title), encoding="utf-8")
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert f"message:   {subject}" in capsys.readouterr().out
+
+
+def test_commit_names_the_status_a_transition_moved_to(ws, capsys):
+    """A status change is the whole change, and the frontmatter already states it."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    path = filed_and_committed(ws, capsys, "cutover")
+    assert plans.main(["set-status", str(path), "in-progress", "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert "message:   api: cutover is now in-progress" in capsys.readouterr().out
+
+
+def test_commit_counts_the_tags_an_edit_opened_and_closed(ws, capsys):
+    """A tag appearing or disappearing is a real event in this vocabulary — a question answered, a
+    decision recorded — and it is the one thing a diff of prose can be read for honestly."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    path = filed_and_committed(ws, capsys, "queueing")
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n[DECISION: one queue, not two]\n[DECISION: at-least-once]\n",
+        encoding="utf-8",
+    )
+
+    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert "message:   api: queueing opens 2 DECISION" in capsys.readouterr().out
+
+
+def test_commit_asks_for_the_reason_when_the_diff_is_only_prose(ws, capsys):
+    """The one case neither half can answer: the script cannot read why, and a session told merely
+    "pass -m" writes the facts back out by hand. So the refusal carries the facts and asks for the
+    reason, which is the only part the author actually has."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    path = filed_and_committed(ws, capsys, "throughput")
+    path.write_text(path.read_text(encoding="utf-8") + "\nA paragraph that opens no tag.\n", encoding="utf-8")
+
+    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 1
+    err = capsys.readouterr().err
+    assert "the diff is prose" in err
+    assert "--why" in err
+
+    assert plans.main(["commit", str(path), "--why", "the numbers moved", "--path", str(ws.personal)]) == 0
+    assert "message:   api: the numbers moved" in capsys.readouterr().out
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"], cwd=ws.sensitive, capture_output=True, text=True, check=True
+    ).stdout
+    assert subject.strip() == "api: the numbers moved", "with nothing to derive, the reason is the subject"
+
+
+def test_why_is_the_body_wherever_a_subject_can_be_derived(ws, capsys):
+    """The other half of the one flag: the derived fact still leads, because that is what a reader
+    scanning `git log --oneline` needs, and the reason sits under it."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    path = filed_and_committed(ws, capsys, "rollout")
+    assert plans.main(["set-status", str(path), "abandoned", "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+
+    argv = ["commit", str(path), "--why", "the vendor withdrew the endpoint", "--path", str(ws.personal)]
+    assert plans.main(argv) == 0
+    out = capsys.readouterr().out
+    assert "message:   api: rollout is now abandoned" in out
+    assert "body:      the vendor withdrew the endpoint" in out
+
+
+def test_commit_tells_a_retirement_from_a_bare_removal(ws, capsys):
+    """Step 4 of the retirement procedure writes `## Migrated to` and commits it before the delete,
+    so by the time the deletion is committed the destinations are in `HEAD` to be read back."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    path = filed_and_committed(ws, capsys, "legacy-poller")
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n## Migrated to\n\n- `docs/polling.md` — the backoff decision\n",
+        encoding="utf-8",
+    )
+    assert plans.main(["commit", str(path), "--why", "step 4", "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+    path.unlink()
+
+    assert plans.main(["commit", str(path), "--path", str(ws.personal)]) == 0
+    assert "message:   api: retire legacy-poller, migrated to docs/polling.md" in capsys.readouterr().out
+
+
+def test_commit_reports_what_is_still_uncommitted_and_unpushed(ws, capsys):
+    """The 83 `git status` and 30 `git log @{u}..HEAD` calls measured within two Bash calls of a
+    commit, answered by the process that had just built it."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.sensitive, check=True)
+    for topic in ("first", "second"):
+        plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    mirror = ws.sensitive / "client.com-bitbucket" / "team" / "api"
+    capsys.readouterr()
+
+    assert plans.main(["commit", str(next(mirror.glob("*-first.md"))), "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "remaining: 1 uncommitted here" in out
+    assert "second.md" in out
+
+
+def test_pending_names_every_uncommitted_plan_and_what_it_would_commit_as(ws, capsys):
+    """The pre-commit half of the same question, and in this convention's terms rather than git's."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    path = filed_and_committed(ws, capsys, "backfill")
+    assert plans.main(["set-status", str(path), "planned", "--path", str(ws.personal)]) == 0
+    plans.main(["new", "sharding", "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    capsys.readouterr()
+
+    assert plans.main(["pending", "--path", str(ws.client)]) == 0
+    out = capsys.readouterr().out
+    assert "modified" in out
+    assert "backfill.md" in out
+    assert "untracked" in out
+    assert "sharding.md" in out
+    assert "api: backfill is now planned" in out
+
+
+def test_pending_says_so_when_there_is_nothing_to_commit(ws, capsys):
+    """A clean answer has to be a sentence, not an empty screen: silence reads as a broken command
+    and sends the caller back to `git status`, which is the call this exists to remove."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    filed_and_committed(ws, capsys, "settled")
+
+    assert plans.main(["pending", "--path", str(ws.client)]) == 0
+    assert "nothing pending" in capsys.readouterr().out
 
 
 def test_commit_refuses_paths_that_span_two_repositories(ws, capsys):

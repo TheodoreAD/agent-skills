@@ -3430,6 +3430,140 @@ def cmd_move(args: argparse.Namespace, ws: Workspace) -> int:
     return 0
 
 
+def cmd_rename(args: argparse.Namespace, ws: Workspace) -> int:
+    """Give a plan a new topic, taking everything that is keyed on its old filename with it.
+
+    A rename looks like `git mv` and is not, because three other things are named after the stem and
+    none of them is visible from the file being moved:
+
+    - its committed attachments, in a directory beside it named for the stem;
+    - its local attachments, in `<store>/_attachments/<rel>/<stem>/`, which git never sees, so
+      nothing would ever report them as broken;
+    - every plan that cites it by filename, which is how the convention asks plans to reference each
+      other in the first place.
+
+    Done by hand, the first two are silently orphaned — the plan's own `## Attachments` rows go on
+    naming files that are no longer where the rows say. This moves all of it and reports the third,
+    which is a judgement call rather than a substitution (see `--update-refs`).
+    """
+    cfg = ws.config
+    routing = ws.require_routable()
+    plan = locate(cfg, routing, args.file)
+    if not TOPIC_RE.match(args.topic):
+        raise PlanError(f"topic {args.topic!r} must be kebab-case: lowercase letters, digits and single hyphens")
+
+    old = plan.path
+    stamp = old.stem[:10] if re.match(r"^\d{4}-\d{2}-\d{2}-", old.stem) else today()
+    new = old.parent / f"{stamp}-{args.topic}.md"
+    if new == old:
+        raise PlanError(f"{old.name} already has that topic")
+    if new.exists():
+        raise PlanError(f"{new} already exists — two plans cannot claim one name; pick another topic")
+
+    repo = repo_root_for(old)
+    moved = rename_plan(cfg, routing, plan, new, repo)
+    print(f"renamed:   {old.name}")
+    print(f"to:        {new.name}")
+    for _, destination, label in moved[1:]:
+        print(f"with:      {display_path(destination)}  ({label}, moved with it)")
+    _report_citations(rename_citations(cfg, routing, old.name), old.name, new.name, rewrite=args.update_refs)
+
+    if args.commit and repo is not None:
+        label = commit_label(cfg, repo, new)
+        paths = [source for source, _, _ in moved] + [destination for _, destination, _ in moved]
+        inside = [path for path in paths if _under(repo, path)]
+        sha = commit_paths(repo, inside, f"{label}: rename {plan_topic(old)} to {args.topic}")
+        print(f"\ncommitted: {sha[:12]} in {repo}")
+        _report_after_commit(cfg, repo, [new])
+    elif args.commit:
+        print("\nnot committed: this plan is not inside a git repository")
+    else:
+        print(f"\ncommit:    plans.py commit {new.name}")
+    return 0
+
+
+def rename_plan(
+    cfg: Config, routing: Routing, plan: PlanFile, new: Path, repo: Path | None
+) -> list[tuple[Path, Path, str]]:
+    """Move the plan and everything keyed on its stem, refusing before the first move if any lands
+    on something that exists. All the collisions are checked up front: a rename that moved the plan
+    and then found its attachments blocked would leave the two halves under different names."""
+    old = plan.path
+    moved: list[tuple[Path, Path, str]] = [(old, new, "the plan")]
+    for label, source, landing in (
+        ("committed attachments", attachments_of(old), attachments_of(new)),
+        (
+            "local attachments",
+            cfg.attachments_dir(_attachment_key(routing, plan), old.stem),
+            cfg.attachments_dir(_attachment_key(routing, plan), new.stem),
+        ),
+    ):
+        if not source.is_dir():
+            continue
+        if landing.exists():
+            raise PlanError(f"{landing} already exists — this plan's {label} have nowhere to land")
+        moved.append((source, landing, label))
+
+    for source, destination, _ in moved:
+        # `git mv` where git is holding the path, so the rename is staged rather than left as a
+        # delete the index has not heard about; a plain rename everywhere else, which covers an
+        # untracked plan written this session and the local attachments area git never sees.
+        tracked = repo is not None and head_blob(repo, source) is not None
+        if tracked and git(["mv", "--", str(source), str(destination)], repo) is not None:
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(destination)
+    return moved
+
+
+def _report_citations(citations: list[Path], old: str, new: str, *, rewrite: bool) -> None:
+    """What still names the old filename, and either repoint it or say why that is your call."""
+    if not citations:
+        return
+    if not rewrite:
+        print(f"\n{len(citations)} file(s) still cite {old}:")
+        for path in citations:
+            print(f"  {path}")
+        print("\n  --update-refs rewrites the filename in each. It is not automatic because a")
+        print("  reference is sometimes better reworded than repointed — and because some of these")
+        print("  may be prose about the plan rather than a link to it.")
+        return
+    for path in citations:
+        path.write_text(path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+        print(f"repointed: {path}")
+    print(f"\n{len(citations)} file(s) now cite {new}. Read them: a citation that quoted a section")
+    print("title still points at the old wording, which a filename substitution cannot fix.")
+
+
+def _under(repo: Path, path: Path) -> bool:
+    """Whether a path belongs to this repository's working tree — a local attachment does not."""
+    try:
+        path.resolve().relative_to(repo.resolve())
+    except ValueError:
+        return False
+    return ATTACHMENTS_DIR not in path.parts
+
+
+def rename_citations(cfg: Config, routing: Routing, name: str) -> list[Path]:
+    """Files naming this plan, in the places a rename may legitimately touch.
+
+    The session's own repo and the store directories it reads — deliberately not every repo on the
+    machine, which is the boundary every other command here draws: a citation in a tree this session
+    does not own is that repo's to fix, and rewriting it would be a silent foreign commit.
+    """
+    found: list[Path] = []
+    if routing.repo_root is not None:
+        listed = git(["grep", "-l", "-F", "--untracked", "--", name], routing.repo_root) or ""
+        found.extend(routing.repo_root / line for line in listed.splitlines() if line)
+    for _, directory in visible_dirs(cfg, routing):
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.rglob("*.md")):
+            if path not in found and name in path.read_text(encoding="utf-8"):
+                found.append(path)
+    return [path for path in found if path.name != name]
+
+
 # --------------------------------------------------------------------------------------------
 # attachments
 #
@@ -4087,6 +4221,7 @@ SUBJECTS: dict[str, tuple[str, str]] = {
     "removed": ("remove {topics}", "remove {n} plans"),
     "status": ("{topics} is now {detail}", "{n} plans are now {detail}"),
     "edited": ("{topics} {detail}", "{topics}: {detail}"),
+    "renamed": ("rename {detail} to {topics}", "rename {n} plans"),
 }
 
 
@@ -4173,7 +4308,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
     # store" describes an absorption exactly — so what refuses now is a set whose paths are doing
     # different things, which is the case no single sentence covers.
     label = commit_label(cfg, repo, named[0])
-    changes = [classify_change(cfg, repo, path) for path in named]
+    changes = merge_rename(repo, [classify_change(cfg, repo, path) for path in named])
     message = args.message or compose_message(label, changes, args.why)
     if message is None:
         raise PlanError(_undeducible(changes, bool(args.why)))
@@ -4343,6 +4478,29 @@ def _body_expected(subject: str, changes: list[Change]) -> str:
         "  Nothing is asked for a plan in transit, where absorb will move it and the repo-side\n"
         "  commit is where the reasoning belongs."
     )
+
+
+def merge_rename(repo: Path, changes: list[Change]) -> list[Change]:
+    """Collapse a deletion and an addition of the same content into the one thing they are.
+
+    A rename reaches `commit` as two paths doing two different things, which the mixed-set refusal
+    would reject — correctly by its own logic, and uselessly, since a rename is the clearest
+    single change there is. Content decides it: the removed path's blob in `HEAD` against the added
+    path's bytes on disk. An edit made in the same breath as the rename does not match, and stays a
+    mixed set, which is honest — that genuinely is two changes and no one sentence covers both.
+    """
+    if len(changes) != 2:
+        return changes
+    gone = next((change for change in changes if change.kind == "removed"), None)
+    fresh = next((change for change in changes if change.kind == "added"), None)
+    if gone is None or fresh is None:
+        return changes
+    before = head_blob(repo, gone.path)
+    if before is None or not fresh.path.is_file():
+        return changes
+    if before != fresh.path.read_text(encoding="utf-8"):
+        return changes
+    return [Change(fresh.path, "renamed", gone.topic)]
 
 
 def _report_after_commit(cfg: Config, repo: Path, committed: list[Path]) -> None:
@@ -6310,6 +6468,13 @@ def build_parser() -> argparse.ArgumentParser:
     move.add_argument("file", help="plan path or bare filename")
     move.add_argument("--to", choices=("repo", "store"), required=True)
     move.set_defaults(func=cmd_move)
+
+    rename = add("rename", "give a plan a new topic, taking its attachments and citations with it")
+    rename.add_argument("file", help="plan path or bare filename")
+    rename.add_argument("topic", help="the new kebab-case topic; the date prefix is kept")
+    rename.add_argument("--update-refs", action="store_true", help="rewrite the filename in every file citing it")
+    rename.add_argument("--commit", action="store_true", help="commit the rename on its own once it is done")
+    rename.set_defaults(func=cmd_rename)
 
     attach = add("attach", "copy evidence somewhere stable and record it in the plan")
     attach.add_argument("plan", help="plan path or bare filename")

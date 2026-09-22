@@ -3084,6 +3084,96 @@ def test_m_is_the_escape_hatch_for_a_repo_commit_that_wants_no_body(ws, capsys, 
     assert "message:   plans: a terse one" in capsys.readouterr().out
 
 
+def test_rename_carries_both_attachment_directories(ws, capsys, monkeypatch):
+    """The reason this is a command rather than a `git mv`. Committed attachments sit in a directory
+    named for the stem, and local ones in `<store>/_attachments/<rel>/<stem>/` — which git never
+    sees, so nothing would ever report them as orphaned."""
+    write_config(ws, TIERED)
+    plans.main(["install", "--path", str(ws.personal)])
+    monkeypatch.chdir(ws.personal)
+    plans.main(["new", "old-topic", "--path", str(ws.personal)])
+    plan = next((ws.personal / "plans").glob("*-old-topic.md"))
+    small = ws.home / "small.txt"
+    small.write_text("evidence\n", encoding="utf-8")
+    big = ws.home / "big.log"
+    big.write_text("x" * 2048, encoding="utf-8")
+    plans.main(["attach", str(plan), str(small), "--commit", "--path", str(ws.personal)])
+    plans.main(["attach", str(plan), str(big), "--local", "--path", str(ws.personal)])
+    committed = plan.parent / plan.stem
+    local = ws.store / "_attachments" / "github.com-personal" / "agent-skills" / plan.stem
+    assert committed.is_dir()
+    assert local.is_dir()
+    capsys.readouterr()
+
+    assert plans.main(["rename", str(plan), "new-topic", "--path", str(ws.personal)]) == 0
+    renamed = next((ws.personal / "plans").glob("*-new-topic.md"))
+    assert not plan.exists()
+    assert not committed.exists()
+    assert not local.exists()
+    assert (renamed.parent / renamed.stem / "small.txt").is_file()
+    assert (ws.store / "_attachments" / "github.com-personal" / "agent-skills" / renamed.stem / "big.log").is_file()
+
+
+def test_rename_reports_citations_and_only_rewrites_them_when_told(ws, capsys, monkeypatch):
+    """A reference is sometimes better reworded than repointed, and some hits are prose about the
+    plan rather than a link to it — so the substitution is a flag, not a default."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.personal)
+    plans.main(["new", "cited", "--path", str(ws.personal)])
+    plan = next((ws.personal / "plans").glob("*-cited.md"))
+    other = ws.personal / "plans" / "2026-01-01-citer.md"
+    other.write_text(f"---\nstatus: idea\n---\n\n# Citer\n\nSee `{plan.name}` for the decision.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert plans.main(["rename", str(plan), "renamed-topic", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "1 file(s) still cite" in out
+    assert plan.name in other.read_text(encoding="utf-8"), "nothing is rewritten without --update-refs"
+
+    # the citation still names the ORIGINAL file, so that is the name --update-refs must find
+    back = next((ws.personal / "plans").glob("*-renamed-topic.md"))
+    back.rename(plan)
+    capsys.readouterr()
+    assert plans.main(["rename", str(plan), "final-topic", "--update-refs", "--path", str(ws.personal)]) == 0
+    final = next((ws.personal / "plans").glob("*-final-topic.md"))
+    assert final.name in other.read_text(encoding="utf-8")
+    assert "repointed:" in capsys.readouterr().out
+
+
+def test_commit_reads_a_rename_as_one_change_rather_than_a_mixed_set(ws, capsys, monkeypatch):
+    """A rename reaches `commit` as a deletion and an addition, which the mixed-set refusal would
+    reject — correctly by its own logic and uselessly, since a rename is the clearest single change
+    there is. Content decides it: the removed path's blob in HEAD against the added path's bytes."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.personal)
+    plans.main(["new", "before", "--path", str(ws.personal)])
+    plan = next((ws.personal / "plans").glob("*-before.md"))
+    plans.main(["commit", str(plan), "--why", "filed", "--path", str(ws.personal)])
+    capsys.readouterr()
+
+    assert plans.main(["rename", str(plan), "after", "--commit", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "renamed:   " in out
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"], cwd=ws.personal, capture_output=True, text=True, check=True
+    ).stdout
+    assert subject.strip() == "plans: rename before to after"
+
+
+def test_rename_refuses_a_name_another_plan_already_has(ws, capsys, monkeypatch):
+    """Two things claiming one name is a merge, not a rename — the same answer `attach` and `new`
+    give a collision."""
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.personal)
+    for topic in ("one", "two"):
+        plans.main(["new", topic, "--path", str(ws.personal)])
+    plan = next((ws.personal / "plans").glob("*-one.md"))
+    capsys.readouterr()
+
+    assert plans.main(["rename", str(plan), "two", "--path", str(ws.personal)]) == 1
+    assert "already exists" in capsys.readouterr().err
+
+
 # --------------------------------------------------------------------------------------------
 # migration
 

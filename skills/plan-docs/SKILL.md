@@ -25,10 +25,11 @@ case none of them solves cheaply — is
   git history of the session repo and the stores, and, on Claude Code, the transcript path named by
   `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
 - **Runs**: `git` — read commands everywhere. It commits through three commands and no others:
-  `commit` and `migrate finish --delete-sources`. Each commits in the repository the named paths are
-  already in, which is the store for a store-held plan and the session repo for a repo-held one, and
-  never in any other repository. The history-purge sequence in "Never let a client's identity reach
-  a repo you publish" is printed for you to run; the script never runs it.
+  `commit`, `rename --commit`, and `migrate finish --delete-sources`. Each commits in the repository
+  the named paths are already in, which is the store for a store-held plan and the session repo for
+  a repo-held one, and never in any other repository. `rename` also runs `git mv`. The history-purge
+  sequence in "Never let a client's identity reach a repo you publish" is printed for you to run;
+  the script never runs it.
 - **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
   files in the session repo's `plans/` and in both stores — `new`, `migrate start`, `set-status`,
   `move`, `absorb --apply`, `graduate`, and the retirement you perform by hand. The store
@@ -105,6 +106,7 @@ python3 <path> graduate <file> --to <repo>  # …once it has one
 python3 <path> set-status <file> planned    # refuses if the gate for that status fails
 python3 <path> tags --tag DEFERRED          # anchored, across every plan this repo can see
 python3 <path> move <file> --to store       # a repo switching where it keeps plans
+python3 <path> rename <file> <new-topic>    # takes its attachments and citations with it
 python3 <path> attach <plan> <file>...      # copy evidence somewhere stable, and record it
 python3 <path> migrate start <topic> --from <file>...  # several documents into one plan, losslessly
 python3 <path> migrate check <plan>         # what of each source the rewrite has not accounted for
@@ -1067,6 +1069,37 @@ re-deriving state the script was already holding.
 [PITFALL: **a plan filed with `--for` lives in a mirror this session deliberately cannot see**, so
 `pending` does not list it — that is the isolation working, not a gap. `commit` still reports what
 is left beside anything it just committed, which is where that plan turns up.]
+
+## Renaming a plan
+
+**`rename`, never `git mv`.** A plan's filename is not only its own name — three other things are
+keyed on the stem, and none of them is visible from the file you are moving:
+
+```shell
+python3 <path> rename <file> <new-topic>                 # the date prefix is kept
+python3 <path> rename <file> <new-topic> --update-refs   # …and repoint every file citing it
+python3 <path> rename <file> <new-topic> --commit        # …and commit just the rename
+```
+
+| what moves with it          | where it lives                                  |
+| --------------------------- | ----------------------------------------------- |
+| committed attachments       | a directory beside the plan, named for the stem |
+| local attachments           | `<store>/_attachments/<repo>/<stem>/`           |
+| plans citing it by filename | this repo and the store dirs it reads           |
+
+The second is the one that makes this a command rather than advice: git never sees the local
+attachments area, so a hand-rolled rename orphans it **silently** — the plan's own `## Attachments`
+rows go on naming files that are no longer where the rows say, and nothing checks.
+
+**Citations are reported, and rewritten only with `--update-refs`.** A filename substitution is
+right for a link and wrong for a sentence: a reference that quoted a section title still points at
+the old wording, and some hits are prose _about_ the plan rather than a pointer to it. Same
+judgement the retirement procedure asks for, and the same reason it is not automatic there either.
+
+`commit` reads a rename as one change rather than a mixed set, so `plans.py commit <new-name>` works
+afterwards without `-m` — it compares the removed path's blob in `HEAD` against the added path's
+bytes. An edit made in the same breath as the rename does not match and stays a mixed set, which is
+honest: that is two changes, and no one sentence covers both.
 
 ## Attaching evidence to a plan
 

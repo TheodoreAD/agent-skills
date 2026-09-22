@@ -235,12 +235,24 @@ plan it never bumped" in the status-change bucket; the number below is from the 
 
 (the share of commits carrying a body longer than 80 characters)
 
-[DECISION: **destination predicts the body; the operation barely moves it.** Every operation splits
-the same way and by the same factor, so the per-operation table this plan started from was measuring
-where a commit landed. The explanation is the two histories' different readerships: a store is
-local, private and frequently remote-less, and nothing does archaeology in it — `archive` reads
-content back, never messages — while a repo's history is published, is read by later sessions
-through `git log`, and is the artifact the user named as the reason to want bodies at all.]
+[DECISION: **permanence predicts the body, and "in a store" is a proxy that breaks.** The operation
+barely moves the number, so the per-operation table this plan started from was measuring something
+else — but the first replacement for it, destination, was also wrong, and the user caught it before
+it shipped. A store holds two populations with opposite needs: a plan **in transit**, filed with
+`--for` against a repo that keeps its own plans, whose permanent home is that repo and whose store
+commit is a staging step; and a plan whose repo cannot take a `plans/` directory at all, for which
+there is no later repo commit and the store's history is the only record it will ever have.
+Splitting the stores' own 459 commits by route: **449 transit at 21%, 10 unscoped at 70% with a
+median body of 1,146 characters, and zero commits in the permanently-store-held population.** So the
+22% aggregate was the transit half almost entirely, the one permanent-ish store population behaves
+like a repo, and a store-versus-repo rule would have been generalising from a population of zero —
+exempting exactly the plans whose reasoning is least recoverable.]
+
+[PITFALL: this is the second time in one pass that a clean-looking aggregate hid two populations
+with opposite needs, and both times the aggregate read as a finding. First the per-operation table,
+which was measuring destination; then the destination table, which was measuring permanence. The
+tell each time was the same and was available each time: a bucket whose members are not all the same
+_kind of thing_. Ask what a population is made of before reading its rate.]
 
 [PITFALL: **a subject requirement and a body expectation are two rules, and reading them as one
 produced a wrong conclusion here first.** The refusal this shipped with — no `--why`, no commit, for
@@ -250,15 +262,15 @@ bodies, and the store's 32% does not argue against it, because all 87 of those c
 had a subject. The first draft of this section called the gate "inverted on both sides" on that
 misreading. It is wrong on one side only.]
 
-So the correction is a single new case rather than a redesign. Composed against the destination
-finding, the four quadrants are:
+So the correction is a single new case rather than a redesign. Composed against the permanence
+finding, the quadrants are:
 
-| where    | subject derivable? | today                | should be                      |
-| -------- | ------------------ | -------------------- | ------------------------------ |
-| store    | yes                | commits silently     | unchanged — 22% ever bodied    |
-| store    | no                 | refuses, wants text  | unchanged — it needs a subject |
-| **repo** | **yes**            | **commits silently** | **expect `--why`** — 97%       |
-| repo     | no                 | refuses, wants text  | unchanged                      |
+| the plan is…             | subject derivable? | today                | should be                      |
+| ------------------------ | ------------------ | -------------------- | ------------------------------ |
+| in transit               | yes                | commits silently     | unchanged — 21% ever bodied    |
+| in transit               | no                 | refuses, wants text  | unchanged — it needs a subject |
+| **its permanent record** | **yes**            | **commits silently** | **expect `--why`** — 97% / 70% |
+| its permanent record     | no                 | refuses, wants text  | unchanged                      |
 
 One quadrant moves. `-m` stays the escape hatch for the genuine minority, and it is deliberately the
 more expensive path to type, so it is not the lazy default — an opt-out cheaper than compliance is

@@ -88,23 +88,23 @@ classify the transition:
 and the file already carries a human sentence one line into the body. Falling back to the stem only
 when there is no H1 keeps the old behaviour as the floor rather than the default.]
 
-`--why <text>` is the body and goes under the derived subject. `-m` remains the whole message,
-verbatim, and is what the unreadable cases take.
+`--body <text>` is the commit body and goes under the derived subject. `-m` remains the whole
+message, verbatim, and is what the unreadable cases take.
 
-[DECISION: **`--why` is a body and only a body; `-m` is the whole message, verbatim.** Reversed once
-and then reversed back, which is worth recording because the middle position looked right. The first
-draft made `--why` strictly the body, which left a prose-only edit unable to commit with the one
-flag documented for it. The fix was to let `--why` become the subject when nothing could be derived
-— and the user then asked whether that made it identical to `-m`. Near enough: the only difference
-was the label prefix, so two flags converged on one behaviour with the meaning of one depending on
-the diff. Measured before changing it back, since a rare wart is tolerable: **153 of 1,643 plan
-commits, 9%, have no derivable subject** — one in eleven, and the samples are commits where the
-subject carries the news. So each flag means one thing, and where no subject can be read the command
-offers the one part it still knows, the label, handing it over in the refusal. That beat applying
-the label to `-m` automatically, which would have made the two identical again and paid for it by
-silently rewriting what the author typed. Inventing a filler subject (`<repo>: update <topic>`) was
-rejected throughout: a line that reads as information and carries none. The cost is real — the 9%
-now types a subject and a body through `-m`.]
+[DECISION: **`--body` is a body and only a body; `-m` is the whole message, verbatim.** Reversed
+once and then reversed back, which is worth recording because the middle position looked right. The
+first draft made `--why` strictly the body, which left a prose-only edit unable to commit with the
+one flag documented for it. The fix was to let `--why` become the subject when nothing could be
+derived — and the user then asked whether that made it identical to `-m`. Near enough: the only
+difference was the label prefix, so two flags converged on one behaviour with the meaning of one
+depending on the diff. Measured before changing it back, since a rare wart is tolerable: **153 of
+1,643 plan commits, 9%, have no derivable subject** — one in eleven, and the samples are commits
+where the subject carries the news. So each flag means one thing, and where no subject can be read
+the command offers the one part it still knows, the label, handing it over in the refusal. That beat
+applying the label to `-m` automatically, which would have made the two identical again and paid for
+it by silently rewriting what the author typed. Inventing a filler subject
+(`<repo>: update <topic>`) was rejected throughout: a line that reads as information and carries
+none. The cost is real — the 9% now types a subject and a body through `-m`.]
 
 [DECISION: the `<label>:` prefix names **which part of the repository changed**, which reads as
 `plans:` in a repo that keeps its own and as `<repo>:` in a store mirror. Both halves are read from
@@ -227,7 +227,7 @@ repo's toolchain, which is what the store exists to avoid.]
 
 ### 5. What the derived subject costs, measured after the fact
 
-The change above makes `--why` optional wherever a subject can be derived. Asked what that loses,
+The change above makes the body optional wherever a subject can be derived. Asked what that loses,
 this pass read every commit that ever touched a plan file across four repos and both store tiers —
 1,639 commits — and classified each by what its **diff** did rather than by what its subject said.
 (The first attempt classified on subject words and put "the sweep asks whether this session landed a
@@ -264,9 +264,9 @@ tell each time was the same and was available each time: a bucket whose members 
 _kind of thing_. Ask what a population is made of before reading its rate.]
 
 [PITFALL: **a subject requirement and a body expectation are two rules, and reading them as one
-produced a wrong conclusion here first.** The refusal this shipped with — no `--why`, no commit, for
-a prose-only edit — is about the **subject**: nothing can be derived, so the script has nothing to
-put on the first line, and that is true in the store exactly as in a repo. It is not evidence about
+produced a wrong conclusion here first.** The refusal this shipped with — no body, no commit, for a
+prose-only edit — is about the **subject**: nothing can be derived, so the script has nothing to put
+on the first line, and that is true in the store exactly as in a repo. It is not evidence about
 bodies, and the store's 32% does not argue against it, because all 87 of those commits necessarily
 had a subject. The first draft of this section called the gate "inverted on both sides" on that
 misreading. It is wrong on one side only.]
@@ -274,12 +274,12 @@ misreading. It is wrong on one side only.]
 So the correction is a single new case rather than a redesign. Composed against the permanence
 finding, the quadrants are:
 
-| the plan is…             | subject derivable? | today                | should be                      |
-| ------------------------ | ------------------ | -------------------- | ------------------------------ |
-| in transit               | yes                | commits silently     | unchanged — 21% ever bodied    |
-| in transit               | no                 | refuses, wants text  | unchanged — it needs a subject |
-| **its permanent record** | **yes**            | **commits silently** | **expect `--why`** — 97% / 70% |
-| its permanent record     | no                 | refuses, wants text  | unchanged                      |
+| the plan is…             | subject derivable? | today                | should be                       |
+| ------------------------ | ------------------ | -------------------- | ------------------------------- |
+| in transit               | yes                | commits silently     | unchanged — 21% ever bodied     |
+| in transit               | no                 | refuses, wants text  | unchanged — it needs a subject  |
+| **its permanent record** | **yes**            | **commits silently** | **expect `--body`** — 97% / 70% |
+| its permanent record     | no                 | refuses, wants text  | unchanged                       |
 
 One quadrant moves. `-m` stays the escape hatch for the genuine minority, and it is deliberately the
 more expensive path to type, so it is not the lazy default — an opt-out cheaper than compliance is
@@ -342,3 +342,22 @@ set, which is honest, since that genuinely is two changes and no one sentence co
 [PITFALL: every collision is checked before the first move. A rename that relocated the plan and
 then found its attachments directory blocked would leave the two halves under different names, with
 the plan's rows pointing at neither — a worse state than either doing it or refusing.]
+
+### 7. The flag is `--body`, and the rename is what the documentation kept asking for
+
+[DECISION: **`--why` became `--body` on 2026-09-22, the same day it shipped.** The diagnosis was
+already written down — "the flag's name is the one thing about it that misleads" — and the response
+had been to explain the name at all three prompts rather than to change it. Three places apologising
+for one word is the tell: a name arguing with its own help text. `--body` sits directly beside
+`--message` in the same parser, so the pair reads as commit anatomy and needs no gloss, and it
+matches `gh pr create --body`, the spelling this machine's own instructions already use for exactly
+this thing.
+
+Not `--commit-body`, which was the form suggested: the subcommand is `commit`, so the prefix
+restates its own context, and `--body` next to `--message` is already unambiguous against the
+_plan's_ body — the one collision worth checking, since this script writes plan bodies elsewhere.
+
+What the rename bought, concretely: the help text lost the clause explaining that "why" meant a
+body, the permanent-record refusal lost "not a clause", and a paragraph of SKILL.md arguing with the
+name became a DECISION recording why it changed. The standard the name cannot carry — what the
+change is for, what it beat, what it cost — stays at every prompt, and a test pins it there.]

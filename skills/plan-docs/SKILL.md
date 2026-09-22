@@ -1028,6 +1028,30 @@ python3 <path> commit <file>... --why "<reason>" # …and your reason goes with 
 python3 <path> commit <file>... -m "<whole msg>" # override both, for the case neither covers
 ```
 
+**`--why` takes a commit body, not a clause: what the change is for, what it beat, what it cost.**
+The flag's name is the one thing about it that misleads — "why" reads as a sentence fragment, while
+`-m` reads as "write a commit message" and gets one. Same standard, fewer words asked for. Write
+what you would have written after `-m`, minus the subject line, which is the part already derived.
+
+What belongs inside the quotes, for a plan that settled where plans go when a repo cannot hold one:
+
+> Settles where a plan goes when the repo it is about cannot hold one. Seven of the eight roots here
+> are employer or client work, so the planning happens and then evaporates with the session.
+>
+> Recorded as a parallel path rather than a rework: the per-repo `plans/` stays exactly as it is and
+> nothing migrates. It beat a single global store, which would have put several parties' plans in
+> one directory with no tier boundary, and it costs a routing config nobody had to maintain before.
+
+Blank lines inside the one argument are real paragraph breaks, so the whole shape of a commit body
+is available. One paragraph of substance is the floor, and three is plenty even where the change had
+alternatives worth naming.
+
+[PITFALL: **the floor is not a quota, and padding is worse than a short answer.** A formatting fix's
+why is one clause and should stay one clause — filler reads as reasoning, which misleads a later
+reader more than a bare subject would. That is also why nothing here measures the length of a
+`--why` and why no length gate should ever be added: it would enforce form, and the only way to
+satisfy it is the padding this warns against.]
+
 | what the diff is                  | what it commits as                                 |
 | --------------------------------- | -------------------------------------------------- |
 | a new plan                        | `<repo>: <the plan's own # title>`                 |

@@ -3036,6 +3036,46 @@ def test_only_a_plan_in_transit_is_excused_from_giving_a_reason(ws, capsys, monk
     assert plans.main(["commit", str(mine), "--why", "because", "--path", str(ws.personal)]) == 0
 
 
+def test_every_prompt_for_a_why_asks_for_a_body_rather_than_a_clause(ws, capsys, monkeypatch):
+    """The flag's name is the one thing about it that misleads. `-m` reads as "write a commit
+    message" and gets one, because the model has seen millions; `--why "<reason>"` reads as a
+    sentence fragment and invites one. The asymmetry is in the wording, so the wording is what has
+    to close it — at every point the agent actually meets the flag.
+
+    Pinned as a test because this is a regression nothing else would catch: a later editor
+    shortening these strings back to "the reason" changes no behaviour and no other test, and the
+    only symptom is thinner bodies in a history nobody re-reads for months.
+    """
+    write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.chdir(ws.personal)
+    plans.main(["new", "standard", "--path", str(ws.personal)])
+    plan = next((ws.personal / "plans").glob("*-standard.md"))
+    capsys.readouterr()
+
+    # the refusal a derivable subject gets
+    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 1
+    expected = capsys.readouterr().err
+    assert "what the change is for, what it beat, what it cost" in expected
+    assert "not a clause" in expected
+    assert "padding reads as reasoning" in expected, "the floor must not read as a quota"
+
+    # the refusal a prose-only diff gets, which is a different code path with its own wording
+    assert plans.main(["commit", str(plan), "--why", "filed", "--path", str(ws.personal)]) == 0
+    plan.write_text(plan.read_text(encoding="utf-8") + "\nA paragraph opening no tag.\n", encoding="utf-8")
+    capsys.readouterr()
+    assert plans.main(["commit", str(plan), "--path", str(ws.personal)]) == 1
+    prose = capsys.readouterr().err
+    assert "what the change is for, what it beat and what it cost" in prose
+
+    # and the help, which is where an agent looks before it has been refused anything. argparse
+    # rewraps to the terminal width, so the phrase is matched against collapsed whitespace rather
+    # than against a line the formatter is free to break wherever it likes.
+    with pytest.raises(SystemExit):
+        plans.main(["commit", "--help"])
+    rendered = " ".join(capsys.readouterr().out.split())
+    assert "what the change is for, what it beat, what it cost" in rendered
+
+
 def test_a_store_held_plan_is_asked_for_a_reason_like_any_other_permanent_record(ws, capsys):
     """The correction this rule needed. A repo that cannot take a `plans/` directory keeps its plans
     in the store permanently: there is no later repo commit, so that history is the only record

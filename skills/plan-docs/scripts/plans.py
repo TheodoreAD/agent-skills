@@ -3868,7 +3868,7 @@ def _print_attached(plan: Path, entries: list[Attached]) -> None:
         print("      tell it from a different file of the same name. Keep the original until the")
         print("      plan is retired if losing it would matter.")
     if any(entry.committed for entry in entries):
-        print(f"\ncommit:   plans.py commit {plan} --why '<what this evidence shows>'")
+        print(f"\ncommit:   plans.py commit {plan} --why '<what this evidence shows, and what it settles>'")
         print("          which takes the plan and its attachments together.")
 
 
@@ -4449,8 +4449,9 @@ def _undeducible(changes: list[Change], had_why: bool) -> str:
         return f"one reason cannot be the subject of a set that is not one change:\n{listed}\n{tail}"
     return (
         f"the diff is prose, so only you can say what it is for:\n{listed}\n"
-        "  Pass --why '<the reason>' — it becomes the subject here, and the body wherever a subject "
-        "can be derived — or -m to write the whole message yourself."
+        "  Pass --why with what the change is for, what it beat and what it cost. Here its first\n"
+        "  line becomes the subject and the rest the body, so lead with the one-line answer and put\n"
+        "  the reasoning under a blank line. Or -m to write the whole message yourself."
     )
 
 
@@ -4473,10 +4474,12 @@ def _body_expected(subject: str, changes: list[Change]) -> str:
         "this commit is the permanent record of that plan, and 97% of those carry a reason.\n"
         f"  subject:  {subject}\n"
         f"  from:     {_kinds_phrase(changes)}\n"
-        "  Add --why '<what this is for, what it beat>' — the subject above is kept and your text\n"
-        "  becomes the body. Use -m to write the whole message instead, body included or not.\n"
-        "  Nothing is asked for a plan in transit, where absorb will move it and the repo-side\n"
-        "  commit is where the reasoning belongs."
+        "  Add --why with a commit BODY — what the change is for, what it beat, what it cost —\n"
+        "  not a clause. The subject above is kept and your text goes underneath it; blank lines\n"
+        "  inside the argument are real paragraph breaks. One clause is right only where the\n"
+        "  change is one clause; padding reads as reasoning and is worse than a bare subject.\n"
+        "  Or use -m to write the whole message yourself. Nothing is asked for a plan in transit,\n"
+        "  where absorb will move it and the repo-side commit is where the reasoning belongs."
     )
 
 
@@ -6620,7 +6623,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     wording = commit.add_mutually_exclusive_group()
     wording.add_argument("-m", "--message", help="the whole message, overriding the derived subject")
-    wording.add_argument("--why", help="the reason, as the body; the subject is still derived from the diff")
+    # The standard, not just the placement. "the reason" invites a clause, while `-m` invites a
+    # commit message and gets one — the asymmetry is in the flag's name, so the help has to close it.
+    wording.add_argument(
+        "--why",
+        metavar="BODY",
+        help="a commit body: what the change is for, what it beat, what it cost. Becomes the body "
+        "under the derived subject, or the subject itself when nothing could be derived",
+    )
     commit.set_defaults(func=cmd_commit)
 
     pending = add("pending", "plan files git does not agree with, and what committing each would say")

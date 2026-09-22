@@ -182,3 +182,27 @@ prevent.]
 `finish` never deletes on its own: it prints the offer, and `--delete-sources` does it once the user
 has said yes. Deleting an untracked file is the one irreversible step in the procedure, which is why
 the coverage gate runs first and why the offer goes to the user rather than to the agent's judgment.
+
+### 4. What the same audit turned up and this plan did not take
+
+Three more hand-rolled shapes, measured in the same pass and left alone deliberately. Each is a
+candidate rather than a decision, and none is blocked by anything above.
+
+[DEFERRED: **a `push` that scans first.** 529 `git push` and 256 `git fetch` calls sat near plan
+work, and the store's own README already prescribes `scan --mode history` before the first push and
+`scan --mode staged` before each one after — a rule stated in a README nobody re-reads while
+pushing. The objection to scripting it is that a push is the irreversible outward-facing step, so
+wrapping it risks making it feel routine; the counter is that the wrapper is what makes the scan
+non-optional. Not resolved here.]
+
+[DEFERRED: **the raw-git fallback has not been re-measured.** 88 `git commit` and 42 `git add` /
+`git rm` calls naming plan paths sat within two Bash calls of a `plans.py commit` — the shared-index
+hazard reopened by hand. The messages and the verification either side of the call were two of the
+reasons for reaching past it, so the right next step is to re-run the audit after this change rather
+than to add anything.]
+
+[DEFERRED: **the gate runs in the wrong order.** 79 `inv quality.precommit` calls came _after_ a
+`plans.py commit` rather than before it, which is the sequencing SKILL.md already states and
+sessions already miss. Whether `commit` should run the repo's gate itself is a real question with a
+real objection — it would make a plan commit in the store run a work repo's toolchain, which is
+exactly what the store exists to avoid.]

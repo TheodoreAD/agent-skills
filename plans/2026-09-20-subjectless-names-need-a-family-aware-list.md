@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-26
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 70f5fe13-9f1a-40f4-84ac-5ce4fd98a163.jsonl
@@ -50,21 +50,28 @@ is the smaller half of the fix:
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **derive the list instead of extending it?** The obvious version — count how
-many repos under `projects_root` contain a file of that name, and treat anything above a threshold
-as subjectless — fixes `ci.yml` and `util.py` for free and on any machine, with no list to maintain.
-It gets `setup.toml` exactly wrong, because that file exists once. The two failure modes are
-genuinely different and one derivation cannot cover both; a derived list plus a small explicit one
-for the machine's own shared vocabulary may be the honest shape.]
+[DECISION: **neither extend nor derive the list — change what a cross-repo match is.** Settled
+2026-09-26 with the user. The reframing: most users never build a repo that propagates files into
+their others, so protecting that rare case with a precise mechanism, while every harvest pays for
+generic noise, had the costs backwards. A plan in another repo now counts only if **one paragraph
+names both the file and the repo it lives in**, unless the plan lives in that repo's own checkout or
+store mirror. `SUBJECTLESS_NAMES` is unchanged and still skips scaffolding. Rejected: a derived
+count threshold (gets `setup.toml`, which exists once, exactly wrong), a machine-specific
+shared-vocabulary list (cannot ship in a published skill), repo-relative path matching (machinery
+for the rare case). What it gives up is a plan that refers to the repo only obliquely.]
 
-[NEEDS CLARIFICATION: **is the cross-repo section earning its place at all?** Two measured runs now,
-2026-09-13 and this one, and between them 34 rows of which 2 were real — both in the _own-repo_
-half. The section's stated purpose is the genuinely uncoverable case (a plan elsewhere describing a
-mechanism this session replaced, with a measurement booked against it), which is worth having. But a
-section that has been ~94% noise twice is one the next harvest skims, and the skill already says so
-about a different all-false-positive section. Tightening the names may be enough; if it is not, the
-question is whether prose-matching is the wrong instrument for that case rather than a badly-tuned
-one.]
+[DECISION: **the cross-repo section earns its place under the new rule.** Re-run 2026-09-26 on this
+plan's own 2026-09-20 session: **19 rows by basename, 9 with a whole-file repo test, 4 by
+paragraph.** Each of the 4 is about the setup repo's own `setup.toml` or `ci.yml` — whether each is
+_affected_ still needs reading, which is what "candidates" means. The whole-file step was too loose
+because a long plan names a widely-used repo somewhere and its own `ci.yml` somewhere else. The
+confirmed 2026-09-13 true positive still matches: that plan's title names `repo-tasks`.]
+
+[NEEDS CLARIFICATION: **the own-repo section's `setup.toml` noise is untouched.** "This repo's open
+plans naming a file this session changed" is a separate check with its own three-mention proxy, and
+on the same re-run it still printed 15 rows, 13 of them `setup.toml`. There the repo test means
+nothing, since every plan is about that repo. Options: a `limit:` line naming the shape, or raising
+the proxy for a name the repo's plans mention constantly. Needs its own measurement first.]
 
 ## Recommended direction
 
@@ -77,18 +84,12 @@ one.]
    the case where a sibling plan naming `ci.yml` matters most. And `util.py` is not "in every repo":
    the family has one real one (`power-user-linux-setup/tasks/util.py`) plus a vendored `invoke`
    copy in a playground. It is a conventional name, not a tool-fixed one, so the list's criterion
-   does not admit it either. Both belong with `setup.toml` in step 2: **a name can match everywhere
-   in prose without being scaffolding on disk**, and that is a different filter from this list, not
-   an extension of it. The candidate worth weighing there is matching the changed file's
-   repo-relative path (`.github/workflows/ci.yml` in `scaffoldapy/template/` versus a consumer's
-   own) rather than its basename, which would separate "a plan about my `ci.yml`" from "a plan about
-   the canonical one" without a list at all.
-2. Decide the `setup.toml` shape — a second, machine-specific list of shared-vocabulary names, or
-   accept it as a known noise source and say so in the section's own `limit:` line, which is where
-   the skill puts its other honest gaps.
-3. Re-measure the section on the next harvest that changes a widely-discussed file, and record the
-   row count before and after. Two runs is enough to establish the noise and not enough to establish
-   that the fix helped.
+   does not admit it either. **A name can match everywhere in prose without being scaffolding on
+   disk**, and that needed a different filter from this list — the paragraph rule above.
+2. ~~Decide the `setup.toml` shape.~~ Done for the cross-repo section by the paragraph rule, landed
+   2026-09-26; the own-repo section is the open question above.
+3. Re-measure on the next harvest that changes a widely-discussed file. The 2026-09-26 re-run is one
+   before-and-after on a replayed session; a live harvest is the second data point.
 
 ## Verification
 

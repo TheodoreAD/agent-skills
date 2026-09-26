@@ -148,10 +148,23 @@ EXIT_MASKED_RE = re.compile(r"2>&1\s*\|\s*(tail|head|grep|rg)\b")
 # the cheaper fix and is wrong: the kept half contains real claims no other alternation reaches
 # ("Gate re-run unpiped at harvest time: exit 0, 402 tests"). `re-run` earns its place in the subject
 # list on the same evidence, and plain `run` is excluded because it readmits the `git fetch` line.
+#
+# The test-count alternations were added 2026-09-26, after `claims` counted "gate green, 716 tests"
+# and missed "Green, 707 tests" from the same session fifty minutes later: a claim that never says
+# "gate". The count is what makes a sentence a claim about a run rather than prose about greenness,
+# so the gate noun is optional there and the number is not. A bare `N passed` must end like pytest's
+# summary does (punctuation, ` in <time>`, end of line), so "3 passed arguments" stays out.
+# Measured the same day over this machine's transcripts: 53 lines newly counted on top of 1,135.
+# A random 40 of them, read, were almost all real claims ("144 tests green", "Green, 424 tests").
+# One exception quoted the phrase itself, the same known limit as the denial case in the tests.
 EXIT_CODE = r"(0 errors|exits? 0|exit code 0)"
 GATE_SUBJECT = r"(gate|suite|pytest|precommit|pre-commit|quality\.\w+|re-run|tests?|checks?|workflow)"
 GREEN_CLAIM_RE = re.compile(
-    r"gate[^.\n]{0,40}\b(green|clean|pass(?:es|ed)?)\b"
+    r"\bgreen\b,?\s+\d+\s+tests?\b"
+    r"|\b\d+\s+tests?\s+(?:green|pass(?:es|ed)?)\b"
+    r"|\ball\s+\d+\s+(?:tests?\s+)?pass(?:es|ed)?\b"
+    r"|\b\d+\s+passed(?=[,;.)]|\s+in\s+\d|[ \t]*(?:\n|$))"
+    r"|gate[^.\n]{0,40}\b(green|clean|pass(?:es|ed)?)\b"
     r"|\b(precommit|pre-commit|quality\.(?:check|precommit)|pytest|test suite|suite)\b[^.\n]{0,40}"
     r"\b(green|clean|pass(?:es|ed)?|all good)\b"
     r"|\ball (?:tests|checks)\b[^.\n]{0,20}\bpass(?:es|ed)?\b"

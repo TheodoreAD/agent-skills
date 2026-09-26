@@ -823,7 +823,11 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   matcher's vocabulary is the local gate's and has no term for CI; and the adherence line reported
   every rate at 0% while the session had typed `rg -rn …`, because `rg-replace` is in none of
   `audit.py`'s display sets. Both are filed. **A zero that agrees with what you hoped is the one to
-  check**, and the tell is a zero on a row you have a specific reason to expect a hit on.
+  check**, and the tell is a zero on a row you have a specific reason to expect a hit on. **A count
+  lower than you remember gets the same check**, since one is not zero and nothing else prompts it.
+  Confirmed 2026-09-26: `claims` reported 1 gate-green message for a session that had said it twice,
+  because "Green, 707 tests" never uses the word "gate". Only the reading session remembering that
+  it had said it more often caught the miss.
 - **Git state, every repo the session touched** — not just the primary one. Touched means wrote
   into, or ran something other than a read against: a repo only read through `git -C` to write a
   filed plan accurately is not swept, nor is a `cd` the harness reset. If you changed a repo in a

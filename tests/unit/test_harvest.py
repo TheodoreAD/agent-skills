@@ -1980,6 +1980,30 @@ def test_a_bare_exit_code_needs_a_gate_shaped_subject_beside_it():
         assert not harvest.GREEN_CLAIM_RE.search(sentence), sentence
 
 
+def test_a_green_with_a_test_count_is_a_claim_without_the_word_gate():
+    """Confirmed 2026-09-26: one session said "gate green, 716 tests" and, fifty minutes later,
+    "Green, 707 tests"; `claims` counted the first and missed the second. The number is what makes
+    it a claim about a run, so the noun is optional and the count is not — which keeps prose about
+    greenness out, since a matcher on "green" alone would score the plan that reported this."""
+    must_match = [
+        "Green, 707 tests. Now the reporter ...",
+        "402 tests pass, basedpyright clean.",
+        "All 12 tests passed on the retry.",
+        "716 passed in 2.06s",
+        "- pytest: 452 passed, 3 skipped",
+        "Suite result: 30 passed.",
+    ]
+    must_not_match = [
+        "The green path is the one most sessions take.",
+        "which is why 3 passed arguments were dropped",
+        "Green is the colour the badge uses for 5 tests' worth of history",
+    ]
+    for sentence in must_match:
+        assert harvest.GREEN_CLAIM_RE.search(sentence), sentence
+    for sentence in must_not_match:
+        assert not harvest.GREEN_CLAIM_RE.search(sentence), sentence
+
+
 def test_a_denial_that_a_gate_ran_is_still_counted_and_is_a_known_limit():
     """Pinned rather than fixed. The first alternation matches `no test anywhere runs the gate on a
     clean machine`, and general negation handling in a regex is not a one-line change. Recorded as a

@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-18
+status: landed
+updated: 2026-09-26
 source_repo: github.com-personal/freshful-polite-mcp
 source_session: 2888f600-fe6e-4cd8-aa7f-fcd46bc4c81d.jsonl
 source_moment: 2026-09-18T11:42:00Z
@@ -61,18 +61,21 @@ value" — except here the step produced something, just less than it could have
 
 ## Open questions
 
-[NEEDS CLARIFICATION: how far should the bullet go? The minimal edit is one clause naming `attach`
-as the remedy when the file is evidence for a plan. A stronger version would have the sweep itself
-detect the case — a scratchpad file written by a session that also wrote a plan file — and print the
+[DECISION: how far should the bullet go? The minimal edit is one clause naming `attach` as the
+remedy when the file is evidence for a plan. A stronger version would have the sweep itself detect
+the case — a scratchpad file written by a session that also wrote a plan file — and print the
 `attach` line pre-filled, the way `skills-state` already prints the `new --for` command. The
 stronger one is better ergonomics and more code in a script whose whole value is that it is read
-once and trusted.]
+once and trusted. **Settled 2026-09-26: minimal** — the bullet names the dispositions and the
+sweep's per-row hint names all three; no pre-filled command until a harvest reports the finding and
+still does not act.]
 
-[NEEDS CLARIFICATION: is "evidence for a plan" the only case worth naming? Some unversioned files
-are not evidence — the confirmed 2026-09-01 instance in the skill's own text is an edited live
-config outside every working tree, which `attach` would be wrong for (copying a live config into a
-plan directory is not a recovery path, it is a stale duplicate of a file that keeps changing). The
-bullet needs to separate the two rather than sending every hit to `attach`.]
+[DECISION: is "evidence for a plan" the only case worth naming? **Settled 2026-09-26: no, three
+dispositions**, as the table below derives. Some unversioned files are not evidence — the confirmed
+2026-09-01 instance in the skill's own text is an edited live config outside every working tree,
+which `attach` would be wrong for (copying a live config into a plan directory is not a recovery
+path, it is a stale duplicate of a file that keeps changing). The bullet needs to separate the two
+rather than sending every hit to `attach`.]
 
 **Answered by the same session, two days on: there is a third disposition, and it is the one
 `attach` actively gets wrong.** Both probes from that session were attached to their plans. When
@@ -97,10 +100,12 @@ So the bullet wants three branches rather than two, and the middle one is the in
 **ask whether the file's question recurs.** If it does, the remedy is not `attach` at all but the
 repo's own convention for a script.
 
-[NEEDS CLARIFICATION: does `attach`'s own `--local` vs `--commit` split need restating here, or is
-pointing at `plan-docs` enough? A committed attachment goes through the repo's gate and is seen by
-`scan`; a local one is the only copy of that file and is invisible to `scan`. A harvest reaching for
-`attach` on a file it has not read is exactly the case where that distinction matters.]
+[DECISION: does `attach`'s own `--local` vs `--commit` split need restating here, or is pointing at
+`plan-docs` enough? A committed attachment goes through the repo's gate and is seen by `scan`; a
+local one is the only copy of that file and is invisible to `scan`. A harvest reaching for `attach`
+on a file it has not read is exactly the case where that distinction matters. **Settled 2026-09-26:
+point at `plan-docs`**, and say to read it before attaching an unread file — the flags are
+`plan-docs`' to explain, and restating them is a second copy to drift.]
 
 ## Recommended direction
 
@@ -116,5 +121,14 @@ Filed from a session in `freshful-polite-mcp`, which cannot edit this repo.
 
 ## Verification
 
-Not started. The instance above is already closed in the source repo (attachment committed as
-`f041351c09b3`), so this plan is about the skill text, not about that file.
+Landed 2026-09-26 in `5f4cf54`. Wording only, so there is no new test; the next harvest that meets a
+scratchpad probe is the check.
+
+## Migrated to
+
+- **The three dispositions and both dated instances** — `skills/session-harvest/SKILL.md` step 5,
+  the files-outside-every-repository bullet, from "Recovering one is often a command".
+- **The per-row hint** — the `suffix` of that section in
+  `skills/session-harvest/scripts/harvest.py`.
+- **Not migrated:** the pre-filled `attach` command, deliberately deferred per the first decision;
+  the evidence transcript pointer, which expires with the transcript.

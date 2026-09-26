@@ -1187,9 +1187,14 @@ PROBES = [
         "mkdir -p ./.probe-fs && rmdir ./.probe-fs",
         "no prompt — inside the working directory; also proves the old Bash(mkdir:*) ask rule is gone",
     ),
+    # Expected to prompt since 2026-09-26. The `Bash(git -C * status:*)` rules that used to be
+    # claimed here never matched: Claude Code reads a mid-pattern `*` literally when the rule also
+    # ends in `:*`. power-user-linux-setup now renders no `-C` rule for Claude at all and leaves
+    # cross-repo reads to the Bash sandbox; see its contributing/cli-allowlist.md, "`mode_covered`
+    # and `repo_dir_options`". With that sandbox enabled, this runs unprompted.
     (
         "git -C <another personal repo> status",
-        "no prompt — the Bash(git -C * status:*) allow rule from global_option_prefixes",
+        "PROMPT — no rule can match a -C form on Claude Code; unprompted only with the Bash sandbox enabled",
     ),
     (
         "git init -q --bare <scratch>/probe-remote.git",

@@ -128,9 +128,11 @@ working repo's remotes. 81 such calls in the window, all executed, none prompted
 cross-repo work — the bypass was the documented preferred form.
 
 Under `acceptEdits` the hole closes by itself: an unmatched non-read-only Bash command prompts. The
-read-only forms (`git -C x status`) would prompt too; `tools.toml`'s `global_option_prefixes`
-renders `Bash(git -C * status:*)`-style allow rules for those (with a known multi-argument wildcard
-hole, accepted deliberately — see `contributing/cli-allowlist.md`).
+read-only forms (`git -C x status`) prompt too. `tools.toml`'s `global_option_prefixes` rendered
+`Bash(git -C * status:*)`-style allow rules for those from 2026-08-24, but they never matched
+anything: Claude Code reads a mid-pattern `*` literally when the rule also ends in `:*`. They were
+withdrawn on 2026-09-26. No rule is rendered for Claude now, and cross-repo reads are left to its
+Bash sandbox (`contributing/cli-allowlist.md`, "`mode_covered` and `repo_dir_options`").
 
 ## Mode comparison: acceptEdits vs auto
 
@@ -434,12 +436,13 @@ Both checks are procedures in `SKILL.md`, not chores for a human:
 - **Probe** (`audit.py --probe`): six live commands with expected prompt/no-prompt outcomes — an
   in-scope `mkdir` (proves the fs `ask` rules are gone and the mode grant holds),
   `git -C <other>
-  status` (the `global_option_prefixes` allow rule), a bare `git init` and a
-  `git -C … push` to a throwaway bare repo (must prompt), and cleanup. Answers, once a human has
-  watched a run: whether an explicit `ask` rule beats the in-scope grant (documented for the
-  read-only set, extrapolated for the fs set), and whether `git -C x status` was already built-in
-  read-only (in which case the allow rule is redundant, harmless). Record the observed outcomes here
-  with the date.
+  status` (expected to prompt since 2026-09-26, when the never-matching
+  `global_option_prefixes` rules were withdrawn; unprompted only under the Bash sandbox), a bare
+  `git init` and a `git -C … push` to a throwaway bare repo (must prompt), and cleanup. Answers,
+  once a human has watched a run: whether an explicit `ask` rule beats the in-scope grant
+  (documented for the read-only set, extrapolated for the fs set), and whether `git -C x status` was
+  already built-in read-only (in which case the allow rule is redundant, harmless). Record the
+  observed outcomes here with the date.
 - Prompt rate under `acceptEdits`: approved prompts leave no trace in transcripts, so the denial
   list understates friction — `scripts/prompts.py` (the **Prompts** procedure) estimates it by
   replaying the rules instead. Two of its approximations are worth a probe: whether a redirect to a

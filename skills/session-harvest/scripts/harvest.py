@@ -1523,7 +1523,34 @@ def _with_move_check(
     # by the session's own commits).
     exemption = " — none of it applies if every one of those commits is this session's own"
     state["verdict"] += "; " + "; ".join(clauses) + exemption
+    if counts["SKILL.md"] and state.get("skill_md_identical"):
+        _note_help_probe(state)
     return state
+
+
+def _note_help_probe(state: dict[str, Any]) -> None:
+    """The cheaper first probe for the one case where diffing `SKILL.md` cannot work.
+
+    SKILL.md moved after the skill was loaded and install and checkout now agree, so a re-install ran
+    mid-session and the copy held in context is on neither side of any diff. The step prescribes the
+    full re-read there. For a skill whose commands are a script, `--help` on the subcommands the
+    session actually called answers the narrower question — did those calls mean what was assumed,
+    and is there a better one now — in a few lines. Confirmed 2026-09-26 on `plan-docs`, ten commits
+    behind a held copy of ~700 lines: two `--help` calls showed `commit -m` unchanged and two new
+    surfaces (`--body`, `push`). It says nothing about prose, so the re-read stays the fallback.
+
+    Which subcommands were called needs the transcript, which this check does not read; the hint
+    names the script and leaves that choice to the reader, who knows.
+    """
+    scripts = sorted((Path(state["installed"]) / "scripts").glob("*.py"))
+    if not scripts:
+        return
+    probes = ", ".join(f"python3 {script} <subcommand> --help" for script in scripts)
+    state["verdict"] += (
+        "; the held SKILL.md is on neither side of that diff, so probe first — "
+        f"{probes} for each subcommand this session called — and re-read SKILL.md only if the session "
+        "leaned on its prose or the probe shows an interface moved under a call already made"
+    )
 
 
 def _parsed_moves(log: str, rel: str) -> list[tuple[str, frozenset[str]]]:

@@ -243,7 +243,14 @@ did. **The one case that needs the full re-read is a re-install that ran mid-ses
 skill was loaded**: the diff is only sound when the copy held in context is one side of it, and
 there the held text is neither. `skills-state` prints the install's mtime, so that case is
 recognisable rather than something to assume; the listing changing mid-session (above) is the other
-tell.
+tell. **For a skill whose commands are a script, probe before re-reading**: `--help` on each
+subcommand this session actually called answers whether those calls meant what was assumed and
+whether a better one now exists, and `skills-state` prints the exact probe on the rows where this
+case fires. Re-read `SKILL.md` only when the session leaned on its prose rather than its commands,
+or when the probe shows an interface that moved under a call already made. Confirmed 2026-09-26:
+`plan-docs` ten commits past a held ~700-line copy, and two `--help` calls showed `commit -m`
+unchanged — so nothing done earlier was owed a correction — plus a new `--body` flag and `push`
+subcommand.
 
 `scripts/` is shelled out to, so the next call already runs the new code — but a call made _earlier_
 in the session ran the old one. **Read the diff before deciding a note is enough.** A change that

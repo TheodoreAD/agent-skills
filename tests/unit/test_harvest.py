@@ -991,6 +991,48 @@ def test_the_move_baseline_is_named_in_the_verdict_it_produced(tmp_path):
     assert "moved after this session began" not in state["verdict"]
 
 
+def test_a_held_skill_md_that_is_neither_side_gets_the_help_probe_first(tmp_path):
+    """Install and checkout agree, and SKILL.md moved after the skill was loaded: a re-install ran
+    mid-session, so the copy in context is on neither side of any diff. Confirmed 2026-09-26 on
+    `plan-docs`, ten commits: two `--help` calls answered what a ~700-line re-read would have."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    make_skill(checkout, "demo", "same\n")
+    make_installed(installed_root, "demo", "same\n")
+    edit = "\x1eabc123 Me a later edit\n\nskills/demo/SKILL.md\n"
+    runner = FakeRunner({f"git -C {checkout} log --since=": (0, edit, "")})
+    state = harvest.skill_state(
+        runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z", baseline="this skill entered context"
+    )
+    assert f"python3 {installed_root / 'demo' / 'scripts' / 'x.py'} <subcommand> --help" in state["verdict"]
+    assert "neither side" in state["verdict"]
+
+
+def test_no_help_probe_when_the_diff_is_still_sound_or_there_is_no_script(tmp_path):
+    """A differing install still holds the loaded text on one side, so the diff remains the remedy;
+    and a prose-only skill has no CLI surface to probe."""
+    edit = "\x1eabc123 Me a later edit\n\nskills/demo/SKILL.md\n"
+    checkout = tmp_path / "a" / "checkout"
+    installed_root = tmp_path / "a" / "installed"
+    make_skill(checkout, "demo", "new\n")
+    make_installed(installed_root, "demo", "old\n")
+    runner = FakeRunner({f"git -C {checkout} log --since=": (0, edit, "")})
+    state = harvest.skill_state(
+        runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z", baseline="this skill entered context"
+    )
+    assert "--help" not in state["verdict"]
+
+    checkout = tmp_path / "b" / "checkout"
+    installed_root = tmp_path / "b" / "installed"
+    for skill in (make_skill(checkout, "demo", "same\n"), make_installed(installed_root, "demo", "same\n")):
+        (skill / "scripts" / "x.py").unlink()
+    runner = FakeRunner({f"git -C {checkout} log --since=": (0, edit, "")})
+    state = harvest.skill_state(
+        runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z", baseline="this skill entered context"
+    )
+    assert "--help" not in state["verdict"]
+
+
 def test_a_skills_load_instant_comes_from_the_sessions_own_skill_calls(monkeypatch):
     """The instant that matters for "did this move under me" is when the text was read. It is in the
     transcript: a `Skill` tool call names the skill and carries a timestamp."""

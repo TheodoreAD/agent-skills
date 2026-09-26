@@ -79,3 +79,9 @@ the way the plans check already does it.
 
 Whatever the fix, the section's closing line should not tell the reporting session to file against a
 consumer the check is not confident about. That line is what turns a noisy row into an action.
+
+**Kept apart from `2026-09-18-sweep-consumer-warning-does-not-read-its-own-trigger.md` at
+absorption, 2026-09-26**, deliberately: same section and same closing line, different cause. That
+one is a _real_ consumer whose documented trigger the check never compares against the changed
+paths; this one is a consumer that does not exist. Both want the closing line made conditional, so
+whichever lands first should word it for both.

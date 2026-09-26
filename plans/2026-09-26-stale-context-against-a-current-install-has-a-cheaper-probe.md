@@ -68,6 +68,12 @@ That answered the operative question in about twenty lines:
 Neither of those would have been visible in a rate table or a status line, and both were worth
 knowing.
 
+Checked at absorption, 2026-09-26: both are `plan-docs` changes that shipped here on 2026-09-22 —
+`push` in `18b78ea`, `--body` in `6f3e22c` — and are the _content_ the probe found, not part of the
+proposal. `session-harvest`'s step 0 last changed in `3aa3c70` (2026-09-13), and no `--help` probe
+appears in it, so nothing this plan proposes has landed; the "held text is neither" branch it cites
+dates from `5e2d8b5` (2026-09-07).
+
 [DECISION: **`--help` is not a substitute for the re-read in general — it is the right first probe
 for a skill whose commands are a script.** It answers "did my calls mean what I assumed, and is
 there a better command now" exactly, and it answers nothing about prose guidance, judgement calls or

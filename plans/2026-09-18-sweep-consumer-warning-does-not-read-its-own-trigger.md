@@ -70,6 +70,11 @@ harvest's, and both are wording rather than behaviour — split them if the abso
    present unconditional line when no trigger can be read, and say which of the two happened.
 2. Rename the `--commit` tier in `attach`'s output so it describes a placement rather than an act.
 
+Sibling: `2026-09-18-harvest-consumer-check-matches-a-scratch-repo-basename.md` is the same section
+matching a consumer that does not exist at all. Kept apart at absorption, 2026-09-26, because the
+causes and fixes differ; both want the closing `a push here is a deploy there` line made
+conditional.
+
 [UNVERIFIED: that `consumer-sweep.md`'s trigger is the only shape in the family. It is the only
 consumer-facing doc of its kind on this machine today, so a glob-matching implementation has exactly
 one specimen to generalise from — which is the position the membership-derivation attempts in

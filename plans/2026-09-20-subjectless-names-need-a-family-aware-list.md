@@ -71,7 +71,17 @@ confirmed 2026-09-13 true positive still matches: that plan's title names `repo-
 plans naming a file this session changed" is a separate check with its own three-mention proxy, and
 on the same re-run it still printed 15 rows, 13 of them `setup.toml`. There the repo test means
 nothing, since every plan is about that repo. Options: a `limit:` line naming the shape, or raising
-the proxy for a name the repo's plans mention constantly. Needs its own measurement first.]
+the proxy for a name the repo's plans mention constantly. Needs its own measurement first.
+
+**Measured 2026-09-26: a share threshold cannot separate vocabulary from a central subject.** Share
+of open plans naming a file three or more times: `setup.toml` 15 of 65 (23%) in the setup repo, with
+real subjects there at 2–3%. But `plans.py` is 10 of 51 (20%) in this repo and **is** the subject of
+those plans, the plan-docs ones. Other repos top out at 9–12% on one plan each. So 23% and 20% are
+indistinguishable by count while being opposite cases: one is a declaration file edited for many
+unrelated reasons, the other is code whose plans design it. Any threshold that hides `setup.toml`
+hides `plans.py`. Remaining options: collapse a widely-shared name's rows into one counted line
+(cheap to read, still visible, but it collapses `plans.py` too), or accept the rows and add a
+`limit:` line. This is a trade-off for the user rather than a measurement question.]
 
 ## Recommended direction
 

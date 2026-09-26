@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-20
+status: landed
+updated: 2026-09-26
 source_repo: github.com-personal/freshful-polite-mcp
 source_moment: 2026-09-20T17:08:20Z
 source_session: 2888f600-fe6e-4cd8-aa7f-fcd46bc4c81d.jsonl
@@ -60,18 +60,12 @@ a sloppy one.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: can `filed` distinguish the three causes itself? It has the store's git log
-already, which is how it attributes commits. A deletion committed in the **repo** the plan lived in
-is a retirement; a deletion in the **store** paired with an addition in a repo is an absorption; a
-path that is simply gone with no deletion commit is a move or something else. That is three git
-queries rather than a label change, and the subcommand already runs comparable ones.]
-
-[NEEDS CLARIFICATION: or should the label just stop asserting a cause?
-`MISSING (absorbed, or
-moved)` reads as a diagnosis, and the SKILL sentence then builds an
-instruction on it. A bare `MISSING — cause not determined` with the three candidates listed would be
-honest and costs no code, at the price of making the reader check. Cheaper, and consistent with how
-`(not attributed)` was already fixed once for asserting more than the evidence supported.]
+[DECISION: **the label stops asserting a cause; `filed` does not diagnose it.** Settled 2026-09-26.
+The alternative was three git queries — a deletion in the plan's own repo is a retirement, a store
+deletion paired with a repo addition is an absorption, no deletion commit is a move. It would work,
+but the reader tells the cases apart at a glance, and `(not attributed)` was already fixed once the
+same way: state only what the check established. `MISSING (cause not determined)` plus a footer
+naming the three remedies.]
 
 [DEFERRED: whether the same conflation affects the `## plan files this session wrote` list's purpose
 at all. Its job is "confirm the file is still there before naming it" in the report's opening
@@ -92,5 +86,18 @@ Filed from a session in `freshful-polite-mcp`, which cannot edit this repo.
 
 ## Verification
 
-Not started. The repro is cheap and does not need a real retirement: run `filed` in any session that
-deleted a plan file it also wrote, and read the label.
+Landed 2026-09-26 in `06421c9`, taking the recommended direction: the label is now
+`MISSING (cause not determined)` and a footer names the three remedies. Covered by
+`test_a_missing_plan_row_names_no_cause` and `test_no_missing_footer_when_every_plan_is_present`,
+which drive `_print_filed` with a vanished row directly rather than staging a real retirement.
+
+## Migrated to
+
+- **The label and why it names no cause** — the comment above the `MISSING` mark in
+  `skills/session-harvest/scripts/harvest.py` (`_print_filed`).
+- **The three remedies and the 2026-09-20 instance** — `skills/session-harvest/SKILL.md` step 8, the
+  paragraph opening "A row marked `MISSING` says only that the file is gone".
+- **Not migrated:** the first open question's three-query diagnosis. Rejected rather than deferred —
+  the reader tells a retirement from an absorption at a glance, and the `(not attributed)` precedent
+  already chose the honest label over a script diagnosis once. The `[DEFERRED]` question resolved
+  itself: the fix needed the script (the label) and the skill (the instruction) both.

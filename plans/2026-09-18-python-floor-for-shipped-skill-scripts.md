@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-26
 source_repo: github.com-personal/repo-tasks
 source_session: 14237e4b-3a66-4207-8a3a-882552c86680.jsonl
@@ -129,3 +129,22 @@ Run steps 1 and 3 with `env -u UV_PYTHON …`, or from a fresh terminal.]
 ## Attachments
 
 - `skill-floor-probe.sh` — committed, 1 KB, attached 2026-09-18
+
+## Migrated to
+
+Landed 2026-09-26 across three commits, all four recommended steps:
+
+- **Step 1, develop at the floor** — `a20ec08`: `.python-version` pins 3.11 and the venv was
+  recreated there with `UV_PYTHON` unset. The one finding it produced, as step 5 predicted, was a
+  test importing `typing.override`; that now comes from `typing-extensions` in the dev group.
+- **Steps 2 and 3, the guard and the gate** — `edd9e12`. The guard is in every script that needs it,
+  with the reason in a comment above it. `tests/unit/test_script_floor.py` carries the rules: stdlib
+  only, starts on the floor, and a 3.10 run either works or prints the guard's sentence. It found
+  **five** scripts below the floor, not the two measured here — three had since picked up
+  `datetime.UTC`.
+- **Step 4, stating it** — `b102839`: the README, and the two `compatibility:` fields that said
+  "Python 3".
+- **Not migrated:** the open questions are answered by what landed — one guard per script (no shared
+  module), stdlib-only asserted by the test, a single 3.11 floor rather than keeping 3.9 for some.
+  The `.python-version` question is answered by adding one. `skill-floor-probe.sh` is superseded by
+  the test's 3.10 case and stays readable in this plan's history.

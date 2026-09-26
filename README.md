@@ -59,6 +59,9 @@ sockets, container images and both stores; `skill-fitness` writes nothing but a 
 `plan-docs` also describes pushing the shareable half of its store to a remote you configure —
 behind a content scan, and never the half holding employer or client work.
 
+**Python 3.11 or newer** is the one requirement every script shares, run by your own `python3` with
+nothing to install. Below it a script exits with a sentence saying so rather than a traceback.
+
 **Platform.** Everything here was written on a POSIX machine. The scripts are stdlib-only Python,
 resolve their locations from `$XDG_*` first and fall back to `%APPDATA%` / `%LOCALAPPDATA%` on
 Windows, and the unit suite runs on a Windows CI leg as well as a Linux one — so what the tests

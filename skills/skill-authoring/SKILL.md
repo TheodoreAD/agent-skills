@@ -1,7 +1,7 @@
 ---
 name: skill-authoring
 description: "Use when writing a new Agent Skill, editing an existing SKILL.md, or getting a skill change actually deployed — where the source lives versus the installed copy, why editing the installed copy silently does nothing, the edit → gate → commit → push → re-install → verify sequence, how to publish a skill repo so `skills add` finds it, how to word a `description` so it triggers on real requests without stealing another skill's, and when something should be an instructions-file rule instead of a skill at all."
-compatibility: Node (npx) for the skills CLI install commands; the skill-fitness skill's scripts for the measurements it asks for. Its own scripts/names.py is stdlib Python 3 and reaches skills.sh over the network unless run with --offline.
+compatibility: Node (npx) for the skills CLI install commands; the skill-fitness skill's scripts for the measurements it asks for. Its own scripts/names.py is stdlib Python 3.11+ and reaches skills.sh over the network unless run with --offline.
 ---
 
 # Authoring and updating Agent Skills

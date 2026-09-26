@@ -2,7 +2,7 @@
 name: repo-pitch
 description: "Use when writing or fixing the one-line description a repo shows the world — a GitHub About box, a README's opening sentence, a package summary on PyPI or npm, a Show HN title, a plugin or extension listing — or when those have drifted apart and you want them to be one string again. Also for judging a draft one-liner before adopting it: what length actually fits each surface, why a list of features reads as a non-answer, and which style rules are real versus somebody's taste. Checks that a pitch is well formed; it does not score whether the project is appealing, and it does not write marketing copy."
 license: MIT
-compatibility: "Reading a README and checking a pitch need nothing but Python 3. The drift command shells out to `gh` (authenticated) for a GitHub description and reads pypi.org or registry.npmjs.org over the network."
+compatibility: "Reading a README and checking a pitch need nothing but Python 3.11+. The drift command shells out to `gh` (authenticated) for a GitHub description and reads pypi.org or registry.npmjs.org over the network."
 ---
 
 # The one line a stranger reads first

@@ -514,12 +514,18 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
     "sed-i": (_rx(r"\bsed\s+-i\b"), "in-place edit via shell; Edit has its own gate"),
     "python-c": (_rx(r"\bpython3?\s+-c\b"), "ad-hoc script instead of a test or a dedicated tool"),
     "label-echo": (_rx(r"echo\s+['\"]?(===|---)"), "batching several steps into one call for labelled output"),
+    # Both git rows match with quotes blanked, like every other row keyed on a tool name. Until
+    # 2026-09-26 they used `_rx`, and a 229-call session reported `git-C-mutating 4` of which two were
+    # not git at all: a multi-line `python3 -c "…"` whose string mentioned `git -C … commit`, and an
+    # `rg "Bash\(git -C \* add\)…"` search. A quoted path survives as `""`, which `\S+` still takes.
     "git-mutating": (
-        _rx(r"\bgit\s+(-C\s+\S+\s+|-c\s+\S+\s+)?(commit|push|add|reset|checkout|rebase|merge|stash|rm|mv)\b"),
+        _rx_unquoted(r"\bgit\s+(-C\s+\S+\s+|-c\s+\S+\s+)?(commit|push|add|reset|checkout|rebase|merge|stash|rm|mv)\b"),
         "ask-gated verb; inside a chain or behind -C/-c the prefix rule may not match",
     ),
     "git-C-mutating": (
-        _rx(r"\bgit\s+(-C|-c|--git-dir\S*|--work-tree\S*)\s+\S+\s+(commit|push|add|reset|checkout|rebase|merge)\b"),
+        _rx_unquoted(
+            r"\bgit\s+(-C|-c|--git-dir\S*|--work-tree\S*)\s+\S+\s+(commit|push|add|reset|checkout|rebase|merge)\b"
+        ),
         "global option before the verb: Bash(git push:*) does not match `git -C x push`",
     ),
     "pgrep-f": (

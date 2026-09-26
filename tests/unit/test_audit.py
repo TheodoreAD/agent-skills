@@ -139,6 +139,9 @@ def test_a_dash_heredoc_closes_on_an_indented_terminator():
         ('git commit -m "prefer fd; find . -name x needs -not -path excludes"', "find-not-fd"),
         ("audit.py --days 30 --samples 0 | rg 'find-not-fd|grep-r-not-rg|find-exempt'", "find-not-fd"),
         ("audit.py --days 30 | rg 'grep-r-not-rg|grep/find'", "grep-r-not-rg"),
+        ("python3 -c \"\nimport pathlib\np.write_text('run git -C x commit here')\n\"", "git-C-mutating"),
+        ("python3 -c \"\nimport pathlib\np.write_text('run git -C x commit here')\n\"", "git-mutating"),
+        ('rg -o -N -m1 "Bash\\(git -C \\* add\\) has a wildcard" log', "git-C-mutating"),
     ],
 )
 def test_a_tool_name_inside_quotes_is_not_an_invocation(cmd, row):
@@ -163,6 +166,8 @@ def test_a_tool_name_inside_quotes_is_not_an_invocation(cmd, row):
         ("rg --replace X pattern src/", {"rg-replace"}),
         ("find . -name '*.py'", {"find-not-fd"}),
         ("grep -rn needle src/", {"grep-r-not-rg"}),
+        ('git -C "/tmp/a b" commit -m "x"', {"git-C-mutating", "git-mutating"}),
+        ("cd /tmp/s && git init probe && git -C probe commit -m x", {"git-C-mutating", "git-mutating"}),
     ],
 )
 def test_a_real_invocation_still_counts(cmd, expected):

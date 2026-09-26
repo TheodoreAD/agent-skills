@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-26
 source_repo: github.com-personal/power-user-linux-setup
 source_session: f7cff2a9-fb4a-4b46-93f5-903a0e24d1a3.jsonl
@@ -84,19 +84,27 @@ commands, or when `--help` shows an interface that moved under a call already ma
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **which skills does this apply to?** It works for `plan-docs`,
-`research-library`, `session-bash-audit` and `session-harvest` itself — every skill in this repo
-whose operative surface is a `scripts/` CLI with `argparse` behind it. It does nothing for a
-prose-only skill. Whether the step should name the condition ("a skill whose commands come from a
-script") or name the skills is a wording choice this repo's own conventions should decide.]
+[DECISION: **name the condition, not the skills.** Settled 2026-09-26. Step 0 says "a skill whose
+commands are a script", and `skills-state` decides it mechanically — a `*.py` under the installed
+copy's `scripts/`. A list of skills would go stale the first time a skill gains or loses a script.]
 
-[NEEDS CLARIFICATION: **should `skills-state` print the probe itself?** It already prints the
-`--for` filing command, so it has the precedent for emitting a command rather than describing one —
-and it knows which subcommands exist. Against: it does not know which ones **this session called**,
-which is the part that makes the probe cheap, and that needs the transcript. A middle option is for
-it to say "this skill is script-backed, so probe `--help` for the subcommands you used" on exactly
-the rows where the held-context branch fires. Per this repo's standing preference, a correction a
-script can simply make belongs in the script.]
+[DECISION: **`skills-state` prints the probe, the middle option.** Settled 2026-09-26. It fires on
+exactly the held-context rows — `SKILL.md` moved after load and install equals checkout — and names
+the script with `<subcommand> --help`, leaving which subcommands to the reader, since that needs the
+transcript and the check does not read it.]
+
+## Migrated to
+
+Landed 2026-09-26 in `abfe5d3`.
+
+- **The rule and its 2026-09-26 instance** — `skills/session-harvest/SKILL.md` step 0, the paragraph
+  on diffing `SKILL.md`, from "For a skill whose commands are a script, probe before re-reading".
+- **Why the probe fires where it does and why it names no subcommands** — the `_note_help_probe`
+  docstring in `skills/session-harvest/scripts/harvest.py`.
+- **The gate** — `test_a_held_skill_md_that_is_neither_side_gets_the_help_probe_first` and
+  `test_no_help_probe_when_the_diff_is_still_sound_or_there_is_no_script`.
+- **Not migrated:** the Evidence section's transcript pointer. It expires with the transcript in
+  late October, and the finding is carried by the docstring without it.
 
 ## Evidence
 

@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-18
+updated: 2026-09-26
 source_repo: github.com-personal/repo-tasks
 source_session: 14237e4b-3a66-4207-8a3a-882552c86680.jsonl
 source_moment: 2026-09-18T09:40:00Z
@@ -8,6 +8,10 @@ source_plan: plans/2026-08-29-python-floor-in-the-shipped-configs.md
 ---
 
 # The shipped scripts have no declared floor, and two of them already break below 3.11
+
+Merged 2026-09-26 with `2026-09-20-uv-python-override-is-gone-your-pin-now-holds.md`, filed from
+`power-user-linux-setup` to report that this plan's blocker had been removed; its evidence now sits
+under Recommended direction, in place of the pitfall it resolved.
 
 ## Context
 
@@ -72,6 +76,10 @@ control that and should not try; it can only make the floor low enough and say s
 - **Is 3.9 worth keeping for the ten scripts that have it?** Probably not — one floor is easier to
   state and check than two, and the rule is 3.11 regardless. But it is worth knowing that only
   `tomllib` costs those ten their lower floor, in case the requirement is ever revisited.
+- **Does this repo want a `.python-version` now that one would actually be honoured?** It has none
+  (checked 2026-09-26). It was worth nothing while `UV_PYTHON` outranked it, and only becomes
+  load-bearing now; it is worth adding if something re-checks it later — `repo-tasks` has
+  `inv venv.pin`/`venv.check` for exactly that, and step 1 already names `venv.pin`.
 
 ## Recommended direction
 
@@ -87,11 +95,36 @@ control that and should not try; it can only make the floor low enough and say s
 4. **State the requirement in the repo's README and in each `SKILL.md`** that documents a script
    invocation, since the audience for it is someone who has not cloned anything.
 
-[PITFALL: **none of this binds locally until `UV_PYTHON` is dealt with.** That variable is exported
-machine-wide and outranks `.python-version`, so a bare `uv run` or `uv sync` in this tree rebuilds
-the venv at 3.14 and step 1 silently comes undone. Filed for `power-user-linux-setup` as
-`2026-09-13-uv-python-defeats-every-library-floor.md`; the replacement is `uv python pin --global`.
-Do step 1 after that lands, or expect to redo it.]
+5. **Expect the gate to find things, and read that as the point rather than as breakage.** Nothing
+   here has ever run at the real floor, so this is where the `typing.override`-class findings live —
+   syntax and APIs newer than the declaration, invisible until something actually runs below them.
+   `repo-tasks` recorded three such consumers in `plans/2026-08-25-consumer-transitions.md`, two of
+   them in code that shipped in a wheel.
+
+**The `UV_PYTHON` blocker is gone, as of 2026-09-19.** Until then the machine exported
+`UV_PYTHON="3.14"` from `power-user-linux-setup`'s `[packages.uv-env]`, which uv reads as an
+explicit interpreter request — "equivalent to the `--python` command-line argument" — so it
+outranked `.python-version` and `requires-python` alike, and a bare `uv run` or `uv sync` here would
+have rebuilt the venv at 3.14 and undone step 1. `power-user-linux-setup` commit `240721b` deleted
+the export and has `inv python.pin-default` write `~/.config/uv/.python-version` instead. Measured
+on uv 0.11.19, before and after:
+
+| what is being resolved                                | exported `UV_PYTHON` | uv global pin |
+| ----------------------------------------------------- | -------------------- | ------------- |
+| PEP 723 script, `requires-python = ">=3.9"`           | 3.14.5               | 3.14.5        |
+| PEP 723 script, `requires-python = "==3.11.*"`        | **3.14.5**           | 3.11.15       |
+| project, `requires-python = ">=3.11,<3.12"`           | 3.14.5               | 3.11.15       |
+| `uv tool install`, `requires-python = ">=3.11,<3.12"` | **3.14.5**           | 3.11.15       |
+
+The full reasoning is `power-user-linux-setup`'s
+`plans/2026-09-18-replace-uv-python-with-a-uv-managed-default.md`.
+
+[PITFALL: **a process started before 2026-09-19, or launched from one, still has the old value, and
+no dotfile edit reaches it.** A session reporting `UV_PYTHON=3.14` afterwards inherited it from the
+environment of whatever launched it. Confirmed again 2026-09-26: a background-job session in this
+repo had `UV_PYTHON=3.14` while no shell dotfile exported it and the global pin read `3.14`. So a
+check run from such a session measures the state before the change and reads as "it did not work".
+Run steps 1 and 3 with `env -u UV_PYTHON …`, or from a fresh terminal.]
 
 ## Attachments
 

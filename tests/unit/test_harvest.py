@@ -1906,6 +1906,21 @@ def test_a_number_in_a_plan_this_session_only_appended_to_is_not_its_to_re_deriv
     assert "(authorship unestablished) - one more measured row: 353 tests" in out
 
 
+def test_a_missing_plan_row_names_no_cause(capsys):
+    """A plan this session wrote and then retired is gone exactly the way an absorbed one is, and
+    only the absorbed one owes a correction — so the row states the absence, not a diagnosis."""
+    harvest._print_filed({"plans_written": [{"path": "plans/2026-09-06-landed.md", "exists": False}]})
+    out = capsys.readouterr().out
+    assert "plans/2026-09-06-landed.md  MISSING (cause not determined)" in out
+    assert "absorbed" not in out.split("MISSING", 1)[1].splitlines()[0]
+    assert "retired by this session needs nothing" in out
+
+
+def test_no_missing_footer_when_every_plan_is_present(capsys):
+    harvest._print_filed({"plans_written": [{"path": "plans/2026-09-06-live.md", "exists": True}]})
+    assert "MISSING" not in capsys.readouterr().out
+
+
 def test_a_line_the_gate_reflowed_is_still_the_line_this_session_wrote(tmp_path, monkeypatch):
     """dprint reflows prose and re-pads tables after every write, so the file never holds the bytes
     the Write sent. Whitespace is what moves, so whitespace is what the comparison ignores."""

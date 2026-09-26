@@ -1166,9 +1166,15 @@ ratio no participant would have guessed and which decided whether an edit to a s
 safe to make at all. That run predates the deletion fix above, so its `0` is a floor rather than a
 count; the argument it settled does not turn on which way it moves. Re-derive each unmarked
 measurement it prints and **edit the file**, then write the delta. Correcting a plan in the store is
-inside the write set at the top of this procedure, one filed `--for` another repo included; a row
-marked `MISSING` has been absorbed into the repo that owns it, and there the correction is a new
-filing rather than an edit.
+inside the write set at the top of this procedure, one filed `--for` another repo included. **A row
+marked `MISSING` says only that the file is gone, and the cause decides the remedy**: a plan this
+session retired needs nothing; one absorbed out of the store into the repo that owns it is corrected
+there by a new filing rather than an edit; anything else, find where it went before the report names
+it. The label used to read `absorbed, or moved`, and step 8 built its instruction on that. Confirmed
+2026-09-20: a harvest listed four `MISSING` rows, three of them plans the same session had retired
+an hour earlier, and following the old wording would have filed three corrections against plans that
+were deliberately deleted. Retirement is the expected end of a plan a session lands, so a well-run
+session hits this more often than a sloppy one.
 
 **Two kinds of number are printed there, and only one of them goes stale by the session running
 longer.** A measurement **of the session** — an adherence row, a call count, anything `--until`

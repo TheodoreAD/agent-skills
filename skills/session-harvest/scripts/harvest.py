@@ -3706,14 +3706,23 @@ def _print_filed(payload: dict[str, Any]) -> None:
     plans = payload.get("plans_written") or []
     print(f"\n## plan files this session wrote ({len(plans)})")
     hedged = False
+    # The label states the absence and nothing more, as `(not attributed)` does: a plan this session
+    # retired and one another repo absorbed are both "written here, now gone", and only the second
+    # owes a correction — so the three causes go in the footer for the reader to tell apart.
+    missing = False
     for plan in plans:
-        mark = "" if plan.get("exists") else "  MISSING (absorbed, or moved)"
+        mark = "" if plan.get("exists") else "  MISSING (cause not determined)"
+        missing = missing or not plan.get("exists")
         print(f"    {plan['path']}{mark}")
         for line in plan.get("measurements") or []:
             print(f"        {line}")
         for line in plan.get("measurements_unestablished") or []:
             print(f"        {UNESTABLISHED} {line}")
             hedged = True
+    if missing:
+        print("    MISSING is only 'this session wrote it and it is gone', and the cause decides the remedy:")
+        print("    a plan retired by this session needs nothing; one absorbed out of a store into its repo")
+        print("    is corrected there by a new filing; anything else, find where it went before naming it")
     if hedged:
         print(f"    lines marked {UNESTABLISHED} are in a plan this session wrote to, but not in anything")
         print("    it wrote there: re-derive the unmarked ones. Not this session's to correct — unless you")

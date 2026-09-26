@@ -2820,6 +2820,26 @@ def _sweep_stores(
 # fixing the others, so the count says its own limit rather than each reader learning it once per row.
 SUBPROCESS_SEAM = "reads this session's own edit-tool writes; a file a subprocess wrote is out of scope"
 
+# An interpreter handed an inline script: a heredoc into `python3 -`/`bash`, or a `-c` one-liner.
+# Every write such a call makes is behind the seam above, so counting them says *how exposed this
+# run is* rather than leaving the reader to assume a generic caveat did not apply to them.
+INLINE_SCRIPT_RE = re.compile(r"<<-?\s*'?[A-Z_]{2,}'?|\b(?:python3?|bash|sh|zsh|perl|node)\s+-c\b")
+
+
+def inline_script_calls(entries: Iterable[dict[str, Any]]) -> int:
+    """How many Bash calls this session ran an inline script through.
+
+    The seam is stated on every transcript-derived count, and a reader who has met it once reads the
+    next occurrence as boilerplate. A number cannot be read that way: 0 says the limit did not bind
+    on this run, and 40 says the write-path list below is probably missing files. Added 2026-09-26
+    after a harvest whose plan edits went through `python3 - <<PY` heredocs — it listed one of the
+    two plan files the session wrote, and marked the lines it *had* written in that one as
+    `(authorship unestablished)`, because the writes happened inside a call rather than through
+    `Edit`. The generic limit was printed correctly and directly under a list it had silently
+    halved.
+    """
+    return sum(1 for _, command in bash_calls(entries) if INLINE_SCRIPT_RE.search(command))
+
 
 def _sweep_loose_files(runner: Runner, entries: Sequence[dict[str, Any]], have_transcript: bool) -> dict[str, Any]:
     """The two checks that read nothing but this session's own writes — and say when they could not.
@@ -2838,8 +2858,15 @@ def _sweep_loose_files(runner: Runner, entries: Sequence[dict[str, Any]], have_t
     if not have_transcript:
         why = "no transcript — both checks read this session's own writes"
         return {"loose_files": {"available": False, "why": why}}
+    inline = inline_script_calls(entries)
+    exposure = (
+        f"{inline} call(s) this session ran an inline script (heredoc or -c); writes inside those "
+        "are invisible here, so treat the list as a floor"
+        if inline
+        else "no inline-script calls this session, so the seam above did not bind"
+    )
     return {
-        "loose_files": {"available": True, "limit": SUBPROCESS_SEAM},
+        "loose_files": {"available": True, "limit": SUBPROCESS_SEAM, "exposure": exposure},
         "written_outside_any_repo": [
             str(p) for p in written_paths(entries) if git_root(runner, p) is None and p.exists()
         ],
@@ -3183,6 +3210,10 @@ def _print_loose_files(payload: dict[str, Any]) -> None:
         limit=state.get("limit", ""),
         suffix="   (no diff, no history — say what would recover it)",
     )
+    # Directly under that list rather than beside the generic limit: the number is only useful where
+    # the reader is looking at the rows it qualifies.
+    if exposure := state.get("exposure", ""):
+        print(f"  exposure: {exposure}")
     reads = ", ".join(ALWAYS_LOADED_FILES)
     section(
         "paths this session wrote into files that do not exist",

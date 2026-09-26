@@ -2887,3 +2887,24 @@ def test_a_windows_machine_without_powershell_output_reports_unavailable(monkeyp
     result = harvest.processes(FakeRunner({"powershell": (1, "", "not recognized")}))
     assert result["available"] is False
     assert "Win32_Process" in result["why"]
+
+
+def test_inline_script_calls_quantify_the_subprocess_seam():
+    """The seam is stated on every transcript-derived count, so a reader who has met it once reads
+    the next occurrence as boilerplate. A number cannot be read that way.
+
+    Confirmed 2026-09-26: a harvest whose plan edits all went through `python3 - <<PY` heredocs
+    listed one of the two plan files that session wrote, and marked the lines it had written in the
+    one it did list as authorship-unestablished. The generic limit printed correctly, directly
+    under a list it had silently halved.
+    """
+    entries = [
+        bash_entry("python3 - <<'PY'\nPath('x').write_text('y')\nPY"),
+        bash_entry('python3 -c "import sys; print(sys.version)"'),
+        bash_entry("cat <<-EOF > out.txt\nhello\nEOF"),
+        bash_entry("git status --short"),
+        bash_entry("rg -n 'heredoc' README.md"),
+    ]
+    assert harvest.inline_script_calls(entries) == 3
+
+    assert harvest.inline_script_calls([bash_entry("ls -la")]) == 0

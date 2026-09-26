@@ -1184,6 +1184,84 @@ def test_repos_that_install_a_changed_repo_are_named_from_their_own_manifests(tm
     assert harvest.consumer_candidates(root, [stranger]) == []
 
 
+def _edit(path: Path) -> dict[str, object]:
+    block = {"type": "tool_use", "id": str(path), "name": "Edit", "input": {"file_path": str(path)}}
+    return blocks_entry("assistant", [block])
+
+
+SWEEP_DOC = """# Consumer sweep
+
+## When to sweep
+
+After changing any of: the `repo-tasks-quality` manifest in `pyproject.toml`, anything under
+`src/repo_tasks/configs/`, or a `quality.*` / `test.*` step that shells out to a binary.
+
+## The sweep
+"""
+
+
+def test_a_consumer_doc_trigger_decides_whether_a_push_obliges_anyone(tmp_path, capsys):
+    """Confirmed 2026-09-18: five consumers and an instruction to report an obligation, for a push
+    of a CI workflow, docs, plans and one test — none of it under the paths the repo's own
+    `consumer-sweep.md` lists under "When to sweep". The check named that doc and never read it."""
+    root = tmp_path / "projects"
+    library, consumer = root / "repo-tasks", root / "a-consumer"
+    for repo in (library, consumer):
+        (repo / ".git").mkdir(parents=True)
+    (consumer / "pyproject.toml").write_text('dependencies = ["repo-tasks @ git+ssh://..."]\n')
+    (library / "contributing").mkdir()
+    (library / "contributing" / "consumer-sweep.md").write_text(SWEEP_DOC)
+
+    def edits(*paths: str) -> list[dict[str, object]]:
+        return [_edit(library / p) for p in paths]
+
+    quiet = harvest.consumer_candidates(root, [library], entries=edits(".github/workflows/ci.yml", "tests/test_x.py"))
+    assert quiet[0]["trigger"]["matched"] == []
+    harvest._print_consumers(quiet)
+    out = capsys.readouterr().out
+    assert "matches nothing this session wrote here" in out
+    assert "a push here is a deploy there" not in out
+
+    fired = harvest.consumer_candidates(
+        root, [library], entries=edits("src/repo_tasks/configs/ruff.toml", "tasks/quality.py")
+    )
+    assert fired[0]["trigger"]["matched"] == ["src/repo_tasks/configs/ruff.toml", "tasks/quality.py"]
+    harvest._print_consumers(fired)
+    assert "a push here is a deploy there" in capsys.readouterr().out
+
+    # A doc stating no trigger keeps the unconditional warning, and says why.
+    (library / "contributing" / "consumer-sweep.md").write_text("A push to main is a deploy.\n")
+    unknown = harvest.consumer_candidates(root, [library], entries=edits("README.md"))
+    harvest._print_consumers(unknown)
+    out = capsys.readouterr().out
+    assert "no trigger could be read" in out
+    assert "a push here is a deploy there" in out
+
+
+def test_a_throwaway_repo_under_a_scratch_root_is_set_aside_not_swept(tmp_path, monkeypatch):
+    """Confirmed 2026-09-18: a repo a session `git init`-ed in its job scratchpad to probe one
+    question was swept as touched — no upstream, no GitHub host, and its basename `clone` matched two
+    unrelated repos' installers as consumers. It is named rather than dropped."""
+    scratch_root = tmp_path / "jobs"
+    real, throwaway = tmp_path / "work" / "real", scratch_root / "abc" / "tmp" / "clone"
+    monkeypatch.setattr(harvest, "_scratch_roots", lambda: [scratch_root.resolve()])
+    for repo in (real, throwaway):
+        repo.mkdir(parents=True)
+    entries = [_edit(p / "f.py") for p in (real, throwaway)]
+
+    def runner(argv, cwd=None):
+        if "rev-parse" in argv and "--show-toplevel" in argv:
+            return harvest.Ran(tuple(argv), 0, str(argv[2]) + "\n", "")
+        return harvest.Ran(tuple(argv), 0, "", "")
+
+    set_aside: list[Path] = []
+    swept = harvest._touched_repos(runner, [], entries, set_aside)
+    assert swept == [real]
+    assert set_aside == [throwaway]
+    # Asked for by name, it is swept.
+    assert harvest._touched_repos(runner, [str(throwaway)], [], []) == [throwaway]
+
+
 def test_a_bootstrap_script_counts_as_a_manifest(tmp_path):
     """The unpinned bootstrap is the mechanism that makes a push a deploy, so the file that carries
     it has to be one of the places a consumer is recognised from."""

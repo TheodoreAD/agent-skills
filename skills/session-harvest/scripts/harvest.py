@@ -52,6 +52,7 @@ if sys.version_info[:2] < (3, 11):  # noqa: UP036 — runs exactly where require
 
 import argparse
 import ast
+import fnmatch
 import ipaddress
 import json
 import os
@@ -59,6 +60,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import tomllib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
@@ -2456,7 +2458,9 @@ CONSUMER_MANIFEST_GLOBS = ("bootstrap-*.sh",)
 CONSUMER_DOCS = ("contributing/consumer-sweep.md", "CONSUMERS.md", "docs/consumers.md")
 
 
-def consumer_candidates(root: Path, repos: Sequence[Path], depth: int = 3) -> list[dict[str, Any]]:
+def consumer_candidates(
+    root: Path, repos: Sequence[Path], depth: int = 3, entries: Sequence[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     """Repos on this machine that install a repo this session changed.
 
     **Every other check in step 5 is about this machine's own state; this one is about what a push
@@ -2495,8 +2499,56 @@ def consumer_candidates(root: Path, repos: Sequence[Path], depth: int = 3) -> li
         consumers = [str(other) for other in others if other.resolve() != repo.resolve() and _installs(other, name)]
         docs = [doc for doc in CONSUMER_DOCS if (repo / doc).is_file()]
         if consumers or docs:
-            found.append({"repo": str(repo), "consumers": consumers, "docs": docs})
+            row: dict[str, Any] = {"repo": str(repo), "consumers": consumers, "docs": docs}
+            if entries is not None:
+                row["trigger"] = _consumer_trigger(repo, docs, written_paths(entries))
+            found.append(row)
     return found
+
+
+WHEN_TO_SWEEP_RE = re.compile(r"^#+\s*when to sweep\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _consumer_trigger(repo: Path, docs: Sequence[str], written: Sequence[Path]) -> dict[str, Any] | None:
+    """What the repo's own consumer doc says obliges a sweep, against what this session changed there.
+
+    **The doc the check already names says when a push obliges a consumer, and the check used to not
+    read it.** Confirmed 2026-09-18: a `repo-tasks` harvest named five consumers and told the
+    session to report an obligation, for a push of a CI workflow, docs, plans and one test — none of
+    it under the paths the repo's own `contributing/consumer-sweep.md` lists under "When to sweep". A
+    warning that fires on every push to a widely installed repo is one the reader stops reading.
+
+    The trigger is read as the backticked paths in a "When to sweep" section: a trailing `/` is a
+    directory, a `*` a basename glob, anything else a path or basename. None means no trigger could
+    be read — no doc, no such section, no path in it — and the unconditional warning stands. One
+    specimen exists to generalise from, so that fallback stays loud rather than quietly empty.
+    """
+    for doc in docs:
+        try:
+            text = (repo / doc).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        heading = WHEN_TO_SWEEP_RE.search(text)
+        if heading is None:
+            continue
+        body = re.split(r"^#", text[heading.end() :], maxsplit=1, flags=re.MULTILINE)[0]
+        patterns = [token for token in re.findall(r"`([^`\s]+)`", body) if "/" in token or "." in token]
+        if not patterns:
+            continue
+        changed = sorted(
+            path.relative_to(repo).as_posix() for path in written if path.is_relative_to(repo) and path.suffix != ".md"
+        )
+        matched = [path for path in changed if any(_trigger_matches(path, pattern) for pattern in patterns)]
+        return {"doc": doc, "patterns": patterns, "matched": matched}
+    return None
+
+
+def _trigger_matches(path: str, pattern: str) -> bool:
+    if pattern.endswith("/"):
+        return path.startswith(pattern)
+    if "*" in pattern:
+        return fnmatch.fnmatch(path.rsplit("/", 1)[-1], pattern)
+    return path == pattern or path.rsplit("/", 1)[-1] == pattern
 
 
 COMMAND_NAME_RE = re.compile(r"<command-name>/([\w-]+)</command-name>")
@@ -2770,7 +2822,9 @@ def _is_library_entry(root: Path) -> bool:
     return root.parent.name == "repos" and (root / "SOURCE.md").is_file()
 
 
-def _touched_repos(runner: Runner, extra: Sequence[str], entries: Sequence[dict[str, Any]]) -> list[Path]:
+def _touched_repos(
+    runner: Runner, extra: Sequence[str], entries: Sequence[dict[str, Any]], scratch: list[Path] | None = None
+) -> list[Path]:
     """The repos to sweep: every git root the session wrote into or pointed a command at, plus
     `--repo`, and the current one when the transcript shows nothing.
 
@@ -2791,19 +2845,50 @@ def _touched_repos(runner: Runner, extra: Sequence[str], entries: Sequence[dict[
     holding a `SOURCE.md`, sitting directly under a `repos/` bucket. Both halves are the store's own
     convention rather than a path, so a library anywhere is excluded and an ordinary project that
     happens to carry a `SOURCE.md` is not.
+
+    **A repo under a scratch root is set aside too** — the temp directory or the harness's job
+    directories — and named in `scratch` rather than dropped. Confirmed 2026-09-18: a throwaway
+    repo a session `git init`-ed in its job scratchpad to probe one `git pull` question was swept as
+    a touched repo; its git section had no upstream, its CI section no GitHub host, and the
+    consumer check matched its basename, `clone`, in two unrelated repos' installers. Three sections
+    of output for a directory the harness deletes with the job. `--repo` still sweeps one.
     """
     library = Path(os.environ.get("RESEARCH_HOME", str(Path.home() / "research"))).expanduser()
     repos: dict[str, Path] = {}
-    candidates = [*(Path(p).expanduser() for p in extra), *written_paths(entries), *shell_targets(entries)]
-    for raw in candidates or [Path.cwd()]:
+    for raw in extra:
+        root = git_root(runner, Path(raw).expanduser())
+        if root is not None:
+            repos[str(root)] = root
+    set_aside: dict[str, Path] = {}
+    for raw in [*written_paths(entries), *shell_targets(entries)] or ([] if extra else [Path.cwd()]):
         root = git_root(runner, raw)
-        if root is not None and not root.is_relative_to(library) and not _is_library_entry(root):
+        if root is None or root.is_relative_to(library) or _is_library_entry(root):
+            continue
+        if _is_scratch(root):
+            set_aside[str(root)] = root
+        else:
             repos[str(root)] = root
     if not repos:
         root = git_root(runner, Path.cwd())
         if root is not None:
             repos[str(root)] = root
+            set_aside.pop(str(root), None)
+    if scratch is not None:
+        scratch.extend(sorted(path for key, path in set_aside.items() if key not in repos))
     return sorted(repos.values())
+
+
+def _scratch_roots() -> list[Path]:
+    """Where a session's throwaway repos live: the temp directory and the harness's job directories."""
+    return [Path(tempfile.gettempdir()).resolve(), (Path.home() / ".claude" / "jobs").resolve()]
+
+
+def _is_scratch(root: Path) -> bool:
+    try:
+        resolved = root.resolve()
+    except OSError:
+        return False
+    return any(resolved.is_relative_to(scratch) for scratch in _scratch_roots())
 
 
 def _stores() -> list[tuple[str, Path]]:
@@ -2824,7 +2909,8 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     transcript, transcript_note = _sweep_transcript(args)
     since = args.since or (transcript.started if transcript else None)
     entries = transcript.entries if transcript else []
-    repos = _touched_repos(runner, args.repo, entries)
+    scratch: list[Path] = []
+    repos = _touched_repos(runner, args.repo, entries, scratch)
     written = written_paths(entries)
     sections = set(args.only or [])
 
@@ -2849,7 +2935,7 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         "plans": lambda: {
             "depends_on": {str(path): depends_on(path) for path in repos},
             "superseded": superseded_candidates(entries, git_root(runner, Path.cwd())),
-            "consumers": consumer_candidates(projects_root(), repos),
+            "consumers": consumer_candidates(projects_root(), repos, entries=entries if transcript else None),
             "may_have_landed": plans_this_session_may_have_landed(entries, git_root(runner, Path.cwd()), since),
         },
         "paths": lambda: _sweep_loose_files(runner, entries, transcript is not None),
@@ -2865,6 +2951,8 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         # it collapses to the working directory — which is a narrower sweep wearing a complete
         # report's clothes. Measured 2026-09-03: one repo where the resolved run covered three.
         payload["repo_scope"] = "the working directory only — with no transcript the session's repo set is unknown"
+    if scratch:
+        payload["scratch_repos"] = [str(path) for path in scratch]
     for name, produce in producers.items():
         if wanted(name):
             payload |= produce()
@@ -2990,6 +3078,8 @@ def _print_sweep(payload: dict[str, Any]) -> None:
     print(f"# transcript: {transcript.get('path', transcript.get('note'))}")
     if payload.get("repo_scope"):
         print(f"# repos swept: {payload['repo_scope']}")
+    if payload.get("scratch_repos"):
+        print(f"# not swept, under a temp or job directory: {', '.join(payload['scratch_repos'])} (--repo sweeps one)")
     _print_processes(payload.get("processes"))
     _print_sockets(payload.get("sockets"))
     _print_disk(payload.get("disk"))
@@ -3032,13 +3122,27 @@ def _print_consumers(rows: list[dict[str, Any]] | None) -> None:
     if not rows:
         print("  none")
         return
+    owed = False
     for row in rows:
         print(f"    {row['repo']}")
         for consumer in row["consumers"]:
             print(f"      installed by: {consumer}")
         for doc in row["docs"]:
             print(f"      it documents what a consumer owes: {doc}")
-    print("  a push here is a deploy there — report it and file it; sweeping their tree is not yours to do")
+        trigger = row.get("trigger")
+        if trigger is None:
+            owed = owed or bool(row["consumers"] or row["docs"])
+            if row["docs"] and "trigger" in row:
+                print("      no trigger could be read from it (no 'When to sweep' section naming paths) — read it")
+        elif trigger["matched"]:
+            owed = True
+            print(f"      its own trigger fired: {', '.join(trigger['matched'])}")
+        else:
+            print(f"      its own trigger ({', '.join(trigger['patterns'])}) matches nothing this session wrote here")
+    if owed:
+        print("  a push here is a deploy there — report it and file it; sweeping their tree is not yours to do")
+    else:
+        print("  nothing owed by the repos' own triggers; the files compared are the ones written with edit tools")
 
 
 def _print_superseded(state: dict[str, Any] | None) -> None:

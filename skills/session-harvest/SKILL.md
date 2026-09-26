@@ -1015,6 +1015,15 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   report and the next-session prompt. The skill already knew this shape for exactly one repo, in the
   bullet above about a skill edit reaching nothing until pushed _and_ re-installed; that was the
   mechanism written as a special case.
+
+  **Where that doc states its trigger, the sweep reads it**, and the obligation line fires only when
+  this session's changes match it or no trigger can be read. Confirmed 2026-09-18: five consumers
+  and "report it and file it" for a push of a CI workflow, docs, plans and a test, none of it under
+  the paths the repo's own "When to sweep" section lists. A warning that fires on every push to a
+  widely installed repo is one the reader stops reading. The comparison covers files written with
+  the edit tools, which the section's closing line says. **And a repo under a temp or job directory
+  is not swept at all** — named on one line instead, since a throwaway `git init` in a scratchpad
+  degraded three sections and matched its basename, `clone`, as installed by two unrelated repos.
 - **Whether this session landed something one of _this_ repo's open plans designed.** The failure is
   a session that builds everything a plan specified, documents it, and never touches the plan: it
   goes on saying `idea` with open questions the code has answered, `absorb` never raises it because

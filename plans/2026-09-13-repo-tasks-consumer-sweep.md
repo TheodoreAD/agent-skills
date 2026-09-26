@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-13
+updated: 2026-09-26
 depends_on: [repo-tasks]
 ---
 
@@ -8,6 +8,13 @@ depends_on: [repo-tasks]
 
 Filed 2026-09-13 from a `repo-tasks` session. Nothing was written to this tree — the measurement is
 read-only, run from outside the repo, and no `pull`, `ensure-deps` or lock ran here.
+
+**Amended 2026-09-26** by merging in `2026-09-26-bootstrap-pin-decision-and-two-reported-items.md`,
+filed from `repo-tasks` session `a9904181-df08-4eb5-945e-8aab9336d457`. That filed plan described
+itself as an amendment to this one. It added the stamp step (step 7), corrected step 1's "no pin to
+bump", and marked two complement items as reported by `consumers.diff`. The decision behind the
+pinning is owned by `repo-tasks`' `plans/2026-08-25-consumer-transitions.md`: read it before
+implementing, since it may have moved on since.
 
 ## Why this arrives now, three days after being recorded as a consumer
 
@@ -40,6 +47,11 @@ as `0.3.0`):
 Four files and two missing manifest entries. `scaffoldapy` is behind on three files and no entries;
 `invoke-stubs` on two.
 
+**Re-measured 2026-09-26: the table above still holds item for item**, and `inv consumers.diff` now
+reports two more lines of its own, `bootstrap unpinned` and no caller for `security-reusable.yml`.
+Both used to be complement items that someone had to remember; the tool now reports them. See the
+sweep's step 7 and "What no diff can tell you" below.
+
 ## The one item that can turn this repo's gate red, and it is a real defect
 
 **`pyrightconfig.json` has no `pythonVersion`, so basedpyright validates against this repo's 3.14.5
@@ -70,9 +82,15 @@ other perfectly and neither is looking at 3.11.]
 
 `repo-tasks`' `contributing/consumer-sweep.md` is the authority; this is the per-repo shape.
 
-1. `inv repo-tasks.update` — one global step, not per-consumer. This repo takes `repo-tasks` as the
-   global `uv tool` install, so its **task code is already current**; only the pulled config files
-   and the dev group are snapshots that lag. There is no pin to bump here.
+1. `inv repo-tasks.update` — one global step, not per-consumer. Locally this repo takes `repo-tasks`
+   as the global `uv tool` install, so its **task code is current on this machine**; the pulled
+   config files and the dev group are snapshots that lag. **CI is a different matter, corrected
+   2026-09-26.** `bootstrap-repo-tasks.sh` here carries the unpinned form, `repo-tasks @ git+<url>`
+   with no `@vX.Y.Z`, and `ci.yml` runs it. So CI installs whatever `repo-tasks` `main` is at run
+   time, while a developer here is on whatever `update` last fetched, and a local green says nothing
+   about CI. The pin is step 7. Run `update` first for a second reason as well: the sweep runs
+   whatever `repo-tasks` this machine has installed, and one installed before 2026-09-26 has the
+   `configs.ensure-deps` bug described under step 5.
 2. `inv configs.pull`, then read the diff rather than accepting it — particularly the derived
    `pythonVersion` and `anyio_mode`, which are computed per consumer and so are not expected to
    match another repo's copy byte for byte.
@@ -80,7 +98,21 @@ other perfectly and neither is looking at 3.11.]
 4. Edit `hadolint-py` to `hadolint-py!=2.15.1.2` by hand — `ensure-deps` is additive and will not
    rewrite an entry already present.
 5. `inv configs.ensure-deps` for the two missing entries, `inv deps.lock`, sync.
-6. The gate, whole, then push and read CI.
+
+   [PITFALL: before 2026-09-26, `configs.ensure-deps` corrupted a consumer whose dev group opens
+   with an extras entry (`"pkg[extra]"`), because its array regex stopped at the first `]`. This
+   repo was never exposed: measured, all twelve of its dev entries parse out cleanly. The tell that
+   the installed tool predates the fix is `configs.diff` and `ensure-deps` disagreeing in one run,
+   the diff naming two missing entries while `ensure-deps` prints `added` for all fourteen.]
+
+6. The gate, whole.
+7. **`inv repo-tasks.stamp`, last, after the gate passes**, then push and read CI. Added 2026-09-26,
+   when `repo-tasks` settled its release question as **pinning** and its
+   `contributing/consumer-sweep.md` gained this step. It pins the version active in the process
+   running it, so running it after the gate records what this repo was actually verified against
+   rather than the newest tag. It needs the network, for the tag list. The old reason for being
+   unpinned, "until a tag exists", has been false since `v0.2.0` (2026-09-04) and `v0.3.0`
+   (2026-09-08), and nothing prompts a re-stamp here.
 
 [PITFALL: `requires-python` must exist before pulling `ruff.toml`, because the shipped copy no
 longer carries `target-version` and the linter reads the floor from that field instead. It does
@@ -93,11 +125,20 @@ exist here (`>=3.11`), so this is a check that passes rather than a blocker.]
   already calls `runner.configure(ns)` on that object. Recorded rather than left as a check, because
   this is the item where "the consumer looks fine" is not evidence: an unwired consumer's output is
   byte-identical to a wired one with the variable unset.
-- **The security workflow caller.** This repo has none — `ci.yml` and `tests-windows.yml` only. An
-  addition rather than a `configs.pull`, so nothing compares it: about six lines, a
-  `.github/workflows/security.yml` whose one meaningful line is a job-level `uses:` naming
-  `repo-tasks`' `security-reusable.yml` at a full 40-character SHA, readable version in a trailing
-  comment.
+- **The security workflow caller.** This repo has none — `ci.yml` and `tests-windows.yml` only. It
+  is an addition rather than a `configs.pull`: about six lines, a `.github/workflows/security.yml`
+  whose one meaningful line is a job-level `uses:` naming `repo-tasks`' `security-reusable.yml` at a
+  full 40-character SHA, with the readable version in a trailing comment. **Since 2026-09-26
+  `inv consumers.diff` reports it**, as a missing caller or one whose SHA is behind. It is now a
+  two-repo item rather than a family-wide one. `scaffoldapy` and `ingesta` both carry current
+  callers pinned `d17c607`, and `ingesta`'s was copied from `scaffoldapy`'s template. What is left
+  is this repo and `power-user-linux-setup`, which the template cannot reach. `d17c607` is right
+  only because `security-reusable.yml` has never been edited since, so copying either existing
+  caller verbatim is correct today, and the reporter is what notices when that stops being true.
+
+  [NEEDS CLARIFICATION: this repo has a Windows job (`tests-windows.yml`). Does the reusable
+  security workflow need anything said about it, or is it Linux-only by construction? Every existing
+  caller is in a Linux-only repo, so this is the first place the question arises.]
 - **The packaged-`tests/` decision.** `configs.pull` writes both halves of the config but cannot
   decide whether this repo wants `__init__.py` files under `tests/`. Stays deliberate.
 - **`venv.check` / `venv.recreate`.** Expect a mismatch on first run — 3.14.5 against a 3.11 floor,
@@ -122,7 +163,9 @@ entries have only ever been exercised on Linux here.
 [`2026-09-10-setup-uv-pins-two-majors-behind.md`](2026-09-10-setup-uv-pins-two-majors-behind.md),
 already filed for this repo. Both touch this repo's CI and both want a green run afterwards to mean
 something; two sessions would mean two ambiguous runs. Confirmed still current 2026-09-13: both
-workflows pin `astral-sh/setup-uv@v9.0.0`, and `actions/checkout` is already at `v7`.]
+workflows pin `astral-sh/setup-uv@v9.0.0`, and `actions/checkout` is already at `v7`. The security
+caller is a third CI change, which strengthens the case: one session, one green run, three CI
+changes.]
 
 [DEFERRED: record which way each prediction went, in this file, when the sweep runs. A prediction
 nobody scored is a guess.]

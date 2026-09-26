@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-13
+updated: 2026-09-26
 ---
 
 # `GATE_RE` has no term for the confidentiality scan, so a masked one reports as a listing
@@ -57,7 +57,12 @@ fix for the class is not: **every matcher in this skill that classifies a comman
 will under-report the gates nobody had in mind when the list was written**, and each under-report is
 silent and reads as a clean result. The gate/listing split is newer than the corpus it was derived
 from (a median of 14 distinct masked command shapes per session, per `masked_gate`'s own docstring),
-so the list has never been audited against the shapes it does not match.]
+so the list has never been audited against the shapes it does not match.
+
+A third instance followed on 2026-09-26, on `claims` again: a gate-green claim that never uses the
+word "gate". It is kept as its own plan,
+[`2026-09-26-claims-misses-a-gate-green-said-without-the-word-gate.md`](2026-09-26-claims-misses-a-gate-green-said-without-the-word-gate.md),
+because its fix is on a different matcher.]
 
 [NEEDS CLARIFICATION: **Which terms to add, and whether a word list is the right mechanism at all.**
 The narrow fix is one alternation — `plans\.py\s+scan`, and probably `scan\s+--mode` for the

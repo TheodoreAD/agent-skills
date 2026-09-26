@@ -1315,6 +1315,53 @@ def test_an_open_plan_about_a_file_this_session_changed_is_offered_back(tmp_path
     )
 
 
+def _open_plan(repo: Path, name: str, body: str) -> None:
+    (repo / "plans" / name).write_text(f"---\nstatus: idea\nupdated: 2026-09-01\n---\n\n{body}\n")
+
+
+def test_rows_naming_only_the_repos_vocabulary_fold_into_a_count(tmp_path, capsys):
+    """Measured 2026-09-26 on a replayed setup-repo session: 15 rows, 11 matching only `setup.toml`,
+    which is the subject of 23% of that repo's open plans — its vocabulary, not a signal about one
+    plan. The rows that also named `netdoctor.py` or `wsl.py` were the informative ones."""
+    repo = tmp_path / "repo"
+    (repo / "plans").mkdir(parents=True)
+    for i in range(5):
+        _open_plan(repo, f"2026-09-01-config-{i}.md", "setup.toml " * 3)
+    _open_plan(repo, "2026-09-01-wsl.md", "setup.toml " * 3 + "wsl.py " * 3)
+    _open_plan(repo, "2026-09-01-util.md", "util.py " * 3)
+    for i in range(13):
+        _open_plan(repo, f"2026-09-01-unrelated-{i}.md", "nothing here")
+    entries = [_edit(repo / name) for name in ("setup.toml", "wsl.py", "util.py")]
+
+    found = harvest.plans_this_session_may_have_landed(entries, repo, "2026-09-05T09:00:00Z")
+    assert found["open_plans"] == 20
+    assert found["vocabulary"] == {"setup.toml": 6}
+    assert sum(row["vocabulary_only"] for row in found["candidates"]) == 5
+
+    harvest._print_may_have_landed(found)
+    out = capsys.readouterr().out
+    assert "2026-09-01-wsl.md" in out, "a row that also names a specific file stays listed"
+    assert "2026-09-01-util.md" in out
+    assert "2026-09-01-config-0.md" not in out
+    assert "+ 5 more name only setup.toml (setup.toml is the subject of 6 of 20 open plans here)" in out
+
+    harvest._print_may_have_landed(found, verbose=True)
+    out = capsys.readouterr().out
+    assert all(f"2026-09-01-config-{i}.md" in out for i in range(5))
+    assert "more name only" not in out
+
+
+def test_a_small_repo_never_folds_on_share_alone(tmp_path):
+    """1 of 8 open plans is already 12%, so share needs a count floor or a small repo folds everything."""
+    repo = tmp_path / "repo"
+    (repo / "plans").mkdir(parents=True)
+    for i in range(4):
+        _open_plan(repo, f"2026-09-01-config-{i}.md", "setup.toml " * 3)
+    found = harvest.plans_this_session_may_have_landed([_edit(repo / "setup.toml")], repo, "2026-09-05T09:00:00Z")
+    assert found["vocabulary"] == {}
+    assert not any(row["vocabulary_only"] for row in found["candidates"])
+
+
 def test_a_session_that_changed_no_source_file_searches_nothing(tmp_path, monkeypatch):
     """Documents are excluded on purpose: a plan naming another plan is a citation, which
     `plan-docs`' own `refs` answers, and searching for `.md` basenames would hit every retirement."""

@@ -1035,7 +1035,12 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   2026-09-08 across 8 repos and 167 open plans, 43% name a source file that moved after them, which
   is noise, and the subject proxy only brings it to 14%. What is left is structural: a session that
   edits a file makes every plan about that file look stale. `set-status` stays the only thing that
-  moves a status.
+  moves a status. **A file that is the subject of 5+ open plans and 15%+ of them is folded**: rows
+  matching only such a file become one counted line, and `--verbose` lists them. Confirmed
+  2026-09-26: a setup-repo session's 15 rows became 4 rows and one line, because 11 matched only the
+  repo's own config file. The same rule folds a genuinely central file (`plans.py` here, 20%) —
+  accepted, since the line still names it, and the session that landed a design knows which plan it
+  built.
 - **What this session made stale somewhere else** — the reactive bullet above turned around. Every
   other check here asks what is dangling _for_ this session; a plan in another repo describing a
   mechanism this session just replaced is the inverse, and nothing else surfaces it: not dangling,

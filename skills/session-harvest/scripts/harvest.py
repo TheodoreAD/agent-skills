@@ -2584,6 +2584,8 @@ def plans_this_session_may_have_landed(
     if not names or session_repo is None:
         return {"names": names, "candidates": []}
     found: list[dict[str, Any]] = []
+    open_plans = 0
+    subject_of: Counter[str] = Counter()
     for plan in sorted((session_repo / "plans").glob("*.md")):
         try:
             text = plan.read_text(encoding="utf-8", errors="replace")
@@ -2592,13 +2594,33 @@ def plans_this_session_may_have_landed(
         status, updated = _plan_frontmatter(text)
         if not any(status.startswith(open_status) for open_status in OPEN_PLAN_STATUSES):
             continue
+        open_plans += 1
+        subjects = sorted({name for name in names if text.count(name) >= 3})
+        subject_of.update(subjects)
         # Only a plan that predates this session can have been landed *by* it and left behind.
         if since and updated and updated > since[:10]:
             continue
-        subjects = sorted({name for name in names if text.count(name) >= 3})
         if subjects:
             found.append({"plan": plan.name, "status": status, "updated": updated, "names": subjects})
-    return {"names": names, "candidates": found}
+    vocabulary = {
+        name: count
+        for name, count in subject_of.items()
+        if count >= VOCABULARY_MIN_PLANS and count >= VOCABULARY_MIN_SHARE * open_plans
+    }
+    for row in found:
+        row["vocabulary_only"] = all(name in vocabulary for name in row["names"])
+    return {"names": names, "candidates": found, "open_plans": open_plans, "vocabulary": vocabulary}
+
+
+# A changed file that is the subject of this many of the repo's open plans reads as the repo's
+# vocabulary, and a row matching nothing else is folded into a count. Both floors, because share
+# alone inflates in a small repo: 1 of 8 open plans is already 12%. Measured 2026-09-26: the setup
+# repo's `setup.toml` at 15 of 65 (23%), real subjects there at 1 or 2 plans; no other repo in the family
+# above 12%, each on a single plan. The same count also folds `plans.py` here (10 of 51), which is
+# a real subject — accepted, since the counted line still names it and the session that landed a
+# design is the one that knows which plan it built. Decided by the user the same day.
+VOCABULARY_MIN_PLANS = 5
+VOCABULARY_MIN_SHARE = 0.15
 
 
 def _plan_frontmatter(text: str) -> tuple[str, str]:
@@ -2959,7 +2981,7 @@ def cmd_sweep(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 
     if args.json:
         return payload
-    _print_sweep(payload)
+    _print_sweep(payload, getattr(args, "verbose", False))
     return payload
 
 
@@ -3070,7 +3092,7 @@ def _resolved(path: object) -> str:
         return str(path)
 
 
-def _print_sweep(payload: dict[str, Any]) -> None:
+def _print_sweep(payload: dict[str, Any], verbose: bool = False) -> None:
     """The grouped report. One printer per section, because the sections are read separately."""
     print(f"# boundary: {payload.get('boundary') or '(none passed — pass --boundary)'}")
     print(f"# session started: {payload.get('session_started')}")
@@ -3096,11 +3118,11 @@ def _print_sweep(payload: dict[str, Any]) -> None:
         _print_depends_on(repo, tagged)
     _print_superseded(payload.get("superseded"))
     _print_consumers(payload.get("consumers"))
-    _print_may_have_landed(payload.get("may_have_landed"))
+    _print_may_have_landed(payload.get("may_have_landed"), verbose)
     _print_loose_files(payload)
 
 
-def _print_may_have_landed(state: dict[str, Any] | None) -> None:
+def _print_may_have_landed(state: dict[str, Any] | None, verbose: bool = False) -> None:
     if state is None:
         return
     print("\n== this repo's open plans naming a file this session changed ==")
@@ -3108,9 +3130,20 @@ def _print_may_have_landed(state: dict[str, Any] | None) -> None:
     if not rows:
         print("  none")
         return
+    folded = [] if verbose else [row for row in rows if row.get("vocabulary_only")]
     for row in rows:
+        if row in folded:
+            continue
         print(f"    {row['plan']}  [{row['status']}, updated {row['updated']}]")
         print(f"      names: {', '.join(row['names'])}")
+    if folded:
+        vocabulary = state.get("vocabulary") or {}
+        names = sorted({name for row in folded for name in row["names"]})
+        shares = ", ".join(f"{name} is the subject of {vocabulary.get(name)}" for name in names)
+        print(
+            f"  + {len(folded)} more name only {' or '.join(names)} ({shares} of "
+            f"{state.get('open_plans')} open plans here) — --verbose lists them"
+        )
     print("  did this session land what any of these designed? if so, bump it with set-status")
     print("  limit: a prompt, not a verdict — measured 2026-09-08 at 14% of open plans family-wide")
 
@@ -4025,6 +4058,9 @@ def build_parser() -> argparse.ArgumentParser:
     sweep.add_argument("--since", help="session start (default: the transcript's first timestamp)")
     sweep.add_argument("--no-fetch", action="store_true", help="skip git fetch (offline, or no ssh agent)")
     sweep.add_argument("--checkout", help="path to the agent-skills checkout, for plans.py")
+    sweep.add_argument(
+        "--verbose", action="store_true", help="list every row, including those folded into a count line"
+    )
     sweep.add_argument(
         "--only",
         action="append",

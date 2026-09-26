@@ -438,12 +438,47 @@ variations need the other mechanisms:
   banner, which is the only mechanism that makes a variation provably of the same family rather than
   merely prompted alike.
 
-[UNVERIFIED: **whether NightCafe offers a start image or style reference on the models in use.** Its
-terms of service discuss input images explicitly — the intellectual-property transfer is conditioned
-on holding the rights to any input image — so the feature exists in some form; which models accept
-one, and whether it is a style reference or an image-to-image strength, is unchecked. This matters
-more than any other open question about the generator, because it is what turns "variations on a
-theme" from a hope into a procedure.]
+**Answered 2026-09-26, and the answer splits the question in two.** The user confirmed the feature
+exists ("it does allow it, but I'm not sure what strength") and asked for it to be looked up. From
+NightCafe's own help centre and model pages — a page read, not a clone, because it is a closed
+vendor with no public repository:
+
+- **The control is called `Noise Weight`**, and it is inverted from what "strength" suggests: the
+  help centre defines it as how much noise to add to the start image, so **higher noise weight means
+  the result looks _less_ like the start image**. A procedure that says "strength 0.3" would be
+  ambiguous here; it has to say which way the slider runs.
+- **The mechanism is not one mechanism.** Some models take a start image and a continuous knob; the
+  newer ones take an instruction instead. `FLUX.1 Kontext` is described as instruction-based editing
+  with no strength parameter at all, where sameness is asked for in words — "maintain identical
+  subject placement", "everything else should remain unchanged". `Flux 2` and `Nano Banana 2/Pro`
+  advertise "consistent characters" and "first-class start-image support", which is this plan's
+  variation problem named as a product feature.
+
+[DECISION: the variation mechanism is therefore chosen with the model, not after it. The step that
+said "where the generator supports it, a start image or style reference" was assuming one knob
+existed on whatever model was already picked. It does not: picking `Kontext` buys instruction-based
+sameness and no knob, picking a start-image model buys a knob and no instruction, and picking
+`Flux PRO v1.1` may buy neither. So the slot's model and its variation mechanism are one decision
+recorded together.]
+
+[UNVERIFIED: **`Flux PRO v1.1`, the model this plan's manifest pins, is not documented as taking a
+start image at all.** The models guide enumerates start-image support explicitly for GPT Image
+2/2.5, Muse, Nano Banana 2/Pro, Seedream, the Flux 2 family, Qwen, Grok and Flux Kontext — and does
+not list it for Flux PRO v1.1, whose own model page describes Raw Mode and prompt adherence and no
+input image. Two silences where others are explicit is evidence, not proof, and the decisive check
+is the UI: open a Flux PRO v1.1 creation and look for the start-image control. **One click, and it
+decides whether this plan's pinned model survives.**]
+
+[UNVERIFIED: **the numeric range and default of `Noise Weight` are not published anywhere.** Four
+sources describe it as a slider and none gives values. It is readable off the UI in seconds and is
+not worth another search. Record it in the manifest once seen, because a variation procedure that
+cannot state the number cannot be repeated.]
+
+[PITFALL: the model lineup moved under this plan. It was written pinning `Flux PRO v1.1` on
+2026-09-13; by 2026-09-26 the help centre's guide is organised around `Flux 2`, `Flux 2 Klein`,
+`GPT Image 2.5` and `Nano Banana 2`. "The same model, recorded per slot" is still right — a model
+change is a style change — but a pinned model on a hosted generator is a decision with a shelf life,
+and the manifest should record when the pin was last confirmed to exist.]
 
 **Schema consequence:** a slot is no longer identified by surface alone. `readme-banner` and
 `docs-banner` for bare metal, WSL and dev container are four slots of two surfaces, so the manifest

@@ -3865,7 +3865,9 @@ def _attach_one(cfg: Config, routing: Routing, plan: PlanFile, source: Path, *, 
 
 def _print_attached(plan: Path, entries: list[Attached]) -> None:
     for entry in entries:
-        where = "committed" if entry.committed else "local only"
+        # A placement, not an act: "committed" read as past tense and sent a session to `git status`
+        # to find the plan modified and the attachment untracked. Confirmed 2026-09-18.
+        where = "to commit with the plan" if entry.committed else "local only"
         print(f"attached: {entry.name} -> {entry.destination}  ({where}, {human_size(entry.size)})")
     print(f"recorded: {plan}")
     if any(not entry.committed for entry in entries):

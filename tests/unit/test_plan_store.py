@@ -4133,3 +4133,14 @@ def test_the_commit_limit_is_configurable_and_a_bad_value_is_restored(ws):
 
     assert plans.main(["config", "set", "attachments.commit_limit_kb", "-1", "--path", str(ws.personal)]) == 1
     assert plans.load_config().commit_limit_kb == 4096, "a rejected value is restored, never left on disk"
+
+
+def test_attach_output_names_a_placement_not_an_action(tmp_path, capsys):
+    """`(committed, 1 KB)` read as past tense; `git status` then showed the plan modified and the
+    attachment untracked, and a session on a shared store wondered what it had left dirty.
+    Confirmed 2026-09-18."""
+    entry = plans.Attached(name="probe.py", destination=tmp_path / "probe.py", committed=True, size=900, digest="")
+    plans._print_attached(tmp_path / "plan.md", [entry])
+    out = capsys.readouterr().out
+    assert "(to commit with the plan, " in out
+    assert "(committed," not in out

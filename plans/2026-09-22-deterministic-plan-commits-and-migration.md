@@ -370,3 +370,7 @@ What the rename bought, concretely: the help text lost the clause explaining tha
 body, the permanent-record refusal lost "not a clause", and a paragraph of SKILL.md arguing with the
 name became a DECISION recording why it changed. The standard the name cannot carry — what the
 change is for, what it beat, what it cost — stays at every prompt, and a test pins it there.]
+
+## Attachments
+
+- `body_measure.py` — committed, 2 KB, attached 2026-09-26

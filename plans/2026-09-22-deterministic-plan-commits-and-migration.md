@@ -303,7 +303,16 @@ now states the body standard for exactly that reason, but the only evidence eith
 `--why` bodies written in the session that designed the flag — 257 to 1,156 characters against a
 corpus median of 716 for repo-held plan commits. Comparable, and worthless as a sample:
 self-selected, primed, and the thinnest of them was the first one written. Re-measure body length
-**and** whether bodies still name an alternative, which is the part a thin one drops first.]
+**and** whether bodies still name an alternative, which is the part a thin one drops first.
+
+**First independent re-measure, 2026-09-26: holding, n=4.** Every derived-subject plan commit after
+`6f3e22c` (2026-09-22T21:09) across the personal repos and the store, excluding the designing
+session's and the measuring session's own: `59e2dc6` 1,524 chars, `6ba5bb5` 1,118, `e5030a0` 412,
+`f8f134e` 187. Median 765 against the corpus's 716, and all four name what they beat or left open
+("one up-front guard rather than the restructuring the entry expected"; a 3.14 config run as the
+control, "Pylance is not covered"). The shortest is short because its change is one clause, which
+the standard allows. Stays open: four bodies from two sessions is a direction, not a rate. Re-run
+the same query at ~20.]
 
 [DECISION: a status change is worth asking about after all, against the initial guess that it is not
 — but the reason is that it is **rare**, not that it is rich. Seven status-only commits exist in

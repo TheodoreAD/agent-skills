@@ -27,6 +27,13 @@ Every subcommand takes --json.
 
 from __future__ import annotations
 
+import sys
+
+# Before any import below: `datetime.UTC` is 3.11+, and on 3.10 the failure would otherwise be an
+# ImportError naming a stdlib module, with nothing pointing at the interpreter.
+if sys.version_info[:2] < (3, 11):  # noqa: UP036 — runs exactly where requires-python is not enforced
+    sys.exit(f"fitness.py needs Python 3.11 or newer; this is {sys.version.split()[0]} ({sys.executable})")
+
 import argparse
 import ast
 import io
@@ -36,7 +43,6 @@ import re
 import shlex
 import signal
 import subprocess
-import sys
 import tarfile
 import tempfile
 import time

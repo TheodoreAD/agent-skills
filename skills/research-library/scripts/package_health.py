@@ -26,13 +26,19 @@ Exit codes: 0 ok, 1 error, 2 argparse usage.
 
 from __future__ import annotations
 
+import sys
+
+# Before any import below: `datetime.UTC` is 3.11+, and on 3.10 the failure would otherwise be an
+# ImportError naming a stdlib module, with nothing pointing at the interpreter.
+if sys.version_info[:2] < (3, 11):  # noqa: UP036 — runs exactly where requires-python is not enforced
+    sys.exit(f"package_health.py needs Python 3.11 or newer; this is {sys.version.split()[0]} ({sys.executable})")
+
 import argparse
 import json
 import re
 import signal
 import statistics
 import subprocess
-import sys
 import urllib.error
 import urllib.request
 from collections import Counter

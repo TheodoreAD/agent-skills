@@ -647,6 +647,22 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   nothing went wrong and the sweep still could not see it, so a wrong edit would have been equally
   invisible.
 
+  **Recovering one is often a command, not a sentence, and which command turns on whether the file's
+  question recurs.** Three dispositions:
+  - **Evidence for one finding a plan records** — a probe or repro in the scratchpad: `plan-docs`'
+    `attach` copies it beside the plan and records it there, and it retires with the plan. Confirmed
+    2026-09-18: a harvest reported a reproducer as having no copy anywhere, correctly by the text
+    above and one command short; `attach … --commit` closed it.
+  - **A diagnostic the next incident will want** — promote it into the repo as a script by the
+    repo's own convention. An attachment is deleted with its plan, and "filed somewhere stable" is
+    easy to mistake for "still present": confirmed 2026-09-20, the same session pulled one probe
+    back out of its retiring plan into the repo, because the question it answers recurs.
+  - **A live config outside every tree** — neither. A copy is a stale duplicate of a file that keeps
+    changing, so the finding is stated plainly, as the 2026-09-01 instance was.
+
+  Which `attach` flag applies, and why a local attachment is invisible to `scan`, is `plan-docs`' to
+  say; read it there before attaching a file you have not read.
+
   **This check and its neighbour — paths written into files that do not exist — read nothing but the
   transcript, so both print `none` or `skipped` and never nothing at all.** Until 2026-09-08 they
   vanished from the report whenever no transcript resolved: absent rather than empty, in a report

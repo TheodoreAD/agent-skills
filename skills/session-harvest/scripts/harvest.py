@@ -3289,7 +3289,7 @@ def _print_loose_files(payload: dict[str, Any]) -> None:
         "files written outside every repository",
         payload.get("written_outside_any_repo") or [],
         limit=state.get("limit", ""),
-        suffix="   (no diff, no history — say what would recover it)",
+        suffix="   (no diff, no history — attach it, promote it, or say plainly that nothing recovers it)",
     )
     # Directly under that list rather than beside the generic limit: the number is only useful where
     # the reader is looking at the rows it qualifies.

@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-20
+updated: 2026-09-26
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 70f5fe13-9f1a-40f4-84ac-5ce4fd98a163.jsonl
 source_moment: 2026-09-20T21:20:10+03:00
@@ -68,8 +68,21 @@ one.]
 
 ## Recommended direction
 
-1. Add `ci.yml` and `util.py` to `SUBJECTLESS_NAMES`, which is the part that is unambiguous and
-   costs two strings.
+1. ~~Add `ci.yml` and `util.py` to `SUBJECTLESS_NAMES`, which is the part that is unambiguous and
+   costs two strings.~~ **Not unambiguous — checked 2026-09-26 while implementing it, and not
+   done.** The list's own comment in `harvest.py` admits only names a tool fixes for every package
+   and **deliberately excludes config one repo propagates to consumers**, because a consumer's plan
+   naming such a file may be about the change. `ci.yml` is exactly that: `scaffoldapy` ships
+   `template/.github/workflows/ci.yml` into every project it generates, so a session changing it is
+   the case where a sibling plan naming `ci.yml` matters most. And `util.py` is not "in every repo":
+   the family has one real one (`power-user-linux-setup/tasks/util.py`) plus a vendored `invoke`
+   copy in a playground. It is a conventional name, not a tool-fixed one, so the list's criterion
+   does not admit it either. Both belong with `setup.toml` in step 2: **a name can match everywhere
+   in prose without being scaffolding on disk**, and that is a different filter from this list, not
+   an extension of it. The candidate worth weighing there is matching the changed file's
+   repo-relative path (`.github/workflows/ci.yml` in `scaffoldapy/template/` versus a consumer's
+   own) rather than its basename, which would separate "a plan about my `ci.yml`" from "a plan about
+   the canonical one" without a list at all.
 2. Decide the `setup.toml` shape — a second, machine-specific list of shared-vocabulary names, or
    accept it as a known noise source and say so in the section's own `limit:` line, which is where
    the skill puts its other honest gaps.

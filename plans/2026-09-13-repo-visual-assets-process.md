@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-20
+updated: 2026-09-26
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 81f41ac7-aec7-45e2-8d84-aad642024a13.jsonl
 source_moment: 2026-09-13T16:14:15Z
@@ -527,6 +527,106 @@ a 1:1 creation at the account's "High" resolution, both URL forms are 1600 on th
 this without upscaling**, and a 21:9 crop of a 1600 square is 1600×686. What a 16:9 generation
 returns, and what the account's upscale step produces, is the one thing still unmeasured — and it is
 now the pilot's first question rather than the metadata dump, which is answered.]
+
+### 1i. Which generator to pay for, if either — researched 2026-09-26
+
+Asked because NightCafe's free tier has stopped being usable for this: in the user's words, it
+"doesn't offer any good models on the free plan, even with credits accumulated". So the live
+question became a subscription to NightCafe or to Google, with NightCafe's breadth of models as the
+thing that might justify it. **Both stay on the table pending the user's own testing** — what
+follows is the evidence to decide with, not the decision.
+
+**The finding that reshapes the comparison: NightCafe resells the same models.** Its own models
+guide lists `Nano Banana Pro` and `Nano Banana 2` — Google's `Gemini 3 Pro Image` and
+`Gemini 3.1 Flash Image` — as PRO-only, alongside GPT Image, Seedream, Qwen, Grok and the Flux 2
+family. So this is not one vendor's models against another's. It is **the same model at two
+prices**, plus a library either side of it.
+
+#### The price of the same model
+
+NightCafe is credit-metered and `Nano Banana Pro` costs ~11 credits a generation, `Nano Banana 2`
+~7. Its PRO tiers, from its own plans page:
+
+| plan                    | monthly | fast credits | Nano Banana Pro images | effective   |
+| ----------------------- | ------- | ------------ | ---------------------- | ----------- |
+| NightCafe AI Beginner   | $7.49   | 100          | ~9                     | ~$0.83 each |
+| NightCafe AI Hobbyist   | $12.49  | 200          | ~18                    | ~$0.69 each |
+| NightCafe AI Enthusiast | $24.99  | 500          | ~45                    | ~$0.55 each |
+| Google, API             | usage   | —            | unbounded              | **$0.134**  |
+| Google, Gemini free     | $0      | —            | 20/day                 | **$0**      |
+
+Four to six times, for identical output. NightCafe's "first creation each day free" caps at four
+credits-equivalent, so it does not reach either Nano Banana. Two things genuinely favour NightCafe:
+**fast credits roll over and never expire**, which suits bursty work, and PRO includes a _consistent
+characters_ feature (3–50 per tier) aimed at this plan's own variation problem.
+
+[DECISION: **breadth is an exploration asset and a production hazard, so it does not settle this.**
+Finding a look benefits from many models; producing variations on an accepted look needs one model
+held still — this plan already says a model change is a style change. The pilot repo is past
+exploration: it has an accepted banner and a look paragraph, and what remains is production, where a
+library of forty is forty ways to break the family. The honest counter is that one theme per repo
+means exploration recurs with every new repo — but that argues for _access_ during exploration, not
+for a subscription, because free tiers cover exactly that phase.]
+
+#### Google's surfaces, because the naming hides the important line
+
+| surface                          | what it is                                        | driven by | subscription applies |
+| -------------------------------- | ------------------------------------------------- | --------- | -------------------- |
+| Gemini app, `gemini.google.com`  | consumer chat with image generation               | the user  | **yes**              |
+| AI Studio, `aistudio.google.com` | developer web UI; where API keys are minted       | the user  | quota only           |
+| Gemini API                       | programmatic                                      | the agent | **no**               |
+| Vertex AI                        | same models through GCP, project and IAM ceremony | —         | no                   |
+
+[PITFALL: **no consumer Google subscription grants API access, at any tier.** Google's developer
+docs say it outright — "Google AI plan benefits for developer usage apply only within the Google AI
+Studio web interface", and "Direct use of the Gemini API (such as using API keys or external
+applications) is billed and managed separately". A subscription bought to enable automation would
+buy none. The API is separate, pay-per-request, and cheap at this plan's volume.]
+
+[PITFALL: **the visible Gemini watermark is a setting, not a tier.** Several secondary sources claim
+it requires Ultra to remove; Google's support documentation describes a plain toggle at _Settings →
+Media watermark_, un-gated except in India, South Korea and Vietnam where it needs Ultra. The
+invisible SynthID mark is permanent and does not affect commercial rights. Checked because a visible
+watermark on a published banner would have been disqualifying, and the wrong answer was the easy one
+to find.]
+
+[DECISION: **`gemini-cli` is not a route to this.** Read from the clone in the research library at
+`cfbcaa8`, 2026-09-18, rather than from its marketing: it is a coding agent with no image-generation
+surface at all — the only "image" matches in the tree are Docker images in its sandbox code. Worth
+recording because it is the option the name most invites, and ruling it out costs one grep.]
+
+#### What the volume implies, which is the part that decides it
+
+This plan's demand is dozens of images in bursts, when a repo needs assets. That profile is poor for
+any monthly subscription and fine on a free tier: Google's free tier gives 20 images a day with
+reference-image support, which is more per day than NightCafe's cheapest PRO tier gives per month.
+
+**The test that should precede either purchase, and costs nothing:** take the already-accepted
+banner, feed it back as a reference image on the free tier, and generate three variations. That is
+the plan's most important open question — whether reference-image consistency yields variations
+provably of the same family — answered with real images instead of documentation, before any money
+moves.
+
+[DEFERRED: **the subscription decision itself, pending the user's own testing.** Both options remain
+open. NightCafe wins if breadth proves to matter in practice rather than in principle, or if keeping
+the archive, the workflow and this plan's existing shape is worth the 4–6× premium; Google wins on
+price, on the free tier covering this volume outright, and on the API route below. Annual NightCafe
+billing was 50% off a first year through 2026-10-11, which narrows the gap without closing it.]
+
+[DEFERRED: **the API route would dissolve a constraint this plan currently treats as fixed.** The
+design inherits "generation stays manual" from NightCafe having no public API, and several decisions
+hang off it: the archive living on the generator's site, the hand-maintained manifest, and reading
+parameters back out of PNG text chunks. Generating through the Gemini API instead would put the
+images in the repo and the parameters in the manifest because they were passed rather than
+transcribed. Larger than the subscription question and not to be bundled with it — but it is the
+reason the subscription question is worth getting right.]
+
+[UNVERIFIED: three figures here are search-summary depth and were not confirmed against a primary
+source: the free tier's exact image allowance, `Nano Banana Pro`'s exclusion from the free **API**
+tier, and the commercial-use terms for generated images. The first two are visible in the UI the
+moment an API key is minted. **The third matters most and is the one to check before publishing
+anything** — these are assets that go into public repositories, and "you own the output" was read
+off secondary sites rather than off Google's terms.]
 
 ### 2. One file per repo that says what it needs and what it has
 

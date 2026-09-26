@@ -1026,7 +1026,13 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   turns an edit to a well-discussed file into a page of true-but-useless rows. **Nor is a name every
   package has its own copy of** (`__init__.py`, `pyproject.toml`, and the like, printed as
   `not searched`) — the lesson the written-paths check above learned first. Confirmed 2026-09-13: 22
-  of 24 rows matched only those two names, and the two real rows sat below them.
+  of 24 rows matched only those two names, and the two real rows sat below them. **And a plan
+  elsewhere counts only if one of its paragraphs names the file's repo too**, unless the plan lives
+  in that repo's checkout or store mirror: the subject is this repo's `ci.yml`, not any file called
+  that. Re-run 2026-09-26 on a session that changed `setup.toml`, `ci.yml` and `util.py` in the
+  machine's setup repo: 19 rows by basename, 4 with the rule, and each of the 4 was about that
+  repo's files. The trade is a plan that refers to the repo only obliquely, which the section's own
+  `limit:` line states.
 
 ### 6. Improve the skill on every run
 

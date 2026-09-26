@@ -2327,6 +2327,28 @@ def changed_source_names(entries: Sequence[dict[str, Any]]) -> list[str]:
     return sorted({p.name for p in written_paths(entries) if p.suffix in SOURCE_SUFFIXES})
 
 
+def _owning_repo(path: Path) -> Path | None:
+    """The nearest ancestor holding a `.git` — what a plan elsewhere would have to name."""
+    return next((parent for parent in path.parents if (parent / ".git").exists()), None)
+
+
+def changed_source_owners(entries: Sequence[dict[str, Any]]) -> dict[str, set[str]]:
+    """Each changed source basename, with the name of every repo it was changed in; empty if none."""
+    owners: dict[str, set[str]] = {}
+    for path in written_paths(entries):
+        if path.suffix in SOURCE_SUFFIXES:
+            repo = _owning_repo(path)
+            owners.setdefault(path.name, set()).update({repo.name} if repo else set())
+    return owners
+
+
+def _names_file_of_repo(text: str, name: str, repo: str) -> bool:
+    """Whether one paragraph names both the file and its repo — a whole-file test is too loose, since
+    a long plan mentions a widely-used repo somewhere and its own `ci.yml` somewhere else."""
+    pattern = re.compile(rf"(?<![\w.-]){re.escape(repo)}(?![\w-])")
+    return any(name in para and pattern.search(para) for para in re.split(r"\n\s*\n", text))
+
+
 def plans_directories(root: Path, exclude: Path | None, depth: int = 3) -> list[Path]:
     """Every checkout under the projects root that keeps a `plans/`, except the session's own."""
     return [
@@ -2369,14 +2391,29 @@ def superseded_candidates(entries: Sequence[dict[str, Any]], session_repo: Path 
     `selfinstall.py` are each in one. Counting how many plans *mention* a name was rejected as the
     filter: `plans.py` is named by 38 plans across five repos precisely because it is one shared
     file, which is the signal. The skipped names are printed, so the omission is visible.
+
+    **A plan must also name the repo the file lives in, in the same paragraph, unless it lives in that
+    repo itself** — its checkout's `plans/` or its store mirror. Re-run on the 2026-09-20 session:
+    19 rows by basename, 9 with a whole-file test, 4 by paragraph, each of the 4 about that repo's
+    own files. The basename alone matched every sibling's own copy of
+    a common name: 2026-09-13 and 2026-09-20 between them measured 0 true positives among the
+    cross-repo rows, 12 of 12 noise on the second, all on `ci.yml`, `util.py` or `setup.toml`. Chosen
+    2026-09-26 over growing `SUBJECTLESS_NAMES`, which cannot say "unique on disk but discussed
+    everywhere", and over matching repo-relative paths, which is machinery for the rare case of one
+    repo propagating files into others. A plan about another repo's mechanism names that repo or its
+    own reader could not follow it; the confirmed `selfinstall.py` plan names `repo-tasks` in its
+    title. What this gives up is a plan that refers to the repo only obliquely. A file outside every
+    repository has no repo to name, so it is not searched and is listed as such.
     """
-    changed = changed_source_names(entries)
-    names = [name for name in changed if name not in SUBJECTLESS_NAMES]
-    skipped = [name for name in changed if name in SUBJECTLESS_NAMES]
+    owners = changed_source_owners(entries)
+    skipped = sorted(name for name in owners if name in SUBJECTLESS_NAMES)
+    unowned = sorted(name for name, repos in owners.items() if not repos and name not in SUBJECTLESS_NAMES)
+    names = sorted(name for name, repos in owners.items() if repos and name not in SUBJECTLESS_NAMES)
     found: list[dict[str, Any]] = []
     searched: list[str] = []
+    result = {"names": names, "not_searched": skipped, "unowned": unowned, "searched": searched, "candidates": found}
     if not names:
-        return {"names": [], "not_searched": skipped, "searched": searched, "candidates": found}
+        return result
     # The shareable store only. A session has no business reading another party's plans to answer a
     # question about its own source file, and the confirmed instance sits in the shareable tier.
     store = next((path for label, path in _stores() if label == "plans"), None)
@@ -2388,10 +2425,17 @@ def superseded_candidates(entries: Sequence[dict[str, Any]], session_repo: Path 
                 text = plan.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            named = [name for name in names if name in text]
+            # Which repo the plan itself is about: the checkout for `<repo>/plans/`, the directory
+            # names above it for a store mirror.
+            home = {directory.parent.name} if directory != store else set(plan.relative_to(store).parts[:-1])
+            named = [
+                name
+                for name in names
+                if name in text and any(repo in home or _names_file_of_repo(text, name, repo) for repo in owners[name])
+            ]
             if named:
                 found.append({"plan": str(plan), "names": named})
-    return {"names": names, "not_searched": skipped, "searched": searched, "candidates": found}
+    return result
 
 
 # Where a checkout records what it installs. A repo naming another repo in one of these is a
@@ -2998,8 +3042,11 @@ def _print_superseded(state: dict[str, Any] | None) -> None:
     skipped = state.get("not_searched") or []
     if skipped:
         print(f"  not searched: {', '.join(skipped)} — every package has its own, so a match names no subject")
+    unowned = state.get("unowned") or []
+    if unowned:
+        print(f"  not searched: {', '.join(unowned)} — outside every repository, so no plan can name its repo")
     if not state.get("names"):
-        print(f"  none — this session changed no {'other ' if skipped else ''}source file")
+        print(f"  none — this session changed no {'other ' if skipped or unowned else ''}source file")
         return
     for row in state["candidates"]:
         print(f"    {row['plan']}")
@@ -3008,6 +3055,7 @@ def _print_superseded(state: dict[str, Any] | None) -> None:
         print("  none")
     print(f"  searched: {len(state['searched'])} location(s), this repo's own plans/ excluded")
     print("  limit: candidates, not a verdict — a plan naming one of these may be about something else")
+    print("  limit: a plan elsewhere counts only if a paragraph also names the file's repo; oblique ones are missed")
 
 
 def _print_processes(procs: dict[str, Any] | None) -> None:

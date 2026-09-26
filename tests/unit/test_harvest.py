@@ -1249,6 +1249,7 @@ def test_a_session_that_changed_no_source_file_searches_nothing(tmp_path, monkey
     assert harvest.superseded_candidates(entries, None) == {
         "names": [],
         "not_searched": [],
+        "unowned": [],
         "searched": [],
         "candidates": [],
     }
@@ -1265,7 +1266,7 @@ def test_a_name_every_package_has_its_own_copy_of_is_not_searched(tmp_path, monk
     for repo in (mine, theirs):
         (repo / ".git").mkdir(parents=True)
         (repo / "plans").mkdir()
-    (theirs / "plans" / "2026-08-23-tool-conflict.md").write_text("the fix lives in selfinstall.py\n")
+    (theirs / "plans" / "2026-08-23-tool-conflict.md").write_text("repo-tasks' fix lives in selfinstall.py\n")
     (theirs / "plans" / "2026-09-01-packaging.md").write_text("pyproject.toml and src/pkg/__init__.py\n")
     monkeypatch.setattr(harvest, "projects_root", lambda: root)
     monkeypatch.setattr(harvest, "_stores", lambda: [])
@@ -1294,10 +1295,52 @@ def test_a_name_every_package_has_its_own_copy_of_is_not_searched(tmp_path, monk
 
     # Tool config is searched even though its name is as fixed: `repo-tasks` propagates a canonical
     # `pytest.ini`, so a consumer's plan naming it may be about exactly this change.
-    (theirs / "plans" / "2026-09-02-testpaths.md").write_text("the canonical pytest.ini broke collection\n")
+    (theirs / "plans" / "2026-09-02-testpaths.md").write_text("repo-tasks' canonical pytest.ini broke collection\n")
     config = harvest.superseded_candidates([edit(mine / "src" / "repo_tasks" / "configs" / "pytest.ini")], mine)
     assert config["not_searched"] == []
     assert [Path(row["plan"]).name for row in config["candidates"]] == ["2026-09-02-testpaths.md"]
+
+
+def test_a_plan_elsewhere_must_name_the_changed_files_repo_too(tmp_path, monkeypatch, capsys):
+    """Matching on the basename alone made every sibling's own `ci.yml` or `util.py` a candidate.
+    Measured twice, 2026-09-13 and 2026-09-20: 0 true positives in the cross-repo rows, 12 of 12 noise
+    on the second run. A plan about another repo's mechanism names that repo, or its own reader could
+    not follow it — so the subject is the pair, and a plan that lives in the owning repo, in its
+    checkout or its store mirror, needs no mention of it."""
+    root = tmp_path / "projects"
+    mine, theirs = root / "power-user-linux-setup", root / "a-consumer"
+    for repo in (mine, theirs):
+        (repo / ".git").mkdir(parents=True)
+        (repo / "plans").mkdir()
+    (theirs / "plans" / "own-ci.md").write_text("our ci.yml runs the gate twice\n")
+    (theirs / "plans" / "about-it.md").write_text("power-user-linux-setup's ci.yml pins the runner\n")
+    (theirs / "plans" / "far-apart.md").write_text(
+        "we install through power-user-linux-setup.\n\nseparately, our own ci.yml is slow\n"
+    )
+    store = tmp_path / "store"
+    (store / "github.com-personal" / "power-user-linux-setup").mkdir(parents=True)
+    (store / "github.com-personal" / "power-user-linux-setup" / "filed.md").write_text("ci.yml is slow\n")
+    (store / "github.com-personal" / "a-consumer").mkdir(parents=True)
+    (store / "github.com-personal" / "a-consumer" / "filed.md").write_text("ci.yml is slow here too\n")
+    monkeypatch.setattr(harvest, "projects_root", lambda: root)
+    monkeypatch.setattr(harvest, "_stores", lambda: [("plans", store)])
+
+    def edit(path: Path) -> dict[str, object]:
+        block = {"type": "tool_use", "id": "a", "name": "Edit", "input": {"file_path": str(path)}}
+        return blocks_entry("assistant", [block])
+
+    found = harvest.superseded_candidates([edit(mine / ".github" / "workflows" / "ci.yml")], mine)
+    assert sorted(Path(row["plan"]).relative_to(tmp_path).as_posix() for row in found["candidates"]) == [
+        "projects/a-consumer/plans/about-it.md",
+        "store/github.com-personal/power-user-linux-setup/filed.md",
+    ]
+
+    # A file outside every repository has no repo for a plan to name, so it is not searched — and says so.
+    scratch = harvest.superseded_candidates([edit(tmp_path / "scratch" / "ci.yml")], mine)
+    assert scratch["candidates"] == []
+    assert scratch["unowned"] == ["ci.yml"]
+    harvest._print_superseded(scratch)
+    assert "not searched: ci.yml — outside every repository" in capsys.readouterr().out
 
 
 def test_depends_on_is_matched_in_frontmatter_at_line_start(tmp_path):

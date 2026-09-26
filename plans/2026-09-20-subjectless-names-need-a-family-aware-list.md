@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-26
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 70f5fe13-9f1a-40f4-84ac-5ce4fd98a163.jsonl
@@ -67,11 +67,15 @@ _affected_ still needs reading, which is what "candidates" means. The whole-file
 because a long plan names a widely-used repo somewhere and its own `ci.yml` somewhere else. The
 confirmed 2026-09-13 true positive still matches: that plan's title names `repo-tasks`.]
 
-[NEEDS CLARIFICATION: **the own-repo section's `setup.toml` noise is untouched.** "This repo's open
-plans naming a file this session changed" is a separate check with its own three-mention proxy, and
-on the same re-run it still printed 15 rows, 13 of them `setup.toml`. There the repo test means
-nothing, since every plan is about that repo. Options: a `limit:` line naming the shape, or raising
-the proxy for a name the repo's plans mention constantly. Needs its own measurement first.
+[DECISION: **fold, chosen by the user 2026-09-26** — a file that is the subject of ≥5 open plans and
+≥15% of them is the repo's vocabulary; rows matching only such files collapse into one counted line,
+`--verbose` and `--json` keep every row. Landed in `1ad2504`; the replay went from 15 rows to 4 plus
+the line. The question as it stood before the choice, kept for the reasoning: **the own-repo
+section's `setup.toml` noise is untouched.** "This repo's open plans naming a file this session
+changed" is a separate check with its own three-mention proxy, and on the same re-run it still
+printed 15 rows, 13 of them `setup.toml`. There the repo test means nothing, since every plan is
+about that repo. Options: a `limit:` line naming the shape, or raising the proxy for a name the
+repo's plans mention constantly. Needs its own measurement first.
 
 **Measured 2026-09-26: a share threshold cannot separate vocabulary from a central subject.** Share
 of open plans naming a file three or more times: `setup.toml` 15 of 65 (23%) in the setup repo, with
@@ -96,10 +100,23 @@ hides `plans.py`. Remaining options: collapse a widely-shared name's rows into o
    copy in a playground. It is a conventional name, not a tool-fixed one, so the list's criterion
    does not admit it either. **A name can match everywhere in prose without being scaffolding on
    disk**, and that needed a different filter from this list — the paragraph rule above.
-2. ~~Decide the `setup.toml` shape.~~ Done for the cross-repo section by the paragraph rule, landed
-   2026-09-26; the own-repo section is the open question above.
-3. Re-measure on the next harvest that changes a widely-discussed file. The 2026-09-26 re-run is one
-   before-and-after on a replayed session; a live harvest is the second data point.
+2. ~~Decide the `setup.toml` shape.~~ Done: the paragraph rule for the cross-repo section, folding
+   for the own-repo one, both 2026-09-26.
+3. ~~Re-measure on the next harvest.~~ Both sections were re-measured on the replayed 2026-09-20
+   session (cross-repo 19 → 4, own-repo 15 → 4 plus a line), and a live run on the implementing
+   session behaved as designed. Further tuning waits on a harvest that complains.
+
+## Migrated to
+
+- **The paragraph rule for the cross-repo section** — `superseded_candidates` docstring and
+  `_names_file_of_repo` in `skills/session-harvest/scripts/harvest.py` (`96f5a6f`); step 5 of
+  `skills/session-harvest/SKILL.md`, "What this session made stale somewhere else".
+- **Folding the own-repo section** — `VOCABULARY_MIN_PLANS`/`VOCABULARY_MIN_SHARE` and their
+  comment, `_print_may_have_landed` (`1ad2504`); step 5, "Whether this session landed something".
+- **Why `ci.yml`/`util.py` stayed off `SUBJECTLESS_NAMES`** — the list's own comment already states
+  the rule (tool-fixed scaffolding only, propagated config excluded); nothing new needed there.
+- **Not migrated:** the measurement tables, which live in the two commits' bodies and this plan's
+  history.
 
 ## Verification
 

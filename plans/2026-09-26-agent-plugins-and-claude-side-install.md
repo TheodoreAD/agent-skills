@@ -60,7 +60,8 @@ The two repos as they stand:
     carries no plugin, marketplace or `syncClaudeAi*` keys.
   - PULSE manages no Claude plugins at all.
   - Two docstrings in `tasks/ai.py` disagree with each other: `install_skills` still says
-    ".claude/skills symlinked to it". Report this to PULSE rather than editing it from here.
+    ".claude/skills symlinked to it". Filed for PULSE on 2026-09-26 as
+    `2026-09-26-two-stale-descriptions-after-the-allowlist-and-skills-rework.md`.
 
 ## Open questions
 
@@ -105,7 +106,8 @@ Investigate before changing anything, in this order:
    file with `plans.py new <topic> --for github.com-personal/power-user-linux-setup` covering:
    - Deciding the `syncClaudeAiSkills` and `syncClaudeAiPlugins` settings.
    - Whether a plugin install mechanism belongs in `setup.toml`.
-   - The stale `install_skills` docstring.
+
+   The stale `install_skills` docstring is already filed, separately.
 4. **Only then** amend this repo's admitted-formats rule in `AGENTS.md` and the README's "No Claude
    Code plugin manifest" line, if the outcome warrants it. Both are rules other sessions rely on, so
    the change goes in its own commit with a body saying what the measurement showed.

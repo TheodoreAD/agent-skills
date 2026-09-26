@@ -60,9 +60,9 @@ from (a median of 14 distinct masked command shapes per session, per `masked_gat
 so the list has never been audited against the shapes it does not match.
 
 A third instance followed on 2026-09-26, on `claims` again: a gate-green claim that never uses the
-word "gate". It is kept as its own plan,
-[`2026-09-26-claims-misses-a-gate-green-said-without-the-word-gate.md`](2026-09-26-claims-misses-a-gate-green-said-without-the-word-gate.md),
-because its fix is on a different matcher.]
+word "gate". It was fixed on its own matcher in `558c814`, and its now-retired plan,
+`2026-09-26-claims-misses-a-gate-green-said-without-the-word-gate.md`, is readable with
+`plans.py archive`.]
 
 [NEEDS CLARIFICATION: **Which terms to add, and whether a word list is the right mechanism at all.**
 The narrow fix is one alternation — `plans\.py\s+scan`, and probably `scan\s+--mode` for the

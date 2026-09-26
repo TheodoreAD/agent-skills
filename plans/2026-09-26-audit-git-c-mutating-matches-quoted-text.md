@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-26
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 10d0c6cd-12d8-42ff-9048-1da4b65afcc8.jsonl
@@ -33,9 +33,30 @@ Transcript above,
 
 ## Open questions
 
-[NEEDS CLARIFICATION: whether the quoted-span stripping misses multi-line double-quoted arguments in
-general (then every row is affected) or only this row's pattern bypasses it.]
+[DECISION: the stripping was never the problem: `QUOTED_RE` handles multi-line double-quoted
+arguments. `git-mutating` and `git-C-mutating` just used `_rx`, which strips heredocs only, instead
+of `_rx_unquoted`. Moving them over fixed both, and `git-mutating-in-chain` with them.]
 
 ## Recommended direction
 
 Reproduce with the two fixtures, then fix at the stripping step if it is general.
+
+## Verification
+
+- Both fixtures from the Evidence section are regression cases in `tests/unit/test_audit.py`
+  (`test_a_tool_name_inside_quotes_is_not_an_invocation`), along with a quoted `-C` path that must
+  still count.
+- The original repro, re-run after the fix (`9579e9c`):
+  `audit.py --session 10d0c6cd-… --until
+  2026-09-26T17:53:53+03:00` now reports `git-C-mutating 1`
+  rather than 4. Its one sample is the real scratch-repo chain, and the Python splice and the `rg`
+  pattern are gone.
+
+## Migrated to
+
+- **The code itself:** a comment above the two git rows in
+  `skills/session-bash-audit/scripts/audit.py` records the incident and the quoted-path behaviour,
+  and the tests hold the fixtures.
+- **Deliberately not migrated:** `_git_c_tag` and `_store_write` still strip heredocs only. Both
+  read the path out of `git -C <path>`, and blanking quotes would blank a quoted path. Neither has
+  been seen misfiring on quoted text, so this is left as a known limit rather than opened as work.

@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-26
 source_repo: github.com-personal/repo-tasks
 source_session: a9904181-df08-4eb5-945e-8aab9336d457.jsonl
@@ -83,3 +83,23 @@ neither of which is obviously in or out:
 
 And extend `session-harvest`'s own "check a zero you have reason to doubt" rule to cover a low
 count, since that is the sentence that would have prompted this hand check rather than luck.
+
+## Verification
+
+Done in `558c814`. `harvest.py claims --session a9904181-…` on the originating session now lists
+"Green, 707 tests" among the gate claims, and the canary's "10 passed in 89.17s" moves from CI to
+gate. `test_a_green_with_a_test_count_is_a_claim_without_the_word_gate` holds the must-match and
+must-not-match cases. Across this machine's transcripts the change adds 53 counted lines to 1,135,
+and a random 40 of them read as real claims.
+
+## Migrated to
+
+- **The code itself:** the comment above `GREEN_CLAIM_RE` in
+  `skills/session-harvest/scripts/harvest.py` records the incident, why the count rather than the
+  noun is required, and the corpus measurement.
+- **Usage docs:** `session-harvest/SKILL.md`'s doubtful-zero rule now covers a count lower than the
+  session remembers, with this incident as its dated evidence.
+- **Deliberately not migrated:** the second adjacent shape, a CI green claimed after watching
+  `gh run list` through a filter. Telling it apart needs the command that preceded the sentence,
+  which a sentence matcher cannot see. The skill's CI paragraph already asks the reader whether the
+  run was read as JSON.

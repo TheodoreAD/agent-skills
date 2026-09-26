@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-26
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 10d0c6cd-12d8-42ff-9048-1da4b65afcc8.jsonl
@@ -39,10 +39,30 @@ every `git -C` call it classifies.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: whether `audit.py` should model `git -C` as prompting (true today) or read the
-live rule set instead of hard-coding what the allowlist does.]
+[DECISION: hard-coded as prompting. The probe list states what a human should observe on a live run,
+so it stays a fixed expectation rather than a derived one, and it names the sandbox as the one thing
+that changes the answer.]
 
 ## Recommended direction
 
 Update the three citations to point at `cli-allowlist/tools.toml` and the contributing page by
 section, and fix the audit script's `git -C` simulation to prompt.
+
+## Verification
+
+Done in `77d2b13`. `rg 'global_option_prefixes|claude_permissions_allow'` over `skills/` now finds
+only dated history lines in `session-bash-audit/references/research.md`. The live probe's new
+expectation, that `git -C <another repo> status` prompts, matches power-user-linux-setup's own
+2026-09-26 measurement in `contributing/cli-allowlist.md`, "`mode_covered` and `repo_dir_options`".
+The probe was not re-run by hand in this session.
+
+## Migrated to
+
+- **Usage docs:** `invoke-task-conventions/SKILL.md` rule 2 now cites the `[inv]` entry's
+  `allow_overrides` in `cli-allowlist/tools.toml`. The `session-bash-audit/SKILL.md` fix-location
+  table says `git -C` shapes are the sandbox's job on Claude Code.
+- **Design rationale:** `session-bash-audit/references/research.md` records why the old rules never
+  matched and when they were withdrawn. The probe entry in `audit.py` carries the same reasoning as
+  a comment.
+- **Deliberately not migrated:** the dated changelog entries in `research.md` that describe the old
+  rules as they were added. They are history and stay true as history.

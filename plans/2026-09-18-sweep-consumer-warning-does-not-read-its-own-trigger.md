@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-18
+status: landed
+updated: 2026-09-26
 source_repo: github.com-personal/repo-tasks
 source_session: 14237e4b-3a66-4207-8a3a-882552c86680.jsonl
 source_moment: 2026-09-18T18:35:49+03:00
@@ -75,8 +75,23 @@ matching a consumer that does not exist at all. Kept apart at absorption, 2026-0
 causes and fixes differ; both want the closing `a push here is a deploy there` line made
 conditional.
 
-[UNVERIFIED: that `consumer-sweep.md`'s trigger is the only shape in the family. It is the only
-consumer-facing doc of its kind on this machine today, so a glob-matching implementation has exactly
-one specimen to generalise from — which is the position the membership-derivation attempts in
-`repo-tasks/plans/2026-08-25-consumer-transitions.md` were in each time they were wrong. Keeping the
-fallback loud is what makes a second shape visible rather than silently unmatched.]
+[PITFALL: `consumer-sweep.md`'s trigger is the only specimen the implementation generalises from —
+the only consumer-facing doc of its kind on this machine, which is the position the
+membership-derivation attempts in `repo-tasks/plans/2026-08-25-consumer-transitions.md` were in each
+time they were wrong. Checked 2026-09-26 and still true. The implementation answers it by keeping
+the fallback loud: a doc with no readable "When to sweep" paths prints "no trigger could be read"
+and keeps the unconditional warning, so a second shape shows up rather than going silently
+unmatched. A second specimen is when to revisit the parser.]
+
+## Migrated to
+
+Landed 2026-09-26: step 1 in `4301bec`, step 2 in `0d8aed2`.
+
+- **Reading the trigger and the conditional line** — `_consumer_trigger`, `_trigger_matches` and
+  `_print_consumers` in `skills/session-harvest/scripts/harvest.py`; step 5's consumer bullet in
+  `skills/session-harvest/SKILL.md`;
+  `test_a_consumer_doc_trigger_decides_whether_a_push_obliges_anyone`.
+- **The `attach` wording** — `_print_attached` in `skills/plan-docs/scripts/plans.py`, now
+  `(to commit with the plan, …)`; `test_attach_output_names_a_placement_not_an_action`.
+- **Not migrated:** nothing deliberately left behind; the pitfall above lives on in the
+  `_consumer_trigger` docstring.

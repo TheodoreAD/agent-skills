@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-18
+status: landed
+updated: 2026-09-26
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 4296eac1-732f-4827-874f-59063bcf404f.jsonl
 source_moment: 2026-09-18T19:28:57+03:00
@@ -57,18 +57,16 @@ plans store.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: is the right fix to exclude scratch roots, to exclude common-word basenames,
-or both? They answer different halves. Excluding the harness's own job directory and other scratch
-roots removes this instance and every future one of its kind from all three sections at once, which
-is the larger win; a basename stop-list in the consumer check alone still leaves a repo legitimately
-named `docs` or `tools` matching everything. The `not searched:` line the plans check already prints
-is the precedent for the second and shows the reporting shape.]
+[DECISION: **scratch roots only; no common-word stoplist yet.** Settled 2026-09-26, in line with the
+user's standing concern that false positives cost analysis on every harvest while this family rarely
+has the propagating shape. Excluding the temp directory and the harness's job directories removes
+this instance from all three sections at once. The stoplist answers a repo legitimately named `docs`
+or `tools`, which has not occurred; add it the first time one does, with a `not searched:` line in
+the plans check's shape.]
 
-[NEEDS CLARIFICATION: should a repo with no remote be swept as a "repo this session touched" at all?
-Every section that handled this one degraded — no upstream to count against, no GitHub host for CI —
-and none of that is informative for a directory the harness deletes with the job. A no-remote repo
-inside a known scratch root is a strong signal; a no-remote repo elsewhere may be somebody's real
-local-only work and must still be swept.]
+[DECISION: **a no-remote repo outside a scratch root is still swept.** Settled 2026-09-26: a
+no-remote repo elsewhere may be real local-only work, and the scratch-root predicate already covers
+the case that was noise. Remote-ness is not used as a signal at all.]
 
 ## Recommended direction
 
@@ -85,3 +83,14 @@ absorption, 2026-09-26**, deliberately: same section and same closing line, diff
 one is a _real_ consumer whose documented trigger the check never compares against the changed
 paths; this one is a consumer that does not exist. Both want the closing line made conditional, so
 whichever lands first should word it for both.
+
+## Migrated to
+
+Landed 2026-09-26 in `4301bec`, together with its sibling.
+
+- **The scratch-root exclusion and its instance** — the `_touched_repos` docstring and
+  `_scratch_roots` in `skills/session-harvest/scripts/harvest.py`; step 5's consumer bullet in
+  `skills/session-harvest/SKILL.md`;
+  `test_a_throwaway_repo_under_a_scratch_root_is_set_aside_not_swept`.
+- **The conditional closing line** — `_print_consumers`, worded for both plans.
+- **Not migrated:** the common-word stoplist, deferred per the first decision.

@@ -21,4 +21,5 @@ dev = [
   "pytest-cov",
   "zizmor",
   "hadolint-py",
+  "typing-extensions>=4.4",
 ]

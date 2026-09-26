@@ -8,7 +8,8 @@ name: Tests (Windows)
 # so that file stays byte-identical to the family template it is pulled from.
 #
 # Only pytest, deliberately: the quality gate's tools are pinned as Linux wheels in the dev group,
-# and `--no-project` keeps this leg from resolving any of them. The scripts under test are stdlib.
+# and `--no-project` keeps this leg from resolving any of them. The scripts under test are stdlib;
+# `typing-extensions` is the tests' own, for `override` on the 3.11 floor they develop at.
 
 on:
   push:
@@ -32,7 +33,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v9.0.0
-      - run: uv run --no-project --python 3.13 --with pytest pytest
+      - run: uv run --no-project --python 3.13 --with pytest --with typing-extensions pytest
       # The one live measurement a runner can make of the sweep's Windows arms: the suite pins the
       # PowerShell and netstat parsers to documented output, and this runs the two commands for
       # real. Without a transcript the sweep degrades and says so; both sections must still answer

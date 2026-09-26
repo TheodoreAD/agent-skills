@@ -21,9 +21,11 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import override
 
 import pytest
+
+# `typing.override` is 3.12+ and this repo develops at its 3.11 floor.
+from typing_extensions import override
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "skills" / "session-harvest" / "scripts" / "harvest.py"

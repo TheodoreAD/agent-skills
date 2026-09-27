@@ -85,15 +85,12 @@ hit on.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: is this a `SKILL.md` line or a subcommand? The skills already own the correct
-technique — `turns`, `claims` and `audit.py` all resolve by `tool_use` id, and `audit.py` dedupes
-replayed calls deliberately. What is missing is the instruction not to reach past them for an ad-hoc
-count when the question is one they do not already answer, which is exactly when the temptation
-arrives.]
-
-[NEEDS CLARIFICATION: does this belong to `session-harvest`, to `session-bash-audit`, or to both?
-The harvest is where the number was being written into a durable file, which is the cost; the audit
-is where the correct counting lives and where a "count this predicate for me" subcommand would go.]
+[DECISION (2026-09-28): **a `SKILL.md` line, in `session-harvest` only.** The instruments that count
+correctly already exist, so a subcommand would duplicate them; what was missing was the instruction
+not to reach past them. It sits beside the existing "a zero that agrees with what you hoped" and "a
+count lower than you remember" rules as their third case — a count _higher_ than the instrument's —
+because the harvest is where the number becomes a durable file, which is the cost. Both occurrences
+and all four contamination sources are in it.]
 
 ## Recommended direction
 

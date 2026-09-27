@@ -847,6 +847,16 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   Confirmed 2026-09-26: `claims` reported 1 gate-green message for a session that had said it twice,
   because "Green, 707 tests" never uses the word "gate". Only the reading session remembering that
   it had said it more often caught the miss.
+
+  **And a count higher than the instrument's, taken off the transcript with a line grep, is an upper
+  bound on a different question.** A `.jsonl` line carries a command's echo in its tool result, the
+  session quoting it, skill bodies loaded into context, and per-entry metadata that embeds prior
+  context, so `rg -c` over it counts prose, not calls. Resolve by `tool_use` id, or use `turns`,
+  `claims` and `audit.py`, which already do. Confirmed twice: 2026-09-18 a grep read 166 calls
+  opening with `cd` into the session's repo where the deduped count was 5, and 2026-09-27 one read
+  135 where `audit.py` said 1 and was right. The first was one edit from a durable corpus row, as a
+  cause that fitted a real observation; the tell was not the number but an instrument on the same
+  screen disagreeing with it, unread.
 - **Git state, every repo the session touched** — not just the primary one. Touched means wrote
   into, or ran something other than a read against: a repo only read through `git -C` to write a
   filed plan accurately is not swept, nor is a `cd` the harness reset. If you changed a repo in a

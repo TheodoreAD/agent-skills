@@ -61,13 +61,14 @@ is clean, and only the agent's memory is stale.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: which of the two fixes is the skill-side one. Two candidates and they are not
-alternatives. **For verification** — "did my change reach the installed copy" — the answer is
-already written in `skill-authoring-taudelta` for a neighbouring case: diff, never grep. That is a
-one-line addition to the redeploy sequence's verify step, naming the false-negative explicitly so it
-is not re-derived. **For editing** — "my `old_string` is from before the last gate run" — the answer
-is to re-read the region first, which is a general editing habit rather than a skills rule, and may
-not belong in a skill at all.]
+**Decided 2026-09-28: the verification half is the skill-side one**, and it is now in
+`skill-authoring-taudelta`'s step 7 — diff the installed copy against the checkout, never grep it
+for the added sentence, with the false negative above as the evidence. The premise that the skill
+already prescribed `diff` for staleness was wrong: step 7 named `skills ls` and running a script,
+and no `diff` at all. The 94 installed-vs-checkout `diff -q` calls in `session-harvest`'s 2026-09-02
+census were hand-rolled, not prescribed. **The editing half stays out of any skill**: re-reading the
+region before an `Edit` whose `old_string` predates the last gate run is a general habit, and its
+failure is loud and cheap.
 
 [NEEDS CLARIFICATION: does the general rule belong in the always-loaded instructions file, and if so
 does it extend the existing `rg` section or the verification one? `~/.agents/AGENTS.md` already

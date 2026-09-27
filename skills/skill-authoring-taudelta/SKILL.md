@@ -126,6 +126,13 @@ finding the source repo.
    installed from a commit that predated `scripts/`, so the documented path did not exist on the
    machine while both documents insisted it did. Nothing failed until something ran it.
 
+   **To check that a change arrived, diff the installed copy against the checkout — never grep it
+   for the sentence you added.** `diff -r ~/.agents/skills/<name> skills/<name>` prints nothing when
+   they match. A phrase grep answers a different question: a markdown formatter reflows prose, `rg`
+   matches lines, and a sentence wrapped mid-phrase returns nothing, which reads as a failed deploy.
+   Confirmed 2026-09-27: `rg -c 'move state that lives outside'` against a freshly installed
+   `SKILL.md` found nothing while the rule sat there, wrapped between `state` and `that`.
+
    [PITFALL: **That listing is not sufficient evidence on its own, and neither is the installer's
    summary.** Measured 2026-08-27: installing for Claude Code alongside any universal agent prints
    `symlink → Claude Code` in the plan and creates no `.claude/skills` at all — the final summary

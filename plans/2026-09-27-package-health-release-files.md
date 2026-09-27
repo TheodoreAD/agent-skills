@@ -376,11 +376,10 @@ Against "What building it fully entails":
   `apt-cache` and `node --version` as run and madison and Launchpad as reached. Measured with
   `trigger.py candidate`, 3 runs: 12/13, each new-source positive 3/3 to the new wording, all
   negatives silent; the failure is the py.typed boundary case the suite keeps on purpose.
-- All seven build stages are committed, not pushed, and the installed skill is not refreshed. Live
-  runs of all five subcommands against real packages matched the fixture-driven tests.
-
-[DEFERRED: repointing the home `AGENTS.md` install rule from
-`curl -s https://pypi.org/pypi/<name>/json` to this script. That rule is a fragment in
-`power-user-linux-setup` (`config/agents-md/`), so once this lands, file it with
-`plans.py new … --for github.com-personal/power-user-linux-setup` rather than editing that repo from
-here.]
+- All seven build stages were pushed 2026-09-27 (`2d446af`) and the skills re-installed. The
+  installed script's `--help` lists `pypi, npm, crates, apt, github`. Live runs of all five
+  subcommands against real packages matched the fixture-driven tests.
+- Repointing the home `AGENTS.md` install rule from the PyPI `curl` to this script was **filed** for
+  power-user-linux-setup on 2026-09-27, as the store plan
+  `github.com-personal/power-user-linux-setup/2026-09-27-install-rule-uses-package-health.md`. It is
+  that repo's to do, and nothing here waits on it.

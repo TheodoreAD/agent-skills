@@ -35,7 +35,8 @@ path under `skills/<name>/` in the session's own edit-tool calls adds `<name>` t
 `harvest.py` already extracts write paths for the "files written outside every repository" section,
 so the input exists.
 
-[NEEDS CLARIFICATION: **whether a write through a subprocess should count.** The write-path signal
-reads edit-tool calls only, so a `git mv` or a script that rewrote a skill is invisible to it — the
-same tool-call seam every transcript-derived check in this skill carries. Probably acceptable as a
-stated limit, since the common authoring path is the edit tool, but say so in the output.]
+[DECISION: **edit-tool writes only, as a stated limit** (2026-09-28), which is this plan's own
+suggestion. `skills-state` adds every skill with a write path under `skills/<name>/` to the set,
+prints `changed this session:`, and says on the next line that a shell-command change is not seen
+and takes `--skill`. Parsing shell commands for writes would be the one check in this skill to leave
+the tool-call seam every other one stays on.]

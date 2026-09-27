@@ -919,6 +919,32 @@ def test_naming_a_default_skill_does_not_report_it_twice(tmp_path):
     assert [s["skill"] for s in payload["skills"]] == list(harvest.DEFAULT_SKILLS)
 
 
+def test_a_skill_the_session_wrote_to_joins_the_set_without_being_named(tmp_path, capsys):
+    """2026-09-12: the defaults all came back current, and the skill the session had authored — not
+    named, because it was never *used* — was four commits stale. Only files under `skills/<name>/`
+    count; a write elsewhere in the checkout names no skill."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    for name in (*harvest.DEFAULT_SKILLS, "repo-pitch"):
+        make_skill(checkout, name, "body\n")
+        make_installed(installed_root, name, "body\n")
+    transcript = write_transcript(
+        tmp_path / "s.jsonl",
+        [
+            write_entry(str(checkout / "skills" / "repo-pitch" / "SKILL.md")),
+            write_entry(str(checkout / "README.md")),
+        ],
+    )
+    argv = ["skills-state", "--checkout", str(checkout), "--installed", str(installed_root)]
+    args = harvest.build_parser().parse_args([*argv, "--session", str(transcript)])
+
+    payload = harvest.cmd_skills_state(args, FakeRunner())
+
+    assert [s["skill"] for s in payload["skills"]] == [*harvest.DEFAULT_SKILLS, "repo-pitch"]
+    assert payload["changed_this_session"] == ["repo-pitch"]
+    assert "changed this session: repo-pitch" in capsys.readouterr().out
+
+
 def test_a_skill_that_moved_after_the_session_began_is_named(tmp_path):
     checkout = tmp_path / "checkout"
     installed_root = tmp_path / "installed"

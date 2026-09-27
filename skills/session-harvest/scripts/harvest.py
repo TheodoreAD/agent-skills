@@ -1667,6 +1667,8 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
     # after session start with two unpushed commits — the finding step 0 exists for. `--all` is the
     # replace-everything case and stays one.
     names = list(DEFAULT_SKILLS) + [s for s in (args.skill or []) if s not in DEFAULT_SKILLS]
+    changed = _skills_written(args, checkout)
+    names += [s for s in changed if s not in names]
     source = checkout / "skills"
     held = sorted(p.name for p in source.iterdir() if p.is_dir()) if source.is_dir() else []
     # `DEFAULT_SKILLS` is this skill's own family, and in a checkout that holds none of them the
@@ -1706,6 +1708,7 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
         "installed_root": str(installed_root),
         "file_a_fix": filing,
         "scope_note": note,
+        "changed_this_session": changed,
         "since": since,
         "since_from": since_from,
         "skills": states,
@@ -1713,6 +1716,34 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
     if not args.json:
         _print_skills_state(payload, bool(since))
     return payload
+
+
+def _skills_written(args: argparse.Namespace, checkout: Path) -> list[str]:
+    """The skills in `checkout` this session wrote to, which the default set otherwise omits.
+
+    The default set is the skills a harvest leans on, and the skills a session *changed* are the
+    ones most likely to be stale-installed — changing a source is exactly what puts an install
+    behind. Confirmed 2026-09-12: a session created one skill and scripted another, the defaults all
+    came back current, and naming the two by hand found one four commits stale against a pushed
+    checkout. `SKILL.md`'s escape hatch said to add what the run *used*, which is not the same set.
+
+    Read from the edit tools' write paths, like every transcript-derived check here, so a skill
+    changed through a shell command — `git mv`, a script — is not seen; the printed line says so.
+    """
+    try:
+        entries = resolve_transcript(args.session, args.job, args.expect, Path.cwd()).entries
+    except HarvestError:
+        return []
+    root = (checkout / "skills").resolve()
+    found: dict[str, None] = {}
+    for path in written_paths(entries):
+        try:
+            rel = path.resolve().relative_to(root)
+        except (ValueError, OSError):
+            continue
+        if len(rel.parts) > 1:
+            found[rel.parts[0]] = None
+    return list(found)
 
 
 def _resolve_since(args: argparse.Namespace) -> tuple[str | None, str]:
@@ -1817,7 +1848,8 @@ def _supplied_note(args: argparse.Namespace) -> str:
     return f"supplied — {abs(minutes)} min {where} this session's start of {started}, so the window is {wider}"
 
 
-def _print_skills_state(payload: dict[str, Any], since_given: bool) -> None:
+def _print_skills_scope(payload: dict[str, Any]) -> None:
+    """The header: where the comparison ran, and which skills it covers and why."""
     print(f"checkout: {payload['checkout']}\ninstalled: {payload['installed_root']}")
     if payload["worktree_of"]:
         print(f"worktree: a linked worktree of {payload['worktree_of']}")
@@ -1827,6 +1859,13 @@ def _print_skills_state(payload: dict[str, Any], since_given: bool) -> None:
         print(f"file a fix from another repo: {payload['file_a_fix']}")
     if payload.get("scope_note"):
         print(f"scope: {payload['scope_note']}")
+    if payload.get("changed_this_session"):
+        print(f"changed this session: {', '.join(payload['changed_this_session'])}  (added to the set)")
+        print("  from edit-tool writes only — a skill changed by a shell command is not seen; add it with --skill")
+
+
+def _print_skills_state(payload: dict[str, Any], since_given: bool) -> None:
+    _print_skills_scope(payload)
     # The value used, always — the specific harm was never the wrong window but that a wrong one was
     # indistinguishable from a right one in the output, so nothing prompted a second look. An
     # operator overriding the default can still override it wrongly.

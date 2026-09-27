@@ -45,6 +45,26 @@ where there are too many items for batching to stay lightweight — at that poin
 the flow itself needs restructuring (e.g. splitting "items likely due" from "rarely-touched items"
 rather than batching everything flat).
 
+**When the page is many homogeneous items with a sane default each** — quantities over a product
+list is the case — and it runs past what two `AskUserQuestion` calls cover, a pre-filled table the
+user edits by index is the lighter shape, and it is the same rule rather than an exception to it:
+the objection was always to typing _every_ answer, and here the common reply is one token. The user
+asked for it unprompted in the same flow (2026-09-26): "it's actually faster to display a table of
+10 products with proposed quantities, and let the user say which ones they don't want … The indices
+should be the basis for that, so there's less typing." Run live the same day over eight pages, every
+reply was an index expression of two to eleven characters and none needed clarifying. Conditions:
+
+- the common case is one token (`ok`), and exceptions are indices (`-3,7`, `5x2`, `only 1,2,9`);
+- **number rows continuously across pages** (11–20 after 1–10) — the previous table is still on
+  screen, so a per-page `-5` is ambiguous between two tables;
+- **echo the parse back in one line before anything irreversible** — the only thing between a
+  mistyped index and a wrong item in a real cart;
+- `AskUserQuestion` keeps the page-level next/done step, the first-live-mutation confirmation above,
+  and any reply ambiguous enough that the alternative is guessing.
+
+Not for a set of genuinely different either/or decisions: with no shared default, a table is a worse
+surface than the batched ask. Worked example: `freshful-polite-mcp`'s `reorder-suggest` skill.
+
 ## Write spike/research findings into PLAN.md before or alongside implementing
 
 When a research/spike phase (live CDP exploration, API probing, DOM inspection) turns up findings

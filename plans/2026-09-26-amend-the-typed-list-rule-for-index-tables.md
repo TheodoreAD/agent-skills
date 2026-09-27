@@ -67,10 +67,11 @@ runs over the accepted set only. Full reasoning is in that repo's `contributing/
 3. Cite `freshful-polite-mcp`'s `reorder-suggest` as the worked example, since it is the flow both
    the original feedback and the amendment came from.
 
-[NEEDS CLARIFICATION: whether this generalises past a reorder page or should stay scoped to "many
-homogeneous items with a sane default per item". Quantities over a product list are unusually
-well-suited to defaults; a set of genuinely different either/or decisions is not, and a table would
-be a worse surface there. Scoping it narrowly is the safer first version.]
+[DECISION: **scoped narrowly** (2026-09-28), as this plan recommended and the live run below
+supports: the amendment applies to "many homogeneous items with a sane default each" and says
+outright that a set of different either/or decisions stays with the batched ask. Written into
+`polite-mcp-conventions-taudelta` as a paragraph after "How to apply", with both live-run details
+and `reorder-suggest` as the worked example; the headline and its "why" are unchanged.]
 
 ## The flow has run live (2026-09-26)
 

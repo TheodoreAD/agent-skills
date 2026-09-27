@@ -52,6 +52,37 @@ The real driver turned out to be unrelated: 21 of the 85 chains were
 `git add … && git status
 --short` pairs, a read-back the session did before nearly every commit.
 
+### Second occurrence, 2026-09-27, with a fourth contamination source
+
+An `agent-skills` harvest reached for the same count on the same hypothesis nine days later, session
+`21615ec2-5eca-4393-a831-d24275fb2551`:
+
+```shell
+rg -c 'cd /home/tdumitrescu/projects/github.com-personal/agent-skills &&' "$TRANSCRIPT"
+```
+
+**135**, against 171 Bash calls, read as "two-thirds of this session's calls opened with a `cd` into
+its own repo" — and `audit.py` reported `cd-own-repo` at **1**. Deduped by `tool_use` id: exactly
+**1** call opened that way, 8 of 171 contained `&&` at all, and 4 contained `cd` anywhere. The grep
+was wrong by two orders of magnitude.
+
+**The fourth source, which the three above do not cover:** the matching entries were `assistant`
+records carrying a `serverClassifierRequest` field, a per-entry metadata payload that embeds prior
+context. The first matched line's own `tool_use` command was
+`rg -l -i 'renam' --hidden --glob '!.git' .` — no `cd` in it anywhere. This source is worse than the
+listed three because it needs no help from the session: a session that never quotes a command and
+loads no skill body still accumulates these, so the inflation is a property of the transcript format
+rather than of the conversation's subject.
+
+**And this is the first recorded case where the disagreement was read rather than missed**, which is
+the rule below working as written. The audit's `1` was on screen beside the grep's `135`; the run
+checked the low count instead of reporting a detector bug, traced it to `slug_matches` and
+`load_session`, then dumped `--json` and counted tags. Four calls, and the alternative was a filed
+plan against `session-bash-audit` alleging a pattern gap that does not exist. Worth noting what
+triggered the check: **the existing wording about a suspicious zero generalised to a suspicious
+_one_** — a count far lower than the session remembered, on a row it had specific reason to expect a
+hit on.
+
 ## Open questions
 
 [NEEDS CLARIFICATION: is this a `SKILL.md` line or a subcommand? The skills already own the correct

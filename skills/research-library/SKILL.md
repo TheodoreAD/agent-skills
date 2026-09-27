@@ -24,14 +24,16 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
 - **Runs**: `git clone`/`fetch`/`reset`/`sparse-checkout`/`tag -d`/`reflog expire`/`gc` inside
   library clones only, and `gh api` for package health (repo stats, commits, issues, the releases
   list and the latest release) and for a repo's reported size before `add` clones it.
+  `package_health.py` also runs `node --version` when node is on `PATH`, to compare a floor.
 - **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file, `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field.
   `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
   or a copy into a project repo, and nothing outside the store is ever touched.
 - **Reads from the environment**: `RESEARCH_HOME` for the store, and `RESEARCH_TEXT_ONLY` for
   whether `add` clones text-only by default.
-- **Network**: the clone URL you give; PyPI and GitHub for `package_health.py` and for the pre-clone
-  size question, GitHub through your own `gh` login. Nothing is uploaded.
+- **Network**: the clone URL you give; PyPI, the npm registry and GitHub for `package_health.py`,
+  and GitHub for the pre-clone size question, GitHub through your own `gh` login. Nothing is
+  uploaded.
 
 ## Before fetching anything from the web
 
@@ -243,16 +245,17 @@ libraries, and it is the reason the script prints stars under `not scored`.
 python3 $S/scripts/package_health.py pypi <name>
 python3 $S/scripts/package_health.py pypi anyio --clone $RESEARCH_HOME/repos/github.com--agronholm--anyio
 python3 $S/scripts/package_health.py pypi shellcheck-py --upstream koalaman/shellcheck
+python3 $S/scripts/package_health.py npm @biomejs/biome
 python3 $S/scripts/package_health.py github BurntSushi/ripgrep
 ```
 
 Stdlib only, `S=~/.agents/skills/research-library`. **The source is a required subcommand** — there
 is no default registry, so name it every time. The package's own GitHub repo is read from its
 metadata, and the report's `repo from` line says where; pass `--repo <owner/repo>` when that lookup
-is wrong or missing. PyPI over HTTPS, GitHub through `gh api` so it uses your own token and rate
-limit. `--clone` adds what no API answers — `py.typed`, the test-to-source ratio, the CI inventory,
-the licence files actually present. `--generated <glob>` is repeatable and marks a mechanical layer
-so the ratio is taken against hand-written code. `--json` for the whole answer.
+is wrong or missing. PyPI and npm over HTTPS, GitHub through `gh api` so it uses your own token and
+rate limit. `--clone` adds what no API answers — `py.typed`, the test-to-source ratio, the CI
+inventory, the licence files actually present. `--generated <glob>` is repeatable and marks a
+mechanical layer so the ratio is taken against hand-written code. `--json` for the whole answer.
 
 The four axes it reports, plus what the release ships and whom it tracks, and what each is for:
 
@@ -279,10 +282,15 @@ The four axes it reports, plus what the release ships and whom it tracks, and wh
   differs or the wrapper is behind: compare the two versions printed. `GitHub digest` is GitHub's
   hash of the upload, not a publisher's checksum.
 - **Floors** — every minimum version the metadata states, never inferred, each compared with this
-  machine where that is cheap: PyPI's `requires_python` against this `python3`, and the glibc floor
-  a `manylinux` tag states against this machine's glibc. `ABOVE THIS MACHINE` is the finding;
-  `not
-  compared` says why it was not.
+  machine where that is cheap: PyPI's `requires_python` against this `python3`, the glibc floor a
+  `manylinux` tag states against this machine's glibc, npm's `engines.node` against this `node`.
+  `NOT MET HERE` is the finding; `not compared` says why it was not.
+- **`npm <name>`** — the same axes from the full packument, judged on `dist-tags.latest`. Its
+  `ships` section adds what npm alone has: `install scripts` (`RUNS AT INSTALL` means code executes
+  on your machine at install time), `provenance`, and the **platform package** that actually carries
+  a binary — resolved by default, because a wrapper like `@biomejs/biome` is 779 kB and its Linux
+  package 64.7 MB. `install size` is the two together. `typing` says whether the package ships its
+  own types, needs a separate `@types/…`, or has neither.
 - **`github <owner/repo>`**, for a tool with no registry at all — a Go or Rust binary shipped only
   as release assets. The same maintenance axis, the stable-release cadence read from the GitHub
   releases list (pre-releases by GitHub's flag or by spelling, drafts skipped), and the latest

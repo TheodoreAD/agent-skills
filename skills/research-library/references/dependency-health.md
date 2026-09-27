@@ -173,6 +173,43 @@ speaks to identity. The report keeps all three apart. Recorded 2026-09-27: `koal
 v0.11.0 ships no checksum or signature file at all, only GitHub's digests; `BurntSushi/ripgrep`
 15.2.0 puts a `.sha256` beside every asset.
 
+## npm: the packument, and where the binary really is
+
+Every field below was verified against live packuments on 2026-09-27; the trimmed copies are the
+test fixtures.
+
+- **`dist-tags.latest` is the version judged, never the newest key in `versions`.** express's
+  `latest-4` line (4.22.3) was published after its `latest` (5.2.1), and biome carries `nightly` and
+  `beta` tags beside `latest`. Cadence splits semver pre-releases (anything with a `-` before a
+  `+build`) off the stable line, as PyPI's does.
+- **Size fields are optional on old versions.** express lacks `dist.unpackedSize` and
+  `dist.fileCount` on every version up to 4.16.2 (2017-10-10); the report says "size not recorded"
+  rather than printing zero.
+- **The full packument, not the abbreviated one.** `hasInstallScript` exists only in the abbreviated
+  form, which has no `time` map and no `scripts`. The full form's `scripts` is read for the three
+  hooks npm runs on a registry install: `preinstall`, `install`, `postinstall`. `prepare` runs only
+  for a git or local install and is not reported.
+- **A platform-package wrapper is tiny, and the binary is elsewhere.** biome's wrapper is 779 kB;
+  its `@biomejs/cli-linux-x64` is 64.7 MB. The wrapper's `optionalDependencies` whose **names** say
+  Linux and x64 are fetched — one or two requests, never esbuild's twenty-six — and each one's own
+  `os`/`cpu`/`libc` fields decide which this machine takes. The name picks what to fetch and never
+  the verdict. [DECISION: resolved by default, user 2026-09-27, because without it the size is wrong
+  by about eighty times.]
+- **A pin that names no published version is the finding.** biome 2.0.3 pinned every platform
+  package to `workspace:*`, a monorepo spelling that leaked into a published manifest; 2.0.1 to
+  2.0.3 carry a deprecation saying so. The report prints `UNRESOLVED` with the pin.
+- **Install scripts and platform packages co-occur and mean different things.** esbuild has 26
+  platform packages and a `postinstall` that verifies the one installed, so both lines print.
+- **Provenance** is `dist.attestations.provenance.predicateType` (SLSA v1 on biome and esbuild), a
+  registry-verified link from the tarball to the CI build that produced it. express 4.22.3 has one
+  and 5.2.1, the later `latest`, does not.
+- **Typing** is one of three answers: the package ships its own (`types`, `typings`, or a `types`
+  condition anywhere in `exports`, which is where modern packages state it), a separate
+  DefinitelyTyped package (`@types/<name>`, `@types/<scope>__<name>` for a scoped one, one extra
+  request, a 404 meaning none), or neither. A separately maintained `@types` package can lag the
+  library it describes, which is why it is not reported as equivalent to shipping types.
+- **Download counts** are a separate API and are not fetched, for the same reason as PyPI's.
+
 ## Floors: what a release needs from this machine
 
 [DECISION: every source reports every floor its metadata states, in one `floors` section, rather
@@ -188,6 +225,9 @@ node is on `PATH`.]
   so its lowest member is the floor; across several wheels the report gives the lowest and names the
   highest. A release whose only Linux wheels are `musllinux` is flagged on a glibc machine, because
   pip skips them there and builds the sdist.
+- **npm**: `engines.node`, compared with `node --version` when node is on `PATH`; `engines.npm`,
+  reported and not compared; and the chosen platform package's `os`/`cpu`/`libc`. When no Linux x64
+  platform package states this machine's libc, that is the finding.
 - **GitHub assets**: only the libc family the asset name states. A numeric glibc floor lives in the
   binary's ELF version needs, and reading it means downloading the binary, which is out of scope. A
   musl build runs on a glibc machine when it is statically linked, which the name does not say.
@@ -227,9 +267,10 @@ and desirable, and deliberately after the single-candidate path is right — the
 part that matters, and a comparison mode built first would quietly make the head-to-head the primary
 output again.]
 
-[DEFERRED: generalising beyond PyPI. The same questions apply to npm, crates.io and Go modules, and
-the metric definitions would transfer with a different fetch layer. Not now; there is one ecosystem
-in play and a premature abstraction over registries would be shaped by exactly one of them anyway.]
+[DECISION: generalised beyond PyPI on 2026-09-27, one subcommand per source, once npm and crates.io
+payloads had been recorded and their fields verified — so the shared parts (the GitHub maintenance
+axis, the release view, floors) were cut from three real registries rather than guessed from one. Go
+modules are not a source: Go tools ship as GitHub release assets, which `github` reads.]
 
 [DECISION: no download-count metric. PyPI's own stats come from BigQuery or pypistats.org rather
 than the JSON API, so it is a second network dependency for a signal close to popularity — which

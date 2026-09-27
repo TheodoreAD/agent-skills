@@ -57,6 +57,7 @@ import signal
 import statistics
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import Counter
 from collections.abc import Callable
@@ -67,6 +68,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 PYPI_JSON = "https://pypi.org/pypi/{name}/json"
+NPM_PACKUMENT = "https://registry.npmjs.org/{name}"
 USER_AGENT = "package-health/1.0 (+https://github.com/TheodoreAD/agent-skills)"
 TIMEOUT_SECONDS = 30
 
@@ -118,6 +120,8 @@ class Transport(Protocol):
 
     def github(self, path: str) -> Any: ...
 
+    def npm(self, name: str) -> dict[str, Any]: ...
+
     def machine(self) -> Machine: ...
 
 
@@ -143,6 +147,14 @@ class LiveTransport:
             raise HealthError(f"PyPI returned a non-object for {name!r}")
         return payload
 
+    def npm(self, name: str) -> dict[str, Any]:
+        """The **full** packument. The abbreviated form lacks `time` and `scripts`, both read here."""
+        # A scoped name keeps its `@` and encodes its `/`: `@biomejs%2Fbiome`.
+        payload = self._get_json(NPM_PACKUMENT.format(name=urllib.parse.quote(name, safe="@")), "npm", name)
+        if not isinstance(payload, dict):
+            raise HealthError(f"npm returned a non-object for {name!r}")
+        return payload
+
     def machine(self) -> Machine:
         return Machine(python=platform.python_version(), glibc=_glibc_version(), node=_node_version())
 
@@ -153,7 +165,8 @@ class LiveTransport:
             with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as error:
-            raise HealthError(f"{registry} returned {error.code} for {name!r} — check the name") from error
+            kind = NotFound if error.code == 404 else HealthError
+            raise kind(f"{registry} returned {error.code} for {name!r} — check the name") from error
         except urllib.error.URLError as error:
             raise HealthError(f"{registry} unreachable: {error.reason}") from error
 
@@ -171,6 +184,10 @@ class LiveTransport:
 
 class HealthError(Exception):
     """Anything the caller can fix: a wrong name, an unreachable API, a path that is not a clone."""
+
+
+class NotFound(HealthError):
+    """A registry's 404, which is an answer where a lookup is optional (`@types/<name>`)."""
 
 
 def _glibc_version() -> str | None:
@@ -1091,6 +1108,324 @@ def asset_floors(release: LatestRelease, machine: Machine | None) -> list[Floor]
 
 
 # ------------------------------------------------------------------------------------------------
+# npm: the packument, and the platform package that actually carries the binary
+
+# The lifecycle scripts npm runs when a package is installed from the registry. `prepare` is
+# absent on purpose: npm runs it for a git or local install, not for a registry tarball.
+NPM_INSTALL_HOOKS = ("preinstall", "install", "postinstall")
+NPM_TIME_META = frozenset({"created", "modified"})
+
+
+def npm_is_prerelease(version: str) -> bool:
+    """Semver: anything with a `-` before any `+build` is a pre-release (`2.0.0-beta.6`, nightlies)."""
+    return "-" in version.split("+", 1)[0]
+
+
+def npm_release_dates(doc: dict[str, Any]) -> dict[str, datetime]:
+    """One date per published version from the `time` map, which also carries `created`/`modified`.
+
+    Versions no longer in `versions` were unpublished; their `time` entries remain and are skipped.
+    """
+    published = doc.get("versions") or {}
+    dates: dict[str, datetime] = {}
+    for version, stamp in (doc.get("time") or {}).items():
+        if version in NPM_TIME_META or version not in published:
+            continue
+        if parsed := _parse_stamp(stamp):
+            dates[version] = parsed
+    return dates
+
+
+def npm_latest(doc: dict[str, Any]) -> str | None:
+    """`dist-tags.latest` — never the newest key in `versions`, which is any line's newest publish.
+
+    [PITFALL] Confirmed 2026-09-27: express's `latest-4` line (4.22.3) was published after its
+    `latest` (5.2.1), and biome's `nightly` and `beta` tags sit beside `latest`. Sorting `versions`
+    by date answers "what was published last", which is not what `npm install` resolves to.
+    """
+    tags = doc.get("dist-tags") or {}
+    return tags.get("latest") if isinstance(tags, dict) else None
+
+
+@dataclass(frozen=True)
+class PlatformPackage:
+    """One `optionalDependencies` entry that carries a binary for a platform, read from its own packument."""
+
+    name: str
+    spec: str
+    version: str | None = None
+    os: list[str] = field(default_factory=list)
+    cpu: list[str] = field(default_factory=list)
+    libc: list[str] = field(default_factory=list)
+    unpacked_size: int | None = None
+    file_count: int | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class NpmShips:
+    version: str | None
+    unpacked_size: int | None
+    file_count: int | None
+    tarball: str | None
+    provenance: str | None
+    bin: dict[str, str]
+    install_scripts: dict[str, str]
+    optional_dependencies: int
+    platform_packages: list[PlatformPackage]
+    chosen: str | None
+
+    @property
+    def install_size(self) -> int | None:
+        """The wrapper plus this machine's platform package: what `npm install` actually writes."""
+        chosen = next((pkg for pkg in self.platform_packages if pkg.name == self.chosen), None)
+        extra = chosen.unpacked_size if chosen else 0
+        if self.unpacked_size is None or extra is None:
+            return None
+        return self.unpacked_size + extra
+
+
+@dataclass(frozen=True)
+class NpmTyping:
+    """Only dynamically typed ecosystems get a typing line; see the floors and typing decisions."""
+
+    verdict: str
+    detail: str
+
+
+def _platform_candidates(optional: dict[str, str]) -> list[tuple[str, str]]:
+    """The optional dependencies **named** for Linux x86_64, which decides only what to fetch.
+
+    The name is not the verdict. Each candidate's own `os`/`cpu`/`libc` fields are read once it is
+    fetched; the name only keeps the fetch count to one or two instead of esbuild's twenty-six.
+    """
+    return [
+        (name, str(spec)) for name, spec in optional.items() if "linux" in name.lower() and ASSET_ARCH_RE.search(name)
+    ]
+
+
+def resolve_platform_package(transport: Transport, name: str, spec: str) -> PlatformPackage:
+    """Read the platform package's own entry for the version the wrapper pins.
+
+    [PITFALL] The pin is normally the wrapper's exact version, and a pin that names no published
+    version is itself the finding. Confirmed on the real capture: biome 2.0.3 pinned every
+    platform package to `workspace:*`, a monorepo spelling that leaked into a published manifest,
+    and 2.0.1 to 2.0.3 all carry a deprecation for exactly that.
+    """
+    try:
+        doc = transport.npm(name)
+    except HealthError as error:
+        return PlatformPackage(name=name, spec=spec, error=str(error))
+    versions = doc.get("versions") or {}
+    if spec not in versions:
+        return PlatformPackage(name=name, spec=spec, error=f"pinned to {spec!r}, which names no published version")
+    entry = versions[spec]
+    dist = entry.get("dist") or {}
+    return PlatformPackage(
+        name=name,
+        spec=spec,
+        version=spec,
+        os=list(entry.get("os") or []),
+        cpu=list(entry.get("cpu") or []),
+        libc=list(entry.get("libc") or []),
+        unpacked_size=_int_or_none(dist.get("unpackedSize")),
+        file_count=_int_or_none(dist.get("fileCount")),
+    )
+
+
+def _choose_platform(packages: list[PlatformPackage], machine: Machine | None) -> str | None:
+    """The package npm would install here: a glibc machine takes `glibc` or an unstated libc."""
+    usable = [pkg for pkg in packages if pkg.error is None]
+    if machine is None or machine.glibc is None:
+        return usable[0].name if len(usable) == 1 else None
+    for pkg in usable:
+        if not pkg.libc or "glibc" in pkg.libc:
+            return pkg.name
+    return None
+
+
+def npm_ships(
+    transport: Transport, entry: dict[str, Any], *, machine: Machine | None, resolve: bool = True
+) -> NpmShips:
+    dist = entry.get("dist") or {}
+    provenance = ((dist.get("attestations") or {}).get("provenance") or {}).get("predicateType")
+    scripts = entry.get("scripts") or {}
+    optional = entry.get("optionalDependencies") or {}
+    packages = (
+        [resolve_platform_package(transport, name, spec) for name, spec in _platform_candidates(optional)]
+        if resolve
+        else []
+    )
+    raw_bin = entry.get("bin") or {}
+    # `bin` may be a bare string, meaning one command named after the package.
+    bins = {str(entry.get("name", "")).split("/")[-1]: raw_bin} if isinstance(raw_bin, str) else dict(raw_bin)
+    return NpmShips(
+        version=entry.get("version"),
+        unpacked_size=_int_or_none(dist.get("unpackedSize")),
+        file_count=_int_or_none(dist.get("fileCount")),
+        tarball=dist.get("tarball"),
+        provenance=provenance,
+        bin={str(key): str(value) for key, value in bins.items()},
+        install_scripts={hook: str(scripts[hook]) for hook in NPM_INSTALL_HOOKS if hook in scripts},
+        optional_dependencies=len(optional),
+        platform_packages=packages,
+        chosen=_choose_platform(packages, machine),
+    )
+
+
+def _exports_declare_types(exports: Any) -> bool:
+    """Modern packages state their types only as an `exports` condition, never as `types`."""
+    if isinstance(exports, dict):
+        return "types" in exports or any(_exports_declare_types(value) for value in exports.values())
+    if isinstance(exports, list):
+        return any(_exports_declare_types(value) for value in exports)
+    return False
+
+
+def types_package_name(name: str) -> str:
+    """DefinitelyTyped's spelling: `express` → `@types/express`, `@scope/pkg` → `@types/scope__pkg`."""
+    return "@types/" + (name[1:].replace("/", "__") if name.startswith("@") else name)
+
+
+def npm_typing(transport: Transport, name: str, entry: dict[str, Any]) -> NpmTyping:
+    """Own types, a separate `@types` package, or neither — one extra request only for the last two."""
+    for key in ("types", "typings"):
+        if entry.get(key):
+            return NpmTyping("own", f"ships its own ({key}: {entry[key]})")
+    if _exports_declare_types(entry.get("exports")):
+        return NpmTyping("own", "ships its own (a types condition in exports)")
+    if name.startswith("@types/"):
+        return NpmTyping("own", "this is a DefinitelyTyped package")
+    hint = "; typescript is a devDependency" if "typescript" in (entry.get("devDependencies") or {}) else ""
+    if entry.get("bin"):
+        hint += "; it ships a command, so this matters only if you import it"
+    separate = types_package_name(name)
+    try:
+        doc = transport.npm(separate)
+    except NotFound:
+        return NpmTyping("none", f"NONE — no types field and no {separate}{hint}")
+    except HealthError as error:
+        return NpmTyping("unknown", f"{separate} not checked: {error}")
+    latest = npm_latest(doc) or "?"
+    return NpmTyping("@types", f"separate {separate} {latest} — maintained apart from the package{hint}")
+
+
+def npm_repo(doc: dict[str, Any]) -> RepoChoice:
+    repository = doc.get("repository")
+    url = repository.get("url") if isinstance(repository, dict) else repository
+    if found := repo_from_url(str(url) if url else None):
+        return RepoChoice(found, 'npm "repository"')
+    return RepoChoice(None, 'npm "repository" names no GitHub repo')
+
+
+def npm_floors(entry: dict[str, Any], ships: NpmShips, machine: Machine | None) -> list[Floor]:
+    """`engines`, and the chosen platform package's `os`/`cpu`/`libc`."""
+    engines = entry.get("engines") or {}
+    engines = engines if isinstance(engines, dict) else {}
+    here_node = machine.node if machine else None
+    floors: list[Floor] = []
+    if node := engines.get("node"):
+        floors.append(
+            Floor(
+                "node",
+                str(node),
+                "engines.node",
+                f"node {here_node}" if here_node else None,
+                node_range_met(str(node), here_node),
+            )
+        )
+    else:
+        floors.append(Floor("node", "undeclared", "engines.node", note="no floor stated"))
+    if npm := engines.get("npm"):
+        floors.append(Floor("npm", str(npm), "engines.npm", note="npm's own version is not read here"))
+    candidates = [pkg for pkg in ships.platform_packages if pkg.error is None]
+    chosen = next((pkg for pkg in candidates if pkg.name == ships.chosen), None)
+    here_libc = f"glibc {machine.glibc}" if machine and machine.glibc else None
+    if chosen:
+        stated = "/".join(",".join(part) or "any" for part in (chosen.os, chosen.cpu, chosen.libc))
+        floors.append(Floor("platform", stated, f"{chosen.name} os/cpu/libc", here_libc, True if here_libc else None))
+    elif candidates:
+        stated = ", ".join(f"{pkg.name} ({','.join(pkg.libc) or 'libc unstated'})" for pkg in candidates)
+        floors.append(
+            Floor(
+                "platform",
+                "none for this libc",
+                stated,
+                here_libc,
+                False if here_libc else None,
+                note="no Linux x64 platform package states this machine's libc",
+            )
+        )
+    return floors
+
+
+@dataclass(frozen=True)
+class NpmHealth:
+    name: str
+    version: str | None
+    description: str | None
+    license: str | None
+    dist_tags: dict[str, str]
+    cadence: Cadence
+    deprecated: list[str]
+    latest_deprecated: str | None
+    runtime_dependencies: list[str]
+    typing: NpmTyping
+    ships: NpmShips
+    repo_choice: RepoChoice
+    repository: Repository | None
+    contributors: Contributors | None
+    issues: IssueSample | None
+    upstream: Upstream | None
+    floors: list[Floor]
+
+
+def gather_npm(
+    transport: Transport,
+    name: str,
+    repo: str | None,
+    *,
+    upstream_repo: str | None = None,
+    now: datetime | None = None,
+    machine: Machine | None = None,
+) -> NpmHealth:
+    """npm's answer from the full packument, plus one fetch per Linux x64 platform package."""
+    now = now or datetime.now(UTC)
+    doc = transport.npm(name)
+    versions = doc.get("versions") or {}
+    latest = npm_latest(doc)
+    entry = versions.get(latest or "") or {}
+    dates = npm_release_dates(doc)
+    ships = npm_ships(transport, entry, machine=machine)
+    choice = choose_repo(repo, npm_repo(doc))
+    repo_facts, people, issues = maintenance(transport, choice.repo, now=now)
+    tags = doc.get("dist-tags") or {}
+    return NpmHealth(
+        name=str(doc.get("name") or name),
+        version=latest,
+        description=doc.get("description") or entry.get("description"),
+        license=entry.get("license") or doc.get("license"),
+        dist_tags={str(key): str(value) for key, value in tags.items()} if isinstance(tags, dict) else {},
+        cadence=cadence(dates, [], now=now, prerelease=npm_is_prerelease),
+        deprecated=sorted(version for version, item in versions.items() if (item or {}).get("deprecated")),
+        latest_deprecated=entry.get("deprecated"),
+        runtime_dependencies=sorted(entry.get("dependencies") or {}),
+        typing=npm_typing(transport, str(doc.get("name") or name), entry),
+        ships=ships,
+        repo_choice=choice,
+        repository=repo_facts,
+        contributors=people,
+        issues=issues,
+        upstream=upstream(transport, upstream_repo, dates, now=now) if upstream_repo else None,
+        floors=npm_floors(entry, ships, machine),
+    )
+
+
+def _int_or_none(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+# ------------------------------------------------------------------------------------------------
 # The clone: everything the APIs cannot answer
 
 
@@ -1396,8 +1731,72 @@ def render_github(health: GithubHealth) -> str:
     return "\n".join(lines)
 
 
+def render_npm(health: NpmHealth) -> str:
+    lines = [f"{health.name} {health.version or '?'}  —  {health.description or 'no description'}"]
+    others = ", ".join(f"{tag} {version}" for tag, version in health.dist_tags.items() if tag != "latest")
+    if others:
+        lines.append(f"dist-tags: latest {health.version}; also {others} — judged on latest only")
+    if health.latest_deprecated:
+        lines.append(f"LATEST IS DEPRECATED: {health.latest_deprecated}")
+    lines.append("")
+    lines.append("maintenance")
+    lines.extend(_cadence_lines(health.cadence))
+    if health.deprecated:
+        shown = ", ".join(health.deprecated[:6]) + (" …" if len(health.deprecated) > 6 else "")
+        lines.append(f"  deprecated       {len(health.deprecated)} version(s): {shown}")
+    lines.extend(_github_lines(health.repo_choice, health.repository, health.contributors, health.issues))
+
+    deps = health.runtime_dependencies
+    lines.append("")
+    lines.append("fit")
+    lines.append(f"  runtime deps     {len(deps)}: {', '.join(deps[:12]) or 'none'}{' …' if len(deps) > 12 else ''}")
+    lines.append(f"  licence          {health.license or 'none stated'}")
+    lines.append(f"  typing           {health.typing.detail}")
+
+    lines.append("")
+    lines.extend(_npm_ship_lines(health.ships))
+    lines.extend(_floor_lines(health.floors))
+    if health.upstream:
+        lines.append("")
+        lines.extend(_upstream_lines(health.upstream, health.version))
+    lines.extend(CLOSING)
+    return "\n".join(lines)
+
+
+def _npm_ship_lines(ships: NpmShips) -> list[str]:
+    lines = [f"ships ({ships.version or '?'})"]
+    count = f", {ships.file_count} files" if ships.file_count is not None else ""
+    if ships.unpacked_size is None:
+        lines.append("  tarball          size not recorded — npm stored no unpackedSize for this version")
+    else:
+        lines.append(f"  tarball          {_size(ships.unpacked_size)} unpacked{count}")
+    commands = ", ".join(f"{name} → {path}" for name, path in ships.bin.items())
+    lines.append(f"  bin              {commands or 'none — a library, no commands'}")
+    if ships.install_scripts:
+        hooks = "; ".join(f"{hook}: {command}" for hook, command in ships.install_scripts.items())
+        lines.append(f"  install scripts  RUNS AT INSTALL — {hooks}")
+    else:
+        lines.append("  install scripts  none — nothing runs or fetches at install")
+    lines.append(f"  provenance       {ships.provenance or 'none — no registry attestation for this version'}")
+    if ships.optional_dependencies and not ships.platform_packages:
+        lines.append(f"  platform pkgs    {ships.optional_dependencies} optionalDependencies, none named for Linux x64")
+    elif ships.platform_packages:
+        found = len(ships.platform_packages)
+        lines.append(f"  platform pkgs    {found} of {ships.optional_dependencies} are Linux x64:")
+        for pkg in ships.platform_packages:
+            mark = "  <- this machine" if pkg.name == ships.chosen else ""
+            if pkg.error:
+                lines.append(f"    {'?':>9}  {pkg.name}  UNRESOLVED — {pkg.error}")
+                continue
+            libc = ",".join(pkg.libc) or "libc unstated"
+            lines.append(f"    {_size(pkg.unpacked_size):>9}  {libc:<13} {pkg.name}@{pkg.version}{mark}")
+        if ships.chosen:
+            lines.append(f"  install size     {_size(ships.install_size)} here — the wrapper plus {ships.chosen}")
+    return lines
+
+
 def _floor_lines(floors: list[Floor]) -> list[str]:
-    """Every floor, and whether this machine meets it; `ABOVE THIS MACHINE` is the finding."""
+    """Every floor, and whether this machine meets it; `NOT MET HERE` is the finding."""
     if not floors:
         return []
     lines = ["", "floors (stated by the metadata, compared with this machine where cheap to read)"]
@@ -1405,7 +1804,7 @@ def _floor_lines(floors: list[Floor]) -> list[str]:
         if floor.met is True:
             verdict = f"met here ({floor.machine})"
         elif floor.met is False:
-            verdict = f"ABOVE THIS MACHINE ({floor.machine})"
+            verdict = f"NOT MET HERE ({floor.machine})"
         elif floor.machine is None:
             verdict = "not compared — this machine's value is not readable here"
         else:
@@ -1601,6 +2000,9 @@ def payload_of(health: Any) -> dict[str, Any]:
     if people:
         data["contributors"]["human_count"] = people.human_count
         data["contributors"]["bus_factor"] = people.bus_factor
+    ships = getattr(health, "ships", None)
+    if isinstance(ships, NpmShips):
+        data["ships"]["install_size"] = ships.install_size
     clone = getattr(health, "clone", None)
     if clone:
         data["clone"]["sources"]["raw_ratio"] = clone.sources.raw_ratio
@@ -1608,7 +2010,7 @@ def payload_of(health: Any) -> dict[str, Any]:
     return data
 
 
-SOURCES = ("pypi", "github")
+SOURCES = ("pypi", "npm", "github")
 
 
 def retired_form(argv: list[str]) -> str | None:
@@ -1647,6 +2049,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     _add_upstream_flag(pypi)
     _add_json_flag(pypi)
+
+    npm = sources.add_parser("npm", help="a package on npm", description="Judge an npm package.")
+    npm.add_argument("name", help="the package name on npm, scoped or not (@biomejs/biome)")
+    _add_repo_flag(npm, 'npm\'s "repository" field')
+    _add_upstream_flag(npm)
+    _add_json_flag(npm)
 
     github = sources.add_parser(
         "github",
@@ -1703,6 +2111,9 @@ def _run(args: argparse.Namespace, transport: Transport, machine: Machine) -> tu
             raise HealthError(f"{args.repo!r} is not owner/repo")
         found = gather_github(transport, args.repo, machine=machine)
         return found, render_github(found)
+    if args.source == "npm":
+        npm = gather_npm(transport, args.name, args.repo, upstream_repo=args.upstream, machine=machine)
+        return npm, render_npm(npm)
     health = gather(
         transport,
         args.name,

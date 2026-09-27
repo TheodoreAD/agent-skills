@@ -63,10 +63,18 @@ def _no_network(monkeypatch):
 class FakeTransport:
     """The captured responses, keyed the way the script asks for them."""
 
-    def __init__(self, pypi_payload=None, github_payloads=None):
+    def __init__(self, pypi_payload=None, github_payloads=None, npm_payloads=None):
         self.pypi_payload: object = pypi_payload if pypi_payload is not None else fixture("httpx-pypi")
         self.github_payloads: dict[str, object] = github_payloads or {}
+        self.npm_payloads: dict[str, object] = npm_payloads or {}
         self.asked: list[str] = []
+
+    def npm(self, name: str):
+        """A name with no captured packument is npm's 404, which is how `@types/<name>` is absent."""
+        self.asked.append(f"npm:{name}")
+        if name not in self.npm_payloads:
+            raise health.NotFound(f"npm returned 404 for {name!r} — check the name")
+        return self.npm_payloads[name]
 
     def pypi(self, name: str):
         self.asked.append(f"pypi:{name}")
@@ -84,7 +92,8 @@ class FakeTransport:
 
 
 # A fixed machine, so a floor's verdict does not move with whoever runs the suite. The values are
-# this repo's development machine on 2026-09-27: Ubuntu 24.04's glibc, and no node on PATH.
+# this repo's development machine on 2026-09-27 (Ubuntu 24.04's glibc), with node left unset so
+# the not-compared path is the default one a test sees.
 MACHINE = health.Machine(python="3.12.3", glibc="2.39", node=None)
 
 
@@ -961,7 +970,7 @@ def test_a_floor_above_this_machine_is_flagged():
     }
     floors = health.pypi_floors(">=3.14", health.release_files(payload), MACHINE)
     assert [floor.met for floor in floors] == [False, False]
-    assert "ABOVE THIS MACHINE (glibc 2.39)" in "\n".join(health._floor_lines(floors))
+    assert "NOT MET HERE (glibc 2.39)" in "\n".join(health._floor_lines(floors))
 
 
 def test_a_musllinux_only_release_is_a_mismatch_on_a_glibc_machine():
@@ -982,3 +991,154 @@ def test_github_floors_name_the_libc_family_and_say_the_number_is_not_in_the_nam
     result = health.gather_github(ripgrep_transport(), "BurntSushi/ripgrep", now=RELEASES_CAPTURED, machine=MACHINE)
     assert [(floor.required, floor.met) for floor in result.floors] == [("musl", None), ("unspecified", None)]
     assert "statically linked" in health.render_github(result)
+
+
+# ------------------------------------------------------------------------------------------------
+# npm. The captures are the full packuments of `@biomejs/biome`, `esbuild`, `express` and their
+# platform or `@types` packages, recorded 2026-09-27 and trimmed to a handful of versions each.
+
+
+def biome_transport():
+    return FakeTransport(
+        npm_payloads={
+            "@biomejs/biome": fixture("biome-npm"),
+            "@biomejs/cli-linux-x64": fixture("biome-cli-linux-x64-npm"),
+            "@biomejs/cli-linux-x64-musl": fixture("biome-cli-linux-x64-musl-npm"),
+        }
+    )
+
+
+def test_npm_judges_dist_tags_latest_never_the_newest_publish():
+    """Real capture: express's `latest-4` (4.22.3, 2026-09-14) was published after `latest`
+    (5.2.1, 2025-12-01). The newest key is not what `npm install express` resolves to."""
+    payloads = {"express": fixture("express-npm"), "@types/express": fixture("types-express-npm")}
+    transport = FakeTransport(npm_payloads=payloads)
+    result = health.gather_npm(transport, "express", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.version == "5.2.1"
+    assert result.ships.unpacked_size == 75429
+    assert "latest-4 4.22.3" in health.render_npm(result)
+
+
+def test_npm_size_fields_are_optional_on_old_versions():
+    """Real capture: express has `unpackedSize` from 4.16.3 (2018-03-12) on, and not on 4.16.2."""
+    doc = fixture("express-npm")
+    old = health.npm_ships(FakeTransport(), doc["versions"]["4.16.2"], machine=MACHINE)
+    assert (old.unpacked_size, old.file_count) == (None, None)
+    assert "size not recorded" in "\n".join(health._npm_ship_lines(old))
+    assert health.npm_ships(FakeTransport(), doc["versions"]["4.16.3"], machine=MACHINE).file_count == 16
+
+
+def test_npm_resolves_the_platform_package_that_actually_carries_the_binary():
+    """Real capture: the biome wrapper is 779 kB and its glibc Linux x64 package 64.7 MB, so the
+    wrapper's own size understates the install by about eighty times."""
+    transport = biome_transport()
+    result = health.gather_npm(transport, "@biomejs/biome", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    ships = result.ships
+    assert ships.optional_dependencies == 8
+    assert [pkg.name for pkg in ships.platform_packages] == ["@biomejs/cli-linux-x64", "@biomejs/cli-linux-x64-musl"]
+    assert ships.chosen == "@biomejs/cli-linux-x64"
+    assert ships.install_size == 779173 + 64693040
+    # Only the two Linux x64 candidates are fetched, never all eight platforms.
+    assert [ask for ask in transport.asked if ask.startswith("npm:@biomejs/cli")] == [
+        "npm:@biomejs/cli-linux-x64",
+        "npm:@biomejs/cli-linux-x64-musl",
+    ]
+    rendered = health.render_npm(result)
+    assert "64.7 MB  glibc" in rendered
+    assert "<- this machine" in rendered
+    assert "install size     65.5 MB here" in rendered
+
+
+def test_a_platform_pin_that_names_no_published_version_is_the_finding():
+    """Real capture: biome 2.0.3 pinned every platform package to `workspace:*`, and carries a
+    deprecation saying its manifest is broken."""
+    doc = fixture("biome-npm")
+    ships = health.npm_ships(biome_transport(), doc["versions"]["2.0.3"], machine=MACHINE)
+    assert ships.chosen is None
+    assert all("workspace:*" in (pkg.error or "") for pkg in ships.platform_packages)
+    assert "UNRESOLVED" in "\n".join(health._npm_ship_lines(ships))
+
+
+def test_a_musl_machine_is_not_assumed_when_glibc_is_unreadable():
+    doc = fixture("biome-npm")
+    unknown = health.Machine(python="3.12.3", glibc=None, node=None)
+    ships = health.npm_ships(biome_transport(), doc["versions"]["2.5.14"], machine=unknown)
+    assert ships.chosen is None  # two candidates and no libc to choose between them
+
+
+def test_npm_install_scripts_and_provenance_are_reported_separately():
+    """Real capture: esbuild resolves a platform package **and** runs a postinstall that verifies
+    it. The two signals co-occur and mean different things, so each has its own line."""
+    transport = FakeTransport(
+        npm_payloads={"esbuild": fixture("esbuild-npm"), "@esbuild/linux-x64": fixture("esbuild-linux-x64-npm")}
+    )
+    result = health.gather_npm(transport, "esbuild", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.ships.install_scripts == {"postinstall": "node install.js"}
+    assert result.ships.provenance == "https://slsa.dev/provenance/v1"
+    assert result.ships.chosen == "@esbuild/linux-x64"
+    rendered = health.render_npm(result)
+    assert "RUNS AT INSTALL — postinstall: node install.js" in rendered
+
+
+def test_npm_typing_is_own_types_or_a_separate_types_package_or_neither():
+    esbuild = fixture("esbuild-npm")["versions"]["0.28.2"]
+    assert health.npm_typing(FakeTransport(), "esbuild", esbuild).verdict == "own"
+    express = fixture("express-npm")["versions"]["5.2.1"]
+    with_types = FakeTransport(npm_payloads={"@types/express": fixture("types-express-npm")})
+    typed = health.npm_typing(with_types, "express", express)
+    assert typed.verdict == "@types"
+    assert "@types/express 5.0.6" in typed.detail
+    assert health.npm_typing(FakeTransport(), "express", express).verdict == "none"
+    exports_only = {"exports": {".": {"import": {"types": "./index.d.mts", "default": "./index.mjs"}}}}
+    assert health.npm_typing(FakeTransport(), "x", exports_only).verdict == "own"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"), [("express", "@types/express"), ("@biomejs/biome", "@types/biomejs__biome")]
+)
+def test_the_definitely_typed_name_follows_its_scoped_spelling(name, expected):
+    assert health.types_package_name(name) == expected
+
+
+def test_npm_deprecations_are_counted_and_a_deprecated_latest_is_headlined():
+    result = health.gather_npm(biome_transport(), "@biomejs/biome", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.deprecated == ["2.0.1", "2.0.2", "2.0.3"]
+    assert result.latest_deprecated is None
+    doc = fixture("biome-npm")
+    doc["dist-tags"] = {"latest": "2.0.1"}
+    transport = biome_transport()
+    transport.npm_payloads["@biomejs/biome"] = doc
+    stale = health.gather_npm(transport, "@biomejs/biome", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert "LATEST IS DEPRECATED: This version of Biome has a broken manifest" in health.render_npm(stale)
+
+
+def test_npm_cadence_keeps_nightlies_and_betas_off_the_stable_line():
+    result = health.gather_npm(biome_transport(), "@biomejs/biome", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.cadence.releases == 4  # 2.0.1, 2.0.2, 2.0.3, 2.5.14
+    assert result.cadence.prereleases == 2  # the nightly and the beta
+
+
+def test_npm_repository_fills_the_repo_and_the_report_names_the_field():
+    transport = biome_transport()
+    transport.github_payloads = {"repos/biomejs/biome": fixture("httpx-repo")}
+    result = health.gather_npm(transport, "@biomejs/biome", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.repo_choice == health.RepoChoice("biomejs/biome", 'npm "repository"')
+    assert 'repo from        npm "repository"; --repo overrides' in health.render_npm(result)
+
+
+def test_npm_floors_read_engines_and_the_platform_packages_libc():
+    result = health.gather_npm(biome_transport(), "@biomejs/biome", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    floors = {floor.what: floor for floor in result.floors}
+    assert floors["node"].required == ">=14.21.3"
+    assert floors["node"].met is None  # this machine has no node on PATH
+    assert (floors["platform"].required, floors["platform"].met) == ("linux/x64/glibc", True)
+    with_node = health.Machine(python="3.12.3", glibc="2.39", node="12.22.9")
+    old = health.gather_npm(biome_transport(), "@biomejs/biome", None, now=RELEASES_CAPTURED, machine=with_node)
+    assert "NOT MET HERE (node 12.22.9)" in health.render_npm(old)
+
+
+def test_the_npm_subcommand_runs_end_to_end_with_json(capsys):
+    assert health.main(["npm", "@biomejs/biome", "--json"], transport=biome_transport()) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ships"]["install_size"] == 779173 + 64693040
+    assert payload["typing"]["verdict"] == "none"

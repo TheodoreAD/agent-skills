@@ -1,0 +1,49 @@
+{
+  "name": "@biomejs/cli-linux-x64-musl",
+  "description": null,
+  "dist-tags": {
+    "nightly": "1.9.5-nightly.81fdedb",
+    "beta": "2.0.0-beta.6",
+    "latest": "2.5.14"
+  },
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "url": "git+https://github.com/biomejs/biome.git",
+    "type": "git",
+    "directory": "packages/@biomejs/biome"
+  },
+  "time": {
+    "created": "2023-12-13T07:48:54.810Z",
+    "modified": "2026-09-16T07:54:17.611Z",
+    "2.5.14": "2026-09-16T07:54:17.263Z"
+  },
+  "versions": {
+    "2.5.14": {
+      "name": "@biomejs/cli-linux-x64-musl",
+      "version": "2.5.14",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "libc": [
+        "musl"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-linux-x64-musl/-/cli-linux-x64-musl-2.5.14.tgz",
+        "fileCount": 3,
+        "unpackedSize": 64166049,
+        "attestations": {
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        }
+      }
+    }
+  }
+}

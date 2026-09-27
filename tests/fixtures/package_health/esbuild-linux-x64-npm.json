@@ -1,0 +1,44 @@
+{
+  "name": "@esbuild/linux-x64",
+  "description": "The Linux 64-bit binary for esbuild, a JavaScript bundler.",
+  "dist-tags": {
+    "latest": "0.28.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "url": "git+https://github.com/evanw/esbuild.git",
+    "type": "git"
+  },
+  "time": {
+    "created": "2022-12-05T23:54:53.773Z",
+    "modified": "2026-08-08T19:58:48.596Z",
+    "0.28.2": "2026-08-08T19:58:48.257Z"
+  },
+  "versions": {
+    "0.28.2": {
+      "name": "@esbuild/linux-x64",
+      "version": "0.28.2",
+      "description": "The Linux 64-bit binary for esbuild, a JavaScript bundler.",
+      "engines": {
+        "node": ">=18"
+      },
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "license": "MIT",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.2.tgz",
+        "fileCount": 3,
+        "unpackedSize": 11428465,
+        "attestations": {
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        }
+      }
+    }
+  }
+}

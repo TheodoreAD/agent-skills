@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-12
+status: landed
+updated: 2026-09-28
 ---
 
 # `filed` cannot see a plan written in a worktree that has since been removed
@@ -58,3 +58,11 @@ the main-checkout path, with a line naming the worktree path it was written as.]
 [DECISION (2026-09-28): **a plan gone from `main` too is the existing `MISSING` row**, and since
 `filed` now reads the deleting commit, one this session retired says so. Nothing extra was needed:
 once the path is mapped, the file-exists check and the cause lookup run against `main`.]
+
+## Migrated to
+
+- **The mapping, both layouts and the incident** — `main_checkout_path`'s docstring in
+  `skills/session-harvest/scripts/harvest.py`, the `filed` paragraph in its `SKILL.md`, and two
+  tests (`3afbbc9`).
+- **Not migrated**: the plausible-wrong-number pitfall. `SKILL.md` step 8 already carries that rule
+  for this subcommand, and the migrated paragraph states the one-for-five count.

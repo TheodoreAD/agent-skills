@@ -107,6 +107,34 @@ def test_split_chain_and_strip_quoted_agree_on_where_quotes_are(cmd):
     assert len(audit.split_chain(cmd)) == len(audit.split_chain(audit.strip_quoted(cmd)))
 
 
+@pytest.mark.parametrize(
+    ("cmd", "tagged"),
+    [
+        # The 2026-09-26 shapes: a cd kept from persisting, and `time` given a whole chain.
+        ("bash -c 'cd \"$RESEARCH_HOME/repos/x\" && git fetch && git show HEAD | rg foo'", True),
+        ("bash -c 'time (uv venv /tmp/v && uv pip install pkg)'", True),
+        ("sh -ec 'make all'", True),
+        ("zsh -lc 'echo hi'", True),
+        ("cd ../other && bash -c 'ls'", True),
+        # The prefix the harness sees is docker, not bash.
+        ("docker run --rm img bash -c 'pytest -q'", False),
+        # Named, not run.
+        ('git commit -m "why bash -c prompts" -- a', False),
+        ("rg -n 'bash -c' AGENTS.md", False),
+        ("bash scripts/setup.sh", False),
+    ],
+)
+def test_bash_c_counts_the_wrapper_the_harness_sees(cmd, tagged):
+    assert ("bash-c" in tags_of(cmd)) is tagged
+
+
+def test_bash_c_is_in_the_session_view():
+    """It had a pattern and no session row, so a session using it read 0% on every row shown."""
+    assert "bash-c" in audit.SESSION_ROWS
+    assert "bash-c" in audit.SAMPLE_TAGS, "a new row's samples print on the commit that adds it"
+    assert "bash-c" not in audit.EXPECTATIONS, "reported, not judged — not decided"
+
+
 def test_strip_quoted_keeps_the_shell_shape():
     assert audit.strip_quoted('rg -n "a|b" f | tail -1') == 'rg -n "" f | tail -1'
     assert audit.strip_quoted("echo 'it | is' > f") == 'echo "" > f'

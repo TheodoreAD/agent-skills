@@ -42,10 +42,16 @@ because each call is also echoed once.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: one row or two? `bash -c` typed by the agent (the prompt-costing shape) is
-distinct from `docker run … bash -c`, where the wrapper runs inside a container and the prefix the
-harness sees is `docker`. A row matching the leading word only would count the first and not the
-second, which seems right.]
+[DECISION: **one row, leading word only** (decided with the user 2026-09-28). It counts `bash`/`sh`/
+`zsh` with a `-c` flag at a command-segment boundary, quotes blanked, so `docker run … bash -c` and
+a `bash -c` named inside a message or search are not counted.
+
+The premise that no row existed was half right. A `bash-c` pattern was already in `PATTERNS`, but it
+matched anywhere, quotes included, and it was missing from `SESSION_ROWS` and `SAMPLE_TAGS`, so no
+session view ever printed it. It is now in both, and on `bcf810d6` it reads 3, the count above. It
+stays out of `EXPECTATIONS`: reported, not judged, because nobody has decided a verdict for it.
+There was no SKILL.md row table to add a line to; the row's own description in `audit.py` names both
+replacements.]
 
 ## Recommended direction
 

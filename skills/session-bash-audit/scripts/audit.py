@@ -520,7 +520,17 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
         "find doing what fd does not: acting on matches, or selecting by time/size/perm — not a miss",
     ),
     "env-prefix": (_rx(r"^\s*[A-Z_][A-Z0-9_]*=\S+\s+\S"), "leading VAR=x defeats allow-rule prefix matching"),
-    "bash-c": (_rx(r"\b(bash|sh|zsh)\s+-l?c\b"), "outer bash is itself ask-gated; always prompts"),
+    # At a segment boundary with quotes blanked, like the other rows keyed on a command name: the
+    # shape that costs a prompt is the one the harness sees as the command's prefix. `docker run …
+    # bash -c` is prefixed by `docker`, and a `bash -c` quoted inside a message or a search is not a
+    # call at all — until 2026-09-28 this row matched both, and it was not in the session view, so a
+    # session that typed the wrapper three times after being told not to read 0% everywhere.
+    "bash-c": (
+        _rx_unquoted(r"(?:^|&&|;|\||\n)\s*(?:bash|sh|zsh)\s+(?:-\w+\s+)*-\w*c\b"),
+        "the wrapper changes the command's prefix, so no allow rule matches and it prompts every time. "
+        "Seen used to keep a cd from persisting (use git -C or the tool's own directory flag) and to "
+        "give `time` a whole chain (write a script file instead)",
+    ),
     "heredoc": (lambda cmd: bool(HEREDOC_RE.search(cmd)), "file write via shell; Write/Edit have their own gate"),
     "sed-i": (_rx(r"\bsed\s+-i\b"), "in-place edit via shell; Edit has its own gate"),
     "python-c": (_rx(r"\bpython3?\s+-c\b"), "ad-hoc script instead of a test or a dedicated tool"),
@@ -840,6 +850,7 @@ SESSION_ROWS = [
     "git-undo-relative",
     "store-write-by-git",
     "cut-message",
+    "bash-c",
 ]
 
 # What a re-measurement after the 2026-08-24 changes (acceptEdits default, rewritten ~/AGENTS.md
@@ -1325,6 +1336,7 @@ SAMPLE_TAGS = (
     "git-undo-relative",
     "store-write-by-git",
     "cut-message",
+    "bash-c",
 )
 
 

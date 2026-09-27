@@ -638,6 +638,22 @@ LEGACY_CONFIG_DIR = "plan-docs"
 LEGACY_CONFIG_VAR = "PLAN_DOCS_CONFIG"
 
 
+def setting(name: str) -> tuple[str, str]:
+    """`$PLAN_CONVEYOR_<name>`, else the pre-rename `$PLAN_DOCS_<name>`: which one answered, and its value.
+
+    The same fallback `config_path` keeps for the config variable, for the same reason: a harness
+    or shell exporting the old name keeps working, and nothing outside this file has to move first.
+    `DEVICE` and `SESSION_REPO` kept the old prefix through the 2026-09-27 rename and caught up
+    2026-09-28. The variable is returned so a message can name the one actually in effect.
+    """
+    current = f"PLAN_CONVEYOR_{name}"
+    for var in (current, f"PLAN_DOCS_{name}"):
+        value = os.environ.get(var, "").strip()
+        if value:
+            return var, value
+    return current, ""
+
+
 def config_path() -> Path:
     """Explicit variable, then `$XDG_CONFIG_HOME`, then the platform default.
 
@@ -751,7 +767,7 @@ def _device_field(raw: dict[str, object]) -> str:
     directory and a line of output. The failure modes are not symmetric, so the default follows the
     one that cannot leak.
     """
-    value = os.environ.get("PLAN_DOCS_DEVICE") or raw.get("device") or CONTRACTOR
+    value = setting("DEVICE")[1] or raw.get("device") or CONTRACTOR
     if value not in DEVICES:
         raise PlanError(f"device must be one of {', '.join(DEVICES)}, got {value!r}")
     return str(value)
@@ -2485,7 +2501,7 @@ def session_anchor(cfg: Config) -> SessionAnchor:
     Three tiers, most trustworthy first, because the guard that uses this is only as good as its
     weakest input and a caller deserves to know which one it got:
 
-    1. `$PLAN_DOCS_SESSION_REPO` — the vendor-neutral escape hatch. Any harness can export it at
+    1. `$PLAN_CONVEYOR_SESSION_REPO` — the vendor-neutral escape hatch. Any harness can export it at
        session start, and it is the only tier available to one that is not Claude Code.
     2. Claude Code's session transcript, which is exact and needs no setup.
     3. cwd — the weak tier. It is what the guard used before an anchor existed, and it cannot detect
@@ -2493,12 +2509,12 @@ def session_anchor(cfg: Config) -> SessionAnchor:
 
     Never `--path`: that names what a command is *about*, not where the session lives.
     """
-    override = os.environ.get("PLAN_DOCS_SESSION_REPO", "").strip()
+    var, override = setting("SESSION_REPO")
     if override:
         root = repo_root_of(Path(override).expanduser())
         if root is None:
-            raise PlanError(f"$PLAN_DOCS_SESSION_REPO is {override!r}, which is not inside a git repository")
-        return SessionAnchor(root, "$PLAN_DOCS_SESSION_REPO")
+            raise PlanError(f"${var} is {override!r}, which is not inside a git repository")
+        return SessionAnchor(root, f"${var}")
     found = claude_session_repo(cfg)
     if found is not None:
         return SessionAnchor(found, "this session's transcript")
@@ -6101,7 +6117,7 @@ def store_problems(cfg: Config) -> list[str]:
     if not session_is_anchored(cfg):
         found.append(
             "no session anchor: the cross-repo guard is falling back to cwd, which cannot detect a "
-            "drifted directory. Export PLAN_DOCS_SESSION_REPO=<repo> at session start to fix it"
+            "drifted directory. Export PLAN_CONVEYOR_SESSION_REPO=<repo> at session start to fix it"
         )
     return found
 

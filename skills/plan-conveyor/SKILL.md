@@ -1,7 +1,7 @@
 ---
 name: plan-conveyor
 description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, consolidating a session's plans and loose notes into one plan without loss, migrating a legacy PLAN.md/DESIGN.md onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME); an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
-compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard; any other harness exports PLAN_DOCS_SESSION_REPO instead. No network access.
+compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard; any other harness exports PLAN_CONVEYOR_SESSION_REPO instead. No network access.
 ---
 
 # Structured, stateful plan files
@@ -392,7 +392,9 @@ still read when the current path holds nothing, `$PLAN_DOCS_CONFIG` is still hon
 the current variable, and a run that falls back prints where the file is and where to move it. The
 fallback exists because the writers lay down a skeleton over an absent config: without it the first
 run after the rename would answer with an empty config instead of an error, dropping the
-`[private] extra` terms that `scan` cannot derive from directory names.
+`[private] extra` terms that `scan` cannot derive from directory names. The other two variables,
+`$PLAN_CONVEYOR_SESSION_REPO` and `$PLAN_CONVEYOR_DEVICE`, kept the old prefix until 2026-09-28 and
+fall back to it the same way.
 
 **The config is per-machine, not per-user, and is deliberately not version-controlled.** It maps the
 repos that happen to be cloned on _this_ box to routes, so it says nothing meaningful anywhere else
@@ -625,12 +627,12 @@ required for the skill to work:
 
 | tier | signal                                                    | when it applies                   |
 | ---- | --------------------------------------------------------- | --------------------------------- |
-| 1    | `$PLAN_DOCS_SESSION_REPO`                                 | **any harness**, if it exports it |
+| 1    | `$PLAN_CONVEYOR_SESSION_REPO`                             | **any harness**, if it exports it |
 | 2    | `$CLAUDE_CODE_SESSION_ID` → the session's transcript path | Claude Code, no setup needed      |
 | 3    | cwd                                                       | fallback; cannot detect drift     |
 
-**On a harness that is not Claude Code, export `PLAN_DOCS_SESSION_REPO` at session start** —
-`export PLAN_DOCS_SESSION_REPO="$(git rev-parse --show-toplevel)"` — and the guard is exactly as
+**On a harness that is not Claude Code, export `PLAN_CONVEYOR_SESSION_REPO` at session start** —
+`export PLAN_CONVEYOR_SESSION_REPO="$(git rev-parse --show-toplevel)"` — and the guard is exactly as
 strong as it is under Claude Code. Without it everything still works; the guard just degrades to
 tier 3 and stops catching a drifted directory. `doctor` reports which tier is in use and lists the
 fallback as a problem, so nobody is in the weak tier without being told.

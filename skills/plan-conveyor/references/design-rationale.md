@@ -792,13 +792,14 @@ the drifted case.
 
 The tiering that followed came from the user asking whether a non-Claude harness had a fallback. It
 did — cwd — but that is precisely the tier that cannot detect drift, so "works" and "works as well"
-were not the same claim. `$PLAN_DOCS_SESSION_REPO` closes it for any harness. Two details are
-deliberate: an explicit value beats an inferred one, so the variable wins over the transcript; and a
-variable pointing outside a git repository **raises** rather than falling back, because silently
-degrading a guard somebody just tried to strengthen is the worst of the three outcomes. `doctor`
-reports the tier in use and lists the cwd fallback as a problem, on the same argument as the store's
-git-identity check — a condition that silently disables a safety property has to be visible from the
-command whose job is saying what is broken.
+were not the same claim. `$PLAN_CONVEYOR_SESSION_REPO` (`$PLAN_DOCS_SESSION_REPO` before the rename,
+still read) closes it for any harness. Two details are deliberate: an explicit value beats an
+inferred one, so the variable wins over the transcript; and a variable pointing outside a git
+repository **raises** rather than falling back, because silently degrading a guard somebody just
+tried to strengthen is the worst of the three outcomes. `doctor` reports the tier in use and lists
+the cwd fallback as a problem, on the same argument as the store's git-identity check — a condition
+that silently disables a safety property has to be visible from the command whose job is saying what
+is broken.
 
 ### Why a dirty store means "add a file", not "wait" or "lock"
 

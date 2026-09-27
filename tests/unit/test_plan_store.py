@@ -88,7 +88,12 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     config = home / ".config" / "plan-conveyor" / "config.toml"
-    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
+    # Both prefixes cleared: a shell exporting either would otherwise decide the session anchor or
+    # the device for every test, and the legacy name is still read as a fallback.
+    for prefix in ("PLAN_CONVEYOR_", "PLAN_DOCS_"):
+        monkeypatch.delenv(f"{prefix}SESSION_REPO", raising=False)
+        monkeypatch.delenv(f"{prefix}DEVICE", raising=False)
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(config))
     return Workspace(
         home=home,
         projects=projects,
@@ -1036,15 +1041,15 @@ def test_the_anchor_falls_back_to_cwd_outside_claude_code(ws, capsys, monkeypatc
 
 
 def test_a_non_claude_harness_gets_the_same_guard_via_the_neutral_variable(ws, capsys, monkeypatch):
-    """PLAN_DOCS_SESSION_REPO is the tier any harness can supply, and it must be exactly as strong
+    """PLAN_CONVEYOR_SESSION_REPO is the tier any harness can supply, and it must be exactly as strong
     as the Claude-specific one — including catching a drifted cwd."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
-    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(ws.personal))
+    monkeypatch.setenv("PLAN_CONVEYOR_SESSION_REPO", str(ws.personal))
     monkeypatch.chdir(other)  # drifted
 
     assert plans.session_is_anchored(plans.load_config())
-    assert plans.session_anchor(plans.load_config()).source == "$PLAN_DOCS_SESSION_REPO"
+    assert plans.session_anchor(plans.load_config()).source == "$PLAN_CONVEYOR_SESSION_REPO"
     assert plans.main(["new", "drifted"]) == 1  # caught, with no Claude env at all
     assert not (other / "plans").exists()
 
@@ -1054,17 +1059,35 @@ def test_the_neutral_variable_wins_over_the_claude_transcript(ws, capsys, monkey
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
     other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
     anchor_session_to(ws, ws.personal, monkeypatch)
-    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(other))
+    monkeypatch.setenv("PLAN_CONVEYOR_SESSION_REPO", str(other))
 
-    assert plans.session_anchor(plans.load_config()) == (other, "$PLAN_DOCS_SESSION_REPO")
+    assert plans.session_anchor(plans.load_config()) == (other, "$PLAN_CONVEYOR_SESSION_REPO")
 
 
 def test_a_bogus_neutral_variable_fails_loudly_rather_than_silently_degrading(ws, monkeypatch):
     """Falling back to cwd here would silently weaken the guard the user just tried to strengthen."""
     write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
-    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(ws.home / "not-a-repo"))
+    monkeypatch.setenv("PLAN_CONVEYOR_SESSION_REPO", str(ws.home / "not-a-repo"))
     with pytest.raises(plans.PlanError):
         plans.session_anchor(plans.load_config())
+
+
+def test_the_pre_rename_variables_still_answer_and_say_so(ws, monkeypatch):
+    """A harness exporting the `PLAN_DOCS_` names it was told to before 2026-09-27 keeps working,
+    the current name wins where both are set, and the anchor names the variable actually read."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    other = make_repo(ws.projects / "github.com-personal" / "repo-tasks")
+    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(other))
+    monkeypatch.setenv("PLAN_DOCS_DEVICE", "work")
+    cfg = plans.load_config()
+    assert plans.session_anchor(cfg) == (other, "$PLAN_DOCS_SESSION_REPO")
+    assert cfg.device == "work"
+
+    monkeypatch.setenv("PLAN_CONVEYOR_SESSION_REPO", str(ws.personal))
+    monkeypatch.setenv("PLAN_CONVEYOR_DEVICE", "contractor")
+    cfg = plans.load_config()
+    assert plans.session_anchor(cfg) == (ws.personal, "$PLAN_CONVEYOR_SESSION_REPO")
+    assert cfg.device == "contractor"
 
 
 def test_projects_root_being_a_repo_is_fatal_everywhere(ws, capsys):
@@ -1245,10 +1268,10 @@ def test_doctor_reports_the_anchor_tier_and_flags_the_weak_one(ws, capsys, monke
     assert "session repo:" in out
     assert "no session anchor" in out  # listed as a problem, not left silent
 
-    monkeypatch.setenv("PLAN_DOCS_SESSION_REPO", str(ws.personal))
+    monkeypatch.setenv("PLAN_CONVEYOR_SESSION_REPO", str(ws.personal))
     assert plans.main(["doctor"]) == 0
     out = capsys.readouterr().out
-    assert "$PLAN_DOCS_SESSION_REPO" in out
+    assert "$PLAN_CONVEYOR_SESSION_REPO" in out
     assert "no session anchor" not in out
 
 
@@ -2186,7 +2209,7 @@ def test_a_work_device_has_one_store_and_still_refuses_a_personal_remote(ws, cap
     employer's internal work to a personal remote does not become acceptable because the machine
     holds only one organisation's work.
     """
-    monkeypatch.setenv("PLAN_DOCS_DEVICE", "work")
+    monkeypatch.setenv("PLAN_CONVEYOR_DEVICE", "work")
     write_config(ws, TIERED)
     plans.main(["install", "--path", str(ws.personal)])
     capsys.readouterr()
@@ -2203,7 +2226,7 @@ def test_a_work_device_has_one_store_and_still_refuses_a_personal_remote(ws, cap
 
 def test_a_work_device_routes_every_root_to_the_one_store(ws, monkeypatch):
     """Both a client root and a personal root land in the same place, and `where` says so."""
-    monkeypatch.setenv("PLAN_DOCS_DEVICE", "work")
+    monkeypatch.setenv("PLAN_CONVEYOR_DEVICE", "work")
     write_config(ws, TIERED)
     assert route(ws.client).store_dir == ws.store / "client.com-bitbucket" / "team" / "api"
     assert route(ws.personal).store_dir == ws.store / "github.com-personal" / "agent-skills"
@@ -2218,7 +2241,7 @@ def test_a_work_device_routes_every_root_to_the_one_store(ws, monkeypatch):
 
 def work_device(ws, monkeypatch, *, remote: str | None = None, extra: str = "") -> None:
     """A configured single-store machine, optionally already pointing somewhere."""
-    monkeypatch.setenv("PLAN_DOCS_DEVICE", "work")
+    monkeypatch.setenv("PLAN_CONVEYOR_DEVICE", "work")
     write_config(ws, tiered(extra))
     plans.main(["install", "--quiet", "--path", str(ws.personal)])
     if remote:
@@ -2337,7 +2360,7 @@ def test_a_path_entry_sanctions_a_drive_or_nas(ws, capsys, monkeypatch):
 def test_a_contractor_devices_shareable_tier_is_not_touched_by_the_key(ws, capsys, monkeypatch):
     """The shareable tier is meant to have a remote and is gated on content by `scan`; checking its
     destination too would change behaviour on a machine that works today."""
-    monkeypatch.setenv("PLAN_DOCS_DEVICE", "contractor")
+    monkeypatch.setenv("PLAN_CONVEYOR_DEVICE", "contractor")
     write_config(ws, tiered('sanctioned_remotes = ["git.corp.example/teodor"]\n'))
     plans.main(["install", "--quiet", "--path", str(ws.personal)])
     subprocess.run(["git", "remote", "add", "origin", "git@github.com:teodor/plans.git"], cwd=ws.store, check=True)

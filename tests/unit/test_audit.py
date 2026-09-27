@@ -554,6 +554,12 @@ def test_the_masked_row_separates_a_gate_from_a_listing(capsys):
     assert "2 wrapped a gate, 1 a listing" in row
 
 
+def test_the_confidentiality_scan_is_a_gate_not_a_listing():
+    """The 2026-09-13 miss: three of these reported as listings, the zero-gates branch in reach."""
+    scan = "python3 ~/.agents/skills/plan-conveyor/scripts/plans.py scan --path ~/plans 2>&1 | head -5"
+    assert len(audit.masked_gate([_call(scan), _call("plans.py scan --mode staged 2>&1 | tail -3")])) == 2
+
+
 @pytest.mark.parametrize(
     ("cmd", "bundled"),
     [

@@ -761,7 +761,9 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   gate in this family whose exit code matters most. The samples print directly underneath the
   verdict, which is what made it two seconds of reading rather than a command; the zero was caught
   by the rule three paragraphs down about checking a zero you have reason to doubt, not by this one.
-  `plans/2026-09-13-gate-re-has-no-term-for-the-confidentiality-scan.md` owns the fix.
+  `GATE_RE` matches `plans.py scan` since 2026-09-28, and the rule stands: the next unlisted gate
+  scores as a listing the same way.
+  `plans/2026-09-13-gate-re-has-no-term-for-the-confidentiality-scan.md` owns the wider question.
 
   **If a masked call did wrap a gate, ask the shell before paying for a re-run.** One call:
 

@@ -1443,9 +1443,14 @@ def _split_by_compaction(calls: list[Call], instants: Sequence[str]) -> tuple[li
 # regex classifies half the masked population with no per-repo catalog, and the general rule would
 # couple this row to the claims matcher for no gain. Measured 2026-09-06 over 7 days: 2,770 masked
 # calls, 1,389 of them gate-shaped.
+#
+# `plans.py scan` is the confidentiality gate, not a test runner, and it is here because the list
+# was built from CI-shaped gates and missed it: three masked scans in one session were reported as
+# `0 wrapped a gate, 3 a listing` (2026-09-13), which is the verdict `session-harvest` treats as
+# licence to skip checking the greens — for the one gate whose failure publishes a client's name.
 GATE_RE = re.compile(
     r"\b(inv\s+\S*(quality|test|check|precommit)|pytest|basedpyright|ruff\b|mypy|npm\s+(run\s+)?test"
-    r"|cargo\s+test|make\b|tox|nox|pre-commit\s+run)",
+    r"|cargo\s+test|make\b|tox|nox|pre-commit\s+run|plans\.py\s+scan)",
     re.IGNORECASE,
 )
 

@@ -107,6 +107,12 @@ itself says so two paragraphs below the branch this bug fires in.]
    the cheap exit knows what it assumes. One clause, in the paragraph that currently presents it as
    strictly stronger than asking the shell.
 
+**Steps 1 and 4 done 2026-09-28.** `GATE_RE` gained `plans\.py\s+scan`, with a comment and a test
+naming this incident; the `--mode` spelling needs no term of its own, since it follows `scan`. Step
+4 had already landed in `session-harvest` as its own paragraph, which now says the term is in and
+the rule still stands. Steps 2 and 3 — re-scoring the corpus zeros and the word-list-or-derived
+question — are what this plan still holds.
+
 ## Evidence
 
 Session `58cd1fad-94b4-4517-a1bc-286cfc1142b9`, harvested 2026-09-13. 56 Bash calls to the harvest

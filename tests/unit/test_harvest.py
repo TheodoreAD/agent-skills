@@ -1532,6 +1532,41 @@ def test_the_sweeps_own_pipeline_is_not_a_surviving_process(monkeypatch):
     assert result["harness_pid"] == 10
 
 
+def test_the_bash_tools_wrapper_is_not_the_harness(monkeypatch):
+    """Every Bash call runs under `zsh -c source ~/.claude/shell-snapshots/…`, whose line contains
+    "claude". Confirmed 2026-09-27: the sweep took that wrapper for the harness, printed 0 surviving
+    children, and a poll loop parented to the real `claude --session-id` process went unattributed."""
+    monkeypatch.setattr(harvest.os, "getpid", lambda: 500)
+    wrapper = "/usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-1.sh && eval '{}'"
+    table = {
+        10: harvest.Process(1, 10, "S", 9999, "/home/u/.local/share/claude/versions/2.1.283 --session-id x"),
+        400: harvest.Process(10, 400, "S", 1, wrapper.format("python3 harvest.py sweep")),
+        500: harvest.Process(400, 400, "S", 0, "python3 harvest.py sweep"),
+        450: harvest.Process(10, 450, "S", 887, wrapper.format("for i in $(seq 1 360); do sleep 5; done")),
+        451: harvest.Process(450, 450, "S", 1, "sleep 5"),
+    }
+    result = harvest.processes(FakeRunner(), table)
+    assert result["harness_pid"] == 10
+    assert {row["pid"] for row in result["session_children"]} == {450, 451}
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ("/home/u/.local/share/claude/versions/2.1.283 --session-id x", True),
+        ("claude --resume", True),
+        ("node /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js", True),
+        ('"C:\\Users\\Jo Ann\\.local\\bin\\claude.exe" --session', True),
+        ("C:\\nodejs\\node.exe C:\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js", True),
+        ("/usr/bin/zsh -c source /home/u/.claude/shell-snapshots/s.sh", False),
+        ("python3 /home/u/.claude/skills/x.py", False),
+        ("", False),
+    ],
+)
+def test_the_harness_is_recognised_by_its_executable(args, expected):
+    assert harvest.is_harness(args) is expected
+
+
 @pytest.mark.parametrize(
     "host",
     ["127.0.0.1", "127.0.0.53%lo", "127.0.0.54", "127.1.2.3", "::1", "[::1]", "[::ffff:127.0.0.1]", "localhost"],

@@ -1881,6 +1881,26 @@ def started_after(etimes: int, cutoff: str | None) -> bool | None:
     return datetime.now(UTC) - timedelta(seconds=etimes) > moment
 
 
+def is_harness(args: str) -> bool:
+    """Whether a command line is the harness itself, judged by the executable, not by the line.
+
+    A substring match on the whole line was the rule until 2026-09-27, and the first ancestor it
+    matched was the Bash tool's own wrapper — `zsh -c source ~/.claude/shell-snapshots/…` — so the
+    sweep attributed "this session's children" to the call running it and printed 0, while a poll
+    loop parented to the real harness went unattributed. The executable is `claude`, or a path
+    through `claude/versions/`, or a JS runtime whose script is Claude Code's.
+    """
+    stripped = args.strip()
+    if stripped.startswith('"'):  # Windows quotes an executable path that contains a space
+        first = stripped[1:].split('"', 1)[0]
+    else:
+        first = stripped.split(maxsplit=1)[0] if stripped else ""
+    if "claude" in first.lower():
+        return True
+    runtime = PureWindowsPath(first).name.lower().removesuffix(".exe")
+    return runtime in {"node", "bun"} and "claude" in args.lower()
+
+
 def processes(
     runner: Runner, table: dict[int, Process] | None = None, last_activity: str | None = None
 ) -> dict[str, Any]:
@@ -1918,7 +1938,7 @@ def processes(
         seen.add(cursor)
         chain.append(cursor)
         cursor = table[cursor].ppid
-    harness = next((pid for pid in chain if "claude" in table[pid].args), None)
+    harness = next((pid for pid in chain if is_harness(table[pid].args)), None)
 
     def row(pid: int, proc: Process, **extra: Any) -> dict[str, Any]:
         return {

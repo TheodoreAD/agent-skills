@@ -24,16 +24,19 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
 - **Runs**: `git clone`/`fetch`/`reset`/`sparse-checkout`/`tag -d`/`reflog expire`/`gc` inside
   library clones only, and `gh api` for package health (repo stats, commits, issues, the releases
   list and the latest release) and for a repo's reported size before `add` clones it.
-  `package_health.py` also runs `node --version` when node is on `PATH`, to compare a floor.
+  `package_health.py` also runs `node --version` when node is on `PATH`, to compare a floor, and for
+  its `apt` source `apt-cache policy` and `apt-cache show`, which only read this machine's apt
+  cache.
 - **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file, `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field.
   `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
   or a copy into a project repo, and nothing outside the store is ever touched.
 - **Reads from the environment**: `RESEARCH_HOME` for the store, and `RESEARCH_TEXT_ONLY` for
   whether `add` clones text-only by default.
-- **Network**: the clone URL you give; PyPI, the npm registry, crates.io and GitHub for
-  `package_health.py`, and GitHub for the pre-clone size question, GitHub through your own `gh`
-  login. Nothing is uploaded.
+- **Network**: the clone URL you give; PyPI, the npm registry, crates.io, Debian's madison API
+  (`api.ftp-master.debian.org`), Launchpad (`api.launchpad.net`) and GitHub for `package_health.py`,
+  and GitHub for the pre-clone size question, GitHub through your own `gh` login. Only public
+  read-only endpoints; nothing is uploaded.
 
 ## Before fetching anything from the web
 
@@ -247,6 +250,7 @@ python3 $S/scripts/package_health.py pypi anyio --clone $RESEARCH_HOME/repos/git
 python3 $S/scripts/package_health.py pypi shellcheck-py --upstream koalaman/shellcheck
 python3 $S/scripts/package_health.py npm @biomejs/biome
 python3 $S/scripts/package_health.py crates ripgrep
+python3 $S/scripts/package_health.py apt ripgrep
 python3 $S/scripts/package_health.py github BurntSushi/ripgrep
 ```
 
@@ -297,6 +301,13 @@ The four axes it reports, plus what the release ships and whom it tracks, and wh
   `cargo install` compiles; when it has binaries, the report adds the `prebuilt binary` section, the
   latest GitHub release's Linux assets read from the crate's `repository`. No typing line — a
   statically typed language is typed by construction.
+- **`apt <name>`** — a different question, and the report says so: an apt package is maintained by
+  the **distro**, so it reports this machine's candidate and where it comes from (`main` is
+  Canonical-supported; `universe` gets Canonical security fixes only with Ubuntu Pro; a third-party
+  repo is its publisher's), sizes, versioned `Depends` as floors, the **lag** behind upstream's
+  stable GitHub releases (upstream read from the package's `Homepage`, or `--upstream`), and a
+  **cross-release** view of which Ubuntu and Debian releases carry which version — for choosing
+  between apt and a release binary, and for what the next LTS brings.
 - **`github <owner/repo>`**, for a tool with no registry at all — a Go or Rust binary shipped only
   as release assets. The same maintenance axis, the stable-release cadence read from the GitHub
   releases list (pre-releases by GitHub's flag or by spelling, drafts skipped), and the latest

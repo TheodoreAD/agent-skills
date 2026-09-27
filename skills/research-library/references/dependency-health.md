@@ -230,6 +230,41 @@ for.
   `linecounts`, which is code and comment lines per language, not a test-to-source split. Downloads
   are printed under `not scored`, because the payload carries them for free.
 
+## apt: the distro maintains it, so judge the packaging
+
+[DECISION: apt is a source (user, 2026-09-27), and it answers a different question from the others,
+which the report's second line says outright. An apt package's maintenance is the distro's, not
+upstream's. So there is no GitHub maintenance axis; what matters is how far the packaged version is
+behind upstream, and who fixes it on this machine's release.]
+
+- **Local and this machine's**: `apt-cache policy` and `apt-cache show`, run under the C locale
+  because apt translates its own labels. Verified on Ubuntu 24.04.5: an unknown package makes
+  `policy` print nothing and exit 0, and `show` exit 100 with `E: No packages found`. `show` prints
+  one stanza per version; the candidate's is read.
+- **Who maintains it** comes from the candidate's source line: `main`/`restricted` are
+  Canonical-supported for the release's life; `universe` is community-maintained, with Canonical
+  security fixes only through Ubuntu Pro (ESM); a host that is not an Ubuntu or Debian archive is a
+  third-party repo, its publisher's responsibility. A candidate in `-security` or `-updates` has had
+  fixes since release, and the report lists those pockets.
+- **Lag** needs upstream's GitHub repo: `--upstream`, else the package's `Homepage` when it is
+  GitHub (`ripgrep`'s is; `curl`'s is not, and the report asks rather than guessing). The packaged
+  upstream version drops the epoch, the Debian revision and a `+dfsg`/`~` suffix, and is matched to
+  a release by spelling. Measured 2026-09-27: noble's ripgrep 14.1.0 is 4 stable releases and 920
+  days behind upstream's 15.2.0.
+- **Cross-release** view, verified against live responses before the parser was written:
+  - Debian's madison (`api.ftp-master.debian.org/madison?package=<name>&f=json`) is keyed by suite
+    name (`oldstable`, `stable`, `testing`, `unstable`, backports) and also carries `-debug` and
+    `buildd-` suites, which are archive plumbing and skipped. Where a suite holds two versions, the
+    one built for `amd64` wins (unstable's curl `8.23.0~rc1-2` was riscv64 only).
+  - Launchpad's `getPublishedSources` is asked by the **source** package name, which
+    `apt-cache
+    show`'s `Source:` field gives (`ripgrep` is built from `rust-ripgrep`).
+  - [PITFALL: Launchpad keeps end-of-life series `Published` — rust-ripgrep's list still carries
+    mantic and lunar. So Launchpad's series list is read too, its `status` drops obsolete series,
+    and the report counts what it dropped. `Proposed` is left out, since it is not enabled by
+    default. LTS is marked by Ubuntu's policy, an even year's `.04`.]
+  - Either API failing costs only its own rows.
+
 ## Floors: what a release needs from this machine
 
 [DECISION: every source reports every floor its metadata states, in one `floors` section, rather
@@ -249,6 +284,9 @@ node is on `PATH`.]
   reported and not compared; and the chosen platform package's `os`/`cpu`/`libc`. When no Linux x64
   platform package states this machine's libc, that is the finding.
 - **crates**: `rust_version`, `undeclared` when null, plus the release assets' libc family.
+- **apt**: the suite it is packaged for, and every versioned `Depends`. `libc6 (>= 2.34)` is
+  compared with this machine's glibc; the rest are resolved by apt from the same sources and are
+  listed, not compared.
 - **GitHub assets**: only the libc family the asset name states. A numeric glibc floor lives in the
   binary's ELF version needs, and reading it means downloading the binary, which is out of scope. A
   musl build runs on a glibc machine when it is statically linked, which the name does not say.

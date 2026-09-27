@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from typing_extensions import override
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "skills" / "research-library" / "scripts" / "package_health.py"
@@ -68,6 +69,9 @@ class FakeTransport:
         self.github_payloads: dict[str, object] = github_payloads or {}
         self.npm_payloads: dict[str, object] = npm_payloads or {}
         self.crates_payloads: dict[str, object] = crates_payloads or {}
+        self.apt_outputs: dict[tuple[str, str], str] = {}
+        self.madison_payloads: dict[str, object] = {}
+        self.launchpad_payloads: dict[str, object] = {}
         self.asked: list[str] = []
 
     def npm(self, name: str):
@@ -87,6 +91,22 @@ class FakeTransport:
             if path.startswith(prefix):
                 return payload
         return []
+
+    def apt_cache(self, *args: str):
+        """Captured `apt-cache` output, keyed by (subcommand, package); an unknown package prints nothing."""
+        self.asked.append(f"apt-cache:{' '.join(args)}")
+        return self.apt_outputs.get((args[0], args[-1]), "")
+
+    def madison(self, name: str):
+        self.asked.append(f"madison:{name}")
+        return self.madison_payloads.get(name, [])
+
+    def launchpad(self, path: str):
+        self.asked.append(f"launchpad:{path}")
+        for prefix, payload in self.launchpad_payloads.items():
+            if path.startswith(prefix):
+                return payload
+        return {"entries": []}
 
     def crates(self, name: str):
         self.asked.append(f"crates:{name}")
@@ -1225,3 +1245,178 @@ def test_the_crates_subcommand_runs_end_to_end(capsys):
     out = capsys.readouterr().out
     assert "ripgrep 15.2.0" in out
     assert "rust     >=1.85" in out
+
+
+# ------------------------------------------------------------------------------------------------
+# apt. Every input is a capture from 2026-09-27: `apt-cache policy` and `show` on Ubuntu 24.04 for
+# ripgrep (universe, one version) and curl (main, a security update beside the release), Debian's
+# madison JSON, and Launchpad's published sources and series list. No test runs apt-cache.
+
+
+def text_fixture(name: str) -> str:
+    return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+def apt_transport(package: str, source: str, *, upstream: dict[str, object] | None = None):
+    transport = FakeTransport(github_payloads=upstream or {})
+    transport.apt_outputs = {
+        ("policy", package): text_fixture(f"apt-policy-{package}.txt"),
+        ("show", package): text_fixture(f"apt-show-{package}.txt"),
+    }
+    transport.madison_payloads = {package: fixture(f"madison-{package}")}
+    transport.launchpad_payloads = {
+        "ubuntu/+archive/primary": fixture(f"launchpad-sources-{source}"),
+        "ubuntu/series": fixture("launchpad-ubuntu-series"),
+    }
+    return transport
+
+
+def ripgrep_apt():
+    return apt_transport(
+        "ripgrep", "rust-ripgrep", upstream={"repos/BurntSushi/ripgrep/releases?": fixture("ripgrep-releases")}
+    )
+
+
+def test_apt_policy_yields_the_candidate_and_every_source_behind_it():
+    policy = health.parse_apt_policy(text_fixture("apt-policy-curl.txt"))
+    assert policy is not None
+    assert (policy.installed, policy.candidate) == ("8.5.0-2ubuntu10.15", "8.5.0-2ubuntu10.15")
+    suites = [source.suite for source in policy.versions["8.5.0-2ubuntu10.15"]]
+    assert suites == ["noble-updates", "noble-security"]
+    assert policy.versions["8.5.0-2ubuntu10"][0].component == "main"
+
+
+def test_apt_prints_nothing_for_an_unknown_package_and_that_is_the_callers_error():
+    assert health.parse_apt_policy("") is None
+    with pytest.raises(health.HealthError, match="apt knows no package"):
+        health.gather_apt(FakeTransport(), "no-such-package-xyz", machine=MACHINE)
+
+
+def test_apt_show_picks_the_candidates_stanza():
+    """Real capture: curl shows two stanzas, the security update first and the release second."""
+    stanza = health.parse_apt_show(text_fixture("apt-show-curl.txt"), "8.5.0-2ubuntu10")
+    assert stanza["Installed-Size"] == "520"
+    assert stanza["Description-en"].startswith("command line tool")
+
+
+def test_live_apt_cache_runs_under_the_c_locale_and_maps_no_packages_found(monkeypatch):
+    """apt-cache translates its own labels (`Candidate:`), so a parser needs the C locale; and its
+    exit 100 with `E: No packages found` is an answer, not a crash."""
+    seen = {}
+
+    class Result:
+        returncode: int = 100
+        stdout: str = ""
+        stderr: str = "W: Unable to read /etc/apt/apt.conf.d/x\nE: No packages found\n"
+
+    def fake_run(command, **kwargs):
+        seen["command"], seen["env"] = command, kwargs["env"]
+        return Result()
+
+    monkeypatch.setattr(health.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(health.subprocess, "run", fake_run)
+    with pytest.raises(health.NotFound, match="E: No packages found"):
+        health.LiveTransport().apt_cache("show", "nope")
+    assert seen["command"] == ["/usr/bin/apt-cache", "show", "nope"]
+    assert seen["env"]["LC_ALL"] == "C"
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [("14.1.0-1", "14.1.0"), ("8.5.0-2ubuntu10.15", "8.5.0"), ("1:1.1.4", "1.1.4"), ("1.2+dfsg-3", "1.2"), ("7", "7")],
+)
+def test_the_upstream_part_of_a_debian_version_drops_epoch_revision_and_repack_suffix(version, expected):
+    assert health.debian_upstream_version(version) == expected
+
+
+def test_universe_is_community_maintained_and_main_is_canonical_supported():
+    ripgrep = health.gather_apt(ripgrep_apt(), "ripgrep", machine=MACHINE)
+    assert (ripgrep.origin.component, ripgrep.origin.release) == ("universe", "noble")
+    assert "Ubuntu Pro" in ripgrep.support
+    curl = health.gather_apt(apt_transport("curl", "curl"), "curl", machine=MACHINE)
+    assert curl.origin.component == "main"
+    assert curl.origin.pockets == ["noble-security", "noble-updates"]
+    assert "Canonical-supported" in curl.support
+
+
+def test_a_third_party_repo_is_the_publishers_responsibility():
+    origin = health.AptOrigin("repo.example.org", "stable", "main", ["stable"], None)
+    assert health.support_line(origin).startswith("THIRD-PARTY REPO (repo.example.org)")
+
+
+def test_apt_reads_the_upstream_from_homepage_and_measures_the_lag():
+    """Real captures: noble packages ripgrep 14.1.0, released upstream 2024-01-06, and upstream
+    has shipped four stable releases since, the newest 15.2.0 on 2026-07-15."""
+    result = health.gather_apt(ripgrep_apt(), "ripgrep", machine=MACHINE)
+    assert result.upstream_choice == health.RepoChoice("BurntSushi/ripgrep", "apt Homepage")
+    up = result.upstream
+    assert up is not None
+    assert (up.packaged, up.packaged_released) == ("14.1.0", "2024-01-06")
+    assert (up.latest, up.newer_releases) == ("15.2.0", 4)
+    assert up.lag_days == 920
+    assert "4 stable release(s) BEHIND" in health.render_apt(result)
+
+
+def test_apt_without_a_github_homepage_asks_for_upstream_rather_than_guessing():
+    result = health.gather_apt(apt_transport("curl", "curl"), "curl", machine=MACHINE)
+    assert result.upstream is None
+    assert "pass --upstream owner/repo" in health.render_apt(result)
+
+
+def test_the_ubuntu_view_leaves_out_obsolete_series_and_marks_this_machine():
+    """Launchpad keeps end-of-life series as Published: the rust-ripgrep capture lists mantic and
+    lunar. The series list's own status drops them, and the report counts what it dropped."""
+    result = health.gather_apt(ripgrep_apt(), "ripgrep", machine=MACHINE)
+    rows = {row.release: row for row in result.ubuntu.rows}
+    assert "mantic" not in rows
+    assert result.ubuntu.omitted == 4
+    assert rows["noble"].this_machine is True
+    assert rows["noble"].versions == ["14.1.0-1"]
+    assert rows["resolute"].label.startswith("26.04 LTS")
+    assert rows["jammy"].pocket == "Updates"
+
+
+def test_the_debian_view_skips_debug_and_buildd_suites_and_prefers_the_amd64_build():
+    view = health.debian_cross_release(fixture("madison-curl"))
+    suites = [row.release for row in view.rows]
+    assert "stable-debug" not in suites
+    assert "buildd-unstable" not in suites
+    unstable = next(row for row in view.rows if row.release == "unstable")
+    assert unstable.versions == ["8.23.0~rc2-1"]  # the rc1 build is riscv64 only
+    assert health.debian_cross_release([]).error == "not in Debian"
+
+
+def test_a_failing_distro_api_costs_only_its_own_rows():
+    class NoLaunchpad(FakeTransport):
+        @override
+        def launchpad(self, path: str):
+            raise health.HealthError("Launchpad unreachable: timed out")
+
+    transport = NoLaunchpad()
+    transport.apt_outputs = ripgrep_apt().apt_outputs
+    transport.madison_payloads = {"ripgrep": fixture("madison-ripgrep")}
+    result = health.gather_apt(transport, "ripgrep", upstream_repo="BurntSushi/ripgrep", machine=MACHINE)
+    assert result.ubuntu.error == "Launchpad unreachable: timed out"
+    assert len(result.debian.rows) == 5
+
+
+def test_apt_floors_compare_the_libc6_depends_with_this_machines_glibc():
+    result = health.gather_apt(ripgrep_apt(), "ripgrep", machine=MACHINE)
+    floors = {floor.what: floor for floor in result.floors}
+    assert floors["suite"].required == "noble"
+    assert (floors["glibc"].required, floors["glibc"].met) == (">=2.34", True)
+    assert floors["libpcre2-8-0"].required == ">=10.22"
+    older = health.Machine(python="3.12.3", glibc="2.31", node=None)
+    stale = health.gather_apt(ripgrep_apt(), "ripgrep", machine=older)
+    assert "NOT MET HERE (glibc 2.31)" in health.render_apt(stale)
+
+
+def test_the_apt_subcommand_runs_end_to_end_without_running_apt(capsys):
+    transport = ripgrep_apt()
+    assert health.main(["apt", "ripgrep", "--json"], transport=transport) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["candidate"] == "14.1.0-1"
+    assert payload["upstream"]["newer_releases"] == 4
+    assert "apt-cache:policy ripgrep" in transport.asked
+    # Launchpad is asked by the source package's name, which apt-cache show names.
+    assert any("source_name=rust-ripgrep" in ask for ask in transport.asked)

@@ -70,6 +70,8 @@ from typing import Any, Protocol
 PYPI_JSON = "https://pypi.org/pypi/{name}/json"
 NPM_PACKUMENT = "https://registry.npmjs.org/{name}"
 CRATES_API = "https://crates.io/api/v1/crates/{name}"
+DEBIAN_MADISON = "https://api.ftp-master.debian.org/madison?package={name}&f=json"
+LAUNCHPAD_API = "https://api.launchpad.net/1.0/{path}"
 USER_AGENT = "package-health/1.0 (+https://github.com/TheodoreAD/agent-skills)"
 TIMEOUT_SECONDS = 30
 
@@ -125,6 +127,12 @@ class Transport(Protocol):
 
     def crates(self, name: str) -> dict[str, Any]: ...
 
+    def apt_cache(self, *args: str) -> str: ...
+
+    def madison(self, name: str) -> Any: ...
+
+    def launchpad(self, path: str) -> Any: ...
+
     def machine(self) -> Machine: ...
 
 
@@ -164,6 +172,25 @@ class LiveTransport:
         if not isinstance(payload, dict):
             raise HealthError(f"crates.io returned a non-object for {name!r}")
         return payload
+
+    def apt_cache(self, *args: str) -> str:
+        """`apt-cache` under the C locale, because its labels (`Candidate:`) are translated otherwise."""
+        tool = shutil.which("apt-cache")
+        if not tool:
+            raise HealthError("apt-cache is not on PATH — the apt source needs a Debian or Ubuntu machine")
+        env = {**os.environ, "LC_ALL": "C", "LANG": "C"}
+        result = subprocess.run([tool, *args], capture_output=True, text=True, check=False, timeout=60, env=env)
+        if result.returncode != 0:
+            message = next((line for line in result.stderr.splitlines() if line.startswith("E:")), result.stderr)
+            kind = NotFound if "No packages found" in result.stderr else HealthError
+            raise kind(f"apt-cache {' '.join(args)} failed: {message.strip() or result.returncode}")
+        return result.stdout
+
+    def madison(self, name: str) -> Any:
+        return self._get_json(DEBIAN_MADISON.format(name=urllib.parse.quote(name, safe="")), "Debian madison", name)
+
+    def launchpad(self, path: str) -> Any:
+        return self._get_json(LAUNCHPAD_API.format(path=path), "Launchpad", path)
 
     def machine(self) -> Machine:
         return Machine(python=platform.python_version(), glibc=_glibc_version(), node=_node_version())
@@ -1552,6 +1579,379 @@ def gather_crates(
     )
 
 
+# ------------------------------------------------------------------------------------------------
+# apt: this machine's sources, and which distro releases carry which version
+
+# ` *** 14.1.0-1 500` — the `***` marks the installed version.
+APT_VERSION_LINE_RE = re.compile(r"^\s*(\*\*\*)?\s+(\S+)\s+(-?\d+)\s*$")
+# `        500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages`, and a flat repo's
+# `500 https://example.org/repo ./ Packages`, which has no component.
+APT_SOURCE_LINE_RE = re.compile(r"^\s+(-?\d+)\s+(\S+)\s+(\S+?)(?:/(\S+))?(?:\s+(\S+))?\s+Packages\s*$")
+APT_POCKET_RE = re.compile(r"-(updates|security|backports|proposed)$")
+DEPENDS_RE = re.compile(r"^\s*([a-z0-9][a-z0-9.+-]*)(?::\S+)?\s*\(\s*(>=|<=|>>|<<|=)\s*([^)\s]+)\s*\)")
+UBUNTU_HOSTS = ("archive.ubuntu.com", "security.ubuntu.com", "ports.ubuntu.com")
+DEBIAN_HOSTS = ("deb.debian.org", "security.debian.org", "ftp.debian.org")
+# Ubuntu's documented policy: an LTS is the April release of an even year.
+UBUNTU_LTS_RE = re.compile(r"^\d*[02468]\.04$")
+LAUNCHPAD_PAGE = 300
+
+
+@dataclass(frozen=True)
+class AptSource:
+    priority: int
+    url: str
+    suite: str | None
+    component: str | None
+
+
+@dataclass(frozen=True)
+class AptPolicy:
+    installed: str | None
+    candidate: str | None
+    versions: dict[str, list[AptSource]]
+
+
+def parse_apt_policy(text: str) -> AptPolicy | None:
+    """`apt-cache policy <name>`; `None` when apt printed nothing, which is how it says "unknown"."""
+    installed = candidate = None
+    versions: dict[str, list[AptSource]] = {}
+    current: str | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Installed:"):
+            installed = _apt_none(stripped.removeprefix("Installed:"))
+        elif stripped.startswith("Candidate:"):
+            candidate = _apt_none(stripped.removeprefix("Candidate:"))
+        elif (source := APT_SOURCE_LINE_RE.match(line)) and current:
+            priority, url, suite, component, _ = source.groups()
+            versions[current].append(AptSource(int(priority), url, suite, component))
+        elif line.strip().endswith("/var/lib/dpkg/status") and current:
+            continue
+        elif (version := APT_VERSION_LINE_RE.match(line)) and not stripped.endswith(":"):
+            current = version.group(2)
+            versions.setdefault(current, [])
+    if installed is None and candidate is None and not versions:
+        return None
+    return AptPolicy(installed, candidate, versions)
+
+
+def _apt_none(value: str) -> str | None:
+    value = value.strip()
+    return None if value in ("", "(none)") else value
+
+
+def parse_apt_show(text: str, version: str | None) -> dict[str, str]:
+    """The `apt-cache show` stanza for `version` (the first when it is absent), as a field map."""
+    stanzas: list[dict[str, str]] = []
+    fields_: dict[str, str] = {}
+    key: str | None = None
+    for line in [*text.splitlines(), ""]:
+        if not line.strip():
+            if fields_:
+                stanzas.append(fields_)
+            fields_, key = {}, None
+        elif line[0] in " \t" and key:
+            fields_[key] += "\n" + line.strip()
+        elif ":" in line:
+            key, _, value = line.partition(":")
+            fields_[key] = value.strip()
+    return next((stanza for stanza in stanzas if stanza.get("Version") == version), stanzas[0] if stanzas else {})
+
+
+def debian_upstream_version(version: str) -> str:
+    """`1:8.5.0-2ubuntu10.15` → `8.5.0`: drop the epoch, the Debian revision and any `+dfsg`/`~` suffix."""
+    bare = re.sub(r"^\d+:", "", version)
+    if "-" in bare:
+        bare = bare.rsplit("-", 1)[0]
+    match = re.match(r"\d+(?:\.\d+)*", bare)
+    return match.group(0) if match else bare
+
+
+@dataclass(frozen=True)
+class AptOrigin:
+    """Where the candidate comes from, which decides who maintains it."""
+
+    host: str | None
+    suite: str | None
+    component: str | None
+    pockets: list[str]
+    distro: str | None
+
+    @property
+    def release(self) -> str | None:
+        """`noble-security` → `noble`: the release the pocket belongs to."""
+        return APT_POCKET_RE.sub("", self.suite) if self.suite else None
+
+
+def apt_origin(policy: AptPolicy) -> AptOrigin:
+    sources = [source for source in policy.versions.get(policy.candidate or "", []) if "://" in source.url]
+    if not sources:
+        return AptOrigin(None, None, None, [], None)
+    best = max(sources, key=lambda source: source.priority)
+    host = urllib.parse.urlparse(best.url).hostname
+    distro = "ubuntu" if host in UBUNTU_HOSTS else "debian" if host in DEBIAN_HOSTS else None
+    # The release pocket first, then updates and security, so the base suite is what is reported.
+    named = {source.suite for source in sources if source.suite}
+    suites = sorted(named, key=lambda suite: (bool(APT_POCKET_RE.search(suite)), suite))
+    return AptOrigin(host, suites[0] if suites else best.suite, best.component, suites, distro)
+
+
+def support_line(origin: AptOrigin) -> str:
+    """Who fixes it. Canonical's own statement: `main` is supported for the release's life, and
+    `universe` gets Canonical security fixes only through Ubuntu Pro (ESM); a third-party repo is its
+    publisher's responsibility, not the distro's."""
+    if origin.distro is None:
+        return f"THIRD-PARTY REPO ({origin.host or 'unknown'}) — maintained by its publisher, not the distro"
+    if origin.distro == "debian":
+        return f"Debian {origin.component or '?'} — security support from the Debian security team for main"
+    if origin.component in ("main", "restricted"):
+        return f"Ubuntu {origin.component} — Canonical-supported, security updates for the life of the release"
+    component = origin.component or "?"
+    return f"Ubuntu {component} — community-maintained; Canonical security fixes only with Ubuntu Pro (ESM)"
+
+
+@dataclass(frozen=True)
+class AptUpstream:
+    repo: str
+    origin: str
+    packaged: str
+    error: str | None = None
+    packaged_released: str | None = None
+    latest: str | None = None
+    latest_released: str | None = None
+    newer_releases: int | None = None
+    lag_days: int | None = None
+
+
+def apt_upstream(transport: Transport, repo: str, origin: str, packaged: str) -> AptUpstream:
+    """How far the packaged version is behind upstream's stable GitHub releases.
+
+    `lag_days` runs from the packaged upstream version's release to upstream's newest: how old the
+    distro's copy is relative to what upstream would give you today. The version match is by
+    spelling, as for wrappers, so a miss leaves the packaged date unknown rather than guessed.
+    """
+    try:
+        releases = transport.github(f"repos/{repo}/releases?per_page={RELEASE_PAGE_SIZE}")
+    except HealthError as error:
+        return AptUpstream(repo, origin, packaged, error=str(error))
+    dates, flagged = github_release_dates(releases if isinstance(releases, list) else [])
+    stable = {
+        tag_version(tag): stamp
+        for tag, stamp in dates.items()
+        if tag not in flagged and not is_prerelease(tag_version(tag))
+    }
+    if not stable:
+        return AptUpstream(repo, origin, packaged, error="no stable GitHub releases to compare with")
+    latest = max(stable, key=lambda version: stable[version])
+    match = wrapper_match(packaged, stable)
+    packaged_stamp = stable.get(match) if match else None
+    have = version_tuple(packaged) or (0,)
+    newer = sum(1 for version in stable if (version_tuple(version) or (0,)) > have)
+    return AptUpstream(
+        repo,
+        origin,
+        packaged,
+        packaged_released=packaged_stamp.date().isoformat() if packaged_stamp else None,
+        latest=latest,
+        latest_released=stable[latest].date().isoformat(),
+        newer_releases=newer,
+        lag_days=(stable[latest] - packaged_stamp).days if packaged_stamp else None,
+    )
+
+
+@dataclass(frozen=True)
+class DistroRow:
+    distro: str
+    release: str
+    label: str
+    versions: list[str]
+    pocket: str | None = None
+    component: str | None = None
+    this_machine: bool = False
+
+
+@dataclass(frozen=True)
+class CrossRelease:
+    rows: list[DistroRow]
+    error: str | None = None
+    omitted: int = 0
+
+
+def debian_cross_release(payload: Any) -> CrossRelease:
+    """Madison's JSON, one row per suite. `-debug` and `buildd-` suites are archive plumbing."""
+    if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
+        return CrossRelease([], error="not in Debian")
+    rows: list[DistroRow] = []
+    for suites in payload[0].values():
+        for suite, versions in (suites or {}).items():
+            if suite.endswith("-debug") or suite.startswith("buildd-"):
+                continue
+            binaries = [
+                version
+                for version, detail in versions.items()
+                if {"amd64", "all"} & set((detail or {}).get("architectures") or [])
+            ]
+            rows.append(
+                DistroRow(
+                    "debian",
+                    suite,
+                    "",
+                    binaries or list(versions),
+                    component=next(iter(versions.values()), {}).get("component"),
+                )
+            )
+    return CrossRelease(rows)
+
+
+def ubuntu_cross_release(sources: Any, series: Any, this_release: str | None) -> CrossRelease:
+    """Launchpad's published sources per series, newest first; Proposed and obsolete series are left out.
+
+    [PITFALL] Launchpad keeps an end-of-life series' publications as `Published`: rust-ripgrep's
+    list still carries mantic and lunar. So the series list's own `status` decides what is shown,
+    and the count left out is printed, rather than presenting a dead release as an option.
+    """
+    entries = [entry for entry in (sources or {}).get("entries", []) if entry.get("pocket") != "Proposed"]
+    known = [entry for entry in (series or {}).get("entries", []) if isinstance(entry, dict)]
+    rows: list[DistroRow] = []
+    omitted = 0
+    for item in sorted(known, key=lambda entry: version_tuple(entry.get("version")) or (0,), reverse=True):
+        name = str(item.get("name") or "")
+        published = [entry for entry in entries if str(entry.get("distro_series_link", "")).endswith(f"/{name}")]
+        is_here = name == this_release
+        if item.get("status") == "Obsolete" and not is_here:
+            omitted += 1 if published else 0
+            continue
+        if not published and not is_here:
+            continue
+        lts = " LTS" if UBUNTU_LTS_RE.match(str(item.get("version") or "")) else ""
+        label = f"{item.get('version')}{lts}, {item.get('status')}"
+        newest = max(published, key=lambda entry: str(entry.get("date_published") or ""), default=None)
+        rows.append(
+            DistroRow(
+                "ubuntu",
+                name,
+                label,
+                [str(newest["source_package_version"])] if newest else [],
+                pocket=newest.get("pocket") if newest else None,
+                component=newest.get("component_name") if newest else None,
+                this_machine=is_here,
+            )
+        )
+    return CrossRelease(rows, omitted=omitted)
+
+
+@dataclass(frozen=True)
+class AptHealth:
+    name: str
+    summary: str | None
+    installed: str | None
+    candidate: str | None
+    source_package: str
+    section: str | None
+    homepage: str | None
+    installed_size: int | None
+    download_size: int | None
+    origin: AptOrigin
+    support: str
+    upstream: AptUpstream | None
+    upstream_choice: RepoChoice
+    ubuntu: CrossRelease
+    debian: CrossRelease
+    floors: list[Floor]
+
+
+def apt_floors(stanza: dict[str, str], origin: AptOrigin, machine: Machine | None) -> list[Floor]:
+    """The suite, and every versioned `Depends`; `libc6` is compared with this machine's glibc."""
+    floors = [
+        Floor(
+            "suite",
+            origin.release or "?",
+            f"apt source of the candidate ({', '.join(origin.pockets) or '?'})",
+            note="packaged for this machine's own sources",
+        )
+    ]
+    here = machine.glibc if machine else None
+    for clause in (stanza.get("Depends") or "").split(","):
+        match = DEPENDS_RE.match(clause.split("|")[0])
+        if not match:
+            continue
+        package, op, version = match.groups()
+        if package == "libc6":
+            want, have = version_tuple(version), version_tuple(here)
+            met = _compare(op.replace(">>", ">").replace("<<", "<"), have, want) if want and have else None
+            floors.append(Floor("glibc", f"{op}{version}", "Depends: libc6", f"glibc {here}" if here else None, met))
+        else:
+            floors.append(Floor(package, f"{op}{version}", "Depends", note="apt resolves it from the same sources"))
+    return floors
+
+
+def gather_apt(
+    transport: Transport,
+    name: str,
+    *,
+    upstream_repo: str | None = None,
+    machine: Machine | None = None,
+) -> AptHealth:
+    """This machine's apt answer, the lag behind upstream, and which releases carry which version."""
+    policy = parse_apt_policy(transport.apt_cache("policy", name))
+    if policy is None:
+        raise HealthError(f"apt knows no package {name!r} in this machine's sources")
+    try:
+        stanza = parse_apt_show(transport.apt_cache("show", name), policy.candidate)
+    except NotFound:
+        stanza = {}
+    origin = apt_origin(policy)
+    source_package = (stanza.get("Source") or name).split()[0]
+    homepage = stanza.get("Homepage")
+    choice = (
+        RepoChoice(upstream_repo, "--upstream")
+        if upstream_repo
+        else RepoChoice(repo_from_url(homepage), "apt Homepage")
+        if repo_from_url(homepage)
+        else RepoChoice(None, "apt Homepage names no GitHub repo")
+    )
+    packaged = debian_upstream_version(policy.candidate) if policy.candidate else None
+    size = stanza.get("Installed-Size")
+    download = stanza.get("Size")
+    return AptHealth(
+        name=name,
+        summary=(stanza.get("Description") or stanza.get("Description-en") or "").split("\n")[0] or None,
+        installed=policy.installed,
+        candidate=policy.candidate,
+        source_package=source_package,
+        section=stanza.get("Section"),
+        homepage=homepage,
+        # Installed-Size is KiB; Size is bytes.
+        installed_size=int(size) * 1024 if size and size.isdigit() else None,
+        download_size=int(download) if download and download.isdigit() else None,
+        origin=origin,
+        support=support_line(origin),
+        upstream=apt_upstream(transport, choice.repo, choice.origin, packaged) if choice.repo and packaged else None,
+        upstream_choice=choice,
+        ubuntu=_cross_release(
+            lambda: ubuntu_cross_release(
+                transport.launchpad(
+                    "ubuntu/+archive/primary?ws.op=getPublishedSources"
+                    f"&source_name={urllib.parse.quote(source_package)}&exact_match=true&status=Published"
+                    f"&ws.size={LAUNCHPAD_PAGE}"
+                ),
+                transport.launchpad("ubuntu/series"),
+                origin.release if origin.distro == "ubuntu" else None,
+            )
+        ),
+        debian=_cross_release(lambda: debian_cross_release(transport.madison(name))),
+        floors=apt_floors(stanza, origin, machine),
+    )
+
+
+def _cross_release(read: Callable[[], CrossRelease]) -> CrossRelease:
+    """A distro API that fails costs its own rows, never the rest of the report."""
+    try:
+        return read()
+    except HealthError as error:
+        return CrossRelease([], error=str(error))
+
+
 def _int_or_none(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
@@ -1929,6 +2329,58 @@ def render_crates(health: CratesHealth) -> str:
     return "\n".join(lines)
 
 
+def render_apt(health: AptHealth) -> str:
+    lines = [f"{health.name} {health.candidate or '(no candidate)'}  —  {health.summary or 'no summary'}"]
+    lines.append("An apt package is maintained by the distro, not by upstream: judge the packaging and its lag.")
+    origin = health.origin
+    lines.append("")
+    lines.append("this machine's apt")
+    lines.append(f"  candidate        {health.candidate or 'NONE — known to apt, nothing installable'}")
+    lines.append(f"  installed        {health.installed or 'no'}")
+    lines.append(f"  from             {origin.host or '?'} {origin.suite or '?'}/{origin.component or '?'}")
+    if len(origin.pockets) > 1:
+        lines.append(f"  published in     {', '.join(origin.pockets)}")
+    lines.append(f"  support          {health.support}")
+    lines.append(f"  source package   {health.source_package}   section {health.section or '?'}")
+    lines.append(f"  size             {_size(health.download_size)} download, {_size(health.installed_size)} installed")
+    lines.append(f"  homepage         {health.homepage or 'none stated'}")
+
+    lines.append("")
+    choice = health.upstream_choice
+    up = health.upstream
+    if up is None:
+        lines.append(f"upstream          not compared — {choice.origin}; pass --upstream owner/repo")
+    else:
+        override = "" if choice.origin == "--upstream" else "; --upstream overrides"
+        lines.append(f"upstream ({up.repo}, from {up.origin}{override})")
+        if up.error:
+            lines.append(f"  releases         none readable — {up.error}")
+        else:
+            released = f", released {up.packaged_released}" if up.packaged_released else ", no matching GitHub release"
+            lines.append(f"  packaged         {up.packaged}{released}")
+            lines.append(f"  upstream latest  {up.latest}, released {up.latest_released}")
+            behind = "UP TO DATE" if up.newer_releases == 0 else f"{up.newer_releases} stable release(s) BEHIND"
+            lag = f", {up.lag_days}d older than upstream's latest" if up.lag_days else ""
+            lines.append(f"  lag              {behind}{lag}")
+
+    lines.append("")
+    lines.append("cross-release (Ubuntu from Launchpad, Debian from madison)")
+    for view in (health.ubuntu, health.debian):
+        if view.error:
+            lines.append(f"  {'?':<8} {view.error}")
+        for row in view.rows:
+            mark = "  <- this machine" if row.this_machine else ""
+            where = f" ({row.pocket})" if row.pocket and row.pocket != "Release" else ""
+            version = ", ".join(row.versions) or "not packaged"
+            label = f"{row.release} {row.label}".strip()
+            lines.append(f"  {row.distro:<7} {label:<36} {version}{where}{mark}")
+        if view.omitted:
+            lines.append(f"  {'':<7} ({view.omitted} obsolete series with this package not shown)")
+    lines.extend(_floor_lines(health.floors))
+    lines.extend(CLOSING)
+    return "\n".join(lines)
+
+
 def _npm_ship_lines(ships: NpmShips) -> list[str]:
     lines = [f"ships ({ships.version or '?'})"]
     count = f", {ships.file_count} files" if ships.file_count is not None else ""
@@ -1972,7 +2424,8 @@ def _floor_lines(floors: list[Floor]) -> list[str]:
         elif floor.met is False:
             verdict = f"NOT MET HERE ({floor.machine})"
         elif floor.machine is None:
-            verdict = "not compared — this machine's value is not readable here"
+            # A floor with a note says itself why it is not compared; one without is missing a value.
+            verdict = "not compared" if floor.note else "not compared — this machine's value is not readable here"
         else:
             verdict = f"not compared (this machine: {floor.machine})"
         lines.append(f"  {floor.what:<8} {floor.required:<18} {verdict}")
@@ -2176,7 +2629,7 @@ def payload_of(health: Any) -> dict[str, Any]:
     return data
 
 
-SOURCES = ("pypi", "npm", "crates", "github")
+SOURCES = ("pypi", "npm", "crates", "apt", "github")
 
 
 def retired_form(argv: list[str]) -> str | None:
@@ -2226,6 +2679,19 @@ def _parser() -> argparse.ArgumentParser:
     crates.add_argument("name", help="the crate name on crates.io")
     _add_repo_flag(crates, 'crates.io\'s "repository" field')
     _add_json_flag(crates)
+
+    apt = sources.add_parser(
+        "apt",
+        help="a package in this machine's apt sources",
+        description="Judge an apt package: this machine's candidate, its lag behind upstream, and other releases.",
+    )
+    apt.add_argument("name", help="the binary package name, as apt-cache knows it")
+    apt.add_argument(
+        "--upstream",
+        metavar="OWNER/REPO",
+        help="the packaged project's GitHub repo, for the lag; default: read from the package's Homepage",
+    )
+    _add_json_flag(apt)
 
     github = sources.add_parser(
         "github",
@@ -2282,6 +2748,9 @@ def _run(args: argparse.Namespace, transport: Transport, machine: Machine) -> tu
             raise HealthError(f"{args.repo!r} is not owner/repo")
         found = gather_github(transport, args.repo, machine=machine)
         return found, render_github(found)
+    if args.source == "apt":
+        packaged = gather_apt(transport, args.name, upstream_repo=args.upstream, machine=machine)
+        return packaged, render_apt(packaged)
     if args.source == "crates":
         crate = gather_crates(transport, args.name, args.repo, machine=machine)
         return crate, render_crates(crate)

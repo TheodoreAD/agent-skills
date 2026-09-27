@@ -6,7 +6,7 @@
     "",
     "Both descriptions lead with tool vocabulary - `[project.scripts]`, `uv tool install`,",
     "`claude mcp add`, `inv dev-env.setup`, `AskUserQuestion`, `CDP` - which is the exact shape that",
-    "produced a silent miss for invoke-task-conventions on 2026-08-31. These prompts are phrased the",
+    "produced a silent miss for invoke-task-conventions-taudelta on 2026-08-31. These prompts are phrased the",
     "way the problem is felt rather than the way the tool is named.",
     "",
     "CONFOUND, stated because it changes how a failure here should be read: polite-mcp-conventions-taudelta",

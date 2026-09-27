@@ -856,7 +856,7 @@ def _blocks_by_line(lines: list[str]) -> list[int]:
 def _references(line: str, in_fence: bool, repos: re.Pattern[str] | None, own_name: str = "") -> list[tuple[str, str]]:
     """Every assumption one line makes about the reader's machine, as (kind, token) pairs.
 
-    `own_name` exempts the runner a skill is *about*: `invoke-task-conventions` naming `inv` on
+    `own_name` exempts the runner a skill is *about*: `invoke-task-conventions-taudelta` naming `inv` on
     every second line is its subject, not an assumption, and reporting it buries the skills where
     the same token is an instruction the reader cannot follow.
     """

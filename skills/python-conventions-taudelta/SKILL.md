@@ -276,9 +276,9 @@ rather than a call site.
 - **Typer over raw Click.** Typer is built on Click, so these are not opposites — but a project
   reaching for raw Click is choosing more boilerplate for the same result. Click stays what it is
   underneath, and is the escape hatch for a Typer limitation, not a starting point.
-- **Not a rule about task runners.** `inv` is for repo-local work — see `invoke-task-conventions` —
-  and a CLI is the program a user installs. They do not compete, and a new command belongs to
-  whichever of those two it actually is.
+- **Not a rule about task runners.** `inv` is for repo-local work — see
+  `invoke-task-conventions-taudelta` — and a CLI is the program a user installs. They do not
+  compete, and a new command belongs to whichever of those two it actually is.
 - Model default: **overrides.** Left alone a model writes `argparse`, because that is what the
   standard library offers and what most training data shows.
 

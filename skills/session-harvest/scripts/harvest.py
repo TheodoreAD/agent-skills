@@ -1606,7 +1606,7 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
     checkout = find_checkout(args.checkout)
     # `--skill` ADDS to the defaults rather than replacing them, because the skill whose staleness
     # matters most is this one, and naming any other must not be what drops it. Confirmed
-    # 2026-09-05: a harvest passed `--skill plan-docs --skill invoke-task-conventions`, got two
+    # 2026-09-05: a harvest passed `--skill plan-docs --skill invoke-task-conventions-taudelta`, got two
     # clean rows, and only a second call naming session-harvest found that its SKILL.md had moved
     # after session start with two unpushed commits — the finding step 0 exists for. `--all` is the
     # replace-everything case and stays one.

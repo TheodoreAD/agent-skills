@@ -1,7 +1,7 @@
 {
   "about": [
     "Written for the pair fitness.py flagged, not for one skill in isolation: python-conventions-taudelta",
-    "covers python-conventions-taudelta -> invoke-task-conventions at 0.176 and -> db-defaults at 0.139,",
+    "covers python-conventions-taudelta -> invoke-task-conventions-taudelta at 0.176 and -> db-defaults at 0.139,",
     "both above this corpus's shadow cut of 0.089. The question these cases answer is whether that",
     "static signal is real - does a request meant for a narrow skill actually go to the broad one.",
     "Negative cases are half the suite on purpose: a description that fires on everything passes",
@@ -10,11 +10,11 @@
   "cases": [
     {
       "prompt": "I'm adding a task to tasks.py that wipes the build directory. What should I call it?",
-      "expect": "invoke-task-conventions"
+      "expect": "invoke-task-conventions-taudelta"
     },
     {
       "prompt": "Is `inv verify.all` a reasonable name, or should the namespace be a noun?",
-      "expect": "invoke-task-conventions"
+      "expect": "invoke-task-conventions-taudelta"
     },
     {
       "prompt": "This Python service needs a local cache that survives restarts. What should I reach for?",

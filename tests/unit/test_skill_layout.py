@@ -260,7 +260,7 @@ def test_description_has_no_xml_tags(skill: Path):
     side of this check it falls — but the rule exists to stop a description imitating the harness's
     internal formatting, and a code placeholder is not that. Flagging every `<placeholder>` would
     make the check noise, and a noisy gate gets switched off. Confirmed 2026-08-30: this check's
-    first run flagged `inv <namespace>.<task>` in `invoke-task-conventions`, which is notation, not
+    first run flagged `inv <namespace>.<task>` in `invoke-task-conventions-taudelta`, which is notation, not
     markup.
     """
     description = parse_frontmatter((skill / "SKILL.md").read_text(encoding="utf-8")).get("description", "")

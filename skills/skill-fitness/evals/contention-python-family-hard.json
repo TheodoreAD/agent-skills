@@ -14,12 +14,12 @@
   "cases": [
     {
       "prompt": "I'm writing a new function in this project's tasks.py that clears build caches. What conventions apply?",
-      "expect": "invoke-task-conventions",
+      "expect": "invoke-task-conventions-taudelta",
       "why": "python-conventions-taudelta claims 'writing Python code'; the work is task naming"
     },
     {
       "prompt": "Refactoring our task module - some of these are verbs and some are nouns and it's inconsistent. Advice?",
-      "expect": "invoke-task-conventions",
+      "expect": "invoke-task-conventions-taudelta",
       "why": "'refactoring' is python-conventions-taudelta' own trigger word"
     },
     {
@@ -39,7 +39,7 @@
     },
     {
       "prompt": "Our automation scripts have grown messy and inconsistent. Where do I start cleaning them up?",
-      "expect": "invoke-task-conventions",
+      "expect": "invoke-task-conventions-taudelta",
       "why": "genuinely ambiguous; a wrong pick here is informative rather than a bug"
     }
   ]

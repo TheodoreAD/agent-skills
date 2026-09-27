@@ -843,12 +843,12 @@ def test_naming_a_skill_adds_it_rather_than_replacing_the_defaults(tmp_path):
     """`--skill` reads as additive in SKILL.md — "add `--skill <name>` for anything else this run
     used" — and dropped the defaults instead, so the harvest's own skill was the one that went
     unchecked. Confirmed 2026-09-05: a run passed `--skill plan-docs --skill
-    invoke-task-conventions`, got two clean rows, and only a second call naming session-harvest
+    invoke-task-conventions-taudelta`, got two clean rows, and only a second call naming session-harvest
     explicitly found its SKILL.md had moved after session start with two unpushed commits.
     """
     checkout = tmp_path / "checkout"
     installed_root = tmp_path / "installed"
-    for name in (*harvest.DEFAULT_SKILLS, "invoke-task-conventions"):
+    for name in (*harvest.DEFAULT_SKILLS, "invoke-task-conventions-taudelta"):
         make_skill(checkout, name, "body\n")
         make_installed(installed_root, name, "body\n")
     args = harvest.build_parser().parse_args(
@@ -860,13 +860,13 @@ def test_naming_a_skill_adds_it_rather_than_replacing_the_defaults(tmp_path):
             "--installed",
             str(installed_root),
             "--skill",
-            "invoke-task-conventions",
+            "invoke-task-conventions-taudelta",
         ]
     )
 
     payload = harvest.cmd_skills_state(args, FakeRunner())
 
-    assert [s["skill"] for s in payload["skills"]] == [*harvest.DEFAULT_SKILLS, "invoke-task-conventions"]
+    assert [s["skill"] for s in payload["skills"]] == [*harvest.DEFAULT_SKILLS, "invoke-task-conventions-taudelta"]
 
 
 def test_naming_a_default_skill_does_not_report_it_twice(tmp_path):

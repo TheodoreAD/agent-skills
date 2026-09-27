@@ -30,7 +30,7 @@ is usable.
 
     {
       "cases": [
-        {"prompt": "how do I name a new invoke task?", "expect": "invoke-task-conventions"},
+        {"prompt": "how do I name a new invoke task?", "expect": "invoke-task-conventions-taudelta"},
         {"prompt": "what is the capital of France?", "expect": null}
       ]
     }

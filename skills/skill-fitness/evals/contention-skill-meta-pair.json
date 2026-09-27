@@ -37,7 +37,7 @@
     "figure is a lower bound, not a promise of uplift.",
     "",
     "Case 9 came back 2/3 here having been 3/3 twice before, with the third run firing nothing.",
-    "Nothing in this change touches invoke-task-conventions, so read it as run-to-run variance - a",
+    "Nothing in this change touches invoke-task-conventions-taudelta, so read it as run-to-run variance - a",
     "2/3 is a pass and not a clean one, and three runs is the floor rather than a comfortable sample."
   ],
   "cases": [
@@ -83,7 +83,7 @@
     },
     {
       "prompt": "Add a task to this repo's tasks.py that rebuilds the docs, and name it properly.",
-      "expect": "invoke-task-conventions",
+      "expect": "invoke-task-conventions-taudelta",
       "why": "should-not-steal: an ordinary request neither meta-skill may take"
     },
     {

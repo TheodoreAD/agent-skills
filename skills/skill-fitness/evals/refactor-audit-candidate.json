@@ -4,19 +4,19 @@
     "the pass is written up in skills/python-refactor-audit/references/pilot.md): does the",
     "procedure it produced \u2014 audit a module that grew, run the restructure as small verified",
     "commits, know which tests may change \u2014 become its own skill, or a section of",
-    "python-conventions? Decided by measurement rather than by argument.",
+    "python-conventions-taudelta? Decided by measurement rather than by argument.",
     "",
-    "The contested cases are the modularity ones. python-conventions' description already claims",
+    "The contested cases are the modularity ones. python-conventions-taudelta' description already claims",
     "'a module has accumulated global state, grown hard to follow, or needs restructuring', so a",
     "candidate in this region is the one place in this corpus where a steal is plausible rather",
-    "than theoretical. Those cases expect python-conventions on purpose: the candidate passing its",
+    "than theoretical. Those cases expect python-conventions-taudelta on purpose: the candidate passing its",
     "own positives while taking these would be an argument against adopting it.",
     "",
     "Negatives are a third of the suite. A description that fires on everything passes every",
     "positive case.",
     "",
-    "Result 2026-09-01: 12/12 at 3 runs each. The candidate took nothing from python-conventions",
-    "(precision 1.0, and python-conventions kept every one of its own cases including the contested",
+    "Result 2026-09-01: 12/12 at 3 runs each. The candidate took nothing from python-conventions-taudelta",
+    "(precision 1.0, and python-conventions-taudelta kept every one of its own cases including the contested",
     "'accumulated global state' one), and won 11 of its 11 fires. The alternative is measured in",
     "refactor-audit-extend-alternative.json and scored 10/12, missing the two most characteristic",
     "prompts entirely.",
@@ -53,19 +53,19 @@
     },
     {
       "prompt": "This module has accumulated global state and is hard to follow. How far should I break it up?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "Should this config object be a dataclass, a NamedTuple or a Pydantic model?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "Is a module-level singleton with lazy properties the right shape for this settings object?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "How should I store and compare timestamps across timezones in this Python module?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "What should a pytest fixture cover, and at what scope?",

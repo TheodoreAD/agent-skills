@@ -8,7 +8,7 @@ Frontmatter is parsed with a line scan rather than a YAML dependency, but the sc
 **continuation-aware**. An earlier version skipped every indented line on the reasoning that
 frontmatter is "a flat `key: value` block by the format's own spec"; that is false for exactly the
 values this gate exists to measure, because a description long enough to breach the cap is long
-enough to have been wrapped across lines. Measured 2026-08-30: `python-conventions` read as 612
+enough to have been wrapped across lines. Measured 2026-08-30: `python-conventions-taudelta` read as 612
 characters to the old scan and 1302 in fact, so the one real violation in the corpus was the one
 the gate could not see. Keeping the no-dependency stance is fine; keeping the flat-block assumption
 was not.
@@ -74,7 +74,7 @@ DISCLOSURE_REQUIRED_LINE = "**Writes"
 # the record, not an exemption: `test_no_stale_cap_debt` fails once the skill comes back under the
 # limit, so the entry cannot outlive the breach it documents.
 #
-# Empty since 2026-08-31, when `python-conventions` was split into three skills rather than trimmed.
+# Empty since 2026-08-31, when `python-conventions-taudelta` was split into three skills rather than trimmed.
 # Trimming would have deleted trigger vocabulary to satisfy a length check, which is backwards; the
 # split was measured first — each piece was checked against real requests to confirm it wins its own
 # and steals none.

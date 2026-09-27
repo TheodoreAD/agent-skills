@@ -1,5 +1,5 @@
 ---
-name: python-conventions
+name: python-conventions-taudelta
 description: "Use when writing, reviewing or refactoring Python and you want one settled answer rather than an evaluation — choosing between a dataclass, a Pydantic model, a NamedTuple, a TypedDict, attrs or msgspec; handling dates, times and timezones, including DST folds and gaps and where to convert to UTC; loading settings and secrets; when to use a guard clause, an early return or EAFP; designing an exception hierarchy; keeping type ignores honest; laying a package out under `src/`; building a CLI; async and concurrency; and how an HTTP client should handle sessions, timeouts and retries. Also when a module has accumulated global state, grown hard to follow, or needs restructuring — how far to break it up, when a module-level singleton with lazy properties is the right shape, and how to keep objects immutable and functions stateless. For tests see the Python testing skill; for MCP server internals see the MCP Python skill."
 ---
 
@@ -426,9 +426,9 @@ straight to its own file.
 
 ## Editing this skill
 
-This file is _copied_ into `~/.agents/skills/python-conventions` at install time, never symlinked,
-so **editing the deployed copy is local drift** — the exact thing this skill exists to prevent, and
-it reaches no other machine. Edit the source in the repo this was installed from, push, and re-run
-`skills add <that source> --global --skill python-conventions` to refresh every project's copy. If
-you installed it from someone else's repo rather than your own fork, the source is theirs: open an
-issue or a pull request there instead.
+This file is _copied_ into `~/.agents/skills/python-conventions-taudelta` at install time, never
+symlinked, so **editing the deployed copy is local drift** — the exact thing this skill exists to
+prevent, and it reaches no other machine. Edit the source in the repo this was installed from, push,
+and re-run `skills add <that source> --global --skill python-conventions-taudelta` to refresh every
+project's copy. If you installed it from someone else's repo rather than your own fork, the source
+is theirs: open an issue or a pull request there instead.

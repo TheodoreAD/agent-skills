@@ -5,9 +5,9 @@ description: "Use when writing or restructuring Python tests — deciding how mu
 
 # Python testing defaults
 
-Personal, agent-maintained Python projects. Split out of `python-conventions` on 2026-08-31, which
-keeps the design and style defaults; this skill owns the test suite. Nothing here is tool config —
-pytest's own configuration lives with the repo's quality tooling, not here.
+Personal, agent-maintained Python projects. Split out of `python-conventions-taudelta` on
+2026-08-31, which keeps the design and style defaults; this skill owns the test suite. Nothing here
+is tool config — pytest's own configuration lives with the repo's quality tooling, not here.
 
 **Each entry says whether it's overriding your own default instinct or just confirming one.** A
 capable model already parametrizes value matrices and reaches for `tmp_path` unprompted. This skill
@@ -41,13 +41,13 @@ thing.
   that had never run on Windows: 136 of 557 red on the first run, every one of them one of these
   five, none of them in the code under test.
 - Fixture scope: narrowest that stays correct. For the module-singleton pattern in
-  `python-conventions` — construct the expensive object at module/session scope, but reset its
-  _mutable_ state via a function-scoped fixture. A `monkeypatch` inside a broad-scoped fixture stays
-  live for the whole scope, not just one test — a real, silent cross-test leak source.
-- DAMP vs. DRY — a different axis from `python-conventions`' production-code DRY decision, not a
-  re-derivation of it: setup mechanics (fixtures/helpers, the _how_) stay DRY; the scenario a test
-  verifies (the _what_) stays explicit and readable top-to-bottom in that test. `parametrize` is the
-  sanctioned everyday tool for a real input→expected matrix, and is _more_ explicit than N
+  `python-conventions-taudelta` — construct the expensive object at module/session scope, but reset
+  its _mutable_ state via a function-scoped fixture. A `monkeypatch` inside a broad-scoped fixture
+  stays live for the whole scope, not just one test — a real, silent cross-test leak source.
+- DAMP vs. DRY — a different axis from `python-conventions-taudelta`' production-code DRY decision,
+  not a re-derivation of it: setup mechanics (fixtures/helpers, the _how_) stay DRY; the scenario a
+  test verifies (the _what_) stays explicit and readable top-to-bottom in that test. `parametrize`
+  is the sanctioned everyday tool for a real input→expected matrix, and is _more_ explicit than N
   copy-pasted bodies, because the varying values are isolated from the fixed logic — attach `ids`
   once values stop being self-explanatory. The line: **if adding a case means adding a value,
   parametrize; if it means changing the test's logic (a branch, a different setup, a different
@@ -57,8 +57,8 @@ thing.
 - Model default: **mostly confirms, overrides in one direction.** A model parametrizes value
   matrices unprompted, and that's right. What it does _not_ reliably do is promote setup to fixtures
   — left alone it inlines the same three-line arrange block into every test it writes, which is the
-  "same thing three ways" failure above. The other narrow override: `python-conventions`' modularity
-  abstraction instinct can leak into folding scenarios that differ in _logic_ into one
+  "same thing three ways" failure above. The other narrow override: `python-conventions-taudelta`'
+  modularity abstraction instinct can leak into folding scenarios that differ in _logic_ into one
   parametrized-with-branches test, or into a `check_*` helper that owns the assertion.
 - Never run a code-mutating command as part of a test's exercised behavior unless the test's actual
   subject is that mutation. A fix/format/autocorrect command run before the assertion silently masks

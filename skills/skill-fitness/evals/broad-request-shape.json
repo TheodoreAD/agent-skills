@@ -19,11 +19,11 @@
   "cases": [
     {
       "prompt": "This module has grown for weeks and nobody has reviewed the whole thing. How do I go about cleaning up how its data is shaped?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "Should this return a bare tuple or a NamedTuple?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "I've got design work scattered across a bunch of repos. How do I go about keeping track of what's still open?",

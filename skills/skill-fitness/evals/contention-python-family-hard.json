@@ -6,7 +6,7 @@
     "skills do not contend' apart from 'these cases were too easy', which is the same warning",
     "skill-creator gives about negative cases.",
     "",
-    "Each prompt below sits in the region python-conventions' description actually claims - it says",
+    "Each prompt below sits in the region python-conventions-taudelta' description actually claims - it says",
     "'writing, reviewing, or refactoring Python code', plus data modeling and settings - while the",
     "work belongs to a narrower skill. `expect` names the narrow skill in every case. A failure here",
     "is the shadowing the static pass predicted, caught."
@@ -15,17 +15,17 @@
     {
       "prompt": "I'm writing a new function in this project's tasks.py that clears build caches. What conventions apply?",
       "expect": "invoke-task-conventions",
-      "why": "python-conventions claims 'writing Python code'; the work is task naming"
+      "why": "python-conventions-taudelta claims 'writing Python code'; the work is task naming"
     },
     {
       "prompt": "Refactoring our task module - some of these are verbs and some are nouns and it's inconsistent. Advice?",
       "expect": "invoke-task-conventions",
-      "why": "'refactoring' is python-conventions' own trigger word"
+      "why": "'refactoring' is python-conventions-taudelta' own trigger word"
     },
     {
       "prompt": "How should I model these few thousand records and persist them in a Python project?",
       "expect": "db-defaults",
-      "why": "python-conventions explicitly claims data modeling; persistence is db-defaults'"
+      "why": "python-conventions-taudelta explicitly claims data modeling; persistence is db-defaults'"
     },
     {
       "prompt": "I need to keep some structured application data around between runs. What's the standard choice here?",
@@ -35,7 +35,7 @@
     {
       "prompt": "Reviewing a Python module that shells out to run background jobs on a schedule. What should it be using?",
       "expect": "db-defaults",
-      "why": "'reviewing Python' is python-conventions; scheduled jobs are a db-defaults category"
+      "why": "'reviewing Python' is python-conventions-taudelta; scheduled jobs are a db-defaults category"
     },
     {
       "prompt": "Our automation scripts have grown messy and inconsistent. Where do I start cleaning them up?",

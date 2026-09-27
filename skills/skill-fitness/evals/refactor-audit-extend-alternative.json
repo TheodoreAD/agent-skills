@@ -2,9 +2,9 @@
   "about": [
     "The other half of that skill question (the plan is retired; see refactor-audit-candidate.json",
     "and skills/python-refactor-audit/references/prior-art.md): instead of",
-    "a new skill, extend python-conventions' description to claim the restructuring procedure too.",
+    "a new skill, extend python-conventions-taudelta' description to claim the restructuring procedure too.",
     "Same twelve prompts as refactor-audit-candidate.json, but the four audit cases expect",
-    "python-conventions, because under this option that is where the procedure lives.",
+    "python-conventions-taudelta, because under this option that is where the procedure lives.",
     "",
     "The wording measured was trimmed to fit the 1024-character cap, which is what extending",
     "actually costs: DST folds, the src/ prose and the exception-hierarchy phrasing were cut to make",
@@ -12,40 +12,40 @@
     "",
     "Result 2026-09-01: 10/12. The two most characteristic audit prompts selected *nothing* \u2014 the",
     "corpus's failure mode is misses, not steals, and this is one. The separate-skill wording scored",
-    "12/12 on the same prompts and took nothing from python-conventions."
+    "12/12 on the same prompts and took nothing from python-conventions-taudelta."
   ],
   "cases": [
     {
       "prompt": "This module is 3,000 lines built over two weeks and nobody has ever reviewed it as a whole. How do I go about restructuring it without breaking anything?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "I need to change a widely-used field's type across a whole file. How do I make that diff reviewable as behaviour-preserving?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "During this refactor I had to edit a test that named a renamed function. How do I know I didn't just weaken it?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "Before I start reorganising this package, how do I decide whether it's worth doing at all?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "This module has accumulated global state and is hard to follow. How far should I break it up?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "Should this config object be a dataclass, a NamedTuple or a Pydantic model?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "Is a module-level singleton with lazy properties the right shape for this settings object?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "How should I store and compare timestamps across timezones in this Python module?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "What should a pytest fixture cover, and at what scope?",

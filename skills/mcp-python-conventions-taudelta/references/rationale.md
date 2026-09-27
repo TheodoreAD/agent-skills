@@ -1,8 +1,8 @@
 # Why these MCP server code conventions
 
-Extracted from `python-conventions`' rationale on 2026-08-31, where these were sections 9 to 11.
-Cross-references to the surrounding sections now point at that skill's own rationale, which is a
-separate install.
+Extracted from `python-conventions-taudelta`' rationale on 2026-08-31, where these were sections 9
+to 11. Cross-references to the surrounding sections now point at that skill's own rationale, which
+is a separate install.
 
 ## 9. MCP-stdio logging discipline
 
@@ -58,14 +58,15 @@ exceptions to a generic message, but `ToolError` messages still pass through eve
 it's the explicit "this text is safe to show" channel, masking is the "don't show anything else"
 channel.
 
-**This has the identical shape to the `SecretStr` caveat** in `python-conventions`' settings
-section, **not a new kind of problem.** `mask_error_details=True` protects against FastMCP's own
-automatic traceback inclusion, but does nothing to sanitize text a developer deliberately embeds in
-a `ToolError` message or hands to `str(exc)` — if that string itself contains something sensitive,
-masking never touches it, exactly as `SecretStr` never touches a value already pulled via
-`.get_secret_value()`. Also orthogonal to `python-conventions`' exception-hierarchy decision:
-internal hierarchies govern what the _code_ catches and discriminates on; `ToolError` governs what
-crosses the MCP wire — a separate concern the existing hierarchy decision doesn't cover.
+**This has the identical shape to the `SecretStr` caveat** in `python-conventions-taudelta`'
+settings section, **not a new kind of problem.** `mask_error_details=True` protects against
+FastMCP's own automatic traceback inclusion, but does nothing to sanitize text a developer
+deliberately embeds in a `ToolError` message or hands to `str(exc)` — if that string itself contains
+something sensitive, masking never touches it, exactly as `SecretStr` never touches a value already
+pulled via `.get_secret_value()`. Also orthogonal to `python-conventions-taudelta`'
+exception-hierarchy decision: internal hierarchies govern what the _code_ catches and discriminates
+on; `ToolError` governs what crosses the MCP wire — a separate concern the existing hierarchy
+decision doesn't cover.
 
 **Ground truth: zero `ToolError` imports or uses anywhere in the family.** All three repos call
 plain `FastMCP("name")` with no `mask_error_details` argument, so FastMCP's unmasked default applies

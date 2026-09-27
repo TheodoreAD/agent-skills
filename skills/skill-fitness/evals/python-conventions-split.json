@@ -1,29 +1,29 @@
 {
   "about": [
-    "Does the proposed three-way split of python-conventions route requests correctly, and does it",
+    "Does the proposed three-way split of python-conventions-taudelta route requests correctly, and does it",
     "collide with the two skills already flagged as living inside its trigger region?",
     "",
-    "python-conventions is 1302 chars against a 1024 spec cap. Trimming is ruled out - it would",
+    "python-conventions-taudelta is 1302 chars against a 1024 spec cap. Trimming is ruled out - it would",
     "delete trigger vocabulary - and published measurement says comprehensive skills score below",
     "having no skill at all while detailed ones score well above, so over-scoped is the likelier",
     "reading. This suite is the check that has to pass before the split is worth doing.",
     "",
     "Three things it has to show: each piece wins its own requests; the pieces do not steal from",
     "each other; and neither invoke-task-conventions nor db-defaults loses ground, since the whole",
-    "reason python-conventions was suspected of shadowing them was its breadth."
+    "reason python-conventions-taudelta was suspected of shadowing them was its breadth."
   ],
   "cases": [
     {
       "prompt": "Should this config object be a dataclass or a Pydantic model?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "How should I store and compare timestamps across timezones in this Python module?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "This module has grown a lot of global state. How should I restructure it?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "How much duplication is acceptable in a test before it stops being readable?",

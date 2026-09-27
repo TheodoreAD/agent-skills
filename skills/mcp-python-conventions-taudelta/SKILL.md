@@ -5,10 +5,10 @@ description: "Use when writing the Python inside an MCP server and deciding how 
 
 # MCP server code conventions
 
-The Python inside a stdio-transport MCP server. Split out of `python-conventions` on 2026-08-31,
-which keeps the general design defaults — this skill owns only what is different _because_ the code
-is an MCP server, and those differences are not stylistic: two of the three are protocol
-correctness.
+The Python inside a stdio-transport MCP server. Split out of `python-conventions-taudelta` on
+2026-08-31, which keeps the general design defaults — this skill owns only what is different
+_because_ the code is an MCP server, and those differences are not stylistic: two of the three are
+protocol correctness.
 
 Not about shipping. Entry points, `uv tool install`, `claude mcp add` and scope selection belong to
 `mcp-server-shipping`; this is what the code does once it runs.

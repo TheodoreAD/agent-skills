@@ -53,8 +53,9 @@ ever reviewed it as a whole … how do I restructure it without breaking anythin
 in 6** across two full runs, while its three other positives went 3/3 in both. The description
 already carries that sentence's own words nearly verbatim ("auditing a file nobody has reviewed as a
 whole", "how to restructure it safely"), and the same prompt also selected nothing for the rejected
-extend-`python-conventions` wording. So the fix for the two 2026-08-31 misses does not generalise
-into a diagnosis, and reaching for closer wording is a guess until something measures the cause.
+extend-`python-conventions-taudelta` wording. So the fix for the two 2026-08-31 misses does not
+generalise into a diagnosis, and reaching for closer wording is a guess until something measures the
+cause.
 
 **Corrected 2026-09-02.** This entry used to end by naming the cause — "a broad _how do I go about
 X_ request can select nothing even when the vocabulary matches" — and that explanation is now
@@ -194,10 +195,10 @@ The choice of similarity measure is not what limits the signal; corpus size is.
    claim is now "one skill's own selection is unreliable", which is a narrower and less satisfying
    finding than a corpus-wide rule about request shape — and that is the point: the corpus-wide rule
    was the attractive one and it did not survive contact. And the suite's first case expected
-   `python-conventions` for "this module has grown for weeks … how do I clean up how its data is
-   shaped", which `python-refactor-audit` took 3/3 — **correctly**, on reflection. An `expect` set
-   by the suite's author is a hypothesis too, and a "failure" against a wrong expectation is not
-   evidence of anything.
+   `python-conventions-taudelta` for "this module has grown for weeks … how do I clean up how its
+   data is shaped", which `python-refactor-audit` took 3/3 — **correctly**, on reflection. An
+   `expect` set by the suite's author is a hypothesis too, and a "failure" against a wrong
+   expectation is not evidence of anything.
 
 ## The listing budget, read from the binary (2026-08-31)
 

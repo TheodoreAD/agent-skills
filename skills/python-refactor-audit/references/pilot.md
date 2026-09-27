@@ -68,14 +68,14 @@ what a function needs.
 
 Decisions taken along the way that the skill body only summarises:
 
-- **A per-invocation object, not the module-singleton pattern.** `python-conventions`' `globals.py`
-  shape is for process-wide state; this is per-invocation, and the tests construct it repeatedly
-  against different fake homes. A module-level instance would have been exactly the shared global
-  the suite avoids.
+- **A per-invocation object, not the module-singleton pattern.** `python-conventions-taudelta`'
+  `globals.py` shape is for process-wide state; this is per-invocation, and the tests construct it
+  repeatedly against different fake homes. A module-level instance would have been exactly the
+  shared global the suite avoids.
 - **The command functions stayed free functions** taking the workspace as an argument, rather than
   becoming methods. The encapsulation win is in the shared state, not in where command bodies live,
   and making them methods would have put argument parsing and domain logic in one 2,000-line class —
-  the extract-on-sight instinct `python-conventions` warns about.
+  the extract-on-sight instinct `python-conventions-taudelta` warns about.
 - **`NamedTuple` was an upgrade for bare tuples and would have been a downgrade for the frozen
   dataclasses.** A `NamedTuple` is indexable, unpackable, iterable and compares equal to a plain
   tuple, which is a second positional API surface nobody designed. Replacing a bare tuple, that

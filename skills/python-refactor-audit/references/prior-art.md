@@ -29,8 +29,8 @@
   VERIFY → CHECKPOINT loop and, more usefully, a **"when NOT to refactor"** list: the current
   structure is not impeding the work; the restructure serves speculative future needs; the only
   justification is testability; the code is good enough for the current phase. Its DRY rule is the
-  one `python-conventions` already holds — abstract only when two things are the same business
-  concept and would change together, not when they merely look alike.
+  one `python-conventions-taudelta` already holds — abstract only when two things are the same
+  business concept and would change together, not when they merely look alike.
 - The most-installed refactoring skill in one directory is not a refactorer at all: it is a
   `request-refactor-plan` that interviews the user and files a plan of tiny commits. Evidence for
   the shape of a plan file rather than for a tool.
@@ -40,23 +40,23 @@
 procedure needs from prior art is a stopping rule and a discipline, one paragraph each — and the
 oracle rules, which are the half no surveyed source had.]
 
-## Why a separate skill rather than a section of `python-conventions`
+## Why a separate skill rather than a section of `python-conventions-taudelta`
 
-The question was real: `python-conventions` answers "what should this code look like" per topic, and
-its Modularity section already carries the load-bearing rule (lean toward duplication over premature
-abstraction, flagged as **overrides, actively**). What it does not carry is a _procedure_ for
-auditing an existing module against those defaults. Extending it would have avoided a second
-description competing in the same region.
+The question was real: `python-conventions-taudelta` answers "what should this code look like" per
+topic, and its Modularity section already carries the load-bearing rule (lean toward duplication
+over premature abstraction, flagged as **overrides, actively**). What it does not carry is a
+_procedure_ for auditing an existing module against those defaults. Extending it would have avoided
+a second description competing in the same region.
 
 **Settled by measurement rather than argument, 2026-09-01: twelve prompts at three runs each, both
 options.** The suites are `skills/skill-fitness/evals/refactor-audit-candidate.json` and
 `refactor-audit-extend-alternative.json`; four of the twelve prompts are the modularity ones
-`python-conventions`' description already claims, and a third of each suite is negatives.
+`python-conventions-taudelta`' description already claims, and a third of each suite is negatives.
 
-| option                                   | score     | what happened                                     |
-| ---------------------------------------- | --------- | ------------------------------------------------- |
-| **separate skill**                       | **12/12** | took nothing from `python-conventions` — fp=0     |
-| extend `python-conventions`' description | 10/12     | the two most characteristic prompts fired nothing |
+| option                                            | score     | what happened                                          |
+| ------------------------------------------------- | --------- | ------------------------------------------------------ |
+| **separate skill**                                | **12/12** | took nothing from `python-conventions-taudelta` — fp=0 |
+| extend `python-conventions-taudelta`' description | 10/12     | the two most characteristic prompts fired nothing      |
 
 **The extend option fails as a miss, not as a steal**, which is this corpus's own known failure
 mode. "This module is 3,000 lines and nobody has reviewed it as a whole — how do I restructure it
@@ -65,15 +65,15 @@ prompt selected none in two of three. Precision stayed 1.0 throughout: the exten
 stole anything, it simply did not fire on the requests the procedure exists for.
 
 The steal the plan worried about did not happen either. With the separate skill in the listing,
-`python-conventions` kept every one of its own four cases — including "this module has accumulated
-global state and is hard to follow, how far should I break it up?", the sentence its description
-already owns. The two triggers are genuinely different, and the model can see it.
+`python-conventions-taudelta` kept every one of its own four cases — including "this module has
+accumulated global state and is hard to follow, how far should I break it up?", the sentence its
+description already owns. The two triggers are genuinely different, and the model can see it.
 
-**Extending also costs a trim, which is the second argument against it.** `python-conventions`'
-description is 927 of the 1024-character cap, so the procedure's clauses do not fit: the measured
-wording had to cut the DST-folds phrase, the `src/`-layout prose and the exception-hierarchy
-wording, and still reached only 1021. The trimmed wording then lost even its own cases to the
-untrimmed incumbent — 6 of 18 fires against 12.
+**Extending also costs a trim, which is the second argument against it.**
+`python-conventions-taudelta`' description is 927 of the 1024-character cap, so the procedure's
+clauses do not fit: the measured wording had to cut the DST-folds phrase, the `src/`-layout prose
+and the exception-hierarchy wording, and still reached only 1021. The trimmed wording then lost even
+its own cases to the untrimmed incumbent — 6 of 18 fires against 12.
 
 ## The description is measured; a redraft is not
 
@@ -93,15 +93,16 @@ Each run costs 12 cases × 3 model probes.
 ### The live run does not reproduce the 12/12, and that is the number to quote
 
 **Measured 2026-09-01, immediately after installing: 11/12 at three runs each, against the candidate
-mode's 12/12.** Precision stayed 1.0 for every skill and nothing was stolen — `python-conventions`
-kept all four of its cases, `python-testing-conventions-taudelta` its one, and all three negatives
-held. The single failure is the suite's **flagship** prompt, the sentence the skill exists for:
+mode's 12/12.** Precision stayed 1.0 for every skill and nothing was stolen —
+`python-conventions-taudelta` kept all four of its cases, `python-testing-conventions-taudelta` its
+one, and all three negatives held. The single failure is the suite's **flagship** prompt, the
+sentence the skill exists for:
 
 > "This module is 3,000 lines built over two weeks and nobody has ever reviewed it as a whole. How
 > do I go about restructuring it without breaking anything?"
 
 It selected the skill once in three runs and **nothing** the other two — the same miss, on the same
-prompt, that sank the extend-`python-conventions` option. Recall 0.83, fn=2.
+prompt, that sank the extend-`python-conventions-taudelta` option. Recall 0.83, fn=2.
 
 **Re-run immediately after, to separate a real miss from variance: 0/3, so 1 fire in 6.** Every
 other case was 3/3 in both runs, including the three other positives for this skill. The corpus's

@@ -1,7 +1,7 @@
 {
   "about": [
-    "Written for the pair fitness.py flagged, not for one skill in isolation: python-conventions",
-    "covers python-conventions -> invoke-task-conventions at 0.176 and -> db-defaults at 0.139,",
+    "Written for the pair fitness.py flagged, not for one skill in isolation: python-conventions-taudelta",
+    "covers python-conventions-taudelta -> invoke-task-conventions at 0.176 and -> db-defaults at 0.139,",
     "both above this corpus's shadow cut of 0.089. The question these cases answer is whether that",
     "static signal is real - does a request meant for a narrow skill actually go to the broad one.",
     "Negative cases are half the suite on purpose: a description that fires on everything passes",
@@ -26,11 +26,11 @@
     },
     {
       "prompt": "Should this config object be a dataclass or a Pydantic model?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "How should I store and compare timestamps across timezones in this Python module?",
-      "expect": "python-conventions"
+      "expect": "python-conventions-taudelta"
     },
     {
       "prompt": "What is the capital of France?",

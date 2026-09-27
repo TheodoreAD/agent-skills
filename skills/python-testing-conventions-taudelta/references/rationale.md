@@ -1,32 +1,32 @@
 # Why these testing defaults
 
-Extracted from `python-conventions`' rationale on 2026-08-31, where this was section 7. The
+Extracted from `python-conventions-taudelta`' rationale on 2026-08-31, where this was section 7. The
 surrounding sections it referred to now live in that skill's own rationale.
 
 ## 7. Testing conventions
 
-**Fixture scope directly ties to the modules-as-singletons concern** in `python-conventions`, which
-is where that pattern is decided. Official rule of thumb: narrowest scope that keeps tests correct,
-widen only when setup is genuinely expensive; pytest's own docs warn that a `monkeypatch` used
-inside a broad-scoped fixture stays live for the _whole_ scope, not just one test — the exact
-mechanism by which a shared-scope fixture silently leaks state across tests that look independent.
-**Practical rule for this repo family's module-singleton pattern**: construct the expensive object
-at module/session scope, but reset/monkeypatch its _mutable_ state via a function-scoped fixture —
-cheap construction stays shared, isolation stays per-test. `conftest.py`: keep one root file for
-genuinely cross-cutting fixtures, split per-directory only once a real subset of tests needs
-fixtures the rest shouldn't see. `parametrize`: attach `ids` once values stop being
-self-explanatory.
+**Fixture scope directly ties to the modules-as-singletons concern** in
+`python-conventions-taudelta`, which is where that pattern is decided. Official rule of thumb:
+narrowest scope that keeps tests correct, widen only when setup is genuinely expensive; pytest's own
+docs warn that a `monkeypatch` used inside a broad-scoped fixture stays live for the _whole_ scope,
+not just one test — the exact mechanism by which a shared-scope fixture silently leaks state across
+tests that look independent. **Practical rule for this repo family's module-singleton pattern**:
+construct the expensive object at module/session scope, but reset/monkeypatch its _mutable_ state
+via a function-scoped fixture — cheap construction stays shared, isolation stays per-test.
+`conftest.py`: keep one root file for genuinely cross-cutting fixtures, split per-directory only
+once a real subset of tests needs fixtures the rest shouldn't see. `parametrize`: attach `ids` once
+values stop being self-explanatory.
 
 **DAMP vs. DRY in tests — a real, sourced debate that does _not_ simply inherit the "lean toward
-duplication" production-code stance** taken in `python-conventions`' modularity section. Vladimir
-Khorikov's reframing ("DRY vs DAMP in Unit Tests", Enterprise Craftsmanship) resolves the popular
-"DAMP not DRY" framing as a false dichotomy: "the DRY principle should be applied to the how-to's,
-whereas the DAMP principle should be applied to the what-to's." The actionable split: **setup
-mechanics (the "how") stay DRY** — pytest fixtures/helpers are exactly the right tool, use them
-freely, no tension with anything else in this file — **but the scenario a test verifies (the "what")
-stays explicit in that test**, because collapsing genuinely different scenarios into a shared
-abstracted mega-test trades away the "read one test top-to-bottom, understand the scenario" property
-that's the actual point of a test suite. This is a genuinely different axis from that
+duplication" production-code stance** taken in `python-conventions-taudelta`' modularity section.
+Vladimir Khorikov's reframing ("DRY vs DAMP in Unit Tests", Enterprise Craftsmanship) resolves the
+popular "DAMP not DRY" framing as a false dichotomy: "the DRY principle should be applied to the
+how-to's, whereas the DAMP principle should be applied to the what-to's." The actionable split:
+**setup mechanics (the "how") stay DRY** — pytest fixtures/helpers are exactly the right tool, use
+them freely, no tension with anything else in this file — **but the scenario a test verifies (the
+"what") stays explicit in that test**, because collapsing genuinely different scenarios into a
+shared abstracted mega-test trades away the "read one test top-to-bottom, understand the scenario"
+property that's the actual point of a test suite. This is a genuinely different axis from that
 production-code DRY decision, not a re-derivation of it — worth stating explicitly so a reader
 doesn't assume "this project avoids DRY everywhere" and over-apply it to test bodies.
 

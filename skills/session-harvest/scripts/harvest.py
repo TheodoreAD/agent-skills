@@ -1129,7 +1129,7 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 # --------------------------------------------------------------------------------------------
 
 
-def plan_docs_config() -> dict[str, Any]:
+def plan_conveyor_config() -> dict[str, Any]:
     """`plan-conveyor`' config, read as a contract rather than through `plans.py`.
 
     Two independently installed skills share a location by both reading the same configuration —
@@ -1169,7 +1169,7 @@ def plan_docs_config() -> dict[str, Any]:
 
 def projects_root() -> Path:
     """Where this machine keeps its repos, from `plan-conveyor`' config, else that skill's own default."""
-    raw = plan_docs_config().get("projects_root")
+    raw = plan_conveyor_config().get("projects_root")
     return Path(str(raw) if raw else "~/projects").expanduser()
 
 
@@ -3010,7 +3010,7 @@ def _is_scratch(root: Path) -> bool:
 def _stores() -> list[tuple[str, Path]]:
     """The two plans stores as `plan-conveyor` resolves them — variable, then its config, then its
     default — and the research library. Two readers of one source of truth, not two defaults."""
-    cfg = plan_docs_config()
+    cfg = plan_conveyor_config()
     store = Path(os.environ.get("PLANS_HOME") or str(cfg.get("store") or "~/plans")).expanduser()
     sensitive_default = store.parent / f"{store.name}-sensitive"
     sensitive = Path(os.environ.get("PLANS_SENSITIVE_HOME") or str(cfg.get("sensitive_store") or sensitive_default))

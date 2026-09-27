@@ -62,7 +62,7 @@ def _no_real_machine(tmp_path, monkeypatch):
     """The checkout detection walks the projects root `plan-conveyor` is configured with, and on the
     author's machine that root holds this very repo — so without this every "no checkout" test
     would find one. An empty root and no configured checkout is the reader's machine."""
-    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(tmp_path / "no-config.toml"))
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(tmp_path / "no-config.toml"))
     monkeypatch.delenv("SESSION_HARVEST_CHECKOUT", raising=False)
     monkeypatch.setattr(harvest, "projects_root", lambda: tmp_path / "no-projects")
     # Every fixture here is `ps`/`ss` output; the Windows tests set the constant themselves.
@@ -2987,7 +2987,7 @@ def test_the_no_checkout_error_says_what_a_reader_does_with_skill_friction(tmp_p
 # plan-conveyor' locations are read as configuration, never re-derived
 
 
-def test_the_stores_and_projects_root_come_from_plan_docs_config(tmp_path, monkeypatch):
+def test_the_stores_and_projects_root_come_from_plan_conveyor_config(tmp_path, monkeypatch):
     """`harvest.py` used to carry its own `~/plans` and `~/plans-sensitive` defaults beside the ones
     in `plans.py` — two copies of a default that had to agree, with nothing keeping them in step.
     The contract is the config file and the variables, which both skills read."""
@@ -2996,7 +2996,7 @@ def test_the_stores_and_projects_root_come_from_plan_docs_config(tmp_path, monke
         f'projects_root = "{(tmp_path / "code").as_posix()}"\nstore = "{(tmp_path / "ideas").as_posix()}"\n',
         encoding="utf-8",
     )
-    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(config))
     monkeypatch.delenv("PLANS_HOME", raising=False)
     monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
 
@@ -3010,7 +3010,7 @@ def test_the_stores_and_projects_root_come_from_plan_docs_config(tmp_path, monke
 def test_the_variable_beats_the_config_for_a_store(tmp_path, monkeypatch):
     config = tmp_path / "plan-conveyor.toml"
     config.write_text(f'store = "{(tmp_path / "ideas").as_posix()}"\n', encoding="utf-8")
-    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(config))
     monkeypatch.setenv("PLANS_HOME", str(tmp_path / "pinned"))
     monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
 
@@ -3018,15 +3018,15 @@ def test_the_variable_beats_the_config_for_a_store(tmp_path, monkeypatch):
 
 
 def test_a_missing_or_broken_config_falls_back_to_the_documented_defaults(tmp_path, monkeypatch):
-    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(tmp_path / "nowhere.toml"))
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(tmp_path / "nowhere.toml"))
     monkeypatch.delenv("PLANS_HOME", raising=False)
     monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
     assert dict(harvest._stores())["plans"] == Path.home() / "plans"
 
     broken = tmp_path / "broken.toml"
     broken.write_text("store = [unclosed\n", encoding="utf-8")
-    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(broken))
-    assert harvest.plan_docs_config() == {}
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(broken))
+    assert harvest.plan_conveyor_config() == {}
 
 
 def test_a_worktree_checkout_is_named_as_one(tmp_path):

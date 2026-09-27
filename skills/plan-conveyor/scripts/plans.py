@@ -45,8 +45,9 @@ by `<host>/<owner>`, `own_accounts` names the accounts you own, and a repo belon
 organisation you have not decided about is refused a `plans/` directory rather than given one —
 organisations keep their own trackers, and a commit into theirs is not a default anyone chose.
 
-Exit codes: 0 ok, 1 error, 2 argparse usage, 3 needs-decision — no rule matched the repo, or it
-belongs to an organisation nobody has decided about, so the agent must ask rather than pick a side.
+Exit codes: 0 ok, 1 error, 2 argparse usage, 3 needs-decision — no rule matched the repo, it
+belongs to an organisation nobody has decided about, or there is no config at all (which `new`
+refuses in every form), so the agent must ask rather than pick a side.
 """
 
 from __future__ import annotations
@@ -1298,11 +1299,7 @@ def resolve(start: Path, cfg: Config) -> Routing:
         return Routing("needs-decision", refusal, root, rel, rule, source, store_dir, remote)
 
     if rule is None:
-        reason = (
-            f"no rule matches {rel or root} and no default is set in {cfg.path}"
-            if cfg.exists
-            else f"no config file at {cfg.path} (write one with: plans.py config init)"
-        )
+        reason = f"no rule matches {rel or root} and no default is set in {cfg.path}" if cfg.exists else no_config(cfg)
         return Routing("needs-decision", reason, root, rel, None, source, store_dir, remote)
     if "store" in rule.read and rel is None:
         reason = (
@@ -1311,6 +1308,10 @@ def resolve(start: Path, cfg: Config) -> Routing:
         )
         return Routing("needs-decision", reason, root, rel, rule, source, store_dir, remote)
     return Routing("ok", "", root, rel, rule, source, store_dir, remote)
+
+
+def no_config(cfg: Config) -> str:
+    return f"no config file at {cfg.path} (write one with: plans.py config init)"
 
 
 def require_ok(routing: Routing) -> Routing:
@@ -2320,6 +2321,20 @@ class Workspace:
         surprise at the point of reading an attribute."""
         return require_ok(self.routing)
 
+    def require_config(self) -> Config:
+        """The config, or the needs-decision exit — for a writer that never consults a verdict.
+
+        `new --for` and `new --unscoped` do not, where plain `new` refuses through its routing.
+        Without this `--for` succeeded on an unconfigured machine and filed into the sensitive tier,
+        since no `shareable_roots` makes every root sensitive: a personal repo's plan landed in the
+        store with no remote (2026-09-27, during a rename that had moved the config ahead of the
+        code reading it). The tier default is right for an unrouted root on a configured machine;
+        a missing config means a broken install instead.
+        """
+        if not self.config.exists:
+            raise NeedsDecision(no_config(self.config))
+        return self.config
+
 
 def _print_where_remote(cfg: Config, remote: Remote | None) -> None:
     """Who this repo belongs to — and, just as important, whether that was checked at all.
@@ -2535,7 +2550,7 @@ def resolve_repo_argument(value: str, cfg: Config) -> Path:
 def cmd_new(args: argparse.Namespace, ws: Workspace) -> int:
     if not TOPIC_RE.match(args.topic):
         raise PlanError(f"topic {args.topic!r} must be kebab-case: lowercase letters, digits and single hyphens")
-    cfg = ws.config
+    cfg = ws.require_config()
     if args.unscoped:
         if args.to or args.for_repo:
             raise PlanError("--unscoped belongs to no repo, so it cannot be combined with --to or --for")

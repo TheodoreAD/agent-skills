@@ -172,7 +172,8 @@ after the move — a check that would have passed identically while the damage w
 
 **Verify the failure mode before assuming the gap is loud.** The same instance is the argument: an
 unconfigured `plans.py new --for <repo>` did not error, it **succeeded** and filed into the
-sensitive store, because with no config every root defaults to non-shareable. A path that errors is
+sensitive store, because with no config every root defaults to non-shareable. That one call refuses
+since 2026-09-28; the next rename will move state some other quiet path reads. A path that errors is
 a session stopping; a path that writes to the wrong place is a session continuing with a plausible
 result. So the order is push → install → move the state, and the check afterwards is that the state
 is readable from the **installed** copy, not from the checkout.

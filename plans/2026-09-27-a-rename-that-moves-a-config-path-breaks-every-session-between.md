@@ -63,19 +63,17 @@ the wrong place**, which no line in the report covers.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: should an unconfigured `plans.py` refuse to write at all, rather than treating
-"no config" as a valid configuration in which every root is sensitive? The tier default is right in
-isolation — the skill's own reasoning is that the default must follow the failure that cannot leak —
-but that reasoning was written about an unrouted _root_ on a configured machine, not about a machine
-with no config, where the likelier explanation is a broken install rather than a deliberate absence.
-A `new` that exits 3 the way `where` does would have surfaced this immediately.]
+**Decided 2026-09-28: `new` refuses in every form without a config, exit 3.** The question was
+narrower than it read. Plain `new` already refused — it goes through the routing verdict, which says
+`no config file` — so this was never a policy of treating "no config" as valid. It was two routes
+skipping the verdict: `--for` calls `resolve()` but uses only its store path, and `--unscoped` never
+routes. Both now check the config first, with a parametrized test over all three forms asserting
+neither store is created. The tier default for an unrouted root on a configured machine is
+untouched, since that reasoning still holds there.
 
-[NEEDS CLARIFICATION: does `skill-authoring` need a rule about a rename that moves state outside the
-skill directory? The sequence it teaches — edit, gate, commit, push, re-install, verify — is correct
-and would have closed this, but nothing in it says that a config path, an env var name or an
-installed-path citation in `~/.agents/AGENTS.md` widens the blast radius from "my next call" to
-"every session on the machine until the push". The failure is specifically in the gap between the
-two halves landing, which no single-repo gate can see.]
+**Decided 2026-09-27, in `073141b`: yes.** `skill-authoring-taudelta` now says a rename that moves
+state outside the skill directory moves it after the install — push, install, move — with this
+incident as the evidence and the fallback pitfall below alongside it.
 
 ## The window is closed, and the mitigation was aimed the wrong way
 

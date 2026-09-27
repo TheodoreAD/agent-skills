@@ -170,6 +170,22 @@ def test_no_config_at_all_needs_a_decision(ws):
     assert plans.main(["where", "--path", str(ws.client)]) == plans.NEEDS_DECISION
 
 
+@pytest.mark.parametrize(
+    "flags",
+    [
+        [],
+        # The two routes that never consult a verdict. `--for` is the one that filed a personal
+        # repo's plan into the sensitive tier while a rename had moved the config (2026-09-27).
+        ["--for", "github.com-personal/agent-skills"],
+        ["--unscoped"],
+    ],
+)
+def test_no_config_refuses_every_new(ws, flags):
+    assert plans.main(["new", "orphan", *flags, "--path", str(ws.client)]) == plans.NEEDS_DECISION
+    assert not ws.store.exists()
+    assert not ws.sensitive.exists()
+
+
 def test_unmatched_repo_needs_a_decision_even_with_a_config(ws):
     write_config(ws, '[roots]\n"github.com-personal" = "repo"\n')
     routing = route(ws.client)

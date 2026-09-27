@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-27
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/invoke-stubs
 source_session: 65f8437a-a90e-41c6-9b1f-9b43d713ed9b.jsonl
 source_moment: 2026-09-27T19:47:51Z
@@ -113,3 +113,13 @@ argument behind it. The second is where this generalises: the rename itself was 
 commit message says the config path and variable moved with it — and the gap still opened, because
 correctness inside the repo and deployment across the machine are two different events with time
 between them.
+
+## Migrated to
+
+- **The ordering rule and the fallback pitfall** — `skills/skill-authoring-taudelta/SKILL.md`, the
+  paragraphs after "Renaming or deleting a skill needs a second step" (`073141b`), including why the
+  gap is quiet rather than loud.
+- **The refusal** — `Workspace.require_config` in `skills/plan-conveyor/scripts/plans.py`, whose
+  docstring carries the incident, and `test_no_config_refuses_every_new` (`707abfc`).
+- **Not migrated**: the window's timings and the session id. They are evidence for a rule that now
+  has its own dated evidence in both destinations, and `plans.py archive` reads them back from here.

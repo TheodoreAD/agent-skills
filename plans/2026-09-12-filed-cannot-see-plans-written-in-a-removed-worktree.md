@@ -50,11 +50,11 @@ the repository root it belongs to, and the plan is then looked up at `<root>/pla
 worktree's own `git rev-parse --git-common-dir` names that root while the worktree exists, but it
 will not exist at harvest time, so the mapping has to come from the path shape itself.
 
-[NEEDS CLARIFICATION: **whether to key on the Claude Code layout or on any worktree layout.**
-`.claude/worktrees/<name>/` is one harness's convention. VS Code's default is a sibling
-`<repo>.worktrees/<name>/`, and `skill-authoring` already names both. Handling only the first fixes
-this repo's background sessions and leaves the second silent in exactly the same way.]
+[DECISION (2026-09-28): **both layouts**, `<repo>/.claude/worktrees/<name>/` and the sibling
+`<repo>.worktrees/<name>/`, since `skill-authoring` already names both and handling one would leave
+the other silent the same way. Only a path under the repo's own `plans/` is mapped. The row prints
+the main-checkout path, with a line naming the worktree path it was written as.]
 
-[NEEDS CLARIFICATION: **what a plan moved or renamed on `main` after the worktree wrote it should
-report.** Once the path maps to the root, a plan that was later renamed or retired would resolve to
-nothing again — which is the existing `MISSING` case and should say so rather than silently drop.]
+[DECISION (2026-09-28): **a plan gone from `main` too is the existing `MISSING` row**, and since
+`filed` now reads the deleting commit, one this session retired says so. Nothing extra was needed:
+once the path is mapped, the file-exists check and the cause lookup run against `main`.]

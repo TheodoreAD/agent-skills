@@ -2303,6 +2303,38 @@ def test_a_missing_plan_names_the_cause_its_deleting_commit_establishes(tmp_path
     assert harvest.missing_cause(runner, plan, receipts) == cause
 
 
+@pytest.mark.parametrize(
+    ("written", "main"),
+    [
+        ("repo/.claude/worktrees/fix-x/plans/2026-09-12-a.md", "repo/plans/2026-09-12-a.md"),
+        ("code/repo.worktrees/fix-x/plans/2026-09-12-a.md", "code/repo/plans/2026-09-12-a.md"),
+        # Not a plan in the repo's own plans/, and not a worktree at all: left alone.
+        ("repo/.claude/worktrees/fix-x/docs/notes.md", None),
+        ("repo/plans/2026-09-12-a.md", None),
+    ],
+)
+def test_a_worktree_path_maps_to_the_main_checkout(tmp_path, written, main):
+    mapped = harvest.main_checkout_path(tmp_path / written)
+    assert (None if mapped is None else mapped[0]) == (None if main is None else tmp_path / main)
+
+
+def test_a_plan_written_in_a_removed_worktree_is_found_on_main(tmp_path):
+    """2026-09-12: a background session wrote five plans through worktrees it then removed, and
+    `filed` counted one."""
+    repo = tmp_path / "repo"
+    (repo / "plans").mkdir(parents=True)
+    (repo / "plans" / "2026-09-12-a.md").write_text("# A\n\n- 9 files, all scratch\n", encoding="utf-8")
+    gone = repo / ".claude" / "worktrees" / "fix-x" / "plans" / "2026-09-12-a.md"
+
+    (row,) = harvest.filed_plans([write_entry(str(gone), content="- 9 files, all scratch\n")], repos=[])
+
+    assert row["path"] == str(repo / "plans" / "2026-09-12-a.md")
+    assert row["exists"] is True
+    assert row["written_in_worktree"] == str(gone)
+    # Read from main, matched against what was sent to the worktree path: still this session's line.
+    assert row["measurements"] == ["- 9 files, all scratch"]
+
+
 def test_a_determined_cause_replaces_the_hedge_in_the_row(capsys):
     row = {"path": "plans/2026-09-06-landed.md", "exists": False, "cause": "retired by this session (abc123400)"}
     harvest._print_filed({"plans_written": [row]})

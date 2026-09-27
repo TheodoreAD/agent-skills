@@ -3904,25 +3904,60 @@ def filed_plans(
     receipts = commit_receipts(entries) if runner else []
     roots = plan_roots(repos)
     found: list[dict[str, Any]] = []
-    for path in written_paths(entries):
-        if path.suffix != ".md":
+    seen: set[str] = set()
+    for written in written_paths(entries):
+        if written.suffix != ".md":
             continue
-        root = next((r for r in roots if _under(path, r)), None)
-        if root is None:
+        path, root = written, next((r for r in roots if _under(written, r)), None)
+        main = None if written.exists() else main_checkout_path(written)
+        if main is not None:
+            path, root = main
+        if root is None or str(path) in seen:
             continue
-        mine, unestablished = measurement_lines(path, session_text(entries, path))
+        seen.add(str(path))
+        # The text compared is what this session sent to the path it actually wrote; the file read
+        # is wherever that plan lives now.
+        mine, unestablished = measurement_lines(path, session_text(entries, written))
         exists = path.exists()
         found.append(
             {
                 "path": str(path),
                 "root": str(root),
                 "exists": exists,
+                "written_in_worktree": str(written) if main is not None else None,
                 "cause": None if exists or runner is None else missing_cause(runner, path, receipts),
                 "measurements": mine,
                 "measurements_unestablished": unestablished,
             }
         )
     return found
+
+
+def main_checkout_path(path: Path) -> tuple[Path, Path] | None:
+    """Where a plan written in a linked worktree lives once that worktree is gone, and its root.
+
+    `filed` resolves a plan by the literal path the edit tool wrote to, so a plan written inside a
+    worktree the session then removed resolved to nothing and dropped out of the count, while the
+    file sat on `main` exactly where a reader would look. Confirmed 2026-09-12: a background session
+    — which cannot edit the shared checkout, so writes every plan through a worktree — got "plan
+    files this session wrote (1)" for at least five. The worktree cannot be asked where its main
+    checkout is once it is deleted, so the mapping comes from the path's shape, for both layouts
+    `skill-authoring` names: Claude Code's `<repo>/.claude/worktrees/<name>/` and VS Code's sibling
+    `<repo>.worktrees/<name>/`. Only a plan under the repo's own `plans/` is mapped.
+    """
+    parts = path.parts
+    for i, part in enumerate(parts):
+        if part == ".claude" and parts[i + 1 : i + 2] == ("worktrees",) and len(parts) > i + 3:
+            repo, rest = Path(*parts[:i]), parts[i + 3 :]
+            break
+        if part.endswith(".worktrees") and len(part) > len(".worktrees") and len(parts) > i + 2:
+            repo, rest = Path(*parts[:i], part.removesuffix(".worktrees")), parts[i + 2 :]
+            break
+    else:
+        return None
+    if not rest or rest[0] != "plans":
+        return None
+    return repo.joinpath(*rest), repo / "plans"
 
 
 def store_commits(
@@ -4139,6 +4174,8 @@ def _print_filed(payload: dict[str, Any], verbose: bool = False) -> None:
         mark = "" if plan.get("exists") else f"  MISSING ({plan.get('cause') or 'cause not determined'})"
         missing = missing or not plan.get("exists")
         print(f"    {plan['path']}{mark}")
+        if plan.get("written_in_worktree"):
+            print(f"        written as {plan['written_in_worktree']}, a worktree since removed")
         for line in plan.get("measurements") or []:
             print(f"        {line}")
         for line in plan.get("measurements_unestablished") or []:

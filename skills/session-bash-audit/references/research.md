@@ -838,6 +838,18 @@ samples from the adherence corpus:
 
 A reader ranking sessions by the headline number ranks them backwards on consequence.
 
+[PITFALL: **the rates in that table are pre-fix, and three of the four moved** — left as the numbers
+the decision was taken on, corrected here. Re-scored at each row's own recorded `--until`, first
+2026-09-07 in `power-user-linux-setup`'s corpus and again 2026-09-28: sample 6 is **38%** (35
+wrapped a gate, 47 a listing; 30/52 before `plans.py scan` joined the gate list), sample 7 **28%**
+(31/5), sample 8 **18%** (16/23). Sample 2 was not re-scored. Two arguments lean on cells that
+moved. Sample 6 is not "read-only listings": most of its masked calls were listings but 35 were
+gates, and the highest rate is still the row whose greens all held, so the ranking-backwards point
+survives. "Rejected 1" below rests on sample 8 being 99% listings with one masked gate run and five
+green claims, and no window of that transcript reproduces it — 16 gate calls, and the corpus records
+ten claims. The adopted two-count line would read `39 masked, 16 wrapped a gate` there, useful
+either way; what is left unsupported is the stated reason for rejecting the column, not the design.]
+
 **Rejected 1 — a second column (gate rate beside total rate).** Sample 8 killed it: that session is
 99% listings and the 1% is the part a reader needs, so a rate cannot carry it. A column averages
 away the single call that mattered.

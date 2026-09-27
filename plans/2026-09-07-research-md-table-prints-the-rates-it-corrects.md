@@ -83,10 +83,11 @@ an artefact of the bug".
 
 ## Open questions
 
-[NEEDS CLARIFICATION: **is the migrated table worth correcting in place, or annotating?** In place
-keeps one set of numbers in the file, and the pre-fix figures then survive only in git history. An
-annotation preserves what the decision was actually taken on, which is the honest record of a design
-argument — and this file's own `PITFALL` next door already models that shape.]
+[DECISION: **annotated, not corrected** (2026-09-28). `research.md` opens with "Append; don't
+rewrite history — the value is in the deltas", which settles it. A `PITFALL` under the table gives
+the re-scored rates and says which two arguments lean on moved cells. Re-run the same day with the
+current `audit.py`, the four rates reproduced exactly (38, 28, 18, 12%); sample 6's split moved to
+35 gate / 47 listing, because `plans.py scan` joined the gate list that evening.]
 
 [NEEDS CLARIFICATION: **where did sample 8's row come from?** 25%, one masked gate run and five
 green claims match no window of that transcript. Worth resolving before the "99% listings" reasoning

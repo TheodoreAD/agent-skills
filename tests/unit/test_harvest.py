@@ -19,6 +19,7 @@ import argparse
 import importlib.util
 import json
 import sys
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -490,6 +491,29 @@ def test_last_activity_is_the_latest_entry_parsed_not_the_latest_string():
     ]
     assert harvest.as_instant(harvest.last_activity(entries)) == harvest.as_instant("2026-09-06T09:00:00Z")
     assert harvest.last_activity([]) is None
+
+
+def test_longest_idle_finds_the_resumption_across_mixed_offsets():
+    """The 2026-09-27 shape: a morning's work, then a resume weeks later to harvest it."""
+    entries = [
+        bash_entry("work", timestamp="2026-09-07T11:24:34Z"),
+        bash_entry("more work", timestamp="2026-09-07T15:09:00+03:00"),  # 12:09Z
+        bash_entry("harvest", timestamp="2026-09-27T19:40:00Z"),
+        bash_entry("boundary", timestamp="2026-09-27T19:41:00Z"),
+    ]
+    start, end = harvest.longest_idle(entries)
+    assert (start, end) == (harvest.as_instant("2026-09-07T12:09:00Z"), harvest.as_instant("2026-09-27T19:40:00Z"))
+    assert harvest.span_text(end - start) == "20d 7h"
+    assert end - start >= harvest.LONG_IDLE
+    assert harvest.longest_idle(entries[:1]) is None
+
+
+@pytest.mark.parametrize(
+    ("seconds", "text"),
+    [(20, "20s"), (4 * 60, "4m"), (192 * 60, "3h 12m"), ((19 * 1440 + 23 * 60 + 5) * 60, "19d 23h")],
+)
+def test_span_text_keeps_the_two_largest_units(seconds, text):
+    assert harvest.span_text(timedelta(seconds=seconds)) == text
 
 
 # --------------------------------------------------------------------------------------------

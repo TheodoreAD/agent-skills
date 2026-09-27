@@ -84,6 +84,14 @@ indistinguishable from a right one. A supplied value now also says how far it si
 start and which way the window moved, since a guess and a deliberate audit look identical until the
 two instants are printed side by side.
 
+**`transcript` prints the session's longest idle gap, and one over a day means a resumed session.**
+Every window anchored at `started:` then spans the gap, so `skills-state`, `filed` and `sweep` fill
+with rows correctly attributed to other sessions — measured 2026-09-27, ~190 store commits to find
+this session's 3, and a re-read prescribed on nine commits of which seven were not its own. Read
+each row's attribution before its prescription there. The anchor itself stays at session start,
+since a same-day session, the case every other measurement here came from, gains nothing from moving
+it.
+
 **The moved-since check baselines each skill on when its own body entered context, not on session
 start.** Those differ by hours for a skill invoked late, and a harvest is loaded last by
 construction — so session start gives this skill a false positive on itself every run, in the step

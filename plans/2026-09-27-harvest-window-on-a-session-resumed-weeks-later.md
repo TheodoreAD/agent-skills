@@ -101,3 +101,10 @@ session it prints something unremarkable.
 
 Then decide the anchor question. If the answer is to re-anchor, `skills-state` is the check that
 benefits most, because it is the one whose output turns directly into "go and re-read four files".
+
+**Gap printed 2026-09-28.** `transcript` prints `idle gap:` — the widest stretch between two
+consecutive transcript entries, with its two instants — and, past `LONG_IDLE` (one day), a note that
+every `started:`-anchored window spans it. `--json` carries it as `longest_idle`. It lives in
+`transcript` rather than `boundary` so the harvest's first command still cannot fail on transcript
+resolution. The anchor question and the `filed` cap remain open; the second sample above is the
+evidence against re-anchoring so far.

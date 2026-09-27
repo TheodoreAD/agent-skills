@@ -54,6 +54,7 @@ import argparse
 import ast
 import fnmatch
 import ipaddress
+import itertools
 import json
 import os
 import re
@@ -807,6 +808,40 @@ def last_activity(entries: Iterable[dict[str, Any]]) -> str | None:
     return max(instants).isoformat() if instants else None
 
 
+# Past this, a window anchored at session start is mostly somebody else's work — see `longest_idle`.
+LONG_IDLE = timedelta(days=1)
+
+
+def longest_idle(entries: Iterable[dict[str, Any]]) -> tuple[datetime, datetime] | None:
+    """The widest stretch between two consecutive stamped entries: where a session was resumed.
+
+    Every "since session start" window in this script assumes the session worked continuously from
+    `started:` to now. A session resumed after days does not, and nothing said so. Measured
+    2026-09-27, twice: a session resumed after 20 days had `filed` print ~190 store commits to find
+    its own 3, and one resumed after 14 had `skills-state` prescribe a re-read on nine commits of
+    which seven were another session's. Every row was correctly labelled; what the reader lacked
+    was how old the window was. Printed rather than re-anchored, because a same-day session — the
+    case every other measurement behind this skill came from — gains nothing from moving the anchor.
+    """
+    instants = sorted(
+        moment for entry in entries if (moment := as_instant(str(entry.get("timestamp", "")))) is not None
+    )
+    pairs = list(itertools.pairwise(instants))
+    return max(pairs, key=lambda pair: pair[1] - pair[0]) if pairs else None
+
+
+def span_text(delta: timedelta) -> str:
+    """`19d 23h`, `3h 12m`, `4m`, `20s` — the two largest units, which is all a reader compares."""
+    seconds = int(delta.total_seconds())
+    minutes = seconds // 60
+    days, hours, mins = minutes // 1440, minutes // 60 % 24, minutes % 60
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {mins}m"
+    return f"{mins}m" if mins else f"{seconds}s"
+
+
 def bash_calls(entries: Iterable[dict[str, Any]]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for entry, block in iter_blocks(entries):
@@ -995,11 +1030,28 @@ def cmd_boundary(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 def cmd_transcript(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     transcript = resolve_transcript(args.session, args.job, args.expect, Path.cwd())
     payload = transcript.as_dict()
+    idle = longest_idle(transcript.entries)
+    payload["longest_idle"] = (
+        None
+        if idle is None
+        else {
+            "from": idle[0].isoformat(),
+            "to": idle[1].isoformat(),
+            "seconds": int((idle[1] - idle[0]).total_seconds()),
+        }
+    )
     if not args.json:
         print(f"transcript: {transcript.path}")
         print(f"resolved by: {transcript.how}")
         print(f"session id:  {transcript.session_id}")
         print(f"started:     {transcript.started}")
+        if idle is not None:
+            since, until = (moment.isoformat(timespec="seconds") for moment in idle)
+            print(f"idle gap:    {span_text(idle[1] - idle[0])} at most, {since} → {until}")
+            if idle[1] - idle[0] >= LONG_IDLE:
+                print("note: this session was resumed after that gap, so every window anchored at `started:`")
+                print("      (skills-state, filed, sweep) spans it — expect most of what moved there to be")
+                print("      another session's, and read each row's attribution before its prescription")
         print(f"cwd:         {transcript.cwd}")
         print(f"entries:     {len(transcript.entries)}")
         for note in transcript.notes:

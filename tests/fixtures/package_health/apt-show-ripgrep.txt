@@ -1,0 +1,39 @@
+Package: ripgrep
+Architecture: amd64
+Version: 14.1.0-1
+Built-Using: rustc (= 1.73.0+dfsg0ubuntu1-0ubuntu1)
+Multi-Arch: allowed
+Priority: optional
+Section: universe/utils
+Source: rust-ripgrep
+Origin: Ubuntu
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+Original-Maintainer: Debian Rust Maintainers <pkg-rust-maintainers@alioth-lists.debian.net>
+Bugs: https://bugs.launchpad.net/ubuntu/+filebug
+Installed-Size: 5210
+Depends: libc6 (>= 2.34), libgcc-s1 (>= 4.2), libpcre2-8-0 (>= 10.22)
+Filename: pool/universe/r/rust-ripgrep/ripgrep_14.1.0-1_amd64.deb
+Size: 1551362
+MD5sum: 970ee44a432d75ac4438ce7028dd5659
+SHA1: f86e6073755b8213170849951401b5f1dce5c08b
+SHA256: c5ae63c7bee915b1cfc9f0bd07c55b4ce7f2bcd1133cba4da56719aac26101a4
+SHA512: 56b8017d07ab1af9af051d1ee33bad113222a70b12bbcd929113ef388f39902671b2020f3a1dc7f11f8e9313afa2f3d70b0f8bc648d5942c283737990d42af47
+Homepage: https://github.com/BurntSushi/ripgrep
+Description-en: Recursively searches directories for a regex pattern
+ ripgrep is a line-oriented search tool that recursively searches your current
+ directory for a regex pattern while respecting your gitignore rules and
+ automatically skip hidden files/directories (smart filtering) and binary files.
+ ripgrep is similar to other popular search tools like The Silver Searcher, ack
+ and grep.
+ .
+ ripgrep is generally faster than both The Silver Searcher and GNU grep. It
+ defaults to recursive directory search and won't search files ignored by your
+ `.gitignore` files. Use ripgrep if you like speed, filtering by default, fewer
+ bugs, and Unicode support.
+ .
+ On the other hand, if you like multiline search, then ripgrep may not quite
+ meet your needs (yet), and it will never support fancy regex features such as
+ backreferences or lookaround
+Description-md5: 45d1dfa98f350bc31d65169b0acf761d
+X-Cargo-Built-Using: rust-aho-corasick (= 1.1.2-1), rust-anyhow (= 1.0.75-1), rust-bstr (= 1.7.0-2build1), rust-cfg-if (= 1.0.0-1), rust-crossbeam-deque (= 0.8.3-1), rust-crossbeam-epoch (= 0.9.13-1), rust-crossbeam-utils (= 0.8.12-1), rust-encoding-rs (= 0.8.33-1), rust-encoding-rs-io (= 0.1.7-1), rust-globset (= 0.4.14-1), rust-grep-cli (= 0.1.10-1), rust-grep (= 0.3.1-1), rust-grep-matcher (= 0.1.7-1), rust-grep-pcre2 (= 0.1.7-1), rust-grep-printer (= 0.2.1-1), rust-grep-regex (= 0.1.12-1), rust-grep-searcher (= 0.1.13-1), rust-ignore (= 0.4.22-1), rust-itoa (= 1.0.9-1), rust-lexopt (= 0.3.0-1), rust-libc (= 0.2.150-1), rust-log (= 0.4.20-2), rust-memchr (= 2.6.4-3build2), rust-memmap2 (= 0.9.0-3), rust-memoffset (= 0.6.5-1), rust-pcre2 (= 0.2.6-1), rust-pcre2-sys (= 0.2.7-1), rust-regex-automata (= 0.4.3-1build2), rust-regex-syntax (= 0.8.2-1), rust-ryu (= 1.0.15-1), rust-same-file (= 1.0.6-1), rust-scopeguard (= 1.1.0-1), rust-serde (= 1.0.195-1), rust-serde-json (= 1.0.108-1), rust-termcolor (= 1.4.0-1), rust-textwrap (= 0.16.0-2), rust-walkdir (= 2.4.0-1), rustc (= 1.73.0+dfsg0ubuntu1-0ubuntu1)
+

@@ -1,0 +1,46 @@
+[
+  {
+    "ripgrep": {
+      "oldoldstable": {
+        "12.1.1-1+b1": {
+          "component": "main",
+          "architectures": ["amd64", "arm64", "armhf", "i386"],
+          "source": "rust-ripgrep",
+          "source_version": "12.1.1-1"
+        }
+      },
+      "oldstable": {
+        "13.0.0-4+b2": {
+          "component": "main",
+          "architectures": ["amd64", "arm64", "armel", "armhf", "i386", "mips64el", "mipsel", "ppc64el", "s390x"],
+          "source": "rust-ripgrep",
+          "source_version": "13.0.0-4"
+        }
+      },
+      "stable": {
+        "14.1.1-1+b4": {
+          "component": "main",
+          "architectures": ["amd64", "arm64", "armel", "armhf", "i386", "ppc64el", "riscv64", "s390x"],
+          "source": "rust-ripgrep",
+          "source_version": "14.1.1-1"
+        }
+      },
+      "testing": {
+        "15.2.0-1": {
+          "component": "main",
+          "architectures": ["amd64", "arm64", "armhf", "i386", "loong64", "ppc64el", "riscv64", "s390x"],
+          "source": "rust-ripgrep",
+          "source_version": "15.2.0-1"
+        }
+      },
+      "unstable": {
+        "15.2.0-1": {
+          "component": "main",
+          "architectures": ["amd64", "arm64", "armhf", "i386", "loong64", "ppc64el", "riscv64", "s390x"],
+          "source": "rust-ripgrep",
+          "source_version": "15.2.0-1"
+        }
+      }
+    }
+  }
+]

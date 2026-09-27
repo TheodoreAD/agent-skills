@@ -1,0 +1,62 @@
+Package: curl
+Priority: optional
+Section: web
+Installed-Size: 523
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+Architecture: amd64
+Version: 8.5.0-2ubuntu10.15
+Depends: libc6 (>= 2.34), libcurl4t64 (= 8.5.0-2ubuntu10.15), zlib1g (>= 1:1.1.4)
+Filename: pool/main/c/curl/curl_8.5.0-2ubuntu10.15_amd64.deb
+Size: 226504
+MD5sum: f9d7b9c262ccad34a71c222da137f1ae
+SHA1: 21e8ffbc1133eae19342646ca920acc5a0cb271e
+SHA256: 4358c023e3c1a74bb1e77935807ea2088b137a898167fca278a1767c353ac1c5
+SHA512: df61d67b73c995b7f049d5c498dbf6a81e162abf5857bd34af7646f03b185d2ef7adadea10c58b21a42eee696715905bc3b845df72d74551dd4d02be6d0d9231
+Homepage: https://curl.se/
+Description-en: command line tool for transferring data with URL syntax
+ curl is a command line tool for transferring data with URL syntax, supporting
+ DICT, FILE, FTP, FTPS, GOPHER, HTTP, HTTPS, IMAP, IMAPS, LDAP, LDAPS, POP3,
+ POP3S, RTMP, RTSP, SCP, SFTP, SMTP, SMTPS, TELNET and TFTP.
+ .
+ curl supports SSL certificates, HTTP POST, HTTP PUT, FTP uploading, HTTP form
+ based upload, proxies, cookies, user+password authentication (Basic, Digest,
+ NTLM, Negotiate, kerberos...), file transfer resume, proxy tunneling and a
+ busload of other useful tricks.
+Description-md5: f83293d10df083ae6f7bb7d01642913c
+Multi-Arch: foreign
+Original-Maintainer: Debian Curl Maintainers <team+curl@tracker.debian.org>
+Origin: Ubuntu
+Bugs: https://bugs.launchpad.net/ubuntu/+filebug
+Task: cloud-minimal, cloud-image, cloud-image, server-minimal, ubuntu-wsl, server, ubuntu-server-raspi, lubuntu-desktop, ubuntustudio-publishing, ubuntu-budgie-desktop-minimal, ubuntu-budgie-desktop, ubuntu-budgie-desktop-raspi
+
+Package: curl
+Architecture: amd64
+Version: 8.5.0-2ubuntu10
+Multi-Arch: foreign
+Priority: optional
+Section: web
+Origin: Ubuntu
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+Original-Maintainer: Debian Curl Maintainers <team+curl@tracker.debian.org>
+Bugs: https://bugs.launchpad.net/ubuntu/+filebug
+Installed-Size: 520
+Depends: libc6 (>= 2.34), libcurl4t64 (= 8.5.0-2ubuntu10), zlib1g (>= 1:1.1.4)
+Filename: pool/main/c/curl/curl_8.5.0-2ubuntu10_amd64.deb
+Size: 226572
+MD5sum: f2afe9eb0c7e3791b2d418983b8d90ec
+SHA1: 160532847eab23dcc4826afcca72c3399455461b
+SHA256: af7af42226d21bcbf87cf62a9e158bd5dfbd051ebbde8818ca441dc8085f67af
+SHA512: d69dbc5bc987bcce13b6a84a1bcb78e539812065f8951753e0bec1d39607533adfb70ed4ff17f3e9ba7889a5063a7e0681e518118d29d5e110279e0bcdc537e8
+Homepage: https://curl.se/
+Description-en: command line tool for transferring data with URL syntax
+ curl is a command line tool for transferring data with URL syntax, supporting
+ DICT, FILE, FTP, FTPS, GOPHER, HTTP, HTTPS, IMAP, IMAPS, LDAP, LDAPS, POP3,
+ POP3S, RTMP, RTSP, SCP, SFTP, SMTP, SMTPS, TELNET and TFTP.
+ .
+ curl supports SSL certificates, HTTP POST, HTTP PUT, FTP uploading, HTTP form
+ based upload, proxies, cookies, user+password authentication (Basic, Digest,
+ NTLM, Negotiate, kerberos...), file transfer resume, proxy tunneling and a
+ busload of other useful tricks.
+Description-md5: f83293d10df083ae6f7bb7d01642913c
+Task: cloud-minimal, cloud-image, cloud-image, server-minimal, ubuntu-wsl, server, ubuntu-server-raspi, lubuntu-desktop, ubuntustudio-publishing, ubuntu-budgie-desktop-minimal, ubuntu-budgie-desktop, ubuntu-budgie-desktop-raspi
+

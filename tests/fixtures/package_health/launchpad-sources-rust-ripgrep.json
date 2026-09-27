@@ -1,0 +1,123 @@
+{
+  "start": 0,
+  "total_size": 13,
+  "entries": [
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "15.2.0-1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/stonking",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2026-08-09T18:16:00.510032+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "15.1.0-1ubuntu1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/resolute",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2026-04-03T17:56:07.259794+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "14.1.1-1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/questing",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2025-04-22T13:35:28.264008+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "14.1.1-1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/plucky",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2024-11-08T02:29:37.786055+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "14.1.0-1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/noble",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2024-01-12T21:34:24.283752+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "13.0.0-5",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/mantic",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2023-06-15T12:19:19.027573+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "13.0.0-4",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/lunar",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2022-10-27T17:20:10.271950+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "13.0.0-2ubuntu0.1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/jammy",
+      "pocket": "Updates",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2022-09-14T10:29:00.167031+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "13.0.0-2ubuntu0.1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/jammy",
+      "pocket": "Security",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2022-09-14T09:28:26.601454+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "13.0.0-2",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/jammy",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2021-11-06T16:48:31.532128+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "11.0.2-1ubuntu0.1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/focal",
+      "pocket": "Updates",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2022-09-14T10:29:00.167031+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "11.0.2-1ubuntu0.1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/focal",
+      "pocket": "Security",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2022-09-14T09:28:26.601454+00:00"
+    },
+    {
+      "source_package_name": "rust-ripgrep",
+      "source_package_version": "11.0.2-1build1",
+      "distro_series_link": "https://api.launchpad.net/1.0/ubuntu/focal",
+      "pocket": "Release",
+      "component_name": "universe",
+      "status": "Published",
+      "date_published": "2020-03-23T01:53:20.504040+00:00"
+    }
+  ]
+}

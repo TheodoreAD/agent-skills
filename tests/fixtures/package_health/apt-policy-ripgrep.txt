@@ -1,0 +1,7 @@
+ripgrep:
+  Installed: 14.1.0-1
+  Candidate: 14.1.0-1
+  Version table:
+ *** 14.1.0-1 500
+        500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages
+        100 /var/lib/dpkg/status

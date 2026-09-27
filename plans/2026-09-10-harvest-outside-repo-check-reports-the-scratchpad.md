@@ -56,14 +56,19 @@ Keep the rows rather than dropping them silently, as a count under their own lin
 same reason `sweep` prints `none`/`skipped` instead of vanishing: an absent section reads as "not
 checked" and a zero reads as "checked".
 
-[NEEDS CLARIFICATION: should another session's scratchpad be treated the same way? A path under
-`claude-<uid>/` with a **different** session id is still ephemeral by the harness's own definition,
-but it is also not this session's to reason about, and the sweep already has the parallel-session
-caveat elsewhere. Leaning: collapse it to a count too, under a separate label, since the recovery
-question is equally meaningless there.]
+[DECISION (2026-09-28): **any session's scratchpad counts, one label for both.** Distinguishing them
+would need the path's session id matched against this one, for no difference in what the reader
+does. And **grouped rather than collapsed to a count**, departing from this plan: after it was
+filed, `session-harvest` gained dispositions (2026-09-18, 2026-09-20) that make a scratchpad
+reproducer the file to `attach` to its plan, so a count would hide the true positive they depend on.
+The rows print under their own label, with that disposition and not the "no diff, no history"
+suffix.]
 
-[NEEDS CLARIFICATION: **a background job has a second scratch location, and the prefix above misses
-it.** Confirmed 2026-09-13 by the `agent-skills` harvest of job `519cf236`: the step's one row was
+[DECISION (2026-09-28): **both locations, matched by shape** — `<tmp>/claude-*/…/scratchpad/` and
+`~/.claude/jobs/<id>/tmp/` — rather than read from `state.json`, since the shape identifies another
+job's `tmp/` just as well and needs no resolved job. The question as filed: **a background job has a
+second scratch location, and the prefix above misses it.** Confirmed 2026-09-13 by the
+`agent-skills` harvest of job `519cf236`: the step's one row was
 `~/.claude/jobs/519cf236/tmp/live-attach.sh`, a throwaway end-to-end check. The job's own
 environment names that directory — `$CLAUDE_JOB_DIR/tmp`, "cleaned up when the job is deleted" — and
 tells the session to use it instead of `/tmp`, so it is exactly as ephemeral by design as the
@@ -72,9 +77,9 @@ filter as written. Is the match "each harness-declared scratch location this ses
 rather than one prefix? The job's `state.json`, which `harvest.py` already reads to resolve the
 transcript, is the natural place to learn it.]
 
-[NEEDS CLARIFICATION: is `/tmp` in general safe to collapse? No — a session that writes to `/tmp`
-directly, outside the scratchpad, has written somewhere with no recovery path _and_ no guarantee of
-being cleaned up on the session's terms, which is the original finding. Only the harness-declared
+[DECISION: is `/tmp` in general safe to collapse? No — a session that writes to `/tmp` directly,
+outside the scratchpad, has written somewhere with no recovery path _and_ no guarantee of being
+cleaned up on the session's terms, which is the original finding. Only the harness-declared
 scratchpad has the "ephemeral by design" property that makes the row uninformative.]
 
 ## Recommended direction

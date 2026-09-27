@@ -3180,13 +3180,44 @@ def _sweep_loose_files(runner: Runner, entries: Sequence[dict[str, Any]], have_t
         if inline
         else "no inline-script calls this session, so the seam above did not bind"
     )
+    outside = [p for p in written_paths(entries) if git_root(runner, p) is None and p.exists()]
     return {
         "loose_files": {"available": True, "limit": SUBPROCESS_SEAM, "exposure": exposure},
-        "written_outside_any_repo": [
-            str(p) for p in written_paths(entries) if git_root(runner, p) is None and p.exists()
-        ],
+        "written_outside_any_repo": [str(p) for p in outside if not _harness_scratch(p)],
+        "written_to_harness_scratch": [str(p) for p in outside if _harness_scratch(p)],
         "paths_named_but_missing": promised_paths(entries),
     }
+
+
+def _harness_scratch(path: Path) -> bool:
+    """Whether a file sits where the harness told a session to put throwaway files.
+
+    Two such places: a session scratchpad, `<tmp>/claude-<uid>/<project>/<session>/scratchpad/`,
+    and a background job's `~/.claude/jobs/<id>/tmp/`, which the job's own instructions name and
+    say is deleted with it. A file there is ephemeral by design, and the outside-every-repo list is
+    where those rows landed: 9 of 9 on one 2026-09-09 harvest, the only row of a 2026-09-13 one.
+    Any session's, not only this one's. Plain `/tmp` is not included: a file written there directly
+    has neither a recovery path nor a cleanup on the session's terms, which is the finding.
+
+    **Grouped, not folded into a count**, which the plan asking for this proposed. Two later rules
+    in the skill treat a scratchpad reproducer as the file to `attach` to its plan or promote into
+    the repo (2026-09-18, 2026-09-20), so a count would hide the true positive those rules exist
+    for. Under their own label with their own disposition, they stop crowding the rows that have no
+    recovery at all without disappearing.
+    """
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    temp = Path(tempfile.gettempdir()).resolve()
+    if resolved.is_relative_to(temp):
+        parts = resolved.relative_to(temp).parts
+        return bool(parts) and parts[0].startswith("claude-") and "scratchpad" in parts[:-1]
+    jobs = (Path.home() / ".claude" / "jobs").resolve()
+    if resolved.is_relative_to(jobs):
+        parts = resolved.relative_to(jobs).parts
+        return len(parts) > 2 and parts[1] == "tmp"
+    return False
 
 
 def _sweep_transcript(args: argparse.Namespace) -> tuple[Transcript | None, str]:
@@ -3537,14 +3568,19 @@ def _print_loose_files(payload: dict[str, Any]) -> None:
         return  # the section was not requested at all
     skipped = None if state.get("available") else f"  skipped: {state.get('why')}"
 
-    def section(heading: str, rows: list[str], limit: str = "", suffix: str = "") -> None:
+    def section(heading: str, rows: list[str], limit: str = "", suffix: str = "", scratch: Sequence[str] = ()) -> None:
         print(f"\n== {heading} ==")
         if skipped:
             print(skipped)
-        elif not rows:
+        elif not rows and not scratch:
             print("  none")
         for path in rows:
             print(f"    {path}{suffix}")
+        if scratch and not skipped:
+            print(f"  in a harness scratch directory ({len(scratch)}) — ephemeral by design; attach one only")
+            print("  if a plan relies on it as evidence, promote it if its question recurs, else nothing to do:")
+            for path in scratch:
+                print(f"    {path}")
         if not skipped and limit:
             # Printed whether or not there were rows: an empty result and an unexaminable one look
             # identical otherwise, which is the property this whole sweep exists to refuse.
@@ -3555,6 +3591,7 @@ def _print_loose_files(payload: dict[str, Any]) -> None:
         payload.get("written_outside_any_repo") or [],
         limit=state.get("limit", ""),
         suffix="   (no diff, no history — attach it, promote it, or say plainly that nothing recovers it)",
+        scratch=payload.get("written_to_harness_scratch") or [],
     )
     # Directly under that list rather than beside the generic limit: the number is only useful where
     # the reader is looking at the rows it qualifies.

@@ -674,6 +674,12 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   Which `attach` flag applies, and why a local attachment is invisible to `scan`, is
   `plan-conveyor`' to say; read it there before attaching a file you have not read.
 
+  **Rows in a harness scratch directory print as their own group** — a session scratchpad, or a
+  background job's `tmp/` — because they are ephemeral by design, and the first disposition above is
+  the only one that can apply to them. They filled whole lists before (9 of 9 rows, 2026-09-09) and
+  were kept listed rather than counted, since the reproducer `attach` exists for lives there. Plain
+  `/tmp` is not grouped: a file written there directly is the original finding.
+
   **This check and its neighbour — paths written into files that do not exist — read nothing but the
   transcript, so both print `none` or `skipped` and never nothing at all.** Until 2026-09-08 they
   vanished from the report whenever no transcript resolved: absent rather than empty, in a report

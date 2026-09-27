@@ -919,6 +919,47 @@ def test_naming_a_default_skill_does_not_report_it_twice(tmp_path):
     assert [s["skill"] for s in payload["skills"]] == list(harvest.DEFAULT_SKILLS)
 
 
+@pytest.mark.parametrize(
+    ("rel", "scratch"),
+    [
+        # The 2026-09-09 rows: a session scratchpad, this session's or another's.
+        ("tmp/claude-1000/-home-u-proj/0b1c/scratchpad/upgrade-probe/probe.sh", True),
+        ("tmp/claude-1000/-home-u-proj/other-session/scratchpad/x.py", True),
+        # The 2026-09-13 row: a background job's own tmp/.
+        ("home/.claude/jobs/519cf236/tmp/live-attach.sh", True),
+        # /tmp written directly has neither a recovery path nor the session's cleanup: still a row.
+        ("tmp/notes.txt", False),
+        ("tmp/claude-1000/-home-u-proj/0b1c/tasks/out.log", False),
+        ("home/.claude/jobs/519cf236/state.json", False),
+        ("home/.config/tool/config.toml", False),
+    ],
+)
+def test_only_harness_declared_scratch_is_folded(tmp_path, monkeypatch, rel, scratch):
+    monkeypatch.setattr(harvest.tempfile, "gettempdir", lambda: str(tmp_path / "tmp"))
+    monkeypatch.setattr(harvest.Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    assert harvest._harness_scratch(tmp_path / rel) is scratch
+
+
+def test_scratch_rows_are_grouped_apart_and_still_listed(capsys):
+    """Grouped rather than counted: a scratchpad reproducer is what `attach` exists for."""
+    probe = "/tmp/claude-1000/p/s/scratchpad/repro.sh"
+    payload = {
+        "loose_files": {"available": True},
+        "written_outside_any_repo": ["/home/u/.config/tool/config.toml"],
+        "written_to_harness_scratch": [probe],
+    }
+    harvest._print_loose_files(payload)
+    out = capsys.readouterr().out
+    real, grouped = out.split("in a harness scratch directory (1)", 1)
+    assert "/home/u/.config/tool/config.toml   (no diff" in real
+    assert probe in grouped
+    assert "no diff" not in grouped.split("== paths this session wrote", 1)[0]
+
+    harvest._print_loose_files({**payload, "written_outside_any_repo": []})
+    out = capsys.readouterr().out.split("== paths this session wrote", 1)[0]
+    assert "none" not in out, "scratch rows are not nothing"
+
+
 def test_a_skill_the_session_wrote_to_joins_the_set_without_being_named(tmp_path, capsys):
     """2026-09-12: the defaults all came back current, and the skill the session had authored — not
     named, because it was never *used* — was four commits stale. Only files under `skills/<name>/`

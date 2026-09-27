@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-26
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/freshful-polite-mcp
 source_session: 0134b98b-f28c-4444-8923-f0c22c667296.jsonl
 source_moment: 2026-09-26T00:00:00Z
@@ -95,3 +95,11 @@ flow never having run against the real account.
   the cart.
 - Nothing from the run argues for widening past "many homogeneous items with a sane default each",
   so the open question above stands as it is.
+
+## Migrated to
+
+- **The amendment, its conditions, the user's words and the live run** —
+  `skills/polite-mcp-conventions-taudelta/SKILL.md`, the paragraph after the typed-list rule's "How
+  to apply" (`7092a42`).
+- **Not migrated**: the per-page reply list and the render-count measurement. Both are
+  `freshful-polite-mcp`'s own evidence, and its `contributing/design-notes.md` already holds them.

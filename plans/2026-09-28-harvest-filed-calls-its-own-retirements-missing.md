@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-28
 source_repo: github.com-personal/invoke-stubs
 source_session: 76d98521-8e7c-4524-bb4f-4caeb36e8cb0.jsonl
@@ -33,3 +33,9 @@ applies to store commits:
 
 Keep `cause not determined` for everything else. A negative test belongs beside it: a path deleted
 by a commit that is not this session's must not read as retired.
+
+## Migrated to
+
+- **Both causes, the receipt rule and the negative case** — `missing_cause` in
+  `skills/session-harvest/scripts/harvest.py`, the `MISSING` paragraph in its `SKILL.md`, and the
+  parametrized test (`6cb8852`). Built as recommended, nothing declined.

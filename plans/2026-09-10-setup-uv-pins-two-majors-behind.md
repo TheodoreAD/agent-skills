@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-10
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/repo-tasks
 source_session: db005386-041e-4f80-acbe-6e944677e6fa.jsonl
 source_moment: 2026-09-09T21:08:26Z
@@ -51,3 +51,8 @@ breaking one. `inv ci.check-actions` read v10.2.0 as latest, and 0 of 2 behind a
 2. Read v10's release notes against these two workflows before bumping, per the open question. The
    reading is the expensive half of a bump; the edit is two lines.
 3. Both sites move together, in one commit — they are the same pin in two files.
+
+## Migrated to
+
+- **The bump and why v10's cache change does not reach it** — `8292395`'s message. Nothing else
+  needed a home: `inv ci.check-actions` answers currency on the day it runs.

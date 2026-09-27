@@ -16,7 +16,8 @@ merged and on `main`:
 - `2026-09-07-five-skills-have-never-fired.md` (appended)
 - `2026-09-12-harvest-should-ask-what-the-context-is-still-worth.md`
 - `2026-09-12-a-naming-pass-over-skills-that-outgrew-their-names.md`
-- `2026-09-12-skills-state-omits-the-skills-a-session-changed.md` — the one it found
+- `2026-09-12-skills-state-omits-the-skills-a-session-changed.md` — the one it found (since retired,
+  2026-09-28)
 
 **The mechanism.** Each was written inside `.claude/worktrees/<name>/plans/`, a linked worktree the
 session created for one change, pushed from, and removed. `filed` resolves a plan by the literal

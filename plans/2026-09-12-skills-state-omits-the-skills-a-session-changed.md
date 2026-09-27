@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-12
+status: landed
+updated: 2026-09-28
 ---
 
 # `skills-state` checks the skills a harvest leans on, not the skills a session changed
@@ -40,3 +40,9 @@ suggestion. `skills-state` adds every skill with a write path under `skills/<nam
 prints `changed this session:`, and says on the next line that a shell-command change is not seen
 and takes `--skill`. Parsing shell commands for writes would be the one check in this skill to leave
 the tool-call seam every other one stays on.]
+
+## Migrated to
+
+- **The rule, the incident and the stated limit** — `_skills_written`'s docstring in
+  `skills/session-harvest/scripts/harvest.py`, and step 0 of its `SKILL.md`, whose escape-hatch
+  sentence the pitfall above faulted and which now names both populations (`509f856`).

@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-07
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/repo-tasks
 source_session: 52905ee0-50ff-4376-bd19-5ab4d9ca0a24.jsonl
 source_moment: 2026-09-07T11:15:05Z
@@ -41,3 +41,8 @@ diff is those two lines, and the gate was green on it.]
 
 `inv deps.lock --package invoke-stubs`, `inv venv.sync`, `inv quality.precommit`, commit the lock
 bump alone if nothing else moves.
+
+## Migrated to
+
+- **The bump, and that nothing here type-checks invoke** — `757c22c`'s message. Nothing else to
+  keep; the `Lexicon` cost described above belongs to repo-tasks and never reached this repo.

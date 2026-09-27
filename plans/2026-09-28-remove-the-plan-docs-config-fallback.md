@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-28
 source_repo: github.com-personal/power-user-linux-setup
 source_session: b73129dd-6136-41c3-a026-8e871581bc14.jsonl
@@ -45,3 +45,9 @@ current path is absent, so a machine that still keeps its config at the old path
 an empty config and a shorter scan term list. Before removing, confirm no machine you use still
 keeps it there — this one was migrated 2026-09-27 — or have the writers refuse, naming the old path,
 instead of skeletonising over it.]
+
+## Migrated to
+
+- **The refusal and why it is not a silent removal** — `config_path`'s docstring in
+  `skills/plan-conveyor/scripts/plans.py`, and the rename paragraph in its `SKILL.md` (`431ab7d`);
+  the four refusal tests in `tests/unit/test_locations.py`.

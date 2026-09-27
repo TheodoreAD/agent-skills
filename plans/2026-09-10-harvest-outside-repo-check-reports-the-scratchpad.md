@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-13
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/power-user-linux-setup
 source_session: b494b3ef-0114-4463-b5c6-c73187080e11.jsonl
 source_moment: 2026-09-09T21:05:00Z
@@ -88,3 +88,9 @@ Match this session's own scratchpad prefix in `sweep`'s outside-every-repository
 those rows to a labelled count, and leave every other path reported individually as now. Small and
 additive, in the script rather than in the skill's prose — the skill's own rule that a correction a
 script can simply not make belongs in the script.
+
+## Migrated to
+
+- **The shape match, the `/tmp` exclusion and why the rows are grouped, not counted** —
+  `_harness_scratch`'s docstring in `skills/session-harvest/scripts/harvest.py`, and a paragraph
+  after the recovery dispositions in its `SKILL.md` (`7ffb990`).

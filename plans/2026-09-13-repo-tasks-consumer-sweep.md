@@ -201,13 +201,10 @@ This repo has a **Windows job** (`tests-windows.yml`), which none of the other c
 watching on the first green run after the pull, since the shipped `pytest.ini`'s `filterwarnings`
 entries have only ever been exercised on Linux here.
 
-[DEFERRED: do this in the same session as
-[`2026-09-10-setup-uv-pins-two-majors-behind.md`](2026-09-10-setup-uv-pins-two-majors-behind.md),
-already filed for this repo. Both touch this repo's CI and both want a green run afterwards to mean
-something; two sessions would mean two ambiguous runs. Confirmed still current 2026-09-13: both
-workflows pin `astral-sh/setup-uv@v9.0.0`, and `actions/checkout` is already at `v7`. The security
-caller is a third CI change, which strengthens the case: one session, one green run, three CI
-changes.]
+This was deferred to be done in one session with the `setup-uv` bump, so that one green run would
+cover every CI change here. That bump landed alone on 2026-09-28 (`8292395`, `setup-uv@v10.2.0` in
+both workflows, its plan now retired), so this sweep and the security caller get their own green
+run; the pairing no longer holds anything back.
 
 [DEFERRED: record which way each prediction went, in this file, when the sweep runs. A prediction
 nobody scored is a guess.]

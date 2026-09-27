@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-18
+status: abandoned
+updated: 2026-09-28
 source_repo: github.com-personal/freshful-polite-mcp
 source_session: 2888f600-fe6e-4cd8-aa7f-fcd46bc4c81d.jsonl
 source_moment: 2026-09-06T11:07:00Z
@@ -154,3 +154,11 @@ Filed from a session in `freshful-polite-mcp`, which cannot edit this repo.
 
 Not started. The retroactive gates above came back clean, so nothing in `freshful-polite-mcp`'s
 published history needs action; this plan is about the instrument, not that repo.
+
+## Migrated to
+
+- **Why tree before a commit is not a miss, with the measurement** —
+  `skills/plan-conveyor/references/design-rationale.md`, after the push-gate pitfall (`6ee70c3`).
+- **The no-scan-at-all count** — `2026-09-26-sweep-has-no-row-for-public-commits-without-a-scan.md`,
+  whose question it is (`903f961`).
+- Abandoned, not landed: the proposed row and nudge were both declined on the evidence.

@@ -48,10 +48,11 @@ which sounds like a search.
 
 The failure mode is the one this corpus keeps re-learning in other forms: **a line-oriented count
 over text that is not line-stable is an answer to a different question.** The transcript-grep plan
-(`2026-09-18-a-grep-over-a-transcript-counts-prose-not-calls.md`, second occurrence added the same
-day) is the over-counting half — 135 against a true 1. This is the under-counting half, and it is
-more dangerous per occurrence: an inflated count invites a check, while a zero looks like a finished
-answer. Both arrived in the same session, from the same instinct, five hours apart.
+(`2026-09-18-a-grep-over-a-transcript-counts-prose-not-calls.md`, now retired into
+`session-harvest`'s `SKILL.md` beside the suspicious-zero rule) is the over-counting half — 135
+against a true 1. This is the under-counting half, and it is more dangerous per occurrence: an
+inflated count invites a check, while a zero looks like a finished answer. Both arrived in the same
+session, from the same instinct, five hours apart.
 
 [PITFALL: **the gate is what makes this recurrent rather than occasional.** A reflow is not an event
 somebody chose; it happens every time the repo's own pre-commit gate runs, which is every commit. So

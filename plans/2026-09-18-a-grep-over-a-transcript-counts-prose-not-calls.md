@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-18
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/power-user-linux-setup
 source_session: 4296eac1-732f-4827-874f-59063bcf404f.jsonl
 source_moment: 2026-09-18T19:28:57+03:00
@@ -108,3 +108,12 @@ instrument disagreed with it and the disagreement went unread**.
 The corpus is exactly the kind of durable file nobody re-derives a number out of, and the sample
 would have carried a confident causal claim about cwd resets — plausible, mechanical, and traceable
 to a real observation — for as long as anyone cared to read it.]
+
+## Migrated to
+
+- **The rule, both occurrences and all four contamination sources** —
+  `skills/session-harvest/SKILL.md`, the paragraph after "a count lower than you remember" in step 5
+  (`d50343d`).
+- **Not migrated**: the chain-rate hypothesis and its real driver (`git add … && git status` pairs).
+  That is the sampled session's own finding, and `power-user-linux-setup`'s adherence corpus holds
+  it.

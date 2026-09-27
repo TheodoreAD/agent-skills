@@ -22,8 +22,8 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
 - **Reads**: `$RESEARCH_HOME` and the entries in it; a repo's own `AGENTS.md` for pointers.
   `size --ungreppable` opens every file in the store and reads its first 8 KB.
 - **Runs**: `git clone`/`fetch`/`reset`/`sparse-checkout`/`tag -d`/`reflog expire`/`gc` inside
-  library clones only, and `gh api` for package health and for a repo's reported size before `add`
-  clones it.
+  library clones only, and `gh api` for package health (repo stats, commits, issues, and with
+  `--upstream` the latest release) and for a repo's reported size before `add` clones it.
 - **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file, `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field.
   `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
@@ -242,6 +242,7 @@ libraries, and it is the reason the script prints stars under `not scored`.
 ```shell
 python3 $S/scripts/package_health.py <pypi-name> <owner/repo>
 python3 $S/scripts/package_health.py anyio agronholm/anyio --clone $RESEARCH_HOME/repos/github.com--agronholm--anyio
+python3 $S/scripts/package_health.py shellcheck-py shellcheck-py/shellcheck-py --upstream koalaman/shellcheck
 ```
 
 Stdlib only, `S=~/.agents/skills/research-library`. PyPI over HTTPS, GitHub through `gh api` so it
@@ -250,7 +251,7 @@ test-to-source ratio, the CI inventory, the licence files actually present. `--g
 repeatable and marks a mechanical layer so the ratio is taken against hand-written code. `--json`
 for the whole answer.
 
-The four axes it reports, plus what the release ships, and what each is for:
+The four axes it reports, plus what the release ships and whom it tracks, and what each is for:
 
 - **Maintenance** — releases on the **stable** line and their median gap, last push against last
   release (which separates "actively developed, slow to release" from "stalled"), human contributor
@@ -268,6 +269,12 @@ The four axes it reports, plus what the release ships, and what each is for:
   tags, size, upload date. Read its `linux x86_64` line before adopting a wrapper around a binary: a
   wheel present means the binary is inside it; `SDIST ONLY` or `NO WHEEL for this machine` means pip
   builds it, or a build hook downloads it, on every install. `largest` is the adoption cost.
+- **Upstream**, with `--upstream <owner/repo>` — for a wrapper, name the project it repackages,
+  which is not the wrapper's own repo. It reports upstream's latest stable GitHub release, the
+  wrapper version spelled to match it and the lag in days, and that release's Linux x86_64 assets
+  with any checksum or signature file beside them. `NO MATCHING WRAPPER RELEASE` means the spelling
+  differs or the wrapper is behind: compare the two versions printed. `GitHub digest` is GitHub's
+  hash of the upload, not a publisher's checksum.
 
 **Three of the report's lines are traps wearing the shape of an answer, so read them as written:**
 `open issues+PRs` is GitHub's field and counts both; a `PRE-RELEASE ONLY` or `pre-releases` line

@@ -318,6 +318,146 @@ def test_sizes_print_in_decimal_units_like_pypi_does(size, expected):
 
 
 # ------------------------------------------------------------------------------------------------
+# Upstream: the project a wrapper repackages. Both release captures are `releases/latest`, recorded
+# 2026-09-27 and trimmed to tag, dates and the assets' name, size, type and digest.
+
+RELEASES_CAPTURED = datetime(2026, 9, 27, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("tag", "expected"),
+    [("v0.11.0", "0.11.0"), ("15.2.0", "15.2.0"), ("ripgrep-15.2.0", "15.2.0"), ("release-v1.2", "1.2")],
+)
+def test_a_tag_is_read_as_its_version_with_the_usual_prefixes_dropped(tag, expected):
+    assert health.tag_version(tag) == expected
+
+
+def test_a_wrapper_that_suffixes_the_upstream_version_is_matched_with_its_lag():
+    """Real captures: shellcheck v0.11.0 was published 2025-08-04 and shellcheck-py 0.11.0.1 was
+    uploaded 2025-08-09, so the wrapper tracks upstream with a five-day lag."""
+    transport = FakeTransport(
+        pypi_payload=fixture("shellcheck-py-pypi"),
+        github_payloads={"repos/koalaman/shellcheck/releases/latest": fixture("shellcheck-release")},
+    )
+    result = health.gather(transport, "shellcheck-py", None, upstream_repo="koalaman/shellcheck", now=RELEASES_CAPTURED)
+    up = result.upstream
+    assert up is not None
+    assert (up.tag, up.version, up.published) == ("v0.11.0", "0.11.0", "2025-08-04")
+    assert up.wrapper_match == "0.11.0.1"
+    assert up.wrapper_match_date == "2025-08-09"
+    assert up.lag_days == 5
+    assert up.days_since_release == 418  # 2025-08-04T00:27Z to the pinned 2026-09-27T00:00Z
+
+
+def test_an_exact_version_match_beats_a_suffixed_one():
+    dates = {
+        "1.2": datetime(2026, 1, 2, tzinfo=UTC),
+        "1.2.1": datetime(2026, 1, 1, tzinfo=UTC),
+        "1.20": datetime(2026, 1, 3, tzinfo=UTC),
+    }
+    assert health.wrapper_match("1.2", dates) == "1.2"
+    del dates["1.2"]
+    assert health.wrapper_match("1.2", dates) == "1.2.1"  # never 1.20: a digit is not a separator
+
+
+def test_no_matching_wrapper_release_is_said_not_guessed():
+    up = health.upstream(
+        FakeTransport(github_payloads={"repos/x/y/releases/latest": {"tag_name": "v9.9.9", "assets": []}}),
+        "x/y",
+        health.release_dates(fixture("shellcheck-py-pypi")),
+        now=RELEASES_CAPTURED,
+    )
+    assert up.wrapper_match is None
+    rendered = "\n".join(health._upstream_lines(up, "0.11.0.1"))
+    assert "NO MATCHING WRAPPER RELEASE for 9.9.9" in rendered
+    assert "0.11.0.1" in rendered
+
+
+def test_a_release_with_no_checksum_files_says_so_and_keeps_githubs_digest_apart():
+    """Real capture: shellcheck publishes no checksum or signature file at all. GitHub's own
+    digest is present on every asset and proves only that the download matches the upload."""
+    assets, manifests, total = health.release_assets(fixture("shellcheck-release"))
+    assert total == 13
+    assert manifests == []
+    assert [asset.name for asset in assets] == [
+        "shellcheck-v0.11.0.linux.x86_64.tar.gz",
+        "shellcheck-v0.11.0.linux.x86_64.tar.xz",
+    ]
+    assert all(asset.checksum is None and asset.signature is None for asset in assets)
+    assert all(asset.github_digest for asset in assets)
+    assert all(asset.libc == "unspecified" for asset in assets)
+
+
+def test_rust_triples_split_by_libc_and_find_their_sidecar_checksums():
+    """Real capture: ripgrep 15.2.0 ships a musl x86_64 build and a .deb, each with a .sha256
+    beside it, and no gnu x86_64 build — the aarch64 and armv7 gnu builds must not leak in."""
+    assets, _, _ = health.release_assets(fixture("ripgrep-release"))
+    by_name = {asset.name: asset for asset in assets}
+    assert set(by_name) == {"ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz", "ripgrep_15.2.0-1_amd64.deb"}
+    musl = by_name["ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz"]
+    assert musl.libc == "musl"
+    assert musl.checksum == "ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz.sha256"
+    assert musl.size == 2265718
+
+
+def test_a_checksum_manifest_and_its_signature_cover_every_asset():
+    release = {
+        "tag_name": "v0.10.0",
+        "assets": [
+            {"name": "tool_0.10.0_linux_amd64.tar.gz", "size": 7},
+            {"name": "tool_0.10.0_darwin_arm64.tar.gz", "size": 7},
+            {"name": "checksums.txt", "size": 1},
+            {"name": "checksums.txt.sig", "size": 1},
+        ],
+    }
+    assets, manifests, _ = health.release_assets(release)
+    assert manifests == ["checksums.txt"]
+    assert [(asset.name, asset.checksum, asset.signature) for asset in assets] == [
+        ("tool_0.10.0_linux_amd64.tar.gz", "checksums.txt", "checksums.txt.sig")
+    ]
+
+
+def test_an_upstream_without_releases_is_a_finding_not_a_crash():
+    class NoReleases:
+        def pypi(self, name: str):
+            return fixture("shellcheck-py-pypi")
+
+        def github(self, path: str):
+            raise health.HealthError(f"gh api {path} failed: HTTP 404")
+
+    result = health.gather(
+        NoReleases(),
+        "shellcheck-py",
+        None,
+        upstream_repo="someone/tags-only",
+        now=RELEASES_CAPTURED,
+    )
+    assert result.upstream is not None
+    assert result.upstream.error is not None
+    assert "none readable" in health.render(result)
+
+
+def test_the_upstream_section_reaches_the_report_and_the_json():
+    transport = FakeTransport(
+        pypi_payload=fixture("shellcheck-py-pypi"),
+        github_payloads={"repos/koalaman/shellcheck/releases/latest": fixture("shellcheck-release")},
+    )
+    argv = ["shellcheck-py", "--upstream", "koalaman/shellcheck"]
+    result = health.gather(transport, "shellcheck-py", None, upstream_repo="koalaman/shellcheck", now=RELEASES_CAPTURED)
+    rendered = health.render(result)
+    assert "upstream (koalaman/shellcheck)" in rendered
+    assert "5d after upstream" in rendered
+    assert "NO checksum file" in rendered
+    payload = health.payload_of(result)
+    assert payload["upstream"]["lag_days"] == 5
+    assert health.main([*argv, "--json"], transport=transport) == 0
+    # Only the one release endpoint is read: assets and version come from the same response.
+    assert [path for path in transport.asked if not path.startswith("pypi:")] == [
+        "repos/koalaman/shellcheck/releases/latest"
+    ] * 2
+
+
+# ------------------------------------------------------------------------------------------------
 # GitHub
 
 

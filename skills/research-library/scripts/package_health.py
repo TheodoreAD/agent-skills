@@ -15,6 +15,7 @@ deliberately not scored.
     package_health.py <pypi-name> <owner/repo>
     package_health.py httpx encode/httpx --clone ~/research/repos/github.com--encode--httpx
     package_health.py httpx encode/httpx --json
+    package_health.py shellcheck-py shellcheck-py/shellcheck-py --upstream koalaman/shellcheck
 
 Stdlib only, so it runs by path from any repo with no install step. PyPI is read over HTTPS; GitHub
 is read through `gh api`, which uses the caller's own token and rate limit rather than needing one
@@ -24,7 +25,9 @@ configured here. `--clone <path>` adds everything that can only be answered from
 Every report also lists what the latest stable release **ships** — its wheels and sdist, their tags
 and sizes — from the same PyPI payload, so no extra request: whether a Linux x86_64 wheel exists,
 whether it is pure Python or carries a binary, and whether it is sdist-only and so builds or fetches
-at install time.
+at install time. `--upstream <owner/repo>` names the project a wrapper repackages, which is not the
+wrapper's own repo: its latest stable GitHub release, the wrapper version matching it and the lag in
+days, and that release's Linux x86_64 assets with the checksum and signature files beside them.
 
 Exit codes: 0 ok, 1 error, 2 argparse usage.
 """
@@ -526,6 +529,152 @@ def repository(payload: dict[str, Any], *, now: datetime | None = None) -> Repos
 
 
 # ------------------------------------------------------------------------------------------------
+# GitHub releases: the upstream a wrapper should track, and the binaries it publishes itself
+
+# An asset for this machine names the architecture and either Linux or a Linux package format.
+# Both spellings occur in the wild: Rust triples (`x86_64-unknown-linux-musl`), Go's
+# `linux_amd64`, and shellcheck's own `linux.x86_64`. A `.deb` names no OS at all.
+ASSET_ARCH_RE = re.compile(r"(?:x86[_-]64|amd64|x64)(?![0-9])", re.IGNORECASE)
+ASSET_LINUX_RE = re.compile(r"linux|\.(?:deb|rpm|apk)$", re.IGNORECASE)
+CHECKSUM_SUFFIXES = (".sha256", ".sha256sum", ".sha512", ".sha512sum", ".md5")
+SIGNATURE_SUFFIXES = (".asc", ".sig", ".minisig", ".sigstore", ".sigstore.json", ".pem", ".cert")
+# One file covering every asset: `SHA256SUMS`, `checksums.txt`, `gmailctl_0.10.0_checksums.txt`.
+CHECKSUM_MANIFEST_RE = re.compile(r"(?:sha(?:256|512)sums|checksums?)(?:\.txt)?$", re.IGNORECASE)
+TAG_PREFIX_RE = re.compile(r"^(?:[A-Za-z][\w.-]*?[-_/])?v?(?=\d)")
+
+
+@dataclass(frozen=True)
+class Asset:
+    name: str
+    size: int | None
+    libc: str
+    checksum: str | None
+    signature: str | None
+    github_digest: bool
+
+
+@dataclass(frozen=True)
+class Upstream:
+    """The upstream's latest stable GitHub release, set against the wrapper that repackages it.
+
+    `wrapper_match` is found by spelling only — the upstream version exactly, or followed by a
+    separator (`0.11.0` matches the wrapper's `0.11.0.1`). Anything cleverer means parsing every
+    project's scheme, and a wrong match reads as a false "tracks upstream"; "no matching wrapper
+    release" is the honest answer when the spelling differs, and the reader compares the two
+    versions printed beside it.
+    """
+
+    repo: str
+    error: str | None = None
+    tag: str | None = None
+    version: str | None = None
+    published: str | None = None
+    days_since_release: int | None = None
+    wrapper_match: str | None = None
+    wrapper_match_date: str | None = None
+    lag_days: int | None = None
+    assets_total: int = 0
+    linux_x86_64: list[Asset] = field(default_factory=list)
+    checksum_manifests: list[str] = field(default_factory=list)
+
+
+def tag_version(tag: str) -> str:
+    """`v0.11.0` → `0.11.0`, `ripgrep-15.2.0` → `15.2.0`, `15.2.0` unchanged."""
+    return TAG_PREFIX_RE.sub("", tag, count=1)
+
+
+def wrapper_match(upstream_version: str, dates: dict[str, datetime]) -> str | None:
+    """The wrapper's earliest version spelled as the upstream's, exactly or plus a suffix."""
+    if upstream_version in dates:
+        return upstream_version
+    pattern = re.compile(rf"^{re.escape(upstream_version)}[.+_-]")
+    matches = sorted((stamp, version) for version, stamp in dates.items() if pattern.match(version))
+    return matches[0][1] if matches else None
+
+
+def _is_sidecar(name: str) -> bool:
+    lowered = name.lower()
+    return lowered.endswith(CHECKSUM_SUFFIXES + SIGNATURE_SUFFIXES) or bool(CHECKSUM_MANIFEST_RE.search(lowered))
+
+
+def _beside(name: str, suffixes: tuple[str, ...], names: set[str]) -> str | None:
+    """The first `<name><suffix>` the release also carries: a sidecar file for exactly this asset."""
+    return next((f"{name}{suffix}" for suffix in suffixes if f"{name}{suffix}" in names), None)
+
+
+def release_assets(release: dict[str, Any]) -> tuple[list[Asset], list[str], int]:
+    """This machine's assets, each with the checksum and signature files that sit beside it.
+
+    `github_digest` is GitHub's own sha256 of the upload, reported in the API since 2025. It proves
+    the download matches what was uploaded and nothing about who uploaded it, so it is carried
+    separately from a publisher's checksum or signature rather than counted as one.
+    """
+    raw = [asset for asset in release.get("assets") or [] if isinstance(asset, dict)]
+    names = {str(asset.get("name") or "") for asset in raw}
+    manifests = sorted(name for name in names if CHECKSUM_MANIFEST_RE.search(name.lower()))
+    signed_manifest = next(
+        (found for manifest in manifests if (found := _beside(manifest, SIGNATURE_SUFFIXES, names))), None
+    )
+    chosen: list[Asset] = []
+    for asset in raw:
+        name = str(asset.get("name") or "")
+        if _is_sidecar(name) or not (ASSET_ARCH_RE.search(name) and ASSET_LINUX_RE.search(name)):
+            continue
+        lowered = name.lower()
+        checksum = _beside(name, CHECKSUM_SUFFIXES, names)
+        signature = _beside(name, SIGNATURE_SUFFIXES, names)
+        size = asset.get("size")
+        chosen.append(
+            Asset(
+                name=name,
+                size=int(size) if isinstance(size, int) else None,
+                libc="musl" if "musl" in lowered else "gnu" if "gnu" in lowered else "unspecified",
+                checksum=checksum or (manifests[0] if manifests else None),
+                signature=signature or signed_manifest,
+                github_digest=bool(asset.get("digest")),
+            )
+        )
+    return chosen, manifests, len(raw)
+
+
+def upstream(
+    transport: Transport, repo: str, wrapper_dates: dict[str, datetime], *, now: datetime | None = None
+) -> Upstream:
+    """Read `repos/<repo>/releases/latest`, which GitHub defines as the newest non-draft, non-prerelease.
+
+    A repo that publishes tags and no releases answers 404 there. That is a finding about the
+    upstream rather than a failure of the report, so it is carried as `error` and the rest of the
+    report still prints.
+    """
+    now = now or datetime.now(UTC)
+    try:
+        release = transport.github(f"repos/{repo}/releases/latest")
+    except HealthError as error:
+        return Upstream(repo=repo, error=str(error))
+    if not isinstance(release, dict):
+        return Upstream(repo=repo, error="releases/latest returned a non-object")
+    tag = str(release.get("tag_name") or "")
+    version = tag_version(tag)
+    published = _parse_stamp(release.get("published_at") or release.get("created_at"))
+    match = wrapper_match(version, wrapper_dates) if version else None
+    match_date = wrapper_dates.get(match) if match else None
+    assets, manifests, total = release_assets(release)
+    return Upstream(
+        repo=repo,
+        tag=tag,
+        version=version,
+        published=published.date().isoformat() if published else None,
+        days_since_release=(now - published).days if published else None,
+        wrapper_match=match,
+        wrapper_match_date=match_date.date().isoformat() if match_date else None,
+        lag_days=(match_date - published).days if match_date and published else None,
+        assets_total=total,
+        linux_x86_64=assets,
+        checksum_manifests=manifests,
+    )
+
+
+# ------------------------------------------------------------------------------------------------
 # The clone: everything the APIs cannot answer
 
 
@@ -656,6 +805,7 @@ class Health:
     contributors: Contributors | None
     issues: IssueSample | None
     clone: CloneFacts | None
+    upstream: Upstream | None = None
 
 
 def gather(
@@ -665,6 +815,7 @@ def gather(
     *,
     clone: Path | None = None,
     generated: list[str] | None = None,
+    upstream_repo: str | None = None,
     now: datetime | None = None,
 ) -> Health:
     now = now or datetime.now(UTC)
@@ -688,6 +839,7 @@ def gather(
         contributors=people,
         issues=issues,
         clone=clone_facts(clone, generated or []) if clone else None,
+        upstream=upstream(transport, upstream_repo, release_dates(payload), now=now) if upstream_repo else None,
     )
 
 
@@ -759,6 +911,10 @@ def render(health: Health) -> str:
     lines.append("")
     lines.extend(_release_file_lines(health.release_files))
 
+    if health.upstream:
+        lines.append("")
+        lines.extend(_upstream_lines(health.upstream, health.release_files.version))
+
     if health.clone:
         clone = health.clone
         src = clone.sources
@@ -820,6 +976,42 @@ def _release_file_lines(ships: ReleaseFiles) -> list[str]:
     for entry in shown:
         yanked = "  YANKED" if entry.yanked else ""
         lines.append(f"    {_size(entry.size):>9}  {entry.uploaded or '?'}  {entry.filename}{yanked}")
+    return lines
+
+
+def _upstream_lines(up: Upstream, wrapper_version: str | None) -> list[str]:
+    lines = [f"upstream ({up.repo})"]
+    if up.error:
+        lines.append(f"  latest release   none readable — {up.error}")
+        lines.append("                   (a repo that publishes tags only has no releases/latest)")
+        return lines
+    lines.append(
+        f"  latest release   {up.tag} ({up.version}), {up.published or '?'}"
+        f" — {_or_unknown(up.days_since_release, 'd ago')}"
+    )
+    if up.wrapper_match:
+        lines.append(
+            f"  wrapper tracks   {up.wrapper_match} on {up.wrapper_match_date or '?'}, "
+            f"{_or_unknown(up.lag_days, 'd')} after upstream"
+        )
+    else:
+        lines.append(
+            f"  wrapper tracks   NO MATCHING WRAPPER RELEASE for {up.version}; wrapper's latest stable is"
+            f" {wrapper_version or '?'} — compare the two by hand"
+        )
+    lines.append(f"  linux x86_64     {len(up.linux_x86_64)} of {up.assets_total} assets")
+    for asset in up.linux_x86_64:
+        checks = ", ".join(
+            part
+            for part in (
+                f"checksum {asset.checksum}" if asset.checksum else "NO checksum file",
+                f"signature {asset.signature}" if asset.signature else "no signature",
+                "GitHub digest" if asset.github_digest else "",
+            )
+            if part
+        )
+        lines.append(f"    {_size(asset.size):>9}  {asset.libc:<11}  {asset.name}")
+        lines.append(f"               {checks}")
     return lines
 
 
@@ -889,6 +1081,11 @@ def main(argv: list[str] | None = None, transport: Transport | None = None) -> i
         metavar="GLOB",
         help="source that is mechanical rather than hand-written, relative to the clone; repeatable",
     )
+    parser.add_argument(
+        "--upstream",
+        metavar="OWNER/REPO",
+        help="the project a wrapper repackages: its latest GitHub release, the wrapper's lag, its Linux assets",
+    )
     parser.add_argument("--json", action="store_true", help="the whole answer as JSON")
     args = parser.parse_args(argv)
 
@@ -899,6 +1096,7 @@ def main(argv: list[str] | None = None, transport: Transport | None = None) -> i
             args.repo,
             clone=args.clone,
             generated=args.generated,
+            upstream_repo=args.upstream,
         )
     except HealthError as error:
         print(f"error: {error}", file=sys.stderr)

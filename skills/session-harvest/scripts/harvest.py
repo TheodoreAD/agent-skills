@@ -3785,8 +3785,47 @@ def session_text(entries: Iterable[dict[str, Any]], path: Path) -> list[str]:
     return [chunk for chunk in chunks if chunk]
 
 
-def filed_plans(entries: Sequence[dict[str, Any]], repos: Sequence[Path]) -> list[dict[str, Any]]:
-    """Plan files this session wrote, wherever they landed, each with its measurement lines."""
+ABSORBED_SUBJECT_RE = re.compile(r"\babsorb", re.IGNORECASE)
+
+
+def missing_cause(runner: Runner, path: Path, receipts: Sequence[str]) -> str | None:
+    """Why a plan this session wrote is gone, where the history can say so without judgement.
+
+    Two causes, from the commit that deleted it: this session's own, by the same receipt rule
+    `store_commits` applies, is a retirement; one whose subject says it absorbed is the landing,
+    whoever made it. Anything else stays undetermined. Measured 2026-09-27: an invoke-stubs session
+    retired eight plans, and `filed` listed all eight plus one absorption as `MISSING (cause not
+    determined)`, leaving nine to be re-derived by reading the session — the common case for a
+    well-run session, not the odd one. A rename is not a deletion to git's rename detection, so a
+    plan moved elsewhere falls through to undetermined rather than reading as retired.
+    """
+    start = path.parent
+    while not start.exists() and start != start.parent:
+        start = start.parent
+    top = git_root(runner, start)
+    if top is None:
+        return None
+    try:
+        rel = path.resolve().relative_to(top.resolve()).as_posix()
+    except ValueError:
+        return None
+    ran = runner(["git", "-C", str(top), "log", "-1", "--diff-filter=D", "--format=%H%x1f%s", "--", rel])
+    if not ran.ok or COMMIT_FIELD not in ran.out:
+        return None
+    sha, subject = ran.out.strip().split(COMMIT_FIELD, 1)
+    if any(sha.startswith(receipt) for receipt in receipts):
+        return f"retired by this session ({sha[:9]})"
+    if ABSORBED_SUBJECT_RE.search(subject):
+        return f"absorbed ({sha[:9]})"
+    return None
+
+
+def filed_plans(
+    entries: Sequence[dict[str, Any]], repos: Sequence[Path], runner: Runner | None = None
+) -> list[dict[str, Any]]:
+    """Plan files this session wrote, wherever they landed, each with its measurement lines — and,
+    given a runner, the cause of any that are gone, where `missing_cause` can read one."""
+    receipts = commit_receipts(entries) if runner else []
     roots = plan_roots(repos)
     found: list[dict[str, Any]] = []
     for path in written_paths(entries):
@@ -3796,11 +3835,13 @@ def filed_plans(entries: Sequence[dict[str, Any]], repos: Sequence[Path]) -> lis
         if root is None:
             continue
         mine, unestablished = measurement_lines(path, session_text(entries, path))
+        exists = path.exists()
         found.append(
             {
                 "path": str(path),
                 "root": str(root),
-                "exists": path.exists(),
+                "exists": exists,
+                "cause": None if exists or runner is None else missing_cause(runner, path, receipts),
                 "measurements": mine,
                 "measurements_unestablished": unestablished,
             }
@@ -3974,7 +4015,7 @@ def cmd_filed(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     repos = _touched_repos(runner, args.repo, entries)
     written = written_paths(entries)
     runs = harvest_runs(entries, args.until)
-    plans = filed_plans(entries, repos)
+    plans = filed_plans(entries, repos, runner)
     stores = [
         store_commits(runner, name, path, since, written, entries)
         for name, path in _stores()
@@ -4013,12 +4054,13 @@ def _print_filed(payload: dict[str, Any], verbose: bool = False) -> None:
     plans = payload.get("plans_written") or []
     print(f"\n## plan files this session wrote ({len(plans)})")
     hedged = False
-    # The label states the absence and nothing more, as `(not attributed)` does: a plan this session
-    # retired and one another repo absorbed are both "written here, now gone", and only the second
-    # owes a correction — so the three causes go in the footer for the reader to tell apart.
+    # A plan this session retired and one another repo absorbed are both "written here, now gone",
+    # and only the second owes a correction. The label names a cause only where the deleting commit
+    # establishes it (`missing_cause`), and otherwise states the absence and nothing more, as
+    # `(not attributed)` does; the footer says what each cause asks of the reader.
     missing = False
     for plan in plans:
-        mark = "" if plan.get("exists") else "  MISSING (cause not determined)"
+        mark = "" if plan.get("exists") else f"  MISSING ({plan.get('cause') or 'cause not determined'})"
         missing = missing or not plan.get("exists")
         print(f"    {plan['path']}{mark}")
         for line in plan.get("measurements") or []:

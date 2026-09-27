@@ -1235,7 +1235,10 @@ it. The label used to read `absorbed, or moved`, and step 8 built its instructio
 2026-09-20: a harvest listed four `MISSING` rows, three of them plans the same session had retired
 an hour earlier, and following the old wording would have filed three corrections against plans that
 were deliberately deleted. Retirement is the expected end of a plan a session lands, so a well-run
-session hits this more often than a sloppy one.
+session hits this more often than a sloppy one. **So the row now names the two causes the deleting
+commit can establish** — `retired by this session (<sha>)` when this session's own output shows the
+commit, `absorbed (<sha>)` when its subject says so — and keeps `cause not determined` for the rest.
+Added 2026-09-28, after a session that retired eight plans got nine undetermined rows to re-derive.
 
 **Two kinds of number are printed there, and only one of them goes stale by the session running
 longer.** A measurement **of the session** — an adherence row, a call count, anything `--until`

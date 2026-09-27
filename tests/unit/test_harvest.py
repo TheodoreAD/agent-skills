@@ -2211,6 +2211,37 @@ def test_a_missing_plan_row_names_no_cause(capsys):
     assert "retired by this session needs nothing" in out
 
 
+@pytest.mark.parametrize(
+    ("subject", "receipts", "cause"),
+    [
+        # This session's own `plans.py commit` printed the id: its retirement.
+        ("plans: retire landed, migrated to docs/x.md", ["abc1234"], "retired by this session (abc123400)"),
+        # Absorbed out of a store by the owning repo's session: the landing, whoever made it.
+        ("agent-skills: absorbed into their repos, 2 removed here", [], "absorbed (abc123400)"),
+        # The negative case: deleted by a commit this session never reported making.
+        ("plans: remove landed", ["def5678"], None),
+    ],
+)
+def test_a_missing_plan_names_the_cause_its_deleting_commit_establishes(tmp_path, subject, receipts, cause):
+    """2026-09-27: eight retirements and one absorption, all nine printed as `cause not determined`."""
+    repo = tmp_path / "repo"
+    (repo / "plans").mkdir(parents=True)
+    plan = repo / "plans" / "2026-09-27-landed.md"
+    runner = FakeRunner(
+        {
+            f"git -C {repo / 'plans'} rev-parse --show-toplevel": (0, f"{repo}\n", ""),
+            f"git -C {repo} log -1 --diff-filter=D": (0, f"abc123400feed\x1f{subject}\n", ""),
+        }
+    )
+    assert harvest.missing_cause(runner, plan, receipts) == cause
+
+
+def test_a_determined_cause_replaces_the_hedge_in_the_row(capsys):
+    row = {"path": "plans/2026-09-06-landed.md", "exists": False, "cause": "retired by this session (abc123400)"}
+    harvest._print_filed({"plans_written": [row]})
+    assert "plans/2026-09-06-landed.md  MISSING (retired by this session (abc123400))" in capsys.readouterr().out
+
+
 def test_no_missing_footer_when_every_plan_is_present(capsys):
     harvest._print_filed({"plans_written": [{"path": "plans/2026-09-06-live.md", "exists": True}]})
     assert "MISSING" not in capsys.readouterr().out

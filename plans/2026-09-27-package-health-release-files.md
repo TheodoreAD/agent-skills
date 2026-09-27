@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-27
 ---
 
@@ -47,41 +47,67 @@ through three channels at once: `cargo install`, a GitHub release binary, and a 
 "which channel, and what does it cost" is one question asked across registries. Nothing answers it
 today without hand-rolled `curl` against each registry's JSON.
 
-What each registry exposes. These are from memory and must be verified against the live APIs before
-coding.
+What each registry exposes, verified 2026-09-27 against live payloads fetched with the script's
+`User-Agent`. Trimmed copies are fixtures in `tests/fixtures/package_health/`: `biome-npm.json`,
+`biome-cli-linux-x64-npm.json`, `esbuild-npm.json` and `ripgrep-crates.json`.
 
-- **npm**: `registry.npmjs.org/<name>` returns the packument.
-  - Version and date: `dist-tags.latest`, and the `time` map of release dates. The prerelease trap
-    is the same as PyPI's, so read the stable line from `dist-tags`, not from the newest key in
+- **npm**: `registry.npmjs.org/<name>` returns the full packument. For `@biomejs/biome` that is 377
+  kB over 153 versions, and for `esbuild` 1.26 MB over 482.
+  - Version and date: `dist-tags.latest`, and the `time` map, keyed by version plus `created` and
+    `modified`. `dist-tags` also carries `beta` and `nightly` lines for biome, and `latest-4` for
+    express, so the prerelease trap is real: read `dist-tags.latest`, never the newest key in
     `versions`.
-  - Per-version size: `dist.unpackedSize`, `dist.fileCount`, `dist.tarball`.
-  - Commands: `bin`.
-  - **Install-time scripts**: `scripts.preinstall`, `install` and `postinstall`. This is npm's
-    "sdist-only": the package downloads or builds its binary at install time.
-  - Platform packages: `os`/`cpu`, plus `optionalDependencies` naming per-platform packages
-    (`@scope/cli-linux-x64`). This is npm's "platform wheels"; the real size is the platform
-    package's `unpackedSize`, not the wrapper's.
-  - `deprecated`.
-  - Download counts come from a separate API (`api.npmjs.org/downloads/point/last-week/<name>`).
-    Report them unscored, like stars.
-- **crates.io**: `crates.io/api/v1/crates/<name>` returns the crate and its versions.
-  - Crate: `max_stable_version`, `updated_at`, `recent_downloads`, `repository`.
-  - Per version: `num`, `created_at`, `yanked`, `crate_size`, `license`, and possibly `rust_version`
-    (MSRV) and `bin_names`.
+  - Per-version size: `dist.unpackedSize`, `dist.fileCount` and `dist.tarball` all exist on current
+    versions. **They are missing on old ones.** `express` lacks both on 258 of its 289 versions,
+    everything up to 4.16.2 (2017-10-10), and has them from 4.16.3 (2018-03-12) on. `esbuild` lacks
+    them only on its 0.0.0 placeholder. A parser must treat them as optional.
+  - Provenance: `dist.attestations.provenance.predicateType` (SLSA v1) is present on biome and
+    esbuild releases and absent on express. This is a supply-chain signal the plan did not list.
+  - Commands: `bin`, an object, for example `{"biome": "bin/biome"}`.
+  - **Install-time scripts**: `scripts` is present in the full packument, for example esbuild
+    0.28.2's `{"postinstall": "node install.js"}`. It is absent from biome, which has none.
+    `hasInstallScript: true` exists **only** in the abbreviated form
+    (`Accept: application/vnd.npm.install-v1+json`). That form has no `time` map and no `scripts`,
+    so the full packument is the one to read.
+  - Platform packages: the wrapper names them in `optionalDependencies`, for example
+    `@biomejs/cli-linux-x64` and `@biomejs/cli-linux-x64-musl`, all pinned to the wrapper's own
+    version. Each platform package carries `os` (`["linux"]`), `cpu` (`["x64"]`) and, on 122 of its
+    148 versions, **`libc`** (`["glibc"]`). The real size is the platform package's own
+    `dist.unpackedSize`, which is 64.7 MB for cli-linux-x64 2.5.14 against 779 kB for the wrapper.
+    Resolving it costs one more packument fetch. esbuild uses the same pattern, 26 platform
+    packages, **and** a `postinstall` that verifies them, so the two signals co-occur and are
+    reported separately.
+  - `deprecated` is a per-version string. biome 2.0.1 to 2.0.3 carry one, and express has 173.
+  - Typing: `types` on the version (esbuild has `lib/main.d.ts`). `typings` is the legacy spelling,
+    and neither appeared on biome.
+  - Download counts are a separate API (`api.npmjs.org/downloads/…`). Not fetched here.
+- **crates.io**: `crates.io/api/v1/crates/<name>` returns
+  `{crate, versions, keywords,
+  categories}`, with every version inline (59 of 59 for ripgrep, 93
+  kB).
+  - Crate: `max_stable_version`, `max_version`, `newest_version`, `default_version`, `updated_at`,
+    `created_at`, `num_versions`, `downloads`, `recent_downloads`, `repository`, `yanked` and
+    `trustpub_only` all exist.
+  - Per version: `num`, `created_at`, `yanked`, `yank_message`, `crate_size`, `license`,
+    `rust_version`, `bin_names`, `has_lib`, `edition`, `downloads`, `checksum`, `trustpub_data` and
+    `published_by` all exist.
+    - **`bin_names`** is a list, `["rg"]`, and is populated even on ripgrep 0.1.0 from 2016. It
+      answers "does this crate ship a binary" directly.
+    - **`rust_version`** (the MSRV) is null unless the crate declares one. ripgrep has it on 9 of 59
+      versions, from 14.0.0 (2023-11-26) on, so absent means undeclared, not unknown.
+    - **`linecounts`** is also per version: code and comment lines per language, populated back to
+      0.1.0. It is not a test-to-source split, so it does not replace `--clone`.
+  - Dependencies are **not** inline. They take a second request per version, at
+    `versions[].links.dependencies`.
 
-  crates.io's crawler policy requires a descriptive `User-Agent`, and the transport already sends
-  one.
+  The descriptive `User-Agent` was sent and the request succeeded. What crates.io does without one
+  was not tested.
 - **Rust binaries don't live on crates.io.** `cargo install` compiles from source, which costs a
   toolchain plus minutes of build time. The prebuilt binaries are **GitHub release assets** per
   target triple (`x86_64-unknown-linux-gnu`, `-musl`), which `cargo-binstall` resolves. So for a
   Rust tool, "what ships" is the latest stable release's asset list, with names and sizes, read
   through `gh api repos/<owner>/<repo>/releases/latest`. That also answers the same question for Go
   tools (gmailctl, gws), which ship the same way.
-
-[UNVERIFIED: which of the npm and crates.io fields above exist today, and their exact names,
-especially crates.io's `bin_names` and `rust_version` per version, and npm's
-`dist.unpackedSize`/`fileCount` on older packuments. Record a real payload for one package per
-registry as a fixture before writing a parser.]
 
 [UNVERIFIED: how often sessions still hand-roll the PyPI fetch after `package_health.py` landed. A
 rough `rg` for `curl…pypi.org/pypi/` over `~/.claude/projects` matched around 170 transcripts on
@@ -91,17 +117,17 @@ repeated-script mode, counting Bash tool-use commands only.]
 
 ## Open questions
 
-[NEEDS CLARIFICATION: extend `package_health.py`, or add a sibling script (`release_files.py`)? A
-flag such as `--files`, or an always-on section, keeps one entry point for "judge this package". But
-the wrapper question has a different second input: the **upstream** repo whose releases the wrapper
-should track. That is not the same repo as the package's own, which `package_health.py` already
-takes as `<owner/repo>`. For `shellcheck-py` the package repo is `shellcheck-py/shellcheck-py` and
-upstream is `koalaman/shellcheck`.]
+[DECISION: extend `package_health.py` rather than add a sibling script. The `ships` section is
+always on, and the upstream is its own flag, `--upstream <owner/repo>`, separate from the positional
+package repo. For `shellcheck-py` the package repo is `shellcheck-py/shellcheck-py` and upstream is
+`koalaman/shellcheck`. Taken 2026-09-27 as the recommended direction, when stages 1 and 2 were
+implemented. It is reversible while nothing outside this repo calls the flag.]
 
-[NEEDS CLARIFICATION: how to compare wrapper and upstream versions. Wrappers often use the upstream
-version with a suffix (`0.10.0.1`), and some are unrelated. A reasonable first cut reports both
-latest versions and the lag in days between upstream's release and the wrapper's matching one. It
-flags "no matching wrapper release" rather than trying to parse every scheme.]
+[DECISION: wrapper and upstream versions match by spelling only: the upstream version exactly, or
+followed by `.`, `+`, `_` or `-`, so `0.11.0` matches `0.11.0.1` and never `0.110`. The report
+prints both versions and the lag in days, from upstream's `published_at` to the matching wrapper
+version's earliest upload. On a miss it prints `NO MATCHING WRAPPER RELEASE` rather than guessing.
+Implemented 2026-09-27, with the rationale in `references/dependency-health.md`.]
 
 [NEEDS CLARIFICATION: the CLI shape once three registries are in scope. Options:
 
@@ -174,6 +200,27 @@ what's installed on every machine.]
    plus a release-assets payload. Never inside the skill.
 9. Build it in stages that each pass the gate: PyPI file list first, then `--upstream` and assets,
    then npm, then crates.io. Each is its own commit.
+
+## Progress
+
+- **Stage 1, the PyPI file list, landed 2026-09-27.** The always-on `ships` section is in the text
+  report and in `--json` as `release_files`. The fixture is `shellcheck-py-pypi.json`, whose 0.9.0.3
+  is a real sdist-only release.
+- **Stage 2, `--upstream` with GitHub release assets, landed 2026-09-27.**
+  - It reads `releases/latest` once, for the version, the date and the assets.
+  - The asset filter takes Rust triples, Go's `linux_amd64`, shellcheck's `linux.x86_64` and
+    `.deb`/`.rpm`/`.apk`, and reads libc from the name.
+  - A checksum is a `.sha256`-style sidecar or a `checksums.txt`/`SHA256SUMS` manifest. A signature
+    is a `.sig`/`.asc`/`.minisig` beside the asset or beside the manifest.
+  - GitHub's per-asset `digest` field is reported separately, as GitHub's hash of the upload.
+  - The fixtures are `shellcheck-release.json` (no checksum files at all) and `ripgrep-release.json`
+    (a `.sha256` per asset, musl only for x86_64).
+  - Item 5's `--assets` flag without `--upstream` is **not** built. Nothing needs it until crates.io
+    lands, where the release repo is the crate's own `repository`.
+- SKILL.md has the `Ships` and `Upstream` lines and the `shellcheck-py` example. The reasoning is in
+  `references/dependency-health.md`.
+- **npm and crates.io: fields verified, parsers not written.** That is blocked on the CLI-shape and
+  axes questions above.
 
 [DEFERRED: repointing the home `AGENTS.md` install rule from
 `curl -s https://pypi.org/pypi/<name>/json` to this script. That rule is a fragment in

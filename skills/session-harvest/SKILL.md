@@ -1,6 +1,6 @@
 ---
 name: session-harvest
-description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation for anything worth keeping and routes each item to a plain file every agent can read: plan-specific content to plans/*.md (per the plan-docs skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md. Never a harness's own memory store, for any project or any reason — that vendor-locks the work. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent, a safe-to-compact verdict, and a next-session prompt. On-demand only — never installs hooks or runs automatically."
+description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation for anything worth keeping and routes each item to a plain file every agent can read: plan-specific content to plans/*.md (per the plan-conveyor skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md. Never a harness's own memory store, for any reason — that vendor-locks the work. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent, a safe-to-compact verdict, and a next-session prompt. On-demand only — never installs hooks or runs automatically."
 compatibility: Python 3.11+ (stdlib only) and git. Reads Claude Code's transcript store; on another harness the transcript half is unavailable. Processes and sockets need ps and ss on Linux, PowerShell and netstat on Windows. gh and docker are used when present. Network access only for git fetch to each repo's own upstream (--no-fetch to skip) and gh for CI.
 ---
 
@@ -32,10 +32,10 @@ considered and rejected).
   and deploying a fix is `skill-authoring-taudelta`'s sequence, not this skill's.
 - **Writes**: **the script writes nothing.** The procedure writes, through the agent, only inside
   the set stated at the top of it — the session repo, its `plans/`, and the plans store through
-  `plan-docs`. **It never edits, moves or deletes a plan somebody else filed for a different repo**;
-  evidence for one is filed as a new plan that names it. Never a deployed instructions file, never
-  an installed skill copy, never another repo's tree. Killing an orphaned process the sweep found is
-  the one non-file side effect, and it is proposed, not done.
+  `plan-conveyor`. **It never edits, moves or deletes a plan somebody else filed for a different
+  repo**; evidence for one is filed as a new plan that names it. Never a deployed instructions file,
+  never an installed skill copy, never another repo's tree. Killing an orphaned process the sweep
+  found is the one non-file side effect, and it is proposed, not done.
 - **Network**: `git fetch` and `gh` only, to the repos' own remotes. Nothing is sent anywhere; every
   report goes to stdout.
 
@@ -95,7 +95,7 @@ two it used.
 
 **`skills-state` compares the install against a checkout, and finds the checkout itself.** In order:
 `--checkout <path>`, `$SESSION_HARVEST_CHECKOUT`, the repo above the script it is running from, and
-then the one git checkout under `plan-docs`' configured `projects_root` (default `~/projects`,
+then the one git checkout under `plan-conveyor`' configured `projects_root` (default `~/projects`,
 walked three levels deep, symlinks never followed) that holds `skills/session-harvest/SKILL.md`. So
 the installed copy answers step 0 on any machine that has the source somewhere, whatever the repo
 layout; a fork counts, and two candidates make it ask rather than pick. It also prints the command
@@ -114,11 +114,11 @@ agent runs without reading. The judgement below is the rest of the skill, and no
 ## Procedure
 
 **What a harvest may write, stated once.** Three places and nothing else: the repo the session is
-running in (ordinary edits and commits), that repo's `plans/` through `plan-docs`, and the plans
-store through `plan-docs` — new plans, including plans filed `--for` another repo, and corrections
-to plans this session wrote there. A plan somebody else filed for a different repo is read, cited
-and never edited. Outside it: a deployed instructions file, an installed skill copy, any other
-repo's working tree, and the sources of a generated `~/AGENTS.md` when they live in a repo the
+running in (ordinary edits and commits), that repo's `plans/` through `plan-conveyor`, and the plans
+store through `plan-conveyor` — new plans, including plans filed `--for` another repo, and
+corrections to plans this session wrote there. A plan somebody else filed for a different repo is
+read, cited and never edited. Outside it: a deployed instructions file, an installed skill copy, any
+other repo's working tree, and the sources of a generated `~/AGENTS.md` when they live in a repo the
 session is not in. A candidate for any of those is filed as a plan for the repo that owns it. Being
 _in_ the owning repo is what makes an edit ordinary work, so the skills repo and the
 instructions-fragment repo are not exceptions to this rule; they are the rule applied to a session
@@ -163,16 +163,16 @@ The last row reads as the first: `skills-state` prints a `worktree:` line naming
 belongs to, because nothing else in its output distinguishes them. **Say plainly that the last three
 are not install problems.** A dirty checkout in particular is far more often another session's live
 restructure than install hygiene, and describing it as the second invites exactly the cross-repo
-interference the global rules forbid. Confirmed 2026-08-29 on `plan-docs`, mid two-tier-store-split:
-672 uncommitted insertions, nothing ahead of the remote — `git log` showed a settled history, and
-only `status --short` saw it. Confirmed in the other direction 2026-08-30: same non-empty diff,
-clean checkout level with the remote, two commits pushed minutes earlier — row one exactly as
-written. The same diff meant opposite things a day apart.
+interference the global rules forbid. Confirmed 2026-08-29 on `plan-conveyor`, mid
+two-tier-store-split: 672 uncommitted insertions, nothing ahead of the remote — `git log` showed a
+settled history, and only `status --short` saw it. Confirmed in the other direction 2026-08-30: same
+non-empty diff, clean checkout level with the remote, two commits pushed minutes earlier — row one
+exactly as written. The same diff meant opposite things a day apart.
 
 **The verdict is a reading, not a fact, and re-running it costs one call.** Which row you are on can
 change while the harvest is still going, because another session commits or pushes into the same
 checkout — so quote a verdict taken at the top of a run and you may hand the user the previous
-answer. Confirmed twice on `plan-docs`, and the interval is the point: thirteen hours apart on
+answer. Confirmed twice on `plan-conveyor`, and the interval is the point: thirteen hours apart on
 2026-09-03, where "unpushed skill work" became "install is stale against a clean, pushed checkout",
 the **row changing** from one no install could fix to the one an install does; and then **inside
 ninety seconds** on 2026-09-05, two rows of the table apart, with a parallel session's commit
@@ -248,7 +248,7 @@ subcommand this session actually called answers whether those calls meant what w
 whether a better one now exists, and `skills-state` prints the exact probe on the rows where this
 case fires. Re-read `SKILL.md` only when the session leaned on its prose rather than its commands,
 or when the probe shows an interface that moved under a call already made. Confirmed 2026-09-26:
-`plan-docs` ten commits past a held ~700-line copy, and two `--help` calls showed `commit -m`
+`plan-conveyor` ten commits past a held ~700-line copy, and two `--help` calls showed `commit -m`
 unchanged — so nothing done earlier was owed a correction — plus a new `--body` flag and `push`
 subcommand.
 
@@ -287,15 +287,15 @@ enough to run correctly. Only the next step is in question, which is the part no
 
 **And when the session has already _acted_ on that skill, re-reading is only half the fix.** Ask
 whether anything already done was done under superseded wording. Re-reading corrects the next call;
-it does nothing about the pushes already made. Confirmed 2026-08-30: a session had run `plan-docs`'
-`scan --mode tree` before pushing a store, while a commit landing four hours after it loaded that
-skill had changed the pre-push gate to `--mode history`. Re-reading would have left the pushed
-history unchecked; running the superseding command retroactively is what closed it, and it came back
-clean.
+it does nothing about the pushes already made. Confirmed 2026-08-30: a session had run
+`plan-conveyor`' `scan --mode tree` before pushing a store, while a commit landing four hours after
+it loaded that skill had changed the pre-push gate to `--mode history`. Re-reading would have left
+the pushed history unchecked; running the superseding command retroactively is what closed it, and
+it came back clean.
 
-The failure this whole branch exists for, confirmed 2026-08-29: a session held `plan-docs` from load
-time, was told by a later commit that the store's pre-push gate is `scan --mode history` rather than
-`--mode tree`, never saw it, and filed the opposite claim into a plan — a confidentiality gate,
+The failure this whole branch exists for, confirmed 2026-08-29: a session held `plan-conveyor` from
+load time, was told by a later commit that the store's pre-push gate is `scan --mode history` rather
+than `--mode tree`, never saw it, and filed the opposite claim into a plan — a confidentiality gate,
 reasoned about from stale wording.
 
 ### 1. Significance test first
@@ -323,17 +323,18 @@ surfaced it.
 For what survives the significance test:
 
 - **Plan-specific content → `plans/*.md`, never memory.** If the session touched or produced work
-  that the `plan-docs` skill would track — a design, an idea, in-progress implementation — it does
-  not get a memory entry. Check whether the relevant `plans/YYYY-MM-DD-*.md` already captures it; if
-  the repo uses `plan-docs` and it doesn't, say so and offer to create/update the plan file instead
-  of saving to memory. Memory has no retirement mechanism, so a plan snapshot parked there would
-  just rot silently — `plans/` already owns that lifecycle. **If a plan file already exists but its
-  `status` is now stale** (e.g. `planned`/`in-progress` when the session just finished landing and
-  verifying the work), invoke the `plan-docs` skill directly to apply its own status-bump/retirement
-  procedure — don't improvise an `AskUserQuestion` about whether to retire it. Confirmed as friction
-  2026-08-23: asked the user a retirement judgment call that `plan-docs`'s own "Retiring a plan"
-  section already answers (default: preserve unless the rationale is already covered elsewhere in
-  the repo); the user's correction was "why isn't the plan docs skill kicking in?"
+  that the `plan-conveyor` skill would track — a design, an idea, in-progress implementation — it
+  does not get a memory entry. Check whether the relevant `plans/YYYY-MM-DD-*.md` already captures
+  it; if the repo uses `plan-conveyor` and it doesn't, say so and offer to create/update the plan
+  file instead of saving to memory. Memory has no retirement mechanism, so a plan snapshot parked
+  there would just rot silently — `plans/` already owns that lifecycle. **If a plan file already
+  exists but its `status` is now stale** (e.g. `planned`/`in-progress` when the session just
+  finished landing and verifying the work), invoke the `plan-conveyor` skill directly to apply its
+  own status-bump/retirement procedure — don't improvise an `AskUserQuestion` about whether to
+  retire it. Confirmed as friction 2026-08-23: asked the user a retirement judgment call that
+  `plan-conveyor`'s own "Retiring a plan" section already answers (default: preserve unless the
+  rationale is already covered elsewhere in the repo); the user's correction was "why isn't the plan
+  docs skill kicking in?"
 - **Repo-specific durable knowledge → `AGENTS.md`/`docs/`/`contributing/`, never memory.** Use this
   split, not a flat "put it in AGENTS.md":
   - `AGENTS.md` (or equivalent instructions file) — only operating instructions an agent needs on
@@ -400,17 +401,17 @@ For what survives the significance test:
   cutting it from 30 sections and adding admission rules of its own; both candidates were parked in
   that plan instead of appended, and were decided at its close.
 - **A candidate belonging to another repo is _filed_ there, not queued here.** As of 2026-08-29
-  `plan-docs` has `plans.py new <topic> --for <repo>`, which writes the plan into that repo's store
-  mirror outside every working tree: no commit crosses, and the session that next works in that repo
-  is offered it by `plans.py absorb`. Prefer it over a `depends_on` plan in the current repo, which
-  was the workaround before the mechanism existed and leaves the candidate somewhere the owning repo
-  never looks. Commit the filed plan in the store immediately — a dirty store forces every other
-  session into the add-a-new-file fallback for as long as it lasts. `depends_on` keeps its own,
-  different meaning: **this** work cannot land until that repo changes, which is a dependency rather
-  than a delivery.
+  `plan-conveyor` has `plans.py new <topic> --for <repo>`, which writes the plan into that repo's
+  store mirror outside every working tree: no commit crosses, and the session that next works in
+  that repo is offered it by `plans.py absorb`. Prefer it over a `depends_on` plan in the current
+  repo, which was the workaround before the mechanism existed and leaves the candidate somewhere the
+  owning repo never looks. Commit the filed plan in the store immediately — a dirty store forces
+  every other session into the add-a-new-file fallback for as long as it lasts. `depends_on` keeps
+  its own, different meaning: **this** work cannot land until that repo changes, which is a
+  dependency rather than a delivery.
 - **A skill or an instructions file that was misused, misread or ignored → filed immediately,
   against the repo that owns it.** Not held for the report, not described in prose at the end: use
-  `plan-docs`' own routing — `plans.py new <topic>` when this repo owns the skill,
+  `plan-conveyor`' own routing — `plans.py new <topic>` when this repo owns the skill,
   `plans.py new <topic> --for <repo>` when another does, committed in the store straight away — and
   then have the report name the finding and the plan filename. The rule is "file first, report
   second", because a finding that exists only in the report dies with the terminal.
@@ -435,8 +436,8 @@ For what survives the significance test:
   is written for the live-state sweep and is easy not to apply here. When it is owned, the session's
   numbers are _evidence for that plan_, and where they go depends on whose plan it is. **A plan of
   this repo's own takes them directly** — in its `plans/`, or in its store mirror when the repo
-  keeps its plans there — as ordinary work in the session's repo; `plan-docs` prefers one plan per
-  topic, and a second one splits the corpus the first is accumulating. Confirmed 2026-08-30: a
+  keeps its plans there — as ordinary work in the session's repo; `plan-conveyor` prefers one plan
+  per topic, and a second one splits the corpus the first is accumulating. Confirmed 2026-08-30: a
   session measured its own Bash calls, found 36% piped through `head`/`tail` and was about to file
   it — two plans already owned the contradiction, one of them citing "25–36% for two other sessions
   the same day". What survived as genuinely new was one row nobody had measured, and it landed in
@@ -649,10 +650,10 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
 
   **Recovering one is often a command, not a sentence, and which command turns on whether the file's
   question recurs.** Three dispositions:
-  - **Evidence for one finding a plan records** — a probe or repro in the scratchpad: `plan-docs`'
-    `attach` copies it beside the plan and records it there, and it retires with the plan. Confirmed
-    2026-09-18: a harvest reported a reproducer as having no copy anywhere, correctly by the text
-    above and one command short; `attach … --commit` closed it.
+  - **Evidence for one finding a plan records** — a probe or repro in the scratchpad:
+    `plan-conveyor`' `attach` copies it beside the plan and records it there, and it retires with
+    the plan. Confirmed 2026-09-18: a harvest reported a reproducer as having no copy anywhere,
+    correctly by the text above and one command short; `attach … --commit` closed it.
   - **A diagnostic the next incident will want** — promote it into the repo as a script by the
     repo's own convention. An attachment is deleted with its plan, and "filed somewhere stable" is
     easy to mistake for "still present": confirmed 2026-09-20, the same session pulled one probe
@@ -660,8 +661,8 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   - **A live config outside every tree** — neither. A copy is a stale duplicate of a file that keeps
     changing, so the finding is stated plainly, as the 2026-09-01 instance was.
 
-  Which `attach` flag applies, and why a local attachment is invisible to `scan`, is `plan-docs`' to
-  say; read it there before attaching a file you have not read.
+  Which `attach` flag applies, and why a local attachment is invisible to `scan`, is
+  `plan-conveyor`' to say; read it there before attaching a file you have not read.
 
   **This check and its neighbour — paths written into files that do not exist — read nothing but the
   transcript, so both print `none` or `skipped` and never nothing at all.** Until 2026-09-08 they
@@ -925,18 +926,18 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   the number that matters is the attributed one, and the convention checks above are the part that
   is true whoever made the entry.
 - **The plans store, `$PLANS_HOME` — a separate bullet, for a different reason.** Set by the
-  `plan-docs` skill and absent if you do not use it, in which case the sweep skips this and says so.
-  The sweep reports its dirty state and its unpushed commits, and runs `plans.py absorb` read-only.
-  Two failures with separate owners: an uncommitted plan is this session's own mess, and a plan
-  filed _for_ this repo is another session's gift. **The reason this went unnoticed in a skill whose
-  whole subject is unswept state is that both neighbouring bullets appear to own it**: the store is
-  a git repository (so the git bullet seems to cover it) and it sits outside every working tree (so
-  the shared-stores bullet seems to). Each framing hands it to the other. What the git bullet
-  actually misses is **uncommitted** work: an uncommitted plan is not a commit, so no ahead-count
-  sees it.
+  `plan-conveyor` skill and absent if you do not use it, in which case the sweep skips this and says
+  so. The sweep reports its dirty state and its unpushed commits, and runs `plans.py absorb`
+  read-only. Two failures with separate owners: an uncommitted plan is this session's own mess, and
+  a plan filed _for_ this repo is another session's gift. **The reason this went unnoticed in a
+  skill whose whole subject is unswept state is that both neighbouring bullets appear to own it**:
+  the store is a git repository (so the git bullet seems to cover it) and it sits outside every
+  working tree (so the shared-stores bullet seems to). Each framing hands it to the other. What the
+  git bullet actually misses is **uncommitted** work: an uncommitted plan is not a commit, so no
+  ahead-count sees it.
 
   **Committing and pushing are two findings with two different costs, and only the first is
-  urgent.** An uncommitted plan is a live same-machine concurrency cost: `plan-docs` puts every
+  urgent.** An uncommitted plan is a live same-machine concurrency cost: `plan-conveyor` puts every
   other session into its add-a-new-file fallback instead of editing, for as long as the dirty window
   lasts. Report that every time, at full strength. **An unpushed one costs off-machine backup and
   nothing else** — the store is the only copy of plans that live in no repo, plus the in-transit
@@ -948,9 +949,9 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
 
   [PITFALL: **do not reach for the handoff story, which is the wrong answer nearest to hand.**
   `absorb` reads a local directory and never a remote — no `fetch`, no `pull`, no `ls-remote`
-  anywhere in `plans.py`, and `plan-docs` says `Network: none` outright — so a filed plan is visible
-  to every session on the machine the moment its file exists, whatever the push state. What makes
-  the wrong version attractive is that a real cross-session handoff sits right beside it:
+  anywhere in `plans.py`, and `plan-conveyor` says `Network: none` outright — so a filed plan is
+  visible to every session on the machine the moment its file exists, whatever the push state. What
+  makes the wrong version attractive is that a real cross-session handoff sits right beside it:
   `new --for` writes into the store and the next session in that repo is offered it. "The handoff
   needs the store pushed" is one plausible step from something true, which is how it got stated
   twice in one session without being checked, 2026-09-08.]
@@ -960,8 +961,8 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   which is true whatever the machine count. Checked 2026-09-09 rather than assumed, because the two
   rows look alike and one habit applied twice would have demoted both.
 
-  **`absorb` runs here even though `plan-docs` already tells every session to run it first**: the
-  queue refills for as long as the session runs, because the sessions filing into it run
+  **`absorb` runs here even though `plan-conveyor` already tells every session to run it first**:
+  the queue refills for as long as the session runs, because the sessions filing into it run
   concurrently. Measured 2026-08-30 in a session that followed the first-call rule correctly — 4
   plans at session start, 4 more two hours in, and 1 at five hours, that last one a credential
   exposure that sat unread for half an hour. Report a mid-transaction store — uncommitted changes
@@ -974,12 +975,12 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   plans and their targets; **sorting them is yours**, because the tag carries two meanings that take
   opposite answers. Work parked because that repo was mid-restructure (this bullet's case, and a
   deprecated one now that `new --for <repo>` exists) is answered by that repo's current state.
-  `plan-docs`' own documented meaning — "sibling repos this plan can't fully land without" — is not:
-  the named repo being idle says nothing, because the blocker is a change that repo has not made
-  yet, and only reading the plan answers whether it has. Report readiness only for the first kind;
-  "seven plans ready" assembled from clean `git status` output is a claim the check never made.
-  Confirmed 2026-08-29: eight tagged plans, three sibling repos all clean, and exactly one of the
-  eight was queue-shaped. And verify against the working tree rather than the plan's prose — the
+  `plan-conveyor`' own documented meaning — "sibling repos this plan can't fully land without" — is
+  not: the named repo being idle says nothing, because the blocker is a change that repo has not
+  made yet, and only reading the plan answers whether it has. Report readiness only for the first
+  kind; "seven plans ready" assembled from clean `git status` output is a claim the check never
+  made. Confirmed 2026-08-29: eight tagged plans, three sibling repos all clean, and exactly one of
+  the eight was queue-shaped. And verify against the working tree rather than the plan's prose — the
   same check that day read "surgery finished" from a clean `git status` and a landed plan, then
   found two modified files a few minutes later.
 - **Work the session promised but never verified** — a test tier it added to but never ran, a
@@ -1376,7 +1377,7 @@ the current session:
 - The canonical source is the repo these skills were installed from — for this author,
   [`agent-skills`](https://github.com/TheodoreAD/agent-skills); for you, your own checkout or fork.
   `skills-state` resolves it (`--checkout`, `$SESSION_HARVEST_CHECKOUT`, the repo above the script,
-  else the one checkout under `plan-docs`' `projects_root` holding this skill's source) and asks
+  else the one checkout under `plan-conveyor`' `projects_root` holding this skill's source) and asks
   when two qualify. Nothing about where any author keeps repos is written into the skill.
 - **Only a session already working in that repo edits it.** From anywhere else the fold-back is a
   filing, per step 6 — the `--for <checkout>` command `skills-state` prints, committed in the store.

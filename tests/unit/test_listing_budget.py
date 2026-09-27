@@ -58,9 +58,9 @@ def make_skill(name: str, description: str):
 
 def test_entry_chars_is_the_rendered_line():
     """`- <name>: <description>` — the four characters are "- " and ": ", not an estimate."""
-    s = make_skill("plan-docs", "Use when capturing an idea.")
-    assert s.entry_chars == len("- plan-docs: Use when capturing an idea.")
-    assert s.name_only_chars == len("- plan-docs")
+    s = make_skill("plan-conveyor", "Use when capturing an idea.")
+    assert s.entry_chars == len("- plan-conveyor: Use when capturing an idea.")
+    assert s.name_only_chars == len("- plan-conveyor")
 
 
 def test_when_to_use_joins_with_a_dash():

@@ -760,7 +760,7 @@ def test_an_undo_by_relative_ref_is_tagged_and_one_by_sha_is_not():
 def test_a_store_write_by_git_is_tagged_by_the_path_it_names():
     """`plans.py commit` builds the commit from HEAD plus the named paths through a private index.
     The row is separate from `git-C-mutating` because this was never really a cross-repo lapse —
-    `plan-docs` sends every session to that directory, and until 2026-09-09 its command took one
+    `plan-conveyor` sends every session to that directory, and until 2026-09-09 its command took one
     file, so the deviation bought one commit instead of N and was argued for in the open.
 
     Paths are built from the real `Path.home()` rather than written out, because the check is
@@ -780,7 +780,7 @@ def test_a_store_write_by_git_is_tagged_by_the_path_it_names():
 
 
 def test_a_store_declared_by_environment_is_recognised_wherever_it_sits(monkeypatch, tmp_path):
-    """The default layout is a fallback, not the definition — `plan-docs` routes both tiers by
+    """The default layout is a fallback, not the definition — `plan-conveyor` routes both tiers by
     config, and a store moved off home would otherwise be invisible to this row on the one machine
     where it matters."""
     moved = tmp_path / "elsewhere" / "planning-store"
@@ -831,7 +831,7 @@ def test_an_escaped_quote_inside_a_message_is_not_a_cut(monkeypatch):
     the next delimiter and stopped there, so an ordinary message quoting a phrase with escapes read
     as cut. Caught on this row's own first corpus run, 2026-09-10: 30 hits over 14 days against
     plans documenting two, and the samples were correct commands."""
-    escaped = 'git commit -m "plan-docs: the store tier holds \\"unscoped\\" plans and nothing else"'
+    escaped = 'git commit -m "plan-conveyor: the store tier holds \\"unscoped\\" plans and nothing else"'
     assert "cut-message" not in _call(escaped).tags
 
     # The single-quoted form has no escape at all, so its first quote really does close — the two

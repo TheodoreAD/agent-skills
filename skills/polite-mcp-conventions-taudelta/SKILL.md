@@ -55,7 +55,7 @@ code. Don't just carry findings in conversation and go straight to code.
 **Why:** explicit instruction, `freshful-polite-mcp` (2026-08-14): "it's good to keep everything in
 the plan, then implement." Matches the existing pattern across this repo family, where `PLAN.md` (a
 single monolithic file — this family predates the `plans/YYYY-MM-DD-topic.md` convention documented
-in the `plan-docs` skill, and hasn't been migrated onto it) is the durable record of _why_ the
+in the `plan-conveyor` skill, and hasn't been migrated onto it) is the durable record of _why_ the
 architecture looks the way it does; code comments point back to it rather than re-explaining.
 
 **How to apply:** after any live-spike/research pass in one of these repos, update `PLAN.md`'s

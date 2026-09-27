@@ -488,7 +488,7 @@ def scan_usage(exclude: set[str] | None = None) -> Usage:
     A `Skill` tool_use is the model choosing the skill. A `<command-name>` marker in a user turn is
     the person typing `/name`, which frequently does *not* produce a tool call — the body is
     injected directly instead. Measured 2026-08-30: session-harvest had 11 tool calls against 84
-    typed invocations, plan-docs 69 against 12. Reporting either number alone misleads, in opposite
+    typed invocations, plan-conveyor 69 against 12. Reporting either number alone misleads, in opposite
     directions for those two skills.
     """
     u = Usage()
@@ -608,7 +608,7 @@ ENV_PREFIX = re.compile(r"^(?:\$\s+)?(?:[A-Za-z_]\w*=\S*\s+)*")
 COMMAND_HEAD = re.compile(r"^[A-Za-z][\w.+-]*$|^[~./][\w./+-]*[\w.+-]$|^\$\w+$")
 SCRIPT_CALL = re.compile(r"scripts/[\w.-]+\.(py|sh)|\b[\w.-]+\.py\b")
 # `python3 <path> list`, `python3 $H sweep` — a skill abbreviating its own script's path. Counting
-# these as derivable put `plan-docs` at 48 of 49, when 45 of them are calls into `plans.py`: the
+# these as derivable put `plan-conveyor` at 48 of 49, when 45 of them are calls into `plans.py`: the
 # measure would have reported the repo's best-delegated skill as its worst offender.
 SCRIPT_INDIRECT = re.compile(r"\b(?:python3?|uv\s+run)\s+(?:<[^>]+>|\$\w+)")
 PLACEHOLDER = re.compile(r"<[^>\s][^>]*>|\$[A-Z][A-Z0-9_]{2,}|\{\w+\}")
@@ -1421,7 +1421,7 @@ def resolve_roots(explicit: list[Path] | None, cwd: Path) -> list[Path]:
     Order is the whole of this function, because `load_skills` is first-occurrence-wins. A skills
     repo's own `skills/` goes **first**, not appended: appending made a bare run inside a checkout
     measure the *installed* copies and silently ignore the working tree. Measured 2026-09-03 in this
-    repo — `plan-docs` reported at 1025 body lines from the hub while the tree held 1039, with only
+    repo — `plan-conveyor` reported at 1025 body lines from the hub while the tree held 1039, with only
     `inventory`'s stale-copy line hinting at it and every other subcommand showing nothing at all.
 
     Standing in a skills repo is an unambiguous statement about which corpus you mean.

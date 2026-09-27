@@ -5,8 +5,8 @@
 Claude Code's built-in auto-memory system already defines a complete taxonomy (`user`/`feedback`/
 `project`/`reference`) and a save procedure. What it doesn't do is _proactively_ review a session
 for what qualifies, and it has no opinion on cases where memory isn't actually the right home —
-specifically, plan-specific work-in-progress (which the `plan-docs` skill already tracks with its
-own lifecycle) and repo-specific durable knowledge (which belongs in `AGENTS.md`/`docs/` so it's
+specifically, plan-specific work-in-progress (which the `plan-conveyor` skill already tracks with
+its own lifecycle) and repo-specific durable knowledge (which belongs in `AGENTS.md`/`docs/` so it's
 version-controlled and visible to every contributor and every agent tool, not just this one
 harness's private memory store). Left alone, the natural failure mode is either nothing gets saved
 (the user has to ask every time) or memory becomes a second, drifting copy of things `plans/` or
@@ -19,8 +19,8 @@ three lifecycle hooks (Stop/PreCompact/SessionStart) wired into `settings.json`,
 `ContextLedger` with token-budget eviction, marker-line capture conventions (`DECISION:`/
 `CONSTRAINT:`/`QUESTION:`/...), a 27-test install gate. Automatic infrastructure installed once, not
 something invoked on demand, and with no awareness of this harness's own memory taxonomy or of
-`plan-docs`. Rejected: wrong shape for "something I can call easily," and duplicates work the
-harness's memory system + `plan-docs` already do, via its own separate marker/ledger convention.
+`plan-conveyor`. Rejected: wrong shape for "something I can call easily," and duplicates work the
+harness's memory system + `plan-conveyor` already do, via its own separate marker/ledger convention.
 
 **`melodykoh/learning-loop-skill`** (found via web search) — the closest match in spirit: an
 explicitly-invoked Claude Code skill (`/learning-loop scan` / `/learning-loop wrap up`) built around
@@ -39,8 +39,8 @@ What was **not** adopted from it, deliberately:
   over one conversation — not enough volume to justify the coordination overhead.
 - **Watch-list clustering of recurring failures across sessions**, with a "maturation" threshold (≥5
   sub-incidents) that auto-drafts an execution plan. Solves a scale problem — patterns repeating
-  across _many_ sessions — this user hasn't hit. `plan-docs` already gives a lighter-weight path for
-  anything that turns out to need real planning.
+  across _many_ sessions — this user hasn't hit. `plan-conveyor` already gives a lighter-weight path
+  for anything that turns out to need real planning.
 - **Adversarial persona review** (two critique personas checking every conclusion before it's shown
   to the user) and a separate **Judgment Ledger** for worldview-level shifts. Both are real,
   validated ideas for a system capturing at much higher volume/noise than this one — but they add
@@ -63,9 +63,9 @@ something to build around now.
 ## Why plan-specific content is excluded from memory
 
 It's tempting mid-session: a plan's context and rationale feel exactly like the kind of thing worth
-"remembering." But memory has no retirement mechanism — `plan-docs` plans move through
+"remembering." But memory has no retirement mechanism — `plan-conveyor` plans move through
 `idea → planned → in-progress → landed/abandoned/superseded` and get pruned once their durable
-content has a permanent home (see `plan-docs`' own "Retiring a plan" procedure). A memory entry
+content has a permanent home (see `plan-conveyor`' own "Retiring a plan" procedure). A memory entry
 covering the same ground would just be a second, unmaintained copy that goes stale the moment the
 plan's status changes, since nothing prompts memory to be updated in lockstep. Keeping a hard line —
 plan-shaped content never gets a memory entry, full stop — avoids that drift entirely rather than
@@ -192,21 +192,21 @@ commit or an open plan elsewhere fails the second half, because that repo's own 
 those by `absorb` — which is also why a per-machine prompt was rejected outright: it has nowhere
 natural to live and reaches sessions it is irrelevant to.
 
-## Why plan lifecycle decisions defer to `plan-docs` instead of a session-harvest judgment call
+## Why plan lifecycle decisions defer to `plan-conveyor` instead of a session-harvest judgment call
 
 The plan-specific routing filter's original wording ("check whether the relevant plan file already
 captures it") only covered the case of content with no plan file yet — it said nothing about a plan
 file that already exists but has drifted stale (marked `planned` when the work has since landed).
 Confirmed as a real gap 2026-08-23: mid-harvest, a plan for a just-landed feature was still marked
-`status: planned`, and rather than invoking `plan-docs` to apply its own documented retirement
+`status: planned`, and rather than invoking `plan-conveyor` to apply its own documented retirement
 procedure, an ad hoc `AskUserQuestion` was raised asking whether to retire it — duplicating a
-decision tree (`plan-docs`'s "Retiring a plan": default preserve, migrate rationale if not already
-covered elsewhere, commit-then-delete) that already existed and already had a considered default.
-The user's correction — "why isn't the plan docs skill kicking in?" — was exactly right: session-
-harvest's job is to _notice_ the drift and route it, not to reinvent `plan-docs`'s own procedure
-inline. Any future friction about _how_ a plan should be retired belongs in `plan-docs`'s own
-rationale file, not here — this skill only needs to remember to hand off, not to re-derive the
-answer.
+decision tree (`plan-conveyor`'s "Retiring a plan": default preserve, migrate rationale if not
+already covered elsewhere, commit-then-delete) that already existed and already had a considered
+default. The user's correction — "why isn't the plan docs skill kicking in?" — was exactly right:
+session- harvest's job is to _notice_ the drift and route it, not to reinvent `plan-conveyor`'s own
+procedure inline. Any future friction about _how_ a plan should be retired belongs in
+`plan-conveyor`'s own rationale file, not here — this skill only needs to remember to hand off, not
+to re-derive the answer.
 
 ## Why a mid-restructure destination routes to the plan, not the file
 
@@ -222,8 +222,8 @@ to a file being measured as it shrinks, and lands in a tree another session is e
 
 The resolution generalizes past `~/AGENTS.md`. Any destination can be under an open plan reshaping
 it, and in that window the plan — not the file — is what owns admissions. Recording the candidate as
-a `[NEEDS CLARIFICATION: ...]` with its trigger stated (the `plan-docs` tag vocabulary) keeps it in
-the same backlog grep as everything else that plan must decide, so it is judged in context rather
+a `[NEEDS CLARIFICATION: ...]` with its trigger stated (the `plan-conveyor` tag vocabulary) keeps it
+in the same backlog grep as everything else that plan must decide, so it is judged in context rather
 than discovered later as an anomaly in the diff.
 
 Worth noting what this does _not_ license: parking a candidate in a plan is not a way to avoid

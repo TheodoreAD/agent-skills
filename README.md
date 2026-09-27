@@ -14,7 +14,7 @@ Gemini CLI, Zed and the rest.
 
 ```shell
 npx skills add TheodoreAD/agent-skills --global          # every skill, user-level
-npx skills add TheodoreAD/agent-skills --global --skill plan-docs # just one
+npx skills add TheodoreAD/agent-skills --global --skill plan-conveyor # just one
 ```
 
 The [`skills` CLI](https://github.com/vercel-labs/skills) copies the skill into the canonical
@@ -32,7 +32,7 @@ read the file directly.
 | [`invoke-task-conventions-taudelta`](skills/invoke-task-conventions-taudelta/)       | Adding, renaming or reviewing an `inv <namespace>.<task>`, and weighing what a rename actually costs across docs, CI and other repos                                                                                                                                         | Opinionated but general |
 | [`mcp-python-conventions-taudelta`](skills/mcp-python-conventions-taudelta/)         | The Python inside a stdio MCP server — where logs may go when stdout carries the protocol, what an exception at a tool boundary becomes, and the tool docstring as an LLM-facing contract                                                                                    | Opinionated but general |
 | [`mcp-server-shipping`](skills/mcp-server-shipping/)                                 | Building, installing or registering a personal MCP server — entry point, `uv tool install` from git instead of PyPI, `claude mcp add` scope                                                                                                                                  | Opinionated but general |
-| [`plan-docs`](skills/plan-docs/)                                                     | Capturing an idea, drafting a design, or tracking work-in-progress in a repo's `plans/` directory — or, for a work repo that can't hold one, in the store outside it — and retiring a plan once it lands                                                                     | Opinionated but general |
+| [`plan-conveyor`](skills/plan-conveyor/)                                             | Capturing an idea, drafting a design, or tracking work-in-progress in a repo's `plans/` directory — or, for a work repo that can't hold one, in the store outside it — and retiring a plan once it lands                                                                     | Opinionated but general |
 | [`polite-mcp-conventions-taudelta`](skills/polite-mcp-conventions-taudelta/)         | Working in the `*-polite-mcp` repos — confirming before a first live mutating action against a real account, batching per-item decisions                                                                                                                                     | Personal                |
 | [`python-conventions-taudelta`](skills/python-conventions-taudelta/)                 | Writing or reviewing Python and wanting one settled answer per design question — data modeling, dates/times, settings, guard clauses, restructuring, exceptions, async, HTTP                                                                                                 | Opinionated but general |
 | [`python-refactor-audit`](skills/python-refactor-audit/)                             | Restructuring a Python module that grew and nobody has reviewed as a whole — the commit-by-commit loop, which tests may change, a second oracle when the suite can't see the change, and when not to do it at all                                                            | Opinionated but general |
@@ -51,13 +51,13 @@ set up. No skill here sends anything off the machine on its own. **Every skill t
 or instructs a write outside your repo says what it reads, runs and writes**, under the same heading
 in its `SKILL.md` — `## What this skill reads, runs and writes` — and declares its environment
 requirements in the `compatibility` frontmatter field. In short: `research-library` writes only
-inside `$RESEARCH_HOME`; `plan-docs` writes plan files in your repo and in its stores (`$PLANS_HOME`
-and the sensitive sibling, for work repos that can't hold their own plans) and commits only to the
-store; `session-bash-audit` reads Claude Code's own transcripts and writes only a baseline you ask
-for; `session-harvest`'s script writes nothing and its sweep reads transcripts, processes, listening
-sockets, container images and both stores; `skill-fitness` writes nothing but a baseline you name.
-`plan-docs` also describes pushing the shareable half of its store to a remote you configure —
-behind a content scan, and never the half holding employer or client work.
+inside `$RESEARCH_HOME`; `plan-conveyor` writes plan files in your repo and in its stores
+(`$PLANS_HOME` and the sensitive sibling, for work repos that can't hold their own plans) and
+commits only to the store; `session-bash-audit` reads Claude Code's own transcripts and writes only
+a baseline you ask for; `session-harvest`'s script writes nothing and its sweep reads transcripts,
+processes, listening sockets, container images and both stores; `skill-fitness` writes nothing but a
+baseline you name. `plan-conveyor` also describes pushing the shareable half of its store to a
+remote you configure — behind a content scan, and never the half holding employer or client work.
 
 **Python 3.11 or newer** is the one requirement every script shares, run by your own `python3` with
 nothing to install. Below it a script exits with a sentence saying so rather than a traceback.

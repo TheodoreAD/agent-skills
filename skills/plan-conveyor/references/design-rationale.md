@@ -1,4 +1,4 @@
-# Design rationale for the `plan-docs` convention
+# Design rationale for the `plan-conveyor` convention
 
 This is the deep version of [`SKILL.md`](../SKILL.md) — why the convention looks the way it does,
 what it borrows from established prior art, and what it deliberately rejects. It lives inside the
@@ -344,17 +344,18 @@ the content actually migrated) or have the dead reference dropped.
 
 `AGENTS.md` also accumulates drift independent of any single plan's retirement, and periodically
 deserves the same scrutiny on its own. Worked example: the same `freshful-polite-mcp` session above
-continued with a second `/plan-docs` pass, this time auditing `AGENTS.md` itself per an explicit ask
-to leave it clean of "any planning or ideation." That surfaced the two patterns "Keeping AGENTS.md
-itself clean" (`SKILL.md`) now names concretely — a "Status: ... exercised live 2026-08-14" heading
-that was pure changelog framing wrapped around otherwise-fine architecture facts, and a "Parsing"
-section still describing three functions as raising `NotImplementedError`, a claim
-`rg
-NotImplementedError` showed was no longer true anywhere in the file: the functions had been
-fully implemented in an earlier, unrelated session, and nobody had gone back to update the prose
-that said otherwise. Neither was a `plans/*.md` retirement in the formal sense — no frontmatter, no
-file to delete — but both are the same underlying failure mode as a stale plan reference: prose
-asserting something about the repo's state that stopped being true, with nothing forcing a revisit.
+continued with a second `/plan-conveyor` pass, this time auditing `AGENTS.md` itself per an explicit
+ask to leave it clean of "any planning or ideation." That surfaced the two patterns "Keeping
+AGENTS.md itself clean" (`SKILL.md`) now names concretely — a "Status: ... exercised live
+2026-08-14" heading that was pure changelog framing wrapped around otherwise-fine architecture
+facts, and a "Parsing" section still describing three functions as raising `NotImplementedError`, a
+claim `rg
+NotImplementedError` showed was no longer true anywhere in the file: the functions had
+been fully implemented in an earlier, unrelated session, and nobody had gone back to update the
+prose that said otherwise. Neither was a `plans/*.md` retirement in the formal sense — no
+frontmatter, no file to delete — but both are the same underlying failure mode as a stale plan
+reference: prose asserting something about the repo's state that stopped being true, with nothing
+forcing a revisit.
 
 ## Where a plan lives: the repo, or the store outside it
 
@@ -554,7 +555,7 @@ Two store-specific consequences of that decision, both of which read as arbitrar
   it where it is: part of why the sensitive store has never been synced by accident is that it is
   **conspicuous**. If it ever does move somewhere it sits among ordinary application data, it stops
   being obvious, and the `0700` below matters more rather than less.
-- **`$PLAN_DOCS_CONFIG` is not an exception to "an XDG destination needs no new variable".** It
+- **`$PLAN_CONVEYOR_CONFIG` is not an exception to "an XDG destination needs no new variable".** It
   names a **file**, and `$XDG_CONFIG_HOME` can only redirect a **directory** — `test_plan_store.py`
   depends on exactly that, pointing the whole config at one path under `tmp_path` rather than
   building an XDG tree. So it is not a second way to do one thing; it expresses something XDG

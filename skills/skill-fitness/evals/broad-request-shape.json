@@ -27,11 +27,11 @@
     },
     {
       "prompt": "I've got design work scattered across a bunch of repos. How do I go about keeping track of what's still open?",
-      "expect": "plan-docs"
+      "expect": "plan-conveyor"
     },
     {
       "prompt": "Create a plan file for this idea and set its status to idea.",
-      "expect": "plan-docs"
+      "expect": "plan-conveyor"
     },
     {
       "prompt": "I think agents keep ignoring my shell rules. How do I go about finding out whether that's actually true?",

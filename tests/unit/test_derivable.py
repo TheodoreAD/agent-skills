@@ -94,9 +94,9 @@ def test_a_script_call_is_delegation_however_many_placeholders_it_carries():
 
 
 def test_a_skill_abbreviating_its_own_script_path_still_counts_as_delegation():
-    """`plan-docs` writes `python3 <path> list`, `session-harvest` writes `python3 $H sweep`.
+    """`plan-conveyor` writes `python3 <path> list`, `session-harvest` writes `python3 $H sweep`.
 
-    Requiring a literal `.py` put `plan-docs` at 48 derivable of 49 commands, when 46 of them are
+    Requiring a literal `.py` put `plan-conveyor` at 48 derivable of 49 commands, when 46 of them are
     calls into `plans.py` — the measure would have reported the repo's best-delegated skill as its
     worst offender. The indirection only counts when the skill actually has a `scripts/` directory.
     """

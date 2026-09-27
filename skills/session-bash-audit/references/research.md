@@ -1015,7 +1015,7 @@ number into a different finding: a large share are `git -C <store> add <paths>` 
 by `plans.py scan --mode staged`. That is a session obeying the scan-before-you-commit rule, which
 needs something staged, with a command that deliberately does its own staging through a private
 index. **The two rules pull against each other**, and the count is mostly that rather than
-carelessness. Worth `plan-docs`' attention rather than a stern row.
+carelessness. Worth `plan-conveyor`' attention rather than a stern row.
 
 ### Two false-positive shapes, both caught by reading the samples
 

@@ -131,8 +131,8 @@ expressible that way — the counts and the structure are the evidence, the name
 The check is mechanical, so run it rather than reading for it:
 
 ```shell
-python3 skills/plan-docs/scripts/plans.py scan --mode staged   # before every commit
-python3 skills/plan-docs/scripts/plans.py scan                 # whole working tree
+python3 skills/plan-conveyor/scripts/plans.py scan --mode staged   # before every commit
+python3 skills/plan-conveyor/scripts/plans.py scan                 # whole working tree
 ```
 
 It derives the forbidden terms from the machine's own project roots, so nothing has to be listed

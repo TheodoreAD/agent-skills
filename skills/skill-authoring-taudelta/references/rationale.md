@@ -68,7 +68,7 @@ enforced, so a conflict is detectable rather than silent; PEP 723 is that declar
 user's own skills on their own machine have no multi-tenant conflict to isolate.
 
 Extracted 2026-09-01 from the now-retired `plans/2026-08-28-cross-repo-plan-store.md`, which
-researched it while deciding where `plan-docs`' own script would live.
+researched it while deciding where `plan-conveyor`' own script would live.
 
 ## Why "editing the installed copy" gets its own emphasis
 
@@ -119,7 +119,7 @@ commits**, so non-file side effects like killing an orphaned process are governe
 proposed; a skill may write **its own config through its own command**; a skill's **declared
 purpose** may name another destination (stamping a new repo, cloning into a research library) —
 stated as a criterion rather than a named exception, because a second instance was found by looking;
-and both plans stores, with `plan-docs`' own dirty-store condition surviving.
+and both plans stores, with `plan-conveyor`' own dirty-store condition surviving.
 
 [PITFALL: **the frontmatter half of this was ruled on wrongly first.** A 2026-09-04 gate allowed
 only `name` and `description`, on the claim that the reference corpus defines no other key.
@@ -140,8 +140,8 @@ in six skills is how a section stops being read**.
 ## Why a skill's directories are keyed by its bare `name` (2026-09-03)
 
 The question asked was whether to derive a per-skill config directory from the unique parts of a git
-remote — org or user, plus repo — so that two authors publishing a `plan-docs` cannot collide in
-`~/.config/plan-docs/`. The collision is real; the URL is not the answer, for three independent
+remote — org or user, plus repo — so that two authors publishing a `plan-conveyor` cannot collide in
+`~/.config/plan-conveyor/`. The collision is real; the URL is not the answer, for three independent
 reasons, and the first is fatal on its own.
 
 **The input does not exist at runtime.** An installed skill is not a checkout. Verified 2026-09-02:
@@ -157,8 +157,8 @@ Windows and `~/Library/Application Support/Author/App` on macOS. On this machine
 4.11.7:
 
 ```text
-user_config_dir("plan-docs", "TheodoreAD")  ->  ~/.config/plan-docs
-user_config_dir("plan-docs")                ->  ~/.config/plan-docs
+user_config_dir("plan-conveyor", "TheodoreAD")  ->  ~/.config/plan-conveyor
+user_config_dir("plan-conveyor")                ->  ~/.config/plan-conveyor
 ```
 
 The author segment is **discarded on Linux**, deliberately, by the library that encodes the

@@ -173,7 +173,7 @@ def test_a_checkout_is_ordered_ahead_of_the_installed_hub(tmp_path, monkeypatch)
     `load_skills` is first-occurrence-wins — so the ordering *is* the behaviour.
 
     Measured 2026-09-03 before the fix: a bare run inside this repo reported 1025 body lines for
-    `plan-docs` from the hub while the working tree held 1039, and only `inventory`'s stale-copy
+    `plan-conveyor` from the hub while the working tree held 1039, and only `inventory`'s stale-copy
     line hinted at it. The first version of this test asserted against `load_skills` directly and
     passed against the unfixed code, because the defect was never in `load_skills` — it was in which
     order the roots were handed to it.

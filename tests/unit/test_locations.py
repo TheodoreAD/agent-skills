@@ -39,7 +39,7 @@ def _load(name: str, script: Path):
     return module
 
 
-plans = _load("plans_locations", REPO_ROOT / "skills" / "plan-docs" / "scripts" / "plans.py")
+plans = _load("plans_locations", REPO_ROOT / "skills" / "plan-conveyor" / "scripts" / "plans.py")
 audit = _load("audit_locations", REPO_ROOT / "skills" / "session-bash-audit" / "scripts" / "audit.py")
 
 
@@ -49,7 +49,14 @@ def bare_env(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))  # what `expanduser` reads on Windows
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    for var in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "PLAN_DOCS_CONFIG", "APPDATA", "LOCALAPPDATA"):
+    for var in (
+        "XDG_CONFIG_HOME",
+        "XDG_STATE_HOME",
+        "PLAN_CONVEYOR_CONFIG",
+        "PLAN_DOCS_CONFIG",
+        "APPDATA",
+        "LOCALAPPDATA",
+    ):
         monkeypatch.delenv(var, raising=False)
     # POSIX by default whatever the runner is; the Windows tests flip the seam themselves. Found on
     # the first Windows CI run, where the "POSIX defaults are unchanged" test read the real platform.
@@ -69,7 +76,7 @@ def test_the_xdg_variable_wins_on_windows_too(bare_env, monkeypatch):
     monkeypatch.setattr(plans, "WINDOWS", True)
     monkeypatch.setenv("APPDATA", str(bare_env / "AppData" / "Roaming"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(bare_env / "elsewhere"))
-    assert plans.config_path() == bare_env / "elsewhere" / "plan-docs" / "config.toml"
+    assert plans.config_path() == bare_env / "elsewhere" / "plan-conveyor" / "config.toml"
 
 
 def test_state_and_config_split_across_the_two_windows_bases(bare_env, monkeypatch):
@@ -81,7 +88,7 @@ def test_state_and_config_split_across_the_two_windows_bases(bare_env, monkeypat
     monkeypatch.setenv("LOCALAPPDATA", str(bare_env / "AppData" / "Local"))
     monkeypatch.setenv("APPDATA", str(bare_env / "AppData" / "Roaming"))
     assert audit.state_dir() == bare_env / "AppData" / "Local" / "session-bash-audit"
-    assert plans.config_path() == bare_env / "AppData" / "Roaming" / "plan-docs" / "config.toml"
+    assert plans.config_path() == bare_env / "AppData" / "Roaming" / "plan-conveyor" / "config.toml"
 
 
 def test_windows_without_the_bases_set_still_lands_somewhere_sane(bare_env, monkeypatch):
@@ -90,20 +97,59 @@ def test_windows_without_the_bases_set_still_lands_somewhere_sane(bare_env, monk
     monkeypatch.setattr(audit, "WINDOWS", True)
     monkeypatch.setattr(plans, "WINDOWS", True)
     assert audit.state_dir() == bare_env / "AppData" / "Local" / "session-bash-audit"
-    assert plans.config_path() == bare_env / "AppData" / "Roaming" / "plan-docs" / "config.toml"
+    assert plans.config_path() == bare_env / "AppData" / "Roaming" / "plan-conveyor" / "config.toml"
 
 
 def test_posix_defaults_are_unchanged(bare_env):
     """The Windows arm is additive. This is the case every existing reader is on."""
     assert audit.state_dir() == bare_env / ".local" / "state" / "session-bash-audit"
-    assert plans.config_path() == bare_env / ".config" / "plan-docs" / "config.toml"
+    assert plans.config_path() == bare_env / ".config" / "plan-conveyor" / "config.toml"
 
 
 def test_the_explicit_variable_beats_everything(bare_env, monkeypatch):
-    """`$PLAN_DOCS_CONFIG` is the skill's own variable, one step above `$XDG_CONFIG_HOME` in the
+    """`$PLAN_CONVEYOR_CONFIG` is the skill's own variable, one step above `$XDG_CONFIG_HOME` in the
     order — a reader who names a file means that file, whatever the platform or the XDG setting."""
     monkeypatch.setattr(plans, "WINDOWS", True)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(bare_env / "xdg"))
     monkeypatch.setenv("APPDATA", str(bare_env / "AppData" / "Roaming"))
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(bare_env / "pinned.toml"))
+    assert plans.config_path() == bare_env / "pinned.toml"
+
+
+def test_the_pre_rename_variable_is_still_read(bare_env, monkeypatch):
+    """`$PLAN_DOCS_CONFIG` was this skill's variable before the 2026-09-27 rename, and a reader who
+    exported it then still means the same file now."""
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(bare_env / "pinned.toml"))
     assert plans.config_path() == bare_env / "pinned.toml"
+
+
+def test_the_current_variable_wins_over_the_pre_rename_one(bare_env, monkeypatch):
+    """Both exported is a machine mid-migration, and the current name is the one that means now."""
+    monkeypatch.setenv("PLAN_DOCS_CONFIG", str(bare_env / "old.toml"))
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(bare_env / "new.toml"))
+    assert plans.config_path() == bare_env / "new.toml"
+
+
+def test_the_pre_rename_directory_is_read_when_the_current_one_is_absent(bare_env, monkeypatch, capsys):
+    """The rename moved a directory named after the skill, and the writers lay down a skeleton over
+    an absent path — so without this the first run after a rename would answer with an empty config
+    rather than an error, silently dropping the `[private] extra` terms a public-repo scan cannot
+    derive. The note names both paths, because the fallback reports the move and never performs it."""
+    legacy = bare_env / ".config" / "plan-docs" / "config.toml"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("[private]\nextra = []\n", encoding="utf-8")
+    assert plans.config_path() == legacy
+    err = capsys.readouterr().err
+    assert str(legacy) in err
+    assert str(bare_env / ".config" / "plan-conveyor" / "config.toml") in err
+
+
+def test_the_current_directory_wins_and_stays_quiet(bare_env, monkeypatch, capsys):
+    """Once migrated, the pre-rename directory is not consulted and nothing is printed — the note
+    exists to stop, so a machine that has moved the file must never see it again."""
+    for name in ("plan-docs", "plan-conveyor"):
+        path = bare_env / ".config" / name / "config.toml"
+        path.parent.mkdir(parents=True)
+        path.write_text("", encoding="utf-8")
+    assert plans.config_path() == bare_env / ".config" / "plan-conveyor" / "config.toml"
+    assert capsys.readouterr().err == ""

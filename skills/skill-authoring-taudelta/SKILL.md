@@ -374,9 +374,9 @@ resolved before it runs is a script that does not work for whoever installed the
 
 1. **Stdlib only.** `python3 <skill>/scripts/foo.py` works on any machine with Python, with zero
    declaration and zero resolution. Two real tools in this repo are built this way —
-   `plan-docs/scripts/plans.py` and `session-bash-audit/scripts/audit.py`, the latter parsing every
-   `~/.claude/projects/*.jsonl` — Claude Code's own transcript store, so that one reads nothing on
-   another harness — on `argparse`/`json`/`re`/`dataclasses`/`pathlib` alone. Simple YAML
+   `plan-conveyor/scripts/plans.py` and `session-bash-audit/scripts/audit.py`, the latter parsing
+   every `~/.claude/projects/*.jsonl` — Claude Code's own transcript store, so that one reads
+   nothing on another harness — on `argparse`/`json`/`re`/`dataclasses`/`pathlib` alone. Simple YAML
    frontmatter does not justify PyYAML.
 2. **PEP 723 + `uv run`** if a dependency becomes genuinely necessary — a `# /// script` TOML block
    inline in the file, which keeps it single-file and portable. This is the documented convention
@@ -510,13 +510,13 @@ history. A write to an unversioned file outside every repository has none, and t
 justify in the disclosure or drop. Four writes are routine under that test, and every one is
 declared rather than assumed:
 
-1. **Its own config, through its own command** (`plan-docs`' `config set` over
-   `~/.config/plan-docs/config.toml`) — never a hand edit the skill tells the reader to make.
+1. **Its own config, through its own command** (`plan-conveyor`' `config set` over
+   `~/.config/plan-conveyor/config.toml`) — never a hand edit the skill tells the reader to make.
 2. **The destination its declared purpose names** (`research-library` cloning into `$RESEARCH_HOME`,
    a scaffolder stamping a new repo) — stated as a criterion rather than a list, because the second
    instance was found by looking.
-3. **The plans stores**, both tiers, through `plan-docs` — with that skill's own condition, that a
-   dirty store gets a new file rather than an edit to one another session may be holding.
+3. **The plans stores**, both tiers, through `plan-conveyor` — with that skill's own condition, that
+   a dirty store gets a new file rather than an edit to one another session may be holding.
 4. **The session's own repo.** Everything else — another repo's tree, a deployed instructions file,
    an installed skill copy — is out, and `session-harvest` states the set once at the top of its
    procedure as the worked example.

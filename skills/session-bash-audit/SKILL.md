@@ -377,7 +377,7 @@ hook design is in `references/research.md`.
   facts" section of `references/research.md`, with the docs URL and date checked. Those change
   between Claude Code versions; a dated entry is the difference between evidence and folklore.
 - A one-off finding that is really a repo bug or a design decision → that repo's `plans/` (see the
-  `plan-docs` skill), linked from here.
+  `plan-conveyor` skill), linked from here.
 
 Every one of those writes goes in this skill's own source, not the installed copy under
 `~/.agents/skills/` — that copy is overwritten by the next install and reaches nothing else. The

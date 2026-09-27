@@ -201,7 +201,7 @@ the same anonymity one level up.
 
 - **No behaviour change of any kind, including "obvious" improvements noticed in passing.** The
   whole value of the pass is that its diff is verifiable as behaviour-preserving. Noticed
-  improvements become plan entries (`plan-docs`), each its own later commit.
+  improvements become plan entries (`plan-conveyor`), each its own later commit.
 - **Deferred items get their own commit before or after, never folded in.** Bundling an unrelated
   fix into a mechanical diff makes the mechanical diff unverifiable.
 - **A file split is a separate decision, and usually not this one.** Encapsulation is the goal;

@@ -109,7 +109,7 @@ def fetch_registry(name: str) -> list[dict[str, object]]:
 def owners_of(name: str, fetch: Fetcher, mine: str | None = None) -> tuple[list[str], bool]:
     """Every source publishing this exact name, excluding your own.
 
-    The endpoint is a fuzzy search, so a query for `plan-docs` returns `plan-docs-lite` and friends.
+    The endpoint is a fuzzy search, so a query for `plan-conveyor` returns `plan-docs-lite` and friends.
     Only an exact `skillId` match is a collision — a near miss is a different skill with a different
     key, and reporting it would train the reader to ignore this.
     """
@@ -136,7 +136,7 @@ def local_skills(roots: Iterable[Path]) -> dict[str, list[tuple[str, str]]]:
     """Every skill name visible locally, mapped to each path claiming it and that copy's digest.
 
     The digest is what separates a real clash from a reflection. A source checkout and the installed
-    hub both hold `plan-docs`, and they are the same skill — reporting that as a collision would fire
+    hub both hold `plan-conveyor`, and they are the same skill — reporting that as a collision would fire
     on every skill the author has installed, which is how a check gets switched off. Two paths with
     **different** content under one name is the silent-drop condition; two paths with identical
     content is just the thing you installed.

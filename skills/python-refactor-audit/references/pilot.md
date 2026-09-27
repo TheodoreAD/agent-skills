@@ -5,8 +5,8 @@ down. The repo's own authoring rule is that a convention is applied to a real re
 a shareable artifact — a pilot surfaces what research cannot — so this file is the evidence, and the
 skill body is what survived it.
 
-**The subject**: `skills/plan-docs/scripts/plans.py` in this repo, 3,210 lines at the time the plan
-was written and 3,476 by the time the pass ran, built incrementally over two weeks and never
+**The subject**: `skills/plan-conveyor/scripts/plans.py` in this repo, 3,210 lines at the time the
+plan was written and 3,476 by the time the pass ran, built incrementally over two weeks and never
 reviewed as a whole. A review of _recent changes_ had already been done and had found one real bug
 and two cleanups; the structural pass is the one nothing else does.
 

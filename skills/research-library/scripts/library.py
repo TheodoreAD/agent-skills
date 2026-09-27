@@ -483,7 +483,7 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     if reported is not None and reported >= args.min:
         # Exit 3 rather than prompting: this runs inside an agent's Bash call, where an interactive
         # prompt hangs with nothing to type into. The decision goes back to the user with the number
-        # that prompted it, which is the shape `plan-docs` uses for a repo no rule routes.
+        # that prompted it, which is the shape `plan-conveyor` uses for a repo no rule routes.
         print(
             f"{name}: the host reports {reported} MB packed, at or above the {args.min} MB line.\n"
             "On-disk cost has run between 0.2x and 1.3x of that figure across this library, so this\n"

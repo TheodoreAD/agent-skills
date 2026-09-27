@@ -55,18 +55,18 @@ def skill_at(root: Path, name: str, body: str = "x") -> None:
 
 
 def test_only_an_exact_name_is_a_collision():
-    """The endpoint is fuzzy: querying `plan-docs` returns `plan-docs-lite` too. A near miss is a
+    """The endpoint is fuzzy: querying `plan-conveyor` returns `plan-docs-lite` too. A near miss is a
     different skill with a different primary key, and reporting it would train the reader to skim
     past real hits."""
-    fetch = fetcher(hit("someone/skills", "plan-docs"), hit("other/skills", "plan-docs-lite"))
-    owners, reachable = names.owners_of("plan-docs", fetch)
+    fetch = fetcher(hit("someone/skills", "plan-conveyor"), hit("other/skills", "plan-docs-lite"))
+    owners, reachable = names.owners_of("plan-conveyor", fetch)
     assert owners == ["someone/skills"]
     assert reachable
 
 
 def test_your_own_publications_are_not_collisions_with_yourself():
-    fetch = fetcher(hit("theodoread/agent-skills", "plan-docs"), hit("someone/skills", "plan-docs"))
-    owners, _ = names.owners_of("plan-docs", fetch, mine="theodoread")
+    fetch = fetcher(hit("theodoread/agent-skills", "plan-conveyor"), hit("someone/skills", "plan-conveyor"))
+    owners, _ = names.owners_of("plan-conveyor", fetch, mine="theodoread")
     assert owners == ["someone/skills"]
 
 
@@ -124,10 +124,10 @@ def test_one_skill_in_two_roots_is_not_a_collision(tmp_path):
     """A source checkout and the installed hub both hold the skill you wrote. Flagging that fires
     on every skill an author has installed — the failure mode that gets a check disabled."""
     source, installed = tmp_path / "src", tmp_path / "hub"
-    skill_at(source, "plan-docs", "identical")
-    skill_at(installed, "plan-docs", "identical")
+    skill_at(source, "plan-conveyor", "identical")
+    skill_at(installed, "plan-conveyor", "identical")
     local = names.local_skills([source, installed])
-    check = names.NameCheck(name="plan-docs", local=local["plan-docs"])
+    check = names.NameCheck(name="plan-conveyor", local=local["plan-conveyor"])
     assert len(check.local) == 2
     assert check.local_conflict is False
     assert check.collides is False

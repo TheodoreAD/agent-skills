@@ -1,4 +1,4 @@
-"""Routing and lifecycle gate for `skills/plan-docs/scripts/plans.py`.
+"""Routing and lifecycle gate for `skills/plan-conveyor/scripts/plans.py`.
 
 The script decides where a plan file is written, and one of its answers is "inside a repo you do not
 own" — so the routing table is the part worth a test rather than an eyeball. Everything here runs
@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "skills" / "plan-docs" / "scripts" / "plans.py"
+SCRIPT = REPO_ROOT / "skills" / "plan-conveyor" / "scripts" / "plans.py"
 
 
 def _load():
@@ -87,7 +87,7 @@ def ws(tmp_path, monkeypatch):
     # session anchor, making every test depend on where the suite happens to be run from.
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-    config = home / ".config" / "plan-docs" / "config.toml"
+    config = home / ".config" / "plan-conveyor" / "config.toml"
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
     return Workspace(
         home=home,
@@ -2381,7 +2381,7 @@ each repo's path rather than slugging it, so two clients' `api` never collide.
 
 ## Migrated to
 
-- skills/plan-docs/references/design-rationale.md — why the path is mirrored rather than slugged,
+- skills/plan-conveyor/references/design-rationale.md — why the path is mirrored rather than slugged,
   and what the two rejected layouts were
 """
 

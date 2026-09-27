@@ -1,7 +1,7 @@
 {
   "about": [
     "session-harvest is the only skill in this corpus with an inverted invocation profile: 13 auto",
-    "against 87 explicit, where plan-docs runs 70 against 15. That split is behavioural, not lexical",
+    "against 87 explicit, where plan-conveyor runs 70 against 15. That split is behavioural, not lexical",
     "- a person typing /name is a person the description did not serve - which makes it the one",
     "pointer at a description problem that survived a day of failed lexical heuristics.",
     "",
@@ -15,7 +15,7 @@
     "             control. If they fail, the problem is severe and lexical.",
     "  cases 3-6  the same need in a person's words, two of them lifted from real transcripts in",
     "             this store where the user typed a command afterwards.",
-    "  cases 7-8  the nearest neighbour, plan-docs, whose territory session-harvest's description",
+    "  cases 7-8  the nearest neighbour, plan-conveyor, whose territory session-harvest's description",
     "             names directly (plans/*.md, AGENTS.md).",
     "  cases 9-10 ordinary requests that touch session-harvest's vocabulary - commits, pushes, CI -",
     "             and should fire nothing at all.",
@@ -26,7 +26,7 @@
     "RESULT 2026-08-31: 10/10, precision 1.0 for both skills. The controls passed 3/3 AND so did",
     "every paraphrase, including both phrasings lifted from real transcripts. Nothing fired on the",
     "two should-not-trigger cases, despite session-harvest's description naming commits, pushes and",
-    "CI. plan-docs kept its own two cases.",
+    "CI. plan-conveyor kept its own two cases.",
     "",
     "So 13-auto-against-87-explicit is NOT a description defect. The description opens 'Use when",
     "invoked explicitly as /session-harvest' and the auto-trigger phrasings it lists all work; the",
@@ -67,12 +67,12 @@
     },
     {
       "prompt": "Start a design doc for the caching rework in this repo.",
-      "expect": "plan-docs",
+      "expect": "plan-conveyor",
       "why": "should-not-steal: session-harvest's description names plans/*.md directly"
     },
     {
       "prompt": "What's open across my repos, and what should I pick up next?",
-      "expect": "plan-docs",
+      "expect": "plan-conveyor",
       "why": "should-not-steal: 'what's open' is close to the unfinished-work sweep"
     },
     {

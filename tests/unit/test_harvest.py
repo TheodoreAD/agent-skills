@@ -58,7 +58,7 @@ def _no_subprocess(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _no_real_machine(tmp_path, monkeypatch):
-    """The checkout detection walks the projects root `plan-docs` is configured with, and on the
+    """The checkout detection walks the projects root `plan-conveyor` is configured with, and on the
     author's machine that root holds this very repo — so without this every "no checkout" test
     would find one. An empty root and no configured checkout is the reader's machine."""
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(tmp_path / "no-config.toml"))
@@ -842,7 +842,7 @@ def test_the_same_diff_means_three_different_things(tmp_path, dirty, ahead, expe
 def test_naming_a_skill_adds_it_rather_than_replacing_the_defaults(tmp_path):
     """`--skill` reads as additive in SKILL.md — "add `--skill <name>` for anything else this run
     used" — and dropped the defaults instead, so the harvest's own skill was the one that went
-    unchecked. Confirmed 2026-09-05: a run passed `--skill plan-docs --skill
+    unchecked. Confirmed 2026-09-05: a run passed `--skill plan-conveyor --skill
     invoke-task-conventions-taudelta`, got two clean rows, and only a second call naming session-harvest
     explicitly found its SKILL.md had moved after session start with two unpushed commits.
     """
@@ -948,7 +948,7 @@ def test_a_history_that_cannot_be_read_is_not_reported_as_nothing_moved(tmp_path
 
 
 def test_each_moved_commit_says_which_part_of_the_skill_it_touched(tmp_path):
-    """Confirmed 2026-09-13: `plan-docs` showed seven commits under a line naming `SKILL.md`, to a
+    """Confirmed 2026-09-13: `plan-conveyor` showed seven commits under a line naming `SKILL.md`, to a
     session that had never loaded that file and had run `plans.py` eight times. Four of the seven
     touched `scripts/` — the code it had executed — and nothing in the output said which four."""
     checkout = tmp_path / "checkout"
@@ -996,7 +996,7 @@ def test_the_move_baseline_is_named_in_the_verdict_it_produced(tmp_path):
 def test_a_held_skill_md_that_is_neither_side_gets_the_help_probe_first(tmp_path):
     """Install and checkout agree, and SKILL.md moved after the skill was loaded: a re-install ran
     mid-session, so the copy in context is on neither side of any diff. Confirmed 2026-09-26 on
-    `plan-docs`, ten commits: two `--help` calls answered what a ~700-line re-read would have."""
+    `plan-conveyor`, ten commits: two `--help` calls answered what a ~700-line re-read would have."""
     checkout = tmp_path / "checkout"
     installed_root = tmp_path / "installed"
     make_skill(checkout, "demo", "same\n")
@@ -1042,12 +1042,12 @@ def test_a_skills_load_instant_comes_from_the_sessions_own_skill_calls(monkeypat
     entries = [
         blocks_entry(
             "assistant",
-            [{"type": "tool_use", "id": "a", "name": "Skill", "input": {"skill": "plan-docs"}}],
+            [{"type": "tool_use", "id": "a", "name": "Skill", "input": {"skill": "plan-conveyor"}}],
             timestamp="2026-09-08T09:06:44.390Z",
         ),
         blocks_entry(
             "assistant",
-            [{"type": "tool_use", "id": "b", "name": "Skill", "input": {"skill": "plan-docs"}}],
+            [{"type": "tool_use", "id": "b", "name": "Skill", "input": {"skill": "plan-conveyor"}}],
             timestamp="2026-09-08T11:00:00.000Z",
         ),
         blocks_entry(
@@ -1060,7 +1060,7 @@ def test_a_skills_load_instant_comes_from_the_sessions_own_skill_calls(monkeypat
     args = argparse.Namespace(since=None, session=None, job=None, expect=None)
 
     # The earliest call wins: a skill re-invoked later was already in context.
-    assert harvest._skill_load_instants(args) == {"plan-docs": "2026-09-08T09:06:44.390Z"}
+    assert harvest._skill_load_instants(args) == {"plan-conveyor": "2026-09-08T09:06:44.390Z"}
 
     # An explicit --since is the override, and overriding every row's baseline is legitimate.
     supplied = argparse.Namespace(since="2026-01-01T00:00:00Z", session=None, job=None, expect=None)
@@ -1364,7 +1364,7 @@ def test_a_small_repo_never_folds_on_share_alone(tmp_path):
 
 def test_a_session_that_changed_no_source_file_searches_nothing(tmp_path, monkeypatch):
     """Documents are excluded on purpose: a plan naming another plan is a citation, which
-    `plan-docs`' own `refs` answers, and searching for `.md` basenames would hit every retirement."""
+    `plan-conveyor`' own `refs` answers, and searching for `.md` basenames would hit every retirement."""
     monkeypatch.setattr(harvest, "projects_root", lambda: tmp_path)
     monkeypatch.setattr(harvest, "_stores", lambda: [])
     entries = [
@@ -2352,7 +2352,7 @@ def test_a_path_match_is_contact_with_a_file_not_authorship_of_a_commit(tmp_path
 
 def test_a_store_swept_as_a_repo_prints_its_unpushed_commits_once(capsys):
     """The store is a git repository, so a session that touched it gets both sections: `== repo ==`
-    for the git state and `== store ==` for what plan-docs means by it. Confirmed 2026-09-18: 32
+    for the git state and `== store ==` for what plan-conveyor means by it. Confirmed 2026-09-18: 32
     unpushed commits printed in both, about 64 lines of one report, and the length is set by the
     store's backlog rather than by the session. Both notes stay — each answers what the other does
     not — and the rows print in the section that timestamps them.
@@ -2906,7 +2906,7 @@ def _stranded_script(tmp_path: Path) -> Path:
 def test_the_checkout_is_detected_under_the_projects_root_whatever_its_layout(tmp_path, monkeypatch, layout):
     """The installed copy has no repo above it, so until 2026-09-05 the author's own machine could
     not answer step 0 from the install without `--checkout`. Detection walks the projects root
-    `plan-docs` is configured with, so a `<root>/<host>/<repo>` tree and a flat `<root>/<repo>` one
+    `plan-conveyor` is configured with, so a `<root>/<host>/<repo>` tree and a flat `<root>/<repo>` one
     both resolve, and no script names either layout."""
     projects = tmp_path / "projects"
     repo = _source_repo(projects, *layout)
@@ -2960,14 +2960,14 @@ def test_the_no_checkout_error_says_what_a_reader_does_with_skill_friction(tmp_p
 
 
 # --------------------------------------------------------------------------------------------
-# plan-docs' locations are read as configuration, never re-derived
+# plan-conveyor' locations are read as configuration, never re-derived
 
 
 def test_the_stores_and_projects_root_come_from_plan_docs_config(tmp_path, monkeypatch):
     """`harvest.py` used to carry its own `~/plans` and `~/plans-sensitive` defaults beside the ones
     in `plans.py` — two copies of a default that had to agree, with nothing keeping them in step.
     The contract is the config file and the variables, which both skills read."""
-    config = tmp_path / "plan-docs.toml"
+    config = tmp_path / "plan-conveyor.toml"
     config.write_text(
         f'projects_root = "{(tmp_path / "code").as_posix()}"\nstore = "{(tmp_path / "ideas").as_posix()}"\n',
         encoding="utf-8",
@@ -2984,7 +2984,7 @@ def test_the_stores_and_projects_root_come_from_plan_docs_config(tmp_path, monke
 
 
 def test_the_variable_beats_the_config_for_a_store(tmp_path, monkeypatch):
-    config = tmp_path / "plan-docs.toml"
+    config = tmp_path / "plan-conveyor.toml"
     config.write_text(f'store = "{(tmp_path / "ideas").as_posix()}"\n', encoding="utf-8")
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(config))
     monkeypatch.setenv("PLANS_HOME", str(tmp_path / "pinned"))

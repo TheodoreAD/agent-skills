@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Where a plan file goes, and the deterministic half of the plan-docs lifecycle.
+"""Where a plan file goes, and the deterministic half of the plan-conveyor lifecycle.
 
-`plan-docs` assumes a plan can be committed to the repo it describes. That holds for repos you own
+`plan-conveyor` assumes a plan can be committed to the repo it describes. That holds for repos you own
 and fails for employer and client repos, which is what the store is for: each repo's path mirrored
 under `$PLANS_HOME`, outside every working tree. Which of the two a given repo uses is configuration,
-never a guess — `~/.config/plan-docs/config.toml` (`%APPDATA%/plan-docs/config.toml` on Windows),
+never a guess — `~/.config/plan-conveyor/config.toml` (`%APPDATA%/plan-conveyor/config.toml` on Windows),
 written by `plans.py config init`.
 
 On a contractor device the store is two git repositories, split by how sensitive their contents are;
@@ -267,7 +267,7 @@ STATUS_GATES: dict[str, tuple[str, ...]] = {
 }
 
 CONFIG_SKELETON = """\
-# plan-docs storage routing — read by skills/plan-docs/scripts/plans.py.
+# plan-conveyor storage routing — read by skills/plan-conveyor/scripts/plans.py.
 #
 # A repo either keeps its plans in its own committed `plans/` directory ("repo"), or in the store
 # outside every working tree ("store"), or is mid-switch and reads both ("both"). Keys under
@@ -385,7 +385,7 @@ commit_limit_kb = 1024
 """
 
 STORE_README_COMMON = """\
-Plan files (the `plan-docs` skill's `plans/YYYY-MM-DD-topic.md` convention) for repos that cannot
+Plan files (the `plan-conveyor` skill's `plans/YYYY-MM-DD-topic.md` convention) for repos that cannot
 hold their own, and — in the shareable tier — for ideas that belong to no repo yet.
 
 Each repo's directory here mirrors its path under the projects root, so
@@ -629,6 +629,14 @@ class Config:
         return found
 
 
+CONFIG_DIR = "plan-conveyor"
+CONFIG_VAR = "PLAN_CONVEYOR_CONFIG"
+# Both halves of the pre-2026-09-27 name, kept because the directory and the variable were derived
+# from the skill's own name. `config_path` says why removing them is not free.
+LEGACY_CONFIG_DIR = "plan-docs"
+LEGACY_CONFIG_VAR = "PLAN_DOCS_CONFIG"
+
+
 def config_path() -> Path:
     """Explicit variable, then `$XDG_CONFIG_HOME`, then the platform default.
 
@@ -636,8 +644,17 @@ def config_path() -> Path:
     default below is per-platform. On Windows that default is `%APPDATA%`, the roaming half: this
     file is configuration a human edits and would want on their other machine, unlike a baseline or
     a cache. `~/.config` on Windows would be a directory nothing else on the machine looks in.
+
+    **The directory is named after the skill, so the 2026-09-27 rename off `plan-docs` moved it**,
+    and both the old directory and the old variable are still honoured. That is not politeness: the
+    writers below lay down `CONFIG_SKELETON` whenever this path is absent, so a rename without a
+    fallback would answer with an empty config instead of an error — dropping `[private] extra`,
+    whose terms are the ones a public-repo scan cannot derive from directory names. The scan would
+    then pass with a shorter term list and say nothing. The fallback reports the move rather than
+    performing it, because moving a file the user has not been told about is the same surprise in
+    the other direction.
     """
-    override = os.environ.get("PLAN_DOCS_CONFIG")
+    override = os.environ.get(CONFIG_VAR) or os.environ.get(LEGACY_CONFIG_VAR)
     if override:
         return Path(override).expanduser()
     xdg = os.environ.get("XDG_CONFIG_HOME")
@@ -648,7 +665,14 @@ def config_path() -> Path:
         base = Path(roaming) if roaming else Path.home() / "AppData" / "Roaming"
     else:
         base = Path.home() / ".config"
-    return base / "plan-docs" / "config.toml"
+    current = base / CONFIG_DIR / "config.toml"
+    if not current.exists():
+        legacy = base / LEGACY_CONFIG_DIR / "config.toml"
+        if legacy.exists():
+            print(f"note: reading {legacy}, the path this skill used before it was renamed.", file=sys.stderr)
+            print(f"      move it to {current} and the note stops.", file=sys.stderr)
+            return legacy
+    return current
 
 
 def _rule_from_mode(mode: object, write: object, key: str) -> Rule:
@@ -4662,8 +4686,8 @@ def cmd_pending(args: argparse.Namespace, ws: Workspace) -> int:
 # *exclude* it. A check that compared the sources against a file still holding them verbatim would
 # pass by construction — the failure it exists to catch would be invisible at exactly the moment it
 # was happening.
-CARRIED_BEGIN = "<!-- plan-docs:carried BEGIN — rewrite the content above, then delete this block -->"
-CARRIED_END = "<!-- plan-docs:carried END -->"
+CARRIED_BEGIN = "<!-- plan-conveyor:carried BEGIN — rewrite the content above, then delete this block -->"
+CARRIED_END = "<!-- plan-conveyor:carried END -->"
 
 # The escape hatch, as a section rather than a flag: anything named here counts as accounted for.
 # Same shape as `## Migrated to` in the retirement procedure, so it reads as the convention rather
@@ -6575,7 +6599,7 @@ def build_parser() -> argparse.ArgumentParser:
     listing.add_argument("--json", action="store_true")
     listing.set_defaults(func=cmd_list)
 
-    tags = add("tags", "anchored search for the five plan-docs tags")
+    tags = add("tags", "anchored search for the five plan-conveyor tags")
     tags.add_argument("--tag", choices=TAG_NAMES, help="one tag (default: all five)")
     tags.add_argument("--file", help="one plan, by path or bare filename (default: all)")
     tags.add_argument("--json", action="store_true")

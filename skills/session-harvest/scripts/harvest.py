@@ -97,7 +97,7 @@ NETSTAT_WINDOWS_ARGV = ("netstat", "-ano")
 
 # Skills a harvest leans on by default, so `skills-state` with no arguments still answers step 0's
 # question. Anything else this run used is added with --skill.
-DEFAULT_SKILLS = ("session-harvest", "plan-docs", "session-bash-audit")
+DEFAULT_SKILLS = ("session-harvest", "plan-conveyor", "session-bash-audit")
 
 # A process worth reporting is one that outlives the turn that started it. These two say what kind
 # of survivor it is, which is the difference between "still working" and "polling forever".
@@ -1078,16 +1078,21 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 
 
 def plan_docs_config() -> dict[str, Any]:
-    """`plan-docs`' config, read as a contract rather than through `plans.py`.
+    """`plan-conveyor`' config, read as a contract rather than through `plans.py`.
 
     Two independently installed skills share a location by both reading the same configuration —
-    the environment variables and `~/.config/plan-docs/config.toml` — never by one importing the
+    the environment variables and `~/.config/plan-conveyor/config.toml` — never by one importing the
     other, which would hard-code the install hub and break whenever one is installed without the
-    other. Resolution copies `plans.py`'s three lines: `$PLAN_DOCS_CONFIG`, then `$XDG_CONFIG_HOME`,
-    then the platform default. An absent or unreadable file is an empty mapping, so every default
-    below still applies.
+    other. Resolution copies `plans.py`'s lines: `$PLAN_CONVEYOR_CONFIG`, then the pre-rename
+    `$PLAN_DOCS_CONFIG`, then `$XDG_CONFIG_HOME`, then the platform default, and finally the
+    pre-rename directory if the current one holds nothing. An absent or unreadable file is an empty
+    mapping, so every default below still applies.
+
+    The legacy pair is honoured here for the same reason as in `plans.py`, and independently of it:
+    this reader is deliberately not an import, so a fallback that lived only over there would leave
+    these two skills resolving different files on a machine that had not migrated.
     """
-    override = os.environ.get("PLAN_DOCS_CONFIG")
+    override = os.environ.get("PLAN_CONVEYOR_CONFIG") or os.environ.get("PLAN_DOCS_CONFIG")
     if override:
         path = Path(override).expanduser()
     else:
@@ -1099,7 +1104,11 @@ def plan_docs_config() -> dict[str, Any]:
             base = Path(roaming) if roaming else Path.home() / "AppData" / "Roaming"
         else:
             base = Path.home() / ".config"
-        path = base / "plan-docs" / "config.toml"
+        path = base / "plan-conveyor" / "config.toml"
+        if not path.exists():
+            legacy = base / "plan-docs" / "config.toml"
+            if legacy.exists():
+                path = legacy
     try:
         return tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
@@ -1107,7 +1116,7 @@ def plan_docs_config() -> dict[str, Any]:
 
 
 def projects_root() -> Path:
-    """Where this machine keeps its repos, from `plan-docs`' config, else that skill's own default."""
+    """Where this machine keeps its repos, from `plan-conveyor`' config, else that skill's own default."""
     raw = plan_docs_config().get("projects_root")
     return Path(str(raw) if raw else "~/projects").expanduser()
 
@@ -1149,7 +1158,7 @@ def find_checkout(explicit: str | None, start: Path | None = None, name: str = "
     """The skills checkout: what was passed, else `$SESSION_HARVEST_CHECKOUT`, else this script's
     own repo, else the one checkout under the projects root that holds this skill's source.
 
-    The last tier is detection, not a guess: it walks the projects root `plan-docs` is configured
+    The last tier is detection, not a guess: it walks the projects root `plan-conveyor` is configured
     with, so it finds the source wherever the repos are laid out and names nothing about any one
     machine. Until 2026-09-03 this carried a hard-coded `~/projects/<owner>/<repo>` fallback — the
     author's own checkout path, in code shipped to strangers — and until 2026-09-05 it then had no
@@ -1556,7 +1565,7 @@ def _note_help_probe(state: dict[str, Any]) -> None:
     mid-session and the copy held in context is on neither side of any diff. The step prescribes the
     full re-read there. For a skill whose commands are a script, `--help` on the subcommands the
     session actually called answers the narrower question — did those calls mean what was assumed,
-    and is there a better one now — in a few lines. Confirmed 2026-09-26 on `plan-docs`, ten commits
+    and is there a better one now — in a few lines. Confirmed 2026-09-26 on `plan-conveyor`, ten commits
     behind a held copy of ~700 lines: two `--help` calls showed `commit -m` unchanged and two new
     surfaces (`--body`, `push`). It says nothing about prose, so the re-read stays the fallback.
 
@@ -1578,9 +1587,9 @@ def _parsed_moves(log: str, rel: str) -> list[tuple[str, frozenset[str]]]:
     """Each moved commit's header, with the parts of the skill it touched: `SKILL.md`, `scripts/`.
 
     **The list used to be flattened to the skill, and the half that mattered was the quiet one.**
-    Confirmed 2026-09-13 in a `power-user-linux-setup` harvest: `plan-docs` showed seven commits
+    Confirmed 2026-09-13 in a `power-user-linux-setup` harvest: `plan-conveyor` showed seven commits
     under a line naming `SKILL.md` and its remedy, re-read it, while that session had never loaded
-    `plan-docs`' `SKILL.md` and had run `plans.py` eight times. Four of the seven touched `scripts/`,
+    `plan-conveyor`' `SKILL.md` and had run `plans.py` eight times. Four of the seven touched `scripts/`,
     which is the code an earlier call may have run in its old form, and finding that out took a
     hand-written `git log --name-only` against another repo. The verdict already compares install
     and checkout per subdirectory; only this history was not split.
@@ -1606,7 +1615,7 @@ def cmd_skills_state(args: argparse.Namespace, runner: Runner) -> dict[str, Any]
     checkout = find_checkout(args.checkout)
     # `--skill` ADDS to the defaults rather than replacing them, because the skill whose staleness
     # matters most is this one, and naming any other must not be what drops it. Confirmed
-    # 2026-09-05: a harvest passed `--skill plan-docs --skill invoke-task-conventions-taudelta`, got two
+    # 2026-09-05: a harvest passed `--skill plan-conveyor --skill invoke-task-conventions-taudelta`, got two
     # clean rows, and only a second call naming session-harvest found that its SKILL.md had moved
     # after session start with two unpushed commits — the finding step 0 exists for. `--all` is the
     # replace-everything case and stays one.
@@ -2315,16 +2324,16 @@ def _has_provenance(entry: Path) -> bool:
 
 
 def find_plans_py(checkout: Path | None) -> Path | None:
-    candidates = [INSTALLED_SKILLS / "plan-docs" / "scripts" / "plans.py"]
+    candidates = [INSTALLED_SKILLS / "plan-conveyor" / "scripts" / "plans.py"]
     if checkout:
-        candidates.append(checkout / "skills" / "plan-docs" / "scripts" / "plans.py")
+        candidates.append(checkout / "skills" / "plan-conveyor" / "scripts" / "plans.py")
     return next((c for c in candidates if c.is_file()), None)
 
 
 def absorb_queue(runner: Runner, plans_py: Path | None, repo: Path) -> dict[str, Any]:
     """Plans filed *for* this repo that nobody has taken — read-only, never `--apply`.
 
-    Run here even though `plan-docs` tells every session to run it first: the queue refills for as
+    Run here even though `plan-conveyor` tells every session to run it first: the queue refills for as
     long as the session runs, because the sessions filing into it run concurrently. Measured
     2026-08-30 in a session that followed the first-call rule correctly — 4 plans at start, 4 more
     two hours in, and one at five hours that was a credential exposure.
@@ -2345,7 +2354,7 @@ DEPENDS_ON_RE = re.compile(r"^depends_on:\s*(.+)$")
 
 # Files whose basename is specific enough to be worth searching for, and which a plan would name
 # because it describes a mechanism rather than because it cites a document. `.md` is deliberately
-# absent: a plan naming another plan is a citation, which `plan-docs`' own `refs` already answers.
+# absent: a plan naming another plan is a citation, which `plan-conveyor`' own `refs` already answers.
 SOURCE_SUFFIXES = (".py", ".sh", ".toml", ".yml", ".yaml", ".json", ".cfg", ".ini", ".ts", ".js", ".rs", ".go")
 
 
@@ -2947,7 +2956,7 @@ def _is_scratch(root: Path) -> bool:
 
 
 def _stores() -> list[tuple[str, Path]]:
-    """The two plans stores as `plan-docs` resolves them — variable, then its config, then its
+    """The two plans stores as `plan-conveyor` resolves them — variable, then its config, then its
     default — and the research library. Two readers of one source of truth, not two defaults."""
     cfg = plan_docs_config()
     store = Path(os.environ.get("PLANS_HOME") or str(cfg.get("store") or "~/plans")).expanduser()
@@ -3366,7 +3375,7 @@ def _print_store_rows(state: dict[str, Any], key: str, listed_as_repo: bool) -> 
     if not rows:
         return
     if key == "dirty":
-        print("    ^ every other session is in plan-docs' add-a-new-file fallback until this is")
+        print("    ^ every other session is in plan-conveyor' add-a-new-file fallback until this is")
         print("      committed — a live concurrency cost, and the urgent half of this row")
     if key == "unpushed":
         # The cost, printed rather than left to the reader — because the one run that had to

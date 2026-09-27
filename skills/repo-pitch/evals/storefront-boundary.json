@@ -32,7 +32,7 @@
     { "prompt": "run the test suite and tell me what fails", "expect": null },
 
     { "prompt": "measure how this session has been using the Bash tool", "expect": "session-bash-audit" },
-    { "prompt": "file a plan for the other repo about its stale pins", "expect": "plan-docs" },
+    { "prompt": "file a plan for the other repo about its stale pins", "expect": "plan-conveyor" },
     { "prompt": "anything worth saving before I compact this session?", "expect": "session-harvest" }
   ]
 }

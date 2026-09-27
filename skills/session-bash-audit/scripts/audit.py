@@ -308,7 +308,7 @@ def _store_write(cmd: str) -> bool:
     """A mutating `git -C <plans store>` where `plans.py commit` was owed.
 
     `git-C-mutating` already counts every cross-repo mutation, but it cannot say which are this one,
-    and this one is not really a cross-repo lapse: `plan-docs` sends every session to that directory
+    and this one is not really a cross-repo lapse: `plan-conveyor` sends every session to that directory
     and the deviations were argued in their own commit messages, on the correct reasoning that a
     pathspec commit does not ship the index. The cost that made the argument reasonable — one commit
     per file — is gone as of 2026-09-09, so a hit after that date is a genuine miss rather than a

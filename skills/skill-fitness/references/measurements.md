@@ -183,7 +183,7 @@ The choice of similarity measure is not what limits the signal; corpus size is.
    The best available explanation for `python-refactor-audit`'s flagship case missing five of six
    live probes, once truncation and vocabulary had both been ruled out for it — and it is wrong.
    Tested with three matched pairs differing only in breadth, one per high-usage skill, at three
-   runs each (`evals/broad-request-shape.json`): the broad halves for `plan-docs` and
+   runs each (`evals/broad-request-shape.json`): the broad halves for `plan-conveyor` and
    `session-bash-audit` fired **3/3 each**, as did their narrow halves. Breadth is not the variable.
 
    **What the same run did find is the opposite shape**: "Should this return a bare tuple or a
@@ -291,7 +291,7 @@ harness can inject the skill body directly as a command message instead. Measure
 
 | skill              | `Skill` tool calls | `<command-name>` markers |
 | ------------------ | ------------------ | ------------------------ |
-| `plan-docs`        | 70                 | 15                       |
+| `plan-conveyor`    | 70                 | 15                       |
 | `session-harvest`  | 13                 | **87**                   |
 | `research-library` | 12                 | 0                        |
 
@@ -407,8 +407,8 @@ Two rejected shapes, each of which looks cheaper:
 
 **The verdict on a skill depended on what else the reader happened to have installed**, which is a
 second and independent argument that `portability` was not one measurement. Reproduced under a fake
-`HOME` on 2026-09-02: `plan-docs` fell from 1 finding to 0, not because anything in it changed, but
-because a repo name left the derived author vocabulary when the skill that links it was absent.
+`HOME` on 2026-09-02: `plan-conveyor` fell from 1 finding to 0, not because anything in it changed,
+but because a repo name left the derived author vocabulary when the skill that links it was absent.
 Tolerable in an author's audit of a whole corpus; indefensible in a reader-facing report.
 
 ### Why `trigger.py` refuses, when everything else here only ranks

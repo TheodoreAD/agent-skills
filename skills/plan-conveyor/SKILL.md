@@ -1,5 +1,5 @@
 ---
-name: plan-docs
+name: plan-conveyor
 description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, consolidating a session's plans and loose notes into one plan without loss, migrating a legacy PLAN.md/DESIGN.md onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME); an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
 compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard; any other harness exports PLAN_DOCS_SESSION_REPO instead. No network access.
 ---
@@ -19,11 +19,11 @@ case none of them solves cheaply — is
 ## What this skill reads, runs and writes
 
 - **Reads**: the session repo's `plans/`, both plans stores (`$PLANS_HOME`, default `~/plans`, and
-  its sensitive sibling), its own config (`$PLAN_DOCS_CONFIG`, else
-  `~/.config/plan-docs/config.toml`, else `%APPDATA%\plan-docs\` on Windows), the directory names
-  under `projects_root` (to derive the private terms `scan` gates on — names only, never contents),
-  git history of the session repo and the stores, and, on Claude Code, the transcript path named by
-  `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
+  its sensitive sibling), its own config (`$PLAN_CONVEYOR_CONFIG`, else
+  `~/.config/plan-conveyor/config.toml`, else `%APPDATA%\plan-conveyor\` on Windows), the directory
+  names under `projects_root` (to derive the private terms `scan` gates on — names only, never
+  contents), git history of the session repo and the stores, and, on Claude Code, the transcript
+  path named by `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
 - **Runs**: `git` — read commands everywhere. It commits through three commands and no others:
   `commit`, `rename --commit`, and `migrate finish --delete-sources`. Each commits in the repository
   the named paths are already in, which is the store for a store-held plan and the session repo for
@@ -59,7 +59,7 @@ calls — only the working directory does — so a `P=…` assignment is empty b
 every invocation below is the whole path:
 
 ```shell
-python3 ~/.agents/skills/plan-docs/scripts/plans.py list
+python3 ~/.agents/skills/plan-conveyor/scripts/plans.py list
 ```
 
 **`status:` and `updated:` are `set-status`' output. They are never lines you type.** This is a rule
@@ -384,7 +384,15 @@ own_accounts = ["your-account"] # unset = no repo's ownership is checked at all
 `$PLANS_HOME` (default `~/plans`) is the shareable store and `$PLANS_SENSITIVE_HOME` (default
 `<store>-sensitive`) the other half — pinning the first pins both, since the second derives from it;
 `projects_root` (default `~/projects`) is the root the mirrored paths are relative to;
-`$PLAN_DOCS_CONFIG` overrides the config location.
+`$PLAN_CONVEYOR_CONFIG` overrides the config location.
+
+**This skill was called `plan-docs` until 2026-09-27**, and both halves of that name were derived
+from it: the config directory and the override variable. So `~/.config/plan-docs/config.toml` is
+still read when the current path holds nothing, `$PLAN_DOCS_CONFIG` is still honoured one step below
+the current variable, and a run that falls back prints where the file is and where to move it. The
+fallback exists because the writers lay down a skeleton over an absent config: without it the first
+run after the rename would answer with an empty config instead of an error, dropping the
+`[private] extra` terms that `scan` cannot derive from directory names.
 
 **The config is per-machine, not per-user, and is deliberately not version-controlled.** It maps the
 repos that happen to be cloned on _this_ box to routes, so it says nothing meaningful anywhere else
@@ -734,7 +742,7 @@ idea is exactly what it cannot catch. The sensitive tier has no remote, so there
 
 ### Absorbing what was filed for this repo
 
-**On your first plan-docs call in a session, run `absorb` before anything else:**
+**On your first plan-conveyor call in a session, run `absorb` before anything else:**
 
 ```shell
 python3 <path> absorb            # report only — silent when nothing is waiting and nothing is owed

@@ -717,6 +717,81 @@ def test_main_reports_a_bad_name_as_the_callers_error(capsys):
 
 
 # ------------------------------------------------------------------------------------------------
+# `github <owner/repo>`: a repo judged on its own. `ripgrep-releases.json` is the real releases list
+# and `ripgrep-repo.json` the repo, both recorded 2026-09-27 and trimmed to the fields read.
+
+
+def ripgrep_transport():
+    return FakeTransport(
+        github_payloads={
+            "repos/BurntSushi/ripgrep/releases/latest": fixture("ripgrep-release"),
+            "repos/BurntSushi/ripgrep/releases?": fixture("ripgrep-releases"),
+            "repos/BurntSushi/ripgrep/commits": [{"author": {"login": "BurntSushi"}}] * 3,
+            "repos/BurntSushi/ripgrep/issues": fixture("click-issues"),
+            "repos/BurntSushi/ripgrep": fixture("ripgrep-repo"),
+        }
+    )
+
+
+def test_github_reads_the_stable_cadence_from_the_releases_list():
+    """Real capture: 75 releases, none drafts or pre-releases, the newest 15.2.0 on 2026-07-15."""
+    result = health.gather_github(ripgrep_transport(), "BurntSushi/ripgrep", now=RELEASES_CAPTURED)
+    listing = result.releases
+    assert listing.read == 75
+    assert listing.truncated is False
+    assert listing.cadence.releases == 75
+    assert listing.cadence.last_release == "2026-07-15"
+    assert listing.cadence.in_last_year == 3  # 15.0.0, 15.1.0 and 15.2.0
+
+
+def test_github_carries_the_maintenance_axis_and_the_latest_releases_assets():
+    transport = ripgrep_transport()
+    result = health.gather_github(transport, "BurntSushi/ripgrep", now=RELEASES_CAPTURED)
+    assert result.repository is not None
+    assert result.repository.stars == 68650
+    assert result.contributors is not None
+    assert result.contributors.humans == [("BurntSushi", 3)]
+    assert result.latest.version == "15.2.0"
+    assert {asset.libc for asset in result.latest.linux_x86_64} == {"musl", "unspecified"}
+    rendered = health.render_github(result)
+    assert "75 stable GitHub releases" in rendered
+    assert "ships (BurntSushi/ripgrep, latest stable release)" in rendered
+    assert "ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz" in rendered
+    assert "not scored       68650 stars" in rendered
+
+
+def test_a_release_flagged_or_spelled_as_a_pre_release_is_off_the_stable_line_and_drafts_are_skipped():
+    releases = [
+        {"tag_name": "v2.0.0-rc.1", "prerelease": False, "published_at": "2026-09-01T00:00:00Z"},
+        {"tag_name": "v1.9.0-nightly", "prerelease": True, "published_at": "2026-08-01T00:00:00Z"},
+        {"tag_name": "v1.8.0", "prerelease": False, "published_at": "2026-07-01T00:00:00Z"},
+        {"tag_name": "v3.0.0", "draft": True, "published_at": None},
+    ]
+    transport = FakeTransport(github_payloads={"repos/o/r/releases?": releases})
+    listing = health.release_list(transport, "o/r", now=RELEASES_CAPTURED)
+    assert listing.cadence.releases == 1
+    assert listing.cadence.prereleases == 2
+    assert listing.drafts == 1
+
+
+@pytest.mark.parametrize(
+    ("tag", "expected"),
+    [("@biomejs/biome@2.5.14", "2.5.14"), ("@biomejs/js-api@6.0.0", "6.0.0")],
+)
+def test_a_monorepo_package_tag_is_read_as_its_version(tag, expected):
+    """Live 2026-09-27: biome tags every release `@biomejs/biome@<version>`, changesets' form."""
+    assert health.tag_version(tag) == expected
+
+
+def test_the_github_subcommand_runs_end_to_end_and_rejects_a_non_repo(capsys):
+    assert health.main(["github", "BurntSushi/ripgrep", "--json"], transport=ripgrep_transport()) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["latest"]["version"] == "15.2.0"
+    assert health.main(["github", "ripgrep"], transport=ripgrep_transport()) == 1
+    assert "is not owner/repo" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------------------------------------
 # The command line: the source is a required subcommand, and the retired form says so loudly
 
 

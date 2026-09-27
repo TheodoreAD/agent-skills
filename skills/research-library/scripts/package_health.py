@@ -56,7 +56,8 @@ import subprocess
 import urllib.error
 import urllib.request
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
@@ -194,7 +195,13 @@ def is_prerelease(version: str) -> bool:
     return bool(PRERELEASE_RE.search(version))
 
 
-def cadence(dates: dict[str, datetime], yanked: list[str], *, now: datetime | None = None) -> Cadence:
+def cadence(
+    dates: dict[str, datetime],
+    yanked: list[str],
+    *,
+    now: datetime | None = None,
+    prerelease: Callable[[str], bool] = is_prerelease,
+) -> Cadence:
     """Release rhythm over the **stable** line, with the pre-release line counted beside it.
 
     [PITFALL] PyPI's `releases` map holds pre-releases and dev builds alongside real ones, and a
@@ -207,10 +214,13 @@ def cadence(dates: dict[str, datetime], yanked: list[str], *, now: datetime | No
     Gaps are taken over the most recent ten releases rather than the whole history: a project's
     early rhythm says nothing about whether anyone is looking after it now, and a long-lived project
     with a slow first year has its median dragged by history nobody depends on.
+
+    `prerelease` decides which line a version is on. PyPI's is PEP 440 spelling; a registry or a
+    GitHub release list that flags pre-releases itself passes its own flag in.
     """
     now = now or datetime.now(UTC)
-    pre = sorted(stamp for version, stamp in dates.items() if is_prerelease(version))
-    stable = sorted(stamp for version, stamp in dates.items() if not is_prerelease(version))
+    pre = sorted(stamp for version, stamp in dates.items() if prerelease(version))
+    stable = sorted(stamp for version, stamp in dates.items() if not prerelease(version))
     # A project that has only ever shipped pre-releases is measured on them, and says so — the
     # alternative is reporting zero releases for something that plainly has some.
     ordered = stable or pre
@@ -559,6 +569,7 @@ class Repository:
     pushed: str | None
     days_since_push: int | None
     default_branch: str | None
+    description: str | None = None
 
 
 def repository(payload: dict[str, Any], *, now: datetime | None = None) -> Repository:
@@ -571,6 +582,7 @@ def repository(payload: dict[str, Any], *, now: datetime | None = None) -> Repos
     support backlog, so `has_issues` is carried alongside it and the report says which it is.
     """
     now = now or datetime.now(UTC)
+    payload = payload if isinstance(payload, dict) else {}
     pushed = _parse_stamp(payload.get("pushed_at"))
     licence = (payload.get("license") or {}).get("spdx_id")
     return Repository(
@@ -585,6 +597,7 @@ def repository(payload: dict[str, Any], *, now: datetime | None = None) -> Repos
         pushed=_date_only(payload.get("pushed_at")),
         days_since_push=(now - pushed).days if pushed else None,
         default_branch=payload.get("default_branch"),
+        description=payload.get("description"),
     )
 
 
@@ -614,7 +627,23 @@ class Asset:
 
 
 @dataclass(frozen=True)
-class Upstream:
+class LatestRelease:
+    """A repo's latest stable GitHub release: its version, its date and this machine's assets."""
+
+    repo: str
+    error: str | None = None
+    tag: str | None = None
+    version: str | None = None
+    published: str | None = None
+    published_at: str | None = None
+    days_since_release: int | None = None
+    assets_total: int = 0
+    linux_x86_64: list[Asset] = field(default_factory=list)
+    checksum_manifests: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Upstream(LatestRelease):
     """The upstream's latest stable GitHub release, set against the wrapper that repackages it.
 
     `wrapper_match` is found by spelling only — the upstream version exactly, or followed by a
@@ -624,22 +653,19 @@ class Upstream:
     versions printed beside it.
     """
 
-    repo: str
-    error: str | None = None
-    tag: str | None = None
-    version: str | None = None
-    published: str | None = None
-    days_since_release: int | None = None
     wrapper_match: str | None = None
     wrapper_match_date: str | None = None
     lag_days: int | None = None
-    assets_total: int = 0
-    linux_x86_64: list[Asset] = field(default_factory=list)
-    checksum_manifests: list[str] = field(default_factory=list)
 
 
 def tag_version(tag: str) -> str:
-    """`v0.11.0` → `0.11.0`, `ripgrep-15.2.0` → `15.2.0`, `15.2.0` unchanged."""
+    """`v0.11.0` → `0.11.0`, `ripgrep-15.2.0` → `15.2.0`, `@biomejs/biome@2.5.14` → `2.5.14`.
+
+    The last spelling is a monorepo's per-package tag, the form changesets writes; everything up to
+    the last `@` is the package name.
+    """
+    if "@" in tag:
+        tag = tag.rsplit("@", 1)[1]
     return TAG_PREFIX_RE.sub("", tag, count=1)
 
 
@@ -697,40 +723,102 @@ def release_assets(release: dict[str, Any]) -> tuple[list[Asset], list[str], int
     return chosen, manifests, len(raw)
 
 
-def upstream(
-    transport: Transport, repo: str, wrapper_dates: dict[str, datetime], *, now: datetime | None = None
-) -> Upstream:
+def latest_release(transport: Transport, repo: str, *, now: datetime | None = None) -> LatestRelease:
     """Read `repos/<repo>/releases/latest`, which GitHub defines as the newest non-draft, non-prerelease.
 
     A repo that publishes tags and no releases answers 404 there. That is a finding about the
-    upstream rather than a failure of the report, so it is carried as `error` and the rest of the
+    repo rather than a failure of the report, so it is carried as `error` and the rest of the
     report still prints.
     """
     now = now or datetime.now(UTC)
     try:
         release = transport.github(f"repos/{repo}/releases/latest")
     except HealthError as error:
-        return Upstream(repo=repo, error=str(error))
+        return LatestRelease(repo=repo, error=str(error))
     if not isinstance(release, dict):
-        return Upstream(repo=repo, error="releases/latest returned a non-object")
+        return LatestRelease(repo=repo, error="releases/latest returned a non-object")
     tag = str(release.get("tag_name") or "")
-    version = tag_version(tag)
     published = _parse_stamp(release.get("published_at") or release.get("created_at"))
-    match = wrapper_match(version, wrapper_dates) if version else None
-    match_date = wrapper_dates.get(match) if match else None
     assets, manifests, total = release_assets(release)
-    return Upstream(
+    return LatestRelease(
         repo=repo,
         tag=tag,
-        version=version,
+        version=tag_version(tag),
         published=published.date().isoformat() if published else None,
+        published_at=published.isoformat() if published else None,
         days_since_release=(now - published).days if published else None,
-        wrapper_match=match,
-        wrapper_match_date=match_date.date().isoformat() if match_date else None,
-        lag_days=(match_date - published).days if match_date and published else None,
         assets_total=total,
         linux_x86_64=assets,
         checksum_manifests=manifests,
+    )
+
+
+def upstream(
+    transport: Transport, repo: str, wrapper_dates: dict[str, datetime], *, now: datetime | None = None
+) -> Upstream:
+    """The upstream's latest release, plus the wrapper version spelled to match it and the lag."""
+    base = latest_release(transport, repo, now=now)
+    carried = {spec.name: getattr(base, spec.name) for spec in fields(base)}
+    if base.error or not base.version:
+        return Upstream(**carried)
+    match = wrapper_match(base.version, wrapper_dates)
+    match_date = wrapper_dates.get(match) if match else None
+    # `published` is cut to a date for the report; the lag is measured from the full stamp.
+    published = _parse_stamp(base.published_at)
+    return Upstream(
+        **carried,
+        wrapper_match=match,
+        wrapper_match_date=match_date.date().isoformat() if match_date else None,
+        lag_days=(match_date - published).days if match_date and published else None,
+    )
+
+
+RELEASE_PAGE_SIZE = 100
+
+
+@dataclass(frozen=True)
+class ReleaseList:
+    """The GitHub releases list, read as a cadence: what a registry's version history is elsewhere."""
+
+    cadence: Cadence
+    read: int
+    drafts: int
+    truncated: bool
+
+
+def github_release_dates(releases: list[dict[str, Any]]) -> tuple[dict[str, datetime], set[str]]:
+    """One date per published release, and the tags GitHub itself flags as pre-releases.
+
+    Drafts are skipped: they are unpublished, and GitHub returns them only to a caller who can push.
+    """
+    dates: dict[str, datetime] = {}
+    flagged: set[str] = set()
+    for release in releases:
+        if not isinstance(release, dict) or release.get("draft"):
+            continue
+        tag = str(release.get("tag_name") or "")
+        stamp = _parse_stamp(release.get("published_at") or release.get("created_at"))
+        if tag and stamp:
+            dates[tag] = stamp
+            if release.get("prerelease"):
+                flagged.add(tag)
+    return dates, flagged
+
+
+def release_list(transport: Transport, repo: str, *, now: datetime | None = None) -> ReleaseList:
+    """The stable-release cadence over the newest `RELEASE_PAGE_SIZE` releases, one request.
+
+    A release is a pre-release when GitHub flags it **or** its tag is spelled as one: projects that
+    publish `v2.0.0-rc.1` without ticking the box are common, and the flag alone would count them.
+    """
+    releases = transport.github(f"repos/{repo}/releases?per_page={RELEASE_PAGE_SIZE}")
+    releases = releases if isinstance(releases, list) else []
+    dates, flagged = github_release_dates(releases)
+    return ReleaseList(
+        cadence=cadence(dates, [], now=now, prerelease=lambda tag: tag in flagged or is_prerelease(tag_version(tag))),
+        read=len(releases),
+        drafts=sum(1 for release in releases if isinstance(release, dict) and release.get("draft")),
+        truncated=len(releases) >= RELEASE_PAGE_SIZE,
     )
 
 
@@ -902,6 +990,32 @@ def gather(
     )
 
 
+@dataclass(frozen=True)
+class GithubHealth:
+    """A repo judged on its own, for tools with no registry: Go and Rust binaries shipped as assets."""
+
+    repo: str
+    repository: Repository | None
+    contributors: Contributors | None
+    issues: IssueSample | None
+    releases: ReleaseList
+    latest: LatestRelease
+
+
+def gather_github(transport: Transport, repo: str, *, now: datetime | None = None) -> GithubHealth:
+    """The maintenance axis, the stable-release cadence, and the latest release's Linux assets."""
+    now = now or datetime.now(UTC)
+    repo_facts, people, issues = maintenance(transport, repo, now=now)
+    return GithubHealth(
+        repo=repo,
+        repository=repo_facts,
+        contributors=people,
+        issues=issues,
+        releases=release_list(transport, repo, now=now),
+        latest=latest_release(transport, repo, now=now),
+    )
+
+
 def maintenance(
     transport: Transport, repo: str | None, *, now: datetime
 ) -> tuple[Repository | None, Contributors | None, IssueSample | None]:
@@ -940,21 +1054,9 @@ def render(health: Health) -> str:
     if health.requires_python:
         lines.append(f"requires-python: {health.requires_python}")
 
-    pace = health.cadence
     lines.append("")
-    kind = "stable" if pace.stable_only else "PRE-RELEASE ONLY — this project has shipped no stable"
     lines.append("maintenance")
-    lines.append(f"  releases         {pace.releases} {kind}, {pace.in_last_year} in the last year")
-    lines.append(f"  first / last     {pace.first_release or '?'} … {pace.last_release or '?'}")
-    lines.append(f"  median gap       {_or_unknown(pace.median_gap_days, 'd (last 10 releases)')}")
-    lines.append(f"  since last       {_or_unknown(pace.days_since_last, 'd')}")
-    if pace.prereleases and pace.stable_only:
-        lines.append(
-            f"  pre-releases     {pace.prereleases}, latest {pace.last_prerelease}"
-            "   — not counted above; a dev line moving is not the stable line moving"
-        )
-    if pace.yanked:
-        lines.append(f"  yanked           {len(pace.yanked)}: {', '.join(pace.yanked[:6])}")
+    lines.extend(_cadence_lines(health.cadence))
     lines.extend(_github_lines(health.repo_choice, health.repository, health.contributors, health.issues))
 
     names = ", ".join(requirement_names(health.runtime_requirements)) or "none"
@@ -986,10 +1088,51 @@ def render(health: Health) -> str:
         if clone.shallow:
             lines.append("  shallow clone    constraint archaeology needs `git fetch --deepen <n>` first")
 
-    lines.append("")
-    lines.append("Judge this against the bar before comparing it to anything. See the skill for the")
-    lines.append("traps these numbers hide: a version cap is not a cost until its historical lag says so.")
+    lines.extend(CLOSING)
     return "\n".join(lines)
+
+
+CLOSING = (
+    "",
+    "Judge this against the bar before comparing it to anything. See the skill for the",
+    "traps these numbers hide: a version cap is not a cost until its historical lag says so.",
+)
+
+
+def render_github(health: GithubHealth) -> str:
+    repo = health.repository
+    lines = [f"{health.repo}  —  {(repo.description if repo else None) or 'no description'}"]
+    lines.append("")
+    lines.append("maintenance")
+    lines.extend(_cadence_lines(health.releases.cadence, noun="GitHub releases"))
+    listing = health.releases
+    if listing.truncated:
+        lines.append(f"  releases read    the newest {listing.read} only; older history is not counted")
+    if listing.read == 0:
+        lines.append("  releases read    none — a repo that publishes tags only has no release list")
+    lines.extend(_github_lines(None, health.repository, health.contributors, health.issues))
+    lines.append("")
+    lines.extend(_latest_release_lines(health.latest, f"ships ({health.latest.repo}, latest stable release)"))
+    lines.extend(CLOSING)
+    return "\n".join(lines)
+
+
+def _cadence_lines(pace: Cadence, noun: str = "releases") -> list[str]:
+    kind = "stable" if pace.stable_only else "PRE-RELEASE ONLY — this project has shipped no stable"
+    lines = [
+        f"  releases         {pace.releases} {kind} {noun}, {pace.in_last_year} in the last year",
+        f"  first / last     {pace.first_release or '?'} … {pace.last_release or '?'}",
+        f"  median gap       {_or_unknown(pace.median_gap_days, 'd (last 10 releases)')}",
+        f"  since last       {_or_unknown(pace.days_since_last, 'd')}",
+    ]
+    if pace.prereleases and pace.stable_only:
+        lines.append(
+            f"  pre-releases     {pace.prereleases}, latest {pace.last_prerelease}"
+            "   — not counted above; a dev line moving is not the stable line moving"
+        )
+    if pace.yanked:
+        lines.append(f"  yanked           {len(pace.yanked)}: {', '.join(pace.yanked[:6])}")
+    return lines
 
 
 def _github_lines(
@@ -1067,27 +1210,35 @@ def _release_file_lines(ships: ReleaseFiles) -> list[str]:
 
 
 def _upstream_lines(up: Upstream, wrapper_version: str | None) -> list[str]:
-    lines = [f"upstream ({up.repo})"]
+    lines = _latest_release_lines(up, f"upstream ({up.repo})")
     if up.error:
-        lines.append(f"  latest release   none readable — {up.error}")
-        lines.append("                   (a repo that publishes tags only has no releases/latest)")
         return lines
-    lines.append(
-        f"  latest release   {up.tag} ({up.version}), {up.published or '?'}"
-        f" — {_or_unknown(up.days_since_release, 'd ago')}"
-    )
     if up.wrapper_match:
-        lines.append(
+        tracks = (
             f"  wrapper tracks   {up.wrapper_match} on {up.wrapper_match_date or '?'}, "
             f"{_or_unknown(up.lag_days, 'd')} after upstream"
         )
     else:
-        lines.append(
+        tracks = (
             f"  wrapper tracks   NO MATCHING WRAPPER RELEASE for {up.version}; wrapper's latest stable is"
             f" {wrapper_version or '?'} — compare the two by hand"
         )
-    lines.append(f"  linux x86_64     {len(up.linux_x86_64)} of {up.assets_total} assets")
-    for asset in up.linux_x86_64:
+    lines.insert(2, tracks)
+    return lines
+
+
+def _latest_release_lines(release: LatestRelease, heading: str) -> list[str]:
+    lines = [heading]
+    if release.error:
+        lines.append(f"  latest release   none readable — {release.error}")
+        lines.append("                   (a repo that publishes tags only has no releases/latest)")
+        return lines
+    lines.append(
+        f"  latest release   {release.tag} ({release.version}), {release.published or '?'}"
+        f" — {_or_unknown(release.days_since_release, 'd ago')}"
+    )
+    lines.append(f"  linux x86_64     {len(release.linux_x86_64)} of {release.assets_total} assets")
+    for asset in release.linux_x86_64:
         checks = ", ".join(
             part
             for part in (
@@ -1145,18 +1296,21 @@ def _parse_stamp(stamp: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-def payload_of(health: Health) -> dict[str, Any]:
+def payload_of(health: Any) -> dict[str, Any]:
+    """Any source's answer as a dict, with the numbers `render` derives carried alongside the fields."""
     data = asdict(health)
-    if health.contributors:
-        data["contributors"]["human_count"] = health.contributors.human_count
-        data["contributors"]["bus_factor"] = health.contributors.bus_factor
-    if health.clone:
-        data["clone"]["sources"]["raw_ratio"] = health.clone.sources.raw_ratio
-        data["clone"]["sources"]["handwritten_ratio"] = health.clone.sources.handwritten_ratio
+    people = getattr(health, "contributors", None)
+    if people:
+        data["contributors"]["human_count"] = people.human_count
+        data["contributors"]["bus_factor"] = people.bus_factor
+    clone = getattr(health, "clone", None)
+    if clone:
+        data["clone"]["sources"]["raw_ratio"] = clone.sources.raw_ratio
+        data["clone"]["sources"]["handwritten_ratio"] = clone.sources.handwritten_ratio
     return data
 
 
-SOURCES = ("pypi",)
+SOURCES = ("pypi", "github")
 
 
 def retired_form(argv: list[str]) -> str | None:
@@ -1195,6 +1349,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     _add_upstream_flag(pypi)
     _add_json_flag(pypi)
+
+    github = sources.add_parser(
+        "github",
+        help="a GitHub repo on its own, for tools with no registry",
+        description="Judge a GitHub repo: maintenance, stable-release cadence, the latest release's Linux assets.",
+    )
+    github.add_argument("repo", metavar="OWNER/REPO", help="the repository on GitHub")
+    _add_json_flag(github)
     return parser
 
 
@@ -1227,20 +1389,31 @@ def main(argv: list[str] | None = None, transport: Transport | None = None) -> i
     transport = transport or LiveTransport()
 
     try:
-        health = gather(
-            transport,
-            args.name,
-            args.repo,
-            clone=args.clone,
-            generated=args.generated,
-            upstream_repo=args.upstream,
-        )
+        health, text = _run(args, transport)
     except HealthError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
-    print(json.dumps(payload_of(health), indent=2, default=str) if args.json else render(health))
+    print(json.dumps(payload_of(health), indent=2, default=str) if args.json else text)
     return 0
+
+
+def _run(args: argparse.Namespace, transport: Transport) -> tuple[Any, str]:
+    """The source's answer and its rendering, one branch per subcommand."""
+    if args.source == "github":
+        if not GITHUB_SHORTHAND_RE.match(args.repo) or args.repo.startswith("github:"):
+            raise HealthError(f"{args.repo!r} is not owner/repo")
+        found = gather_github(transport, args.repo)
+        return found, render_github(found)
+    health = gather(
+        transport,
+        args.name,
+        args.repo,
+        clone=args.clone,
+        generated=args.generated,
+        upstream_repo=args.upstream,
+    )
+    return health, render(health)
 
 
 if __name__ == "__main__":

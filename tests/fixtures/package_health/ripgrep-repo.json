@@ -1,0 +1,14 @@
+{
+  "archived": false,
+  "created_at": "2016-03-11T02:02:33Z",
+  "default_branch": "master",
+  "forks_count": 3849,
+  "full_name": "BurntSushi/ripgrep",
+  "has_issues": true,
+  "license": {
+    "spdx_id": "Unlicense"
+  },
+  "open_issues_count": 204,
+  "pushed_at": "2026-08-04T13:59:44Z",
+  "stargazers_count": 68650
+}

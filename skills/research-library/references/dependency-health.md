@@ -173,6 +173,14 @@ speaks to identity. The report keeps all three apart. Recorded 2026-09-27: `koal
 v0.11.0 ships no checksum or signature file at all, only GitHub's digests; `BurntSushi/ripgrep`
 15.2.0 puts a `.sha256` beside every asset.
 
+**A repo's release list is its version history when there is no registry.** `github <owner/repo>`
+reads one page of `repos/<repo>/releases` (the newest 100) for the cadence and says so when the page
+is full. A release is off the stable line when GitHub flags it **or** its tag is spelled as a
+pre-release, because tagging `v2.0.0-rc.1` without ticking the box is common. Drafts are skipped.
+One trap is not handled: a monorepo publishing several packages from one repo counts all of them.
+Seen live 2026-09-27 on `biomejs/biome`, whose list interleaves `@biomejs/biome@2.5.0` with
+`@biomejs/js-api@6.0.0`; the per-package tag spelling is at least read as its version.
+
 **Asset names follow no single convention.** Rust uses target triples (`x86_64-unknown-linux-musl`),
 Go tools `linux_amd64`, shellcheck `linux.x86_64`, and a `.deb` names no OS at all. The filter takes
 any of the arch spellings together with `linux` or a Linux package extension, and reads libc from

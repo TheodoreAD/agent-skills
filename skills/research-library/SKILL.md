@@ -22,8 +22,8 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
 - **Reads**: `$RESEARCH_HOME` and the entries in it; a repo's own `AGENTS.md` for pointers.
   `size --ungreppable` opens every file in the store and reads its first 8 KB.
 - **Runs**: `git clone`/`fetch`/`reset`/`sparse-checkout`/`tag -d`/`reflog expire`/`gc` inside
-  library clones only, and `gh api` for package health (repo stats, commits, issues, and with
-  `--upstream` the latest release) and for a repo's reported size before `add` clones it.
+  library clones only, and `gh api` for package health (repo stats, commits, issues, the releases
+  list and the latest release) and for a repo's reported size before `add` clones it.
 - **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file, `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field.
   `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
@@ -243,6 +243,7 @@ libraries, and it is the reason the script prints stars under `not scored`.
 python3 $S/scripts/package_health.py pypi <name>
 python3 $S/scripts/package_health.py pypi anyio --clone $RESEARCH_HOME/repos/github.com--agronholm--anyio
 python3 $S/scripts/package_health.py pypi shellcheck-py --upstream koalaman/shellcheck
+python3 $S/scripts/package_health.py github BurntSushi/ripgrep
 ```
 
 Stdlib only, `S=~/.agents/skills/research-library`. **The source is a required subcommand** — there
@@ -277,6 +278,10 @@ The four axes it reports, plus what the release ships and whom it tracks, and wh
   with any checksum or signature file beside them. `NO MATCHING WRAPPER RELEASE` means the spelling
   differs or the wrapper is behind: compare the two versions printed. `GitHub digest` is GitHub's
   hash of the upload, not a publisher's checksum.
+- **`github <owner/repo>`**, for a tool with no registry at all — a Go or Rust binary shipped only
+  as release assets. The same maintenance axis, the stable-release cadence read from the GitHub
+  releases list (pre-releases by GitHub's flag or by spelling, drafts skipped), and the latest
+  stable release's Linux x86_64 assets as `--upstream` reports them.
 
 **Three of the report's lines are traps wearing the shape of an answer, so read them as written:**
 `open issues+PRs` is GitHub's field and counts both; a `PRE-RELEASE ONLY` or `pre-releases` line

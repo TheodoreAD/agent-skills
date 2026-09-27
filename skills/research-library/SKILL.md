@@ -250,7 +250,7 @@ test-to-source ratio, the CI inventory, the licence files actually present. `--g
 repeatable and marks a mechanical layer so the ratio is taken against hand-written code. `--json`
 for the whole answer.
 
-The four axes it reports, and what each is for:
+The four axes it reports, plus what the release ships, and what each is for:
 
 - **Maintenance** — releases on the **stable** line and their median gap, last push against last
   release (which separates "actively developed, slow to release" from "stalled"), human contributor
@@ -264,6 +264,10 @@ The four axes it reports, and what each is for:
 - **Fit** — runtime dependency count and names (never the raw `requires_dist`, which is mostly
   extras), version ceilings and whether they bind the distributed artifact or only the dev lockfile,
   licence compatibility, and whether the thing can be exercised offline.
+- **Ships** — the latest stable release's files, from the same PyPI payload: wheel or sdist, wheel
+  tags, size, upload date. Read its `linux x86_64` line before adopting a wrapper around a binary: a
+  wheel present means the binary is inside it; `SDIST ONLY` or `NO WHEEL for this machine` means pip
+  builds it, or a build hook downloads it, on every install. `largest` is the adoption cost.
 
 **Three of the report's lines are traps wearing the shape of an answer, so read them as written:**
 `open issues+PRs` is GitHub's field and counts both; a `PRE-RELEASE ONLY` or `pre-releases` line

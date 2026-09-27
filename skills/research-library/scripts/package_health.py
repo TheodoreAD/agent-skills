@@ -21,6 +21,11 @@ is read through `gh api`, which uses the caller's own token and rate limit rathe
 configured here. `--clone <path>` adds everything that can only be answered from the source:
 `py.typed`, the test-to-source ratio, the CI inventory, the licence files actually present.
 
+Every report also lists what the latest stable release **ships** — its wheels and sdist, their tags
+and sizes — from the same PyPI payload, so no extra request: whether a Linux x86_64 wheel exists,
+whether it is pure Python or carries a binary, and whether it is sdist-only and so builds or fetches
+at install time.
+
 Exit codes: 0 ok, 1 error, 2 argparse usage.
 """
 
@@ -224,6 +229,138 @@ def cadence(dates: dict[str, datetime], yanked: list[str], *, now: datetime | No
         last_prerelease=pre[-1].date().isoformat() if pre else None,
         stable_only=bool(stable),
         yanked=yanked,
+    )
+
+
+# ------------------------------------------------------------------------------------------------
+# PyPI: what a release actually ships
+
+
+@dataclass(frozen=True)
+class ReleaseFile:
+    filename: str
+    kind: str
+    python_tag: str | None
+    abi_tag: str | None
+    platform_tag: str | None
+    size: int | None
+    uploaded: str | None
+    yanked: bool
+
+
+@dataclass(frozen=True)
+class ReleaseFiles:
+    """One release's file list, and the four answers an install decision actually needs from it.
+
+    The target is fixed at x86_64 Linux, the machine this is judged for, rather than read from
+    `platform.machine()`: a report whose answer moves with whoever ran it cannot be compared across
+    sessions, and the tests would pin nothing.
+    """
+
+    version: str | None
+    files: list[ReleaseFile]
+    wheels: int
+    sdists: int
+    linux_x86_64_wheels: list[str]
+    pure_python: bool
+    platform_specific: bool
+    sdist_only: bool
+    largest: str | None
+    largest_size: int | None
+
+
+def latest_stable_version(payload: dict[str, Any]) -> str | None:
+    """PyPI's own `info.version` when it is a stable release with files, else the newest stable by date.
+
+    `info.version` is what `pip install <name>` resolves to, so it is the release worth judging.
+    The fallback covers a payload whose `info.version` is a pre-release (a project that has only
+    shipped those) or names a version whose files are gone.
+    """
+    releases = payload.get("releases", {})
+    stated = payload.get("info", {}).get("version")
+    if stated and not is_prerelease(stated) and releases.get(stated):
+        return stated
+    dated = release_dates(payload)
+    stable = sorted((stamp, version) for version, stamp in dated.items() if not is_prerelease(version))
+    ordered = stable or sorted((stamp, version) for version, stamp in dated.items())
+    return ordered[-1][1] if ordered else stated
+
+
+def wheel_tags(filename: str) -> tuple[str, str, str] | None:
+    """The Python, ABI and platform tags of a wheel filename, each possibly a `.`-joined set.
+
+    `name-version(-build)?-python-abi-platform.whl`: the last three dash-separated fields are the
+    tags whatever the name and version hold, because both are normalised to contain no dashes.
+    """
+    if not filename.endswith(".whl"):
+        return None
+    parts = filename.removesuffix(".whl").split("-")
+    if len(parts) < 5:
+        return None
+    return parts[-3], parts[-2], parts[-1]
+
+
+def _is_linux_x86_64(platform_tag: str) -> bool:
+    """`manylinux*_x86_64` or `musllinux*_x86_64`, in any member of a compressed tag set."""
+    return any(
+        tag.startswith(("manylinux", "musllinux")) and tag.endswith("_x86_64") for tag in platform_tag.split(".")
+    )
+
+
+def _file_kind(entry: dict[str, Any], filename: str) -> str:
+    packagetype = entry.get("packagetype")
+    if packagetype == "bdist_wheel" or filename.endswith(".whl"):
+        return "wheel"
+    if packagetype == "sdist" or filename.endswith((".tar.gz", ".zip", ".tar.bz2")):
+        return "sdist"
+    return str(packagetype or "unknown")
+
+
+def release_files(payload: dict[str, Any], version: str | None = None) -> ReleaseFiles:
+    """What installing `version` (default: the latest stable) actually downloads.
+
+    [PITFALL] Whether a wrapper ships its binary or fetches it at install time is exactly what a
+    search summary gets wrong, in both directions. Recorded before this existed: a summary claimed
+    `hadolint-py` downloads at install and it ships real 12 MB wheels; `lychee-bin` turned out to be
+    one 78 MB wheel with a single release ever. The file list answers both; the summary answered
+    neither. An sdist-only release means pip builds it — or a build hook fetches a binary — on the
+    consumer's machine, every time.
+    """
+    version = version or latest_stable_version(payload)
+    entries = payload.get("releases", {}).get(version or "", []) or []
+    files: list[ReleaseFile] = []
+    for entry in entries:
+        filename = str(entry.get("filename") or "")
+        tags = wheel_tags(filename)
+        size = entry.get("size")
+        files.append(
+            ReleaseFile(
+                filename=filename,
+                kind=_file_kind(entry, filename),
+                python_tag=tags[0] if tags else None,
+                abi_tag=tags[1] if tags else None,
+                platform_tag=tags[2] if tags else None,
+                size=int(size) if isinstance(size, int) else None,
+                uploaded=_date_only(entry.get("upload_time_iso_8601")),
+                yanked=bool(entry.get("yanked")),
+            )
+        )
+    wheels = [entry for entry in files if entry.kind == "wheel"]
+    sized = [entry for entry in files if entry.size is not None]
+    largest = max(sized, key=lambda entry: entry.size or 0) if sized else None
+    return ReleaseFiles(
+        version=version,
+        files=files,
+        wheels=len(wheels),
+        sdists=sum(1 for entry in files if entry.kind == "sdist"),
+        linux_x86_64_wheels=[
+            entry.filename for entry in wheels if entry.platform_tag and _is_linux_x86_64(entry.platform_tag)
+        ],
+        pure_python=any(entry.platform_tag == "any" for entry in wheels),
+        platform_specific=any(entry.platform_tag not in (None, "any") for entry in wheels),
+        sdist_only=bool(files) and not wheels,
+        largest=largest.filename if largest else None,
+        largest_size=largest.size if largest else None,
     )
 
 
@@ -514,6 +651,7 @@ class Health:
     requires_python: str | None
     cadence: Cadence
     runtime_requirements: list[str]
+    release_files: ReleaseFiles
     repository: Repository | None
     contributors: Contributors | None
     issues: IssueSample | None
@@ -545,6 +683,7 @@ def gather(
         requires_python=info.get("requires_python"),
         cadence=cadence(release_dates(payload), yanked_versions(payload), now=now),
         runtime_requirements=runtime_requirements(payload),
+        release_files=release_files(payload),
         repository=repo_facts,
         contributors=people,
         issues=issues,
@@ -617,6 +756,9 @@ def render(health: Health) -> str:
     lines.append("fit")
     lines.append(f"  runtime deps     {len(health.runtime_requirements)}: {names}")
 
+    lines.append("")
+    lines.extend(_release_file_lines(health.release_files))
+
     if health.clone:
         clone = health.clone
         src = clone.sources
@@ -638,6 +780,57 @@ def render(health: Health) -> str:
     lines.append("Judge this against the bar before comparing it to anything. See the skill for the")
     lines.append("traps these numbers hide: a version cap is not a cost until its historical lag says so.")
     return "\n".join(lines)
+
+
+# Past this many files the listing names the Linux x86_64 wheels and the sdist and counts the rest:
+# a numpy-sized release has dozens of wheels, and `--json` carries every one.
+FILE_LISTING_LIMIT = 12
+
+
+def _release_file_lines(ships: ReleaseFiles) -> list[str]:
+    lines = [f"ships ({ships.version or '?'})"]
+    if not ships.files:
+        lines.append("  files            none — this version has no files on PyPI")
+        return lines
+    lines.append(f"  files            {ships.wheels} wheel(s), {ships.sdists} sdist(s)")
+    if ships.sdist_only:
+        lines.append("  linux x86_64     SDIST ONLY — pip builds it, or a build hook fetches a binary, at install")
+    elif ships.linux_x86_64_wheels:
+        sizes = [_size(entry.size) for entry in ships.files if entry.filename in ships.linux_x86_64_wheels]
+        lines.append(f"  linux x86_64     wheel present ({', '.join(sizes)}) — nothing built or fetched at install")
+    elif ships.pure_python:
+        lines.append("  linux x86_64     pure-Python wheel, installs anywhere")
+    else:
+        lines.append("  linux x86_64     NO WHEEL for this machine — pip falls back to the sdist and builds or fetches")
+    kind = (
+        "platform-specific and pure-Python wheels both"
+        if ships.platform_specific and ships.pure_python
+        else "platform-specific (a compiled or bundled binary per platform)"
+        if ships.platform_specific
+        else "pure Python (any)"
+        if ships.pure_python
+        else "no wheels"
+    )
+    lines.append(f"  wheel kind       {kind}")
+    lines.append(f"  largest          {_size(ships.largest_size)}  {ships.largest or '?'}")
+    shown = ships.files
+    if len(shown) > FILE_LISTING_LIMIT:
+        shown = [entry for entry in ships.files if entry.kind == "sdist" or entry.filename in ships.linux_x86_64_wheels]
+        lines.append(f"  listing          {len(shown)} of {len(ships.files)}, other platforms omitted; --json has all")
+    for entry in shown:
+        yanked = "  YANKED" if entry.yanked else ""
+        lines.append(f"    {_size(entry.size):>9}  {entry.uploaded or '?'}  {entry.filename}{yanked}")
+    return lines
+
+
+def _size(size: int | None) -> str:
+    """Decimal units, the way PyPI and GitHub print them, so the number matches what a reader sees there."""
+    if size is None:
+        return "?"
+    for unit, scale in (("GB", 10**9), ("MB", 10**6), ("kB", 10**3)):
+        if size >= scale:
+            return f"{size / scale:.1f} {unit}"
+    return f"{size} B"
 
 
 def _issue_line(repo: Repository, sample: IssueSample | None) -> str:

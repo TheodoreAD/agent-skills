@@ -190,6 +190,134 @@ def test_a_platform_marker_is_not_an_extra_marker():
 
 
 # ------------------------------------------------------------------------------------------------
+# PyPI: what a release ships. `shellcheck-py` is the capture: a binary wrapper whose wheels carry
+# the upstream executable, recorded 2026-09-27 and trimmed to the fields the script reads.
+
+
+def test_the_latest_stable_release_is_what_pypi_itself_resolves_to():
+    assert health.latest_stable_version(fixture("shellcheck-py-pypi")) == "0.11.0.1"
+    # httpx's info.version is the stable 0.28.1 even though 1.0.devN uploads are newer.
+    assert health.latest_stable_version(fixture("httpx-pypi")) == "0.28.1"
+
+
+def test_a_pre_release_info_version_falls_back_to_the_newest_stable_by_date():
+    payload = {
+        "info": {"version": "2.0rc1"},
+        "releases": {
+            "1.0": [{"upload_time_iso_8601": "2026-01-01T00:00:00Z"}],
+            "2.0rc1": [{"upload_time_iso_8601": "2026-02-01T00:00:00Z"}],
+        },
+    }
+    assert health.latest_stable_version(payload) == "1.0"
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("shellcheck_py-0.11.0.1-py2.py3-none-win_amd64.whl", ("py2.py3", "none", "win_amd64")),
+        ("pkg-1.0-1build-cp312-cp312-manylinux_2_17_x86_64.whl", ("cp312", "cp312", "manylinux_2_17_x86_64")),
+        ("httpx-0.28.1-py3-none-any.whl", ("py3", "none", "any")),
+        ("shellcheck_py-0.11.0.1.tar.gz", None),
+    ],
+)
+def test_wheel_tags_are_the_last_three_fields_of_the_filename(filename, expected):
+    assert health.wheel_tags(filename) == expected
+
+
+def test_a_binary_wrapper_ships_a_linux_x86_64_wheel_and_says_so():
+    """Real capture: shellcheck-py 0.11.0.1 is four platform wheels and a 3 kB sdist. The manylinux
+    wheel carries the executable, so a Linux x86_64 install downloads 3.8 MB and fetches nothing."""
+    ships = health.release_files(fixture("shellcheck-py-pypi"))
+    assert ships.version == "0.11.0.1"
+    assert (ships.wheels, ships.sdists) == (4, 1)
+    assert ships.linux_x86_64_wheels == [
+        "shellcheck_py-0.11.0.1-py2.py3-none-manylinux1_x86_64.manylinux2014_x86_64"
+        ".manylinux_2_17_x86_64.manylinux_2_5_x86_64.whl"
+    ]
+    assert ships.platform_specific is True
+    assert ships.pure_python is False
+    assert ships.sdist_only is False
+    assert ships.largest == "shellcheck_py-0.11.0.1-py2.py3-none-macosx_11_0_arm64.whl"
+    assert ships.largest_size == 11381835
+
+
+def test_an_sdist_only_release_is_flagged_as_building_or_fetching_at_install():
+    """Real capture: shellcheck-py 0.9.0.3 shipped one sdist and no wheels, so installing that
+    version on any machine ran its build hook, which is where the binary would have been fetched."""
+    ships = health.release_files(fixture("shellcheck-py-pypi"), "0.9.0.3")
+    assert ships.sdist_only is True
+    assert ships.linux_x86_64_wheels == []
+    rendered = "\n".join(health._release_file_lines(ships))
+    assert "SDIST ONLY" in rendered
+
+
+def test_a_pure_python_wheel_installs_anywhere():
+    payload = {
+        "info": {"version": "1.0"},
+        "releases": {
+            "1.0": [
+                {"filename": "pkg-1.0-py3-none-any.whl", "packagetype": "bdist_wheel", "size": 1000},
+                {"filename": "pkg-1.0.tar.gz", "packagetype": "sdist", "size": 900},
+            ]
+        },
+    }
+    ships = health.release_files(payload)
+    assert ships.pure_python is True
+    assert ships.platform_specific is False
+    assert "pure-Python wheel" in "\n".join(health._release_file_lines(ships))
+
+
+def test_platform_wheels_that_miss_this_machine_say_the_sdist_is_the_fallback():
+    payload = {
+        "info": {"version": "1.0"},
+        "releases": {
+            "1.0": [
+                {"filename": "pkg-1.0-py3-none-macosx_11_0_arm64.whl", "packagetype": "bdist_wheel", "size": 5},
+                {"filename": "pkg-1.0-py3-none-manylinux_2_17_aarch64.whl", "packagetype": "bdist_wheel", "size": 5},
+                {"filename": "pkg-1.0.tar.gz", "packagetype": "sdist", "size": 1},
+            ]
+        },
+    }
+    ships = health.release_files(payload)
+    assert ships.linux_x86_64_wheels == []
+    assert "NO WHEEL for this machine" in "\n".join(health._release_file_lines(ships))
+
+
+def test_a_long_file_list_keeps_this_machines_wheels_and_the_sdist_and_counts_the_rest():
+    wheels = [
+        {"filename": f"pkg-1.0-cp3{minor}-cp3{minor}-{plat}.whl", "packagetype": "bdist_wheel", "size": 10}
+        for minor in range(10, 15)
+        for plat in ("macosx_11_0_arm64", "win_amd64", "manylinux_2_17_x86_64")
+    ]
+    payload = {"info": {"version": "1.0"}, "releases": {"1.0": [*wheels, {"filename": "pkg-1.0.tar.gz", "size": 1}]}}
+    rendered = "\n".join(health._release_file_lines(health.release_files(payload)))
+    assert "6 of 16, other platforms omitted" in rendered
+    assert "win_amd64" not in rendered
+
+
+def test_a_musllinux_wheel_counts_for_linux_x86_64():
+    assert health._is_linux_x86_64("musllinux_1_2_x86_64")
+    assert not health._is_linux_x86_64("musllinux_1_2_aarch64")
+
+
+def test_a_payload_without_filenames_still_yields_a_report():
+    """The older httpx capture was trimmed before filenames mattered, so it carries none. The report
+    must degrade to counts of unknowns, never raise."""
+    ships = health.release_files(fixture("httpx-pypi"))
+    assert ships.version == "0.28.1"
+    assert ships.files
+    assert ships.linux_x86_64_wheels == []
+
+
+@pytest.mark.parametrize(
+    ("size", "expected"),
+    [(None, "?"), (3139, "3.1 kB"), (3800600, "3.8 MB"), (512, "512 B"), (78_000_000_000, "78.0 GB")],
+)
+def test_sizes_print_in_decimal_units_like_pypi_does(size, expected):
+    assert health._size(size) == expected
+
+
+# ------------------------------------------------------------------------------------------------
 # GitHub
 
 
@@ -419,7 +547,21 @@ def test_the_json_payload_carries_the_derived_numbers_not_just_the_fields():
     payload = health.payload_of(health.gather(httpx_transport(), "httpx", "encode/httpx", now=CAPTURED))
     assert payload["contributors"]["bus_factor"] >= 1
     assert payload["contributors"]["human_count"] >= 1
+    assert payload["release_files"]["version"] == "0.28.1"
     assert json.dumps(payload, default=str)  # the whole thing has to survive a dump
+
+
+def test_the_report_and_json_carry_what_the_release_ships():
+    transport = FakeTransport(pypi_payload=fixture("shellcheck-py-pypi"))
+    result = health.gather(transport, "shellcheck-py", None, now=CAPTURED)
+    rendered = health.render(result)
+    assert "ships (0.11.0.1)" in rendered
+    assert "manylinux1_x86_64" in rendered
+    assert "wheel present (3.8 MB)" in rendered
+    payload = health.payload_of(result)
+    assert payload["release_files"]["sdist_only"] is False
+    assert len(payload["release_files"]["files"]) == 5
+    assert transport.asked == ["pypi:shellcheck-py"]  # the file list costs no extra request
 
 
 def test_main_reports_a_bad_name_as_the_callers_error(capsys):

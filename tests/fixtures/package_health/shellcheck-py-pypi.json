@@ -1,0 +1,505 @@
+{
+  "info": {
+    "name": "shellcheck-py",
+    "version": "0.11.0.1",
+    "summary": "Python wrapper around invoking shellcheck (https://www.shellcheck.net/)",
+    "requires_python": ">=3.9",
+    "requires_dist": null
+  },
+  "releases": {
+    "0.10.0.1": [
+      {
+        "filename": "shellcheck_py-0.10.0.1-py2.py3-none-macosx_11_0_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6751219,
+        "upload_time_iso_8601": "2024-03-17T15:18:05.499463Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.10.0.1-py2.py3-none-macosx_14_0_arm64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 11316565,
+        "upload_time_iso_8601": "2024-03-17T15:28:46.763471Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.10.0.1-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 3647494,
+        "upload_time_iso_8601": "2024-03-17T15:20:41.627953Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.10.0.1-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1611786,
+        "upload_time_iso_8601": "2024-03-17T15:18:07.950777Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.10.0.1.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 3071,
+        "upload_time_iso_8601": "2024-03-17T15:15:39.409847Z",
+        "yanked": false
+      }
+    ],
+    "0.11.0.1": [
+      {
+        "filename": "shellcheck_py-0.11.0.1-py2.py3-none-macosx_10_9_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6774472,
+        "upload_time_iso_8601": "2025-08-09T17:53:34.573791Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.11.0.1-py2.py3-none-macosx_11_0_arm64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 11381835,
+        "upload_time_iso_8601": "2025-08-09T17:53:36.852753Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.11.0.1-py2.py3-none-manylinux1_x86_64.manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_5_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 3800600,
+        "upload_time_iso_8601": "2025-08-09T17:53:38.643862Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.11.0.1-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 8027541,
+        "upload_time_iso_8601": "2025-08-09T17:53:40.889991Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.11.0.1.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 3139,
+        "upload_time_iso_8601": "2025-08-09T17:53:42.492683Z",
+        "yanked": false
+      }
+    ],
+    "0.7.0.1": [
+      {
+        "filename": "shellcheck_py-0.7.0.1-py2.py3-none-macosx_10_14_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2347309,
+        "upload_time_iso_8601": "2019-11-04T23:26:45.892608Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.0.1-py2.py3-none-manylinux1_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2313851,
+        "upload_time_iso_8601": "2019-11-04T23:29:15.463829Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.0.1-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6712982,
+        "upload_time_iso_8601": "2019-11-04T23:37:25.855146Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.0.1.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 3192,
+        "upload_time_iso_8601": "2019-11-04T23:24:56.260223Z",
+        "yanked": false
+      }
+    ],
+    "0.7.1.1": [
+      {
+        "filename": "shellcheck_py-0.7.1.1-py2.py3-none-macosx_10_14_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2079518,
+        "upload_time_iso_8601": "2020-04-08T03:07:59.642391Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.1.1-py2.py3-none-manylinux1_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2095565,
+        "upload_time_iso_8601": "2020-04-08T03:05:22.647489Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.1.1-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 3605312,
+        "upload_time_iso_8601": "2020-04-08T03:11:03.735269Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.1.1.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 3827,
+        "upload_time_iso_8601": "2020-04-08T03:05:24.065084Z",
+        "yanked": false
+      }
+    ],
+    "0.7.2.1": [
+      {
+        "filename": "shellcheck_py-0.7.2.1-py2.py3-none-macosx_10_14_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6154334,
+        "upload_time_iso_8601": "2021-04-19T23:04:33.761874Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.2.1-py2.py3-none-manylinux1_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2036276,
+        "upload_time_iso_8601": "2021-04-19T23:03:38.557543Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.2.1-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1425116,
+        "upload_time_iso_8601": "2021-04-19T23:04:26.205294Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.7.2.1.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4168,
+        "upload_time_iso_8601": "2021-04-19T23:00:37.386018Z",
+        "yanked": false
+      }
+    ],
+    "0.8.0.1": [
+      {
+        "filename": "shellcheck_py-0.8.0.1-py2.py3-none-macosx_10_14_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6275107,
+        "upload_time_iso_8601": "2021-11-10T16:41:13.087772Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.1-py2.py3-none-manylinux1_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2068305,
+        "upload_time_iso_8601": "2021-11-10T16:46:03.256381Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.1-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1459251,
+        "upload_time_iso_8601": "2021-11-10T16:41:29.237573Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.1.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4080,
+        "upload_time_iso_8601": "2021-11-10T16:38:04.640234Z",
+        "yanked": false
+      }
+    ],
+    "0.8.0.2": [
+      {
+        "filename": "shellcheck_py-0.8.0.2-py2.py3-none-macosx_10_14_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6275110,
+        "upload_time_iso_8601": "2021-12-18T19:31:15.203150Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.2-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2068882,
+        "upload_time_iso_8601": "2021-12-18T19:29:28.521922Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.2-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1459252,
+        "upload_time_iso_8601": "2021-12-18T19:31:17.856905Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.2.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4196,
+        "upload_time_iso_8601": "2021-12-18T19:27:30.672720Z",
+        "yanked": false
+      }
+    ],
+    "0.8.0.3": [
+      {
+        "filename": "shellcheck_py-0.8.0.3-py2.py3-none-macosx_10_14_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6275109,
+        "upload_time_iso_8601": "2021-12-24T21:59:11.449165Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.3-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2068883,
+        "upload_time_iso_8601": "2021-12-24T21:57:57.529620Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.3-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1459252,
+        "upload_time_iso_8601": "2021-12-24T21:59:24.497383Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.3.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4201,
+        "upload_time_iso_8601": "2021-12-24T21:55:15.239184Z",
+        "yanked": false
+      }
+    ],
+    "0.8.0.4": [
+      {
+        "filename": "shellcheck_py-0.8.0.4-py2.py3-none-macosx_10_14_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6275104,
+        "upload_time_iso_8601": "2022-02-04T22:44:45.995246Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.4-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 2068876,
+        "upload_time_iso_8601": "2022-02-04T22:43:37.557957Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.4-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1459247,
+        "upload_time_iso_8601": "2022-02-04T22:44:43.765991Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.8.0.4.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4239,
+        "upload_time_iso_8601": "2022-02-04T22:42:20.922600Z",
+        "yanked": false
+      }
+    ],
+    "0.9.0.2": [
+      {
+        "filename": "shellcheck_py-0.9.0.2-py2.py3-none-macosx_10_15_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6502147,
+        "upload_time_iso_8601": "2022-12-17T19:08:51.203819Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.2-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 3575112,
+        "upload_time_iso_8601": "2022-12-17T19:10:45.659976Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.2-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1613478,
+        "upload_time_iso_8601": "2022-12-17T19:08:53.206643Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.2.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4211,
+        "upload_time_iso_8601": "2022-12-17T19:08:54.751779Z",
+        "yanked": false
+      }
+    ],
+    "0.9.0.3": [
+      {
+        "filename": "shellcheck_py-0.9.0.3.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4185,
+        "upload_time_iso_8601": "2023-06-01T22:46:18.235052Z",
+        "yanked": false
+      }
+    ],
+    "0.9.0.4": [
+      {
+        "filename": "shellcheck_py-0.9.0.4-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 3575074,
+        "upload_time_iso_8601": "2023-06-01T23:47:05.489155Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.4.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4185,
+        "upload_time_iso_8601": "2023-06-01T23:43:24.355060Z",
+        "yanked": false
+      }
+    ],
+    "0.9.0.5": [
+      {
+        "filename": "shellcheck_py-0.9.0.5-py2.py3-none-macosx_10_15_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6502110,
+        "upload_time_iso_8601": "2023-06-02T00:11:49.906615Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.5-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 3575073,
+        "upload_time_iso_8601": "2023-06-02T00:08:07.434937Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.5-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1613441,
+        "upload_time_iso_8601": "2023-06-02T00:11:51.596593Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.5.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4192,
+        "upload_time_iso_8601": "2023-06-02T00:04:58.883638Z",
+        "yanked": false
+      }
+    ],
+    "0.9.0.6": [
+      {
+        "filename": "shellcheck_py-0.9.0.6-py2.py3-none-macosx_11_0_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 6502111,
+        "upload_time_iso_8601": "2023-09-28T15:00:48.079592Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.6-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 3575074,
+        "upload_time_iso_8601": "2023-09-28T14:59:38.195738Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.6-py2.py3-none-win_amd64.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py2.py3",
+        "size": 1613443,
+        "upload_time_iso_8601": "2023-09-28T15:00:50.164631Z",
+        "yanked": false
+      },
+      {
+        "filename": "shellcheck_py-0.9.0.6.tar.gz",
+        "packagetype": "sdist",
+        "python_version": "source",
+        "size": 4187,
+        "upload_time_iso_8601": "2023-09-28T14:55:19.760788Z",
+        "yanked": false
+      }
+    ]
+  },
+  "urls": [
+    {
+      "filename": "shellcheck_py-0.11.0.1-py2.py3-none-macosx_10_9_x86_64.whl",
+      "packagetype": "bdist_wheel",
+      "python_version": "py2.py3",
+      "size": 6774472,
+      "upload_time_iso_8601": "2025-08-09T17:53:34.573791Z",
+      "yanked": false
+    },
+    {
+      "filename": "shellcheck_py-0.11.0.1-py2.py3-none-macosx_11_0_arm64.whl",
+      "packagetype": "bdist_wheel",
+      "python_version": "py2.py3",
+      "size": 11381835,
+      "upload_time_iso_8601": "2025-08-09T17:53:36.852753Z",
+      "yanked": false
+    },
+    {
+      "filename": "shellcheck_py-0.11.0.1-py2.py3-none-manylinux1_x86_64.manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_5_x86_64.whl",
+      "packagetype": "bdist_wheel",
+      "python_version": "py2.py3",
+      "size": 3800600,
+      "upload_time_iso_8601": "2025-08-09T17:53:38.643862Z",
+      "yanked": false
+    },
+    {
+      "filename": "shellcheck_py-0.11.0.1-py2.py3-none-win_amd64.whl",
+      "packagetype": "bdist_wheel",
+      "python_version": "py2.py3",
+      "size": 8027541,
+      "upload_time_iso_8601": "2025-08-09T17:53:40.889991Z",
+      "yanked": false
+    },
+    {
+      "filename": "shellcheck_py-0.11.0.1.tar.gz",
+      "packagetype": "sdist",
+      "python_version": "source",
+      "size": 3139,
+      "upload_time_iso_8601": "2025-08-09T17:53:42.492683Z",
+      "yanked": false
+    }
+  ]
+}

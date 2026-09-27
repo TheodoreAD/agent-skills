@@ -278,6 +278,11 @@ The four axes it reports, plus what the release ships and whom it tracks, and wh
   with any checksum or signature file beside them. `NO MATCHING WRAPPER RELEASE` means the spelling
   differs or the wrapper is behind: compare the two versions printed. `GitHub digest` is GitHub's
   hash of the upload, not a publisher's checksum.
+- **Floors** — every minimum version the metadata states, never inferred, each compared with this
+  machine where that is cheap: PyPI's `requires_python` against this `python3`, and the glibc floor
+  a `manylinux` tag states against this machine's glibc. `ABOVE THIS MACHINE` is the finding;
+  `not
+  compared` says why it was not.
 - **`github <owner/repo>`**, for a tool with no registry at all — a Go or Rust binary shipped only
   as release assets. The same maintenance axis, the stable-release cadence read from the GitHub
   releases list (pre-releases by GitHub's flag or by spelling, drafts skipped), and the latest

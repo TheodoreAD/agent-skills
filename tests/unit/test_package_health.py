@@ -79,6 +79,14 @@ class FakeTransport:
                 return payload
         return []
 
+    def machine(self):
+        return MACHINE
+
+
+# A fixed machine, so a floor's verdict does not move with whoever runs the suite. The values are
+# this repo's development machine on 2026-09-27: Ubuntu 24.04's glibc, and no node on PATH.
+MACHINE = health.Machine(python="3.12.3", glibc="2.39", node=None)
+
 
 def httpx_transport():
     return FakeTransport(
@@ -712,6 +720,9 @@ def test_main_reports_a_bad_name_as_the_callers_error(capsys):
         def github(self, path):
             raise AssertionError("never reached")
 
+        def machine(self):
+            return MACHINE
+
     assert health.main(["pypi", "no-such-distribution-xyz"], transport=Refusing()) == 1
     assert "404" in capsys.readouterr().err
 
@@ -871,3 +882,103 @@ def test_an_explicit_repo_overrides_the_metadata_and_says_so():
 def test_no_repo_in_the_metadata_is_said_and_the_flag_is_named():
     rendered = health.render(health.gather(FakeTransport(), "httpx", None, now=CAPTURED))
     assert "none read — PyPI metadata names no GitHub repo; pass --repo owner/repo" in rendered
+
+
+# ------------------------------------------------------------------------------------------------
+# Floors: every minimum the metadata states, compared with this machine where that is cheap
+
+
+@pytest.mark.parametrize(
+    ("spec", "version", "expected"),
+    [
+        (">=3.9", "3.12.3", True),
+        (">=3.13", "3.12.3", False),
+        (">=3.8,<3.12", "3.12.3", False),
+        (">=3.8, !=3.9.*", "3.9.1", False),
+        ("~=3.10", "3.12.3", True),
+        ("~=3.10.1", "3.11.0", False),
+        ("==3.*", "3.12.3", True),
+        (">=3.9", None, None),
+        ("banana", "3.12.3", None),
+    ],
+)
+def test_a_python_specifier_is_evaluated_against_this_interpreter(spec, version, expected):
+    assert health.python_spec_met(spec, version) is expected
+
+
+@pytest.mark.parametrize(
+    ("spec", "version", "expected"),
+    [
+        (">=14.21.3", "20.11.1", True),
+        (">=18", "16.20.0", False),
+        ("^18 || >=20", "19.0.0", False),
+        ("^18 || >=20", "18.2.0", True),
+        (">= 18.0.0", "18.0.0", True),
+        ("18.x", "18.19.0", True),
+        ("~16.14", "16.15.0", False),
+        ("16 - 18", "17.1.0", True),
+        ("*", "12.0.0", True),
+        (">=18", None, None),
+        ("node-lts", "18.0.0", None),
+    ],
+)
+def test_an_npm_engines_range_is_evaluated_against_this_node(spec, version, expected):
+    assert health.node_range_met(spec, version) is expected
+
+
+@pytest.mark.parametrize(
+    ("tag", "expected"),
+    [
+        ("manylinux_2_17_x86_64", ("glibc", (2, 17))),
+        ("manylinux1_x86_64.manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_5_x86_64", ("glibc", (2, 5))),
+        ("manylinux2014_x86_64", ("glibc", (2, 17))),
+        ("musllinux_1_2_x86_64", ("musl", (1, 2))),
+        ("win_amd64", None),
+    ],
+)
+def test_the_glibc_floor_is_read_from_the_manylinux_tag_the_lowest_member_winning(tag, expected):
+    assert health.wheel_libc_floor(tag) == expected
+
+
+def test_pypi_floors_carry_requires_python_and_the_manylinux_glibc_floor():
+    """Real capture: shellcheck-py 0.11.0.1 declares >=3.9 and its Linux wheel carries four tags,
+    the lowest being manylinux1, which is glibc 2.5."""
+    result = health.gather(
+        FakeTransport(pypi_payload=fixture("shellcheck-py-pypi")), "shellcheck-py", None, now=CAPTURED, machine=MACHINE
+    )
+    floors = {floor.what: floor for floor in result.floors}
+    assert (floors["python"].required, floors["python"].met) == (">=3.9", True)
+    assert (floors["glibc"].required, floors["glibc"].met) == (">=2.5", True)
+    rendered = health.render(result)
+    assert "met here (glibc 2.39)" in rendered
+    assert "met here (python3 3.12.3)" in rendered
+
+
+def test_a_floor_above_this_machine_is_flagged():
+    payload = {
+        "info": {"version": "1.0", "requires_python": ">=3.14"},
+        "releases": {"1.0": [{"filename": "pkg-1.0-cp314-cp314-manylinux_2_41_x86_64.whl", "size": 1}]},
+    }
+    floors = health.pypi_floors(">=3.14", health.release_files(payload), MACHINE)
+    assert [floor.met for floor in floors] == [False, False]
+    assert "ABOVE THIS MACHINE (glibc 2.39)" in "\n".join(health._floor_lines(floors))
+
+
+def test_a_musllinux_only_release_is_a_mismatch_on_a_glibc_machine():
+    wheel = {"filename": "p-1.0-py3-none-musllinux_1_2_x86_64.whl"}
+    payload = {"info": {"version": "1.0"}, "releases": {"1.0": [wheel]}}
+    (python, libc) = health.pypi_floors(None, health.release_files(payload), MACHINE)
+    assert python.required == "undeclared"
+    assert (libc.required, libc.met) == ("musl", False)
+
+
+def test_a_floor_is_not_compared_when_this_machines_value_is_unreadable():
+    floors = health.pypi_floors(">=3.9", health.release_files(fixture("shellcheck-py-pypi")), None)
+    assert all(floor.met is None for floor in floors)
+    assert "not readable here" in "\n".join(health._floor_lines(floors))
+
+
+def test_github_floors_name_the_libc_family_and_say_the_number_is_not_in_the_name():
+    result = health.gather_github(ripgrep_transport(), "BurntSushi/ripgrep", now=RELEASES_CAPTURED, machine=MACHINE)
+    assert [(floor.required, floor.met) for floor in result.floors] == [("musl", None), ("unspecified", None)]
+    assert "statically linked" in health.render_github(result)

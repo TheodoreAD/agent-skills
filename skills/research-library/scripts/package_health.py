@@ -49,7 +49,10 @@ if sys.version_info[:2] < (3, 11):  # noqa: UP036 — runs exactly where require
 
 import argparse
 import json
+import os
+import platform
 import re
+import shutil
 import signal
 import statistics
 import subprocess
@@ -103,33 +106,56 @@ ISSUE_SAMPLE = 50
 
 
 class Transport(Protocol):
-    """The two networks this reads, behind one seam so every computation below can be tested.
+    """Everything outside this process, behind one seam so every computation below can be tested.
 
-    Every input to this script is a network response, so the fetch layer is injectable and the tests
-    drive it from captured fixtures. No test may reach the network, which is asserted rather than
-    intended — see `tests/unit/test_package_health.py`.
+    Every input to this script is a network response, a local command's output or a fact about this
+    machine, so all of them are injectable and the tests drive them from captured fixtures. No test
+    may reach the network or run a command, which is asserted rather than intended — see
+    `tests/unit/test_package_health.py`.
     """
 
     def pypi(self, name: str) -> dict[str, Any]: ...
 
     def github(self, path: str) -> Any: ...
 
+    def machine(self) -> Machine: ...
+
+
+@dataclass(frozen=True)
+class Machine:
+    """What a floor is compared against: this machine's values, where they are cheap to read.
+
+    `python` is the interpreter running this script, which is the one `python3` resolves to and not
+    necessarily a project's venv; the report says "this python3" for that reason.
+    """
+
+    python: str | None
+    glibc: str | None
+    node: str | None
+
 
 class LiveTransport:
     """PyPI over HTTPS, GitHub through `gh api` so the caller's own token and rate limit apply."""
 
     def pypi(self, name: str) -> dict[str, Any]:
-        request = urllib.request.Request(PYPI_JSON.format(name=name), headers={"User-Agent": USER_AGENT})
-        try:
-            with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as error:
-            raise HealthError(f"PyPI returned {error.code} for {name!r} — check the distribution name") from error
-        except urllib.error.URLError as error:
-            raise HealthError(f"PyPI unreachable: {error.reason}") from error
+        payload = self._get_json(PYPI_JSON.format(name=name), "PyPI", name)
         if not isinstance(payload, dict):
             raise HealthError(f"PyPI returned a non-object for {name!r}")
         return payload
+
+    def machine(self) -> Machine:
+        return Machine(python=platform.python_version(), glibc=_glibc_version(), node=_node_version())
+
+    @staticmethod
+    def _get_json(url: str, registry: str, name: str) -> Any:
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            raise HealthError(f"{registry} returned {error.code} for {name!r} — check the name") from error
+        except urllib.error.URLError as error:
+            raise HealthError(f"{registry} unreachable: {error.reason}") from error
 
     def github(self, path: str) -> Any:
         result = subprocess.run(
@@ -145,6 +171,31 @@ class LiveTransport:
 
 class HealthError(Exception):
     """Anything the caller can fix: a wrong name, an unreachable API, a path that is not a clone."""
+
+
+def _glibc_version() -> str | None:
+    """`os.confstr` answers without a subprocess (`glibc 2.39`), and is absent off glibc."""
+    try:
+        found = os.confstr("CS_GNU_LIBC_VERSION")
+    except (AttributeError, ValueError, OSError):
+        return None
+    if not found or not found.startswith("glibc "):
+        return None
+    return found.removeprefix("glibc ").strip()
+
+
+def _node_version() -> str | None:
+    """`node --version` when node is on PATH; `None` rather than an error when it is not."""
+    node = shutil.which("node")
+    if not node:
+        return None
+    try:
+        result = subprocess.run([node, "--version"], capture_output=True, text=True, check=False, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip().removeprefix("v") or None
 
 
 # ------------------------------------------------------------------------------------------------
@@ -823,6 +874,223 @@ def release_list(transport: Transport, repo: str, *, now: datetime | None = None
 
 
 # ------------------------------------------------------------------------------------------------
+# Floors: every minimum version the metadata states, set against this machine
+
+
+@dataclass(frozen=True)
+class Floor:
+    """One stated minimum: what it constrains, the requirement as written, and where it was read.
+
+    Read from the metadata and never inferred. `met` is `None` when the comparison was not made —
+    this machine's value is not cheaply readable, or the requirement is spelled in a form this does
+    not parse — and the report says which, rather than guessing either way.
+    """
+
+    what: str
+    required: str
+    source: str
+    machine: str | None = None
+    met: bool | None = None
+    note: str | None = None
+
+
+VERSION_PREFIX_RE = re.compile(r"^v?(\d+(?:\.\d+)*)")
+PEP440_CLAUSE_RE = re.compile(r"^(~=|===|==|!=|<=|>=|<|>)\s*(\S+)$")
+# `manylinux_2_17_x86_64` is PEP 600's spelling; the three legacy aliases are fixed glibc versions.
+MANYLINUX_RE = re.compile(r"^manylinux_(\d+)_(\d+)_x86_64$")
+MUSLLINUX_RE = re.compile(r"^musllinux_(\d+)_(\d+)_x86_64$")
+MANYLINUX_LEGACY = {"manylinux1_x86_64": (2, 5), "manylinux2010_x86_64": (2, 12), "manylinux2014_x86_64": (2, 17)}
+
+
+def version_tuple(text: str | None) -> tuple[int, ...] | None:
+    """The leading numeric part of a version: `3.12.3` → (3, 12, 3), `18.0.0-rc1` → (18, 0, 0)."""
+    match = VERSION_PREFIX_RE.match((text or "").strip())
+    return tuple(int(part) for part in match.group(1).split(".")) if match else None
+
+
+def _padded(left: tuple[int, ...], right: tuple[int, ...]) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    width = max(len(left), len(right))
+    return left + (0,) * (width - len(left)), right + (0,) * (width - len(right))
+
+
+def _compare(op: str, have: tuple[int, ...], want: tuple[int, ...]) -> bool:
+    have, want = _padded(have, want)
+    return {
+        ">=": have >= want,
+        ">": have > want,
+        "<=": have <= want,
+        "<": have < want,
+        "==": have == want,
+        "===": have == want,
+        "!=": have != want,
+    }[op]
+
+
+def python_spec_met(spec: str, version: str | None) -> bool | None:
+    """Whether `version` satisfies a PEP 440 specifier set such as `>=3.9,<4`; `None` if unparsed."""
+    have = version_tuple(version)
+    clauses = [clause.strip() for clause in spec.split(",") if clause.strip()]
+    if have is None or not clauses:
+        return None
+    verdicts = [_pep440_clause_met(clause, have) for clause in clauses]
+    if any(verdict is None for verdict in verdicts):
+        return None
+    return all(verdicts)
+
+
+def _pep440_clause_met(clause: str, have: tuple[int, ...]) -> bool | None:
+    match = PEP440_CLAUSE_RE.match(clause)
+    if not match:
+        return None
+    op, target = match.groups()
+    if target.endswith(".*"):
+        prefix = version_tuple(target.removesuffix(".*"))
+        if prefix is None or op not in ("==", "!="):
+            return None
+        return (have[: len(prefix)] == prefix) == (op == "==")
+    want = version_tuple(target)
+    if want is None:
+        return None
+    if op == "~=":
+        return len(want) >= 2 and _compare(">=", have, want) and have[: len(want) - 1] == want[:-1]
+    return _compare(op, have, want)
+
+
+NODE_COMPARATOR_RE = re.compile(r"^(\^|~|>=|<=|>|<|=)?v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?(?:[-+]\S*)?$")
+
+
+def _node_comparator(token: str, have: tuple[int, ...]) -> bool | None:
+    """One npm semver comparator: `>=18`, `^14.21.3`, `~1.2`, `18.x`, `*`."""
+    match = NODE_COMPARATOR_RE.match(token)
+    if not match:
+        return None
+    op, *raw = match.groups()
+    given = [part for part in raw if part is not None]
+    wild = next((index for index, part in enumerate(given) if not part.isdigit()), len(given))
+    parts = tuple(int(part) for part in given[:wild])
+    if op in (None, "="):
+        if not parts:
+            return True
+        # An X-range or a partial version means every version under that prefix.
+        return have[: len(parts)] == parts if wild < 3 or len(given) < 3 else _compare("==", have, parts)
+    if op in (">=", ">", "<=", "<"):
+        return _compare(op, have, parts or (0,))
+    if op == "^":
+        # Caret: the leftmost non-zero component is fixed.
+        pivot = next((index for index, part in enumerate(parts) if part != 0), len(parts) - 1)
+        return _compare(">=", have, parts) and have[: pivot + 1] == parts[: pivot + 1]
+    # Tilde: the minor is fixed when given, else the major.
+    keep = 2 if len(parts) >= 2 else 1
+    return _compare(">=", have, parts) and have[:keep] == parts[:keep]
+
+
+def node_range_met(spec: str, version: str | None) -> bool | None:
+    """Whether `version` satisfies an npm `engines` range (`||` of space-joined comparators)."""
+    have = version_tuple(version)
+    if have is None:
+        return None
+    verdicts: list[bool | None] = []
+    for alternative in spec.split("||"):
+        text = re.sub(r"(>=|<=|>|<|=|\^|~)\s+", r"\1", alternative.strip())
+        if " - " in text:
+            low, _, high = text.partition(" - ")
+            low_met, high_met = _node_comparator(f">={low.strip()}", have), _node_comparator(f"<={high.strip()}", have)
+            verdicts.append(None if low_met is None or high_met is None else low_met and high_met)
+            continue
+        tokens = text.split() or ["*"]
+        results = [_node_comparator(token, have) for token in tokens]
+        verdicts.append(None if any(result is None for result in results) else all(results))
+    if any(verdict is True for verdict in verdicts):
+        return True
+    return None if any(verdict is None for verdict in verdicts) else False
+
+
+def wheel_libc_floor(platform_tag: str) -> tuple[str, tuple[int, ...]] | None:
+    """The lowest libc a Linux x86_64 wheel accepts: `("glibc", (2, 17))`, or musl for musllinux.
+
+    A compressed tag set installs wherever any member does, so the lowest member is the floor.
+    """
+    glibc: list[tuple[int, ...]] = []
+    musl: list[tuple[int, ...]] = []
+    for tag in platform_tag.split("."):
+        if tag in MANYLINUX_LEGACY:
+            glibc.append(MANYLINUX_LEGACY[tag])
+        elif match := MANYLINUX_RE.match(tag):
+            glibc.append((int(match.group(1)), int(match.group(2))))
+        elif match := MUSLLINUX_RE.match(tag):
+            musl.append((int(match.group(1)), int(match.group(2))))
+    if glibc:
+        return "glibc", min(glibc)
+    if musl:
+        return "musl", min(musl)
+    return None
+
+
+def _dotted(version: tuple[int, ...]) -> str:
+    return ".".join(str(part) for part in version)
+
+
+def pypi_floors(requires_python: str | None, ships: ReleaseFiles, machine: Machine | None) -> list[Floor]:
+    """`requires_python`, and the glibc floor the manylinux tags of this machine's wheels state."""
+    here_python = machine.python if machine else None
+    here_glibc = machine.glibc if machine else None
+    shown_python = f"python3 {here_python}" if here_python else None
+    floors = [
+        Floor("python", requires_python, "requires_python", shown_python, python_spec_met(requires_python, here_python))
+        if requires_python
+        else Floor("python", "undeclared", "requires_python", shown_python, note="no floor stated")
+    ]
+    tagged = [
+        found
+        for entry in ships.files
+        if entry.filename in ships.linux_x86_64_wheels
+        and entry.platform_tag
+        and (found := wheel_libc_floor(entry.platform_tag))
+    ]
+    glibc = sorted(version for family, version in tagged if family == "glibc")
+    if glibc:
+        spread = f", highest {_dotted(glibc[-1])}" if glibc[-1] != glibc[0] else ""
+        have = version_tuple(here_glibc)
+        floors.append(
+            Floor(
+                "glibc",
+                f">={_dotted(glibc[0])}",
+                f"manylinux tag, lowest of {len(glibc)} wheel(s){spread}",
+                f"glibc {here_glibc}" if here_glibc else None,
+                _compare(">=", have, glibc[0]) if have else None,
+            )
+        )
+    elif tagged:
+        floors.append(
+            Floor(
+                "libc",
+                "musl",
+                "musllinux tag — no manylinux wheel",
+                f"glibc {here_glibc}" if here_glibc else None,
+                False if here_glibc else None,
+                note="pip on a glibc machine skips a musllinux wheel and falls back to the sdist",
+            )
+        )
+    return floors
+
+
+def asset_floors(release: LatestRelease, machine: Machine | None) -> list[Floor]:
+    """The libc family each Linux asset names. A numeric glibc floor is not in a name.
+
+    [DECISION] Reading it would mean downloading the binary and reading its ELF version needs,
+    which is out of scope; the family is what the name states, and the note says what it does not.
+    """
+    here = f"glibc {machine.glibc}" if machine and machine.glibc else None
+    notes = {
+        "gnu": "the numeric glibc floor is not in the name; it is in the binary's ELF version needs",
+        "musl": "a musl build runs on a glibc machine when statically linked, which the name does not say",
+        "unspecified": "the name states no libc",
+    }
+    families = sorted({asset.libc for asset in release.linux_x86_64})
+    return [Floor("libc", family, "asset name", here, None, notes.get(family)) for family in families]
+
+
+# ------------------------------------------------------------------------------------------------
 # The clone: everything the APIs cannot answer
 
 
@@ -955,6 +1223,7 @@ class Health:
     clone: CloneFacts | None
     upstream: Upstream | None = None
     repo_choice: RepoChoice | None = None
+    floors: list[Floor] = field(default_factory=list)
 
 
 def gather(
@@ -966,6 +1235,7 @@ def gather(
     generated: list[str] | None = None,
     upstream_repo: str | None = None,
     now: datetime | None = None,
+    machine: Machine | None = None,
 ) -> Health:
     """PyPI's answer. `repo` is `--repo`; when it is `None` the repo is read from `project_urls`."""
     now = now or datetime.now(UTC)
@@ -973,6 +1243,7 @@ def gather(
     info = payload.get("info", {})
     choice = choose_repo(repo, pypi_repo(info))
     repo_facts, people, issues = maintenance(transport, choice.repo, now=now)
+    ships = release_files(payload)
     return Health(
         name=info.get("name", name),
         version=info.get("version"),
@@ -980,13 +1251,14 @@ def gather(
         requires_python=info.get("requires_python"),
         cadence=cadence(release_dates(payload), yanked_versions(payload), now=now),
         runtime_requirements=runtime_requirements(payload),
-        release_files=release_files(payload),
+        release_files=ships,
         repository=repo_facts,
         contributors=people,
         issues=issues,
         clone=clone_facts(clone, generated or []) if clone else None,
         upstream=upstream(transport, upstream_repo, release_dates(payload), now=now) if upstream_repo else None,
         repo_choice=choice,
+        floors=pypi_floors(info.get("requires_python"), ships, machine),
     )
 
 
@@ -1000,19 +1272,24 @@ class GithubHealth:
     issues: IssueSample | None
     releases: ReleaseList
     latest: LatestRelease
+    floors: list[Floor] = field(default_factory=list)
 
 
-def gather_github(transport: Transport, repo: str, *, now: datetime | None = None) -> GithubHealth:
+def gather_github(
+    transport: Transport, repo: str, *, now: datetime | None = None, machine: Machine | None = None
+) -> GithubHealth:
     """The maintenance axis, the stable-release cadence, and the latest release's Linux assets."""
     now = now or datetime.now(UTC)
     repo_facts, people, issues = maintenance(transport, repo, now=now)
+    latest = latest_release(transport, repo, now=now)
     return GithubHealth(
         repo=repo,
         repository=repo_facts,
         contributors=people,
         issues=issues,
         releases=release_list(transport, repo, now=now),
-        latest=latest_release(transport, repo, now=now),
+        latest=latest,
+        floors=asset_floors(latest, machine),
     )
 
 
@@ -1066,6 +1343,7 @@ def render(health: Health) -> str:
 
     lines.append("")
     lines.extend(_release_file_lines(health.release_files))
+    lines.extend(_floor_lines(health.floors))
 
     if health.upstream:
         lines.append("")
@@ -1113,8 +1391,28 @@ def render_github(health: GithubHealth) -> str:
     lines.extend(_github_lines(None, health.repository, health.contributors, health.issues))
     lines.append("")
     lines.extend(_latest_release_lines(health.latest, f"ships ({health.latest.repo}, latest stable release)"))
+    lines.extend(_floor_lines(health.floors))
     lines.extend(CLOSING)
     return "\n".join(lines)
+
+
+def _floor_lines(floors: list[Floor]) -> list[str]:
+    """Every floor, and whether this machine meets it; `ABOVE THIS MACHINE` is the finding."""
+    if not floors:
+        return []
+    lines = ["", "floors (stated by the metadata, compared with this machine where cheap to read)"]
+    for floor in floors:
+        if floor.met is True:
+            verdict = f"met here ({floor.machine})"
+        elif floor.met is False:
+            verdict = f"ABOVE THIS MACHINE ({floor.machine})"
+        elif floor.machine is None:
+            verdict = "not compared — this machine's value is not readable here"
+        else:
+            verdict = f"not compared (this machine: {floor.machine})"
+        lines.append(f"  {floor.what:<8} {floor.required:<18} {verdict}")
+        lines.append(f"  {'':<8} from {floor.source}{f' — {floor.note}' if floor.note else ''}")
+    return lines
 
 
 def _cadence_lines(pace: Cadence, noun: str = "releases") -> list[str]:
@@ -1389,7 +1687,7 @@ def main(argv: list[str] | None = None, transport: Transport | None = None) -> i
     transport = transport or LiveTransport()
 
     try:
-        health, text = _run(args, transport)
+        health, text = _run(args, transport, transport.machine())
     except HealthError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -1398,12 +1696,12 @@ def main(argv: list[str] | None = None, transport: Transport | None = None) -> i
     return 0
 
 
-def _run(args: argparse.Namespace, transport: Transport) -> tuple[Any, str]:
+def _run(args: argparse.Namespace, transport: Transport, machine: Machine) -> tuple[Any, str]:
     """The source's answer and its rendering, one branch per subcommand."""
     if args.source == "github":
         if not GITHUB_SHORTHAND_RE.match(args.repo) or args.repo.startswith("github:"):
             raise HealthError(f"{args.repo!r} is not owner/repo")
-        found = gather_github(transport, args.repo)
+        found = gather_github(transport, args.repo, machine=machine)
         return found, render_github(found)
     health = gather(
         transport,
@@ -1412,6 +1710,7 @@ def _run(args: argparse.Namespace, transport: Transport) -> tuple[Any, str]:
         clone=args.clone,
         generated=args.generated,
         upstream_repo=args.upstream,
+        machine=machine,
     )
     return health, render(health)
 

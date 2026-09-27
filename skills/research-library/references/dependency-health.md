@@ -173,6 +173,30 @@ speaks to identity. The report keeps all three apart. Recorded 2026-09-27: `koal
 v0.11.0 ships no checksum or signature file at all, only GitHub's digests; `BurntSushi/ripgrep`
 15.2.0 puts a `.sha256` beside every asset.
 
+## Floors: what a release needs from this machine
+
+[DECISION: every source reports every floor its metadata states, in one `floors` section, rather
+than a per-ecosystem field such as a Rust MSRV. Settled with the user 2026-09-27: a minimum-version
+requirement exists in every language and on every OS. Each floor is read from the metadata and never
+inferred, and compared with this machine only where the machine's value is cheap to read: the
+`python3` running the script, glibc from `os.confstr` (no subprocess), and `node --version` when
+node is on `PATH`.]
+
+- **PyPI**: `requires_python`, and the glibc floor from the Linux x86_64 wheels' tags —
+  `manylinux_2_17` means glibc 2.17 or newer, and the legacy `manylinux1`, `manylinux2010` and
+  `manylinux2014` mean 2.5, 2.12 and 2.17. A compressed tag set installs wherever any member does,
+  so its lowest member is the floor; across several wheels the report gives the lowest and names the
+  highest. A release whose only Linux wheels are `musllinux` is flagged on a glibc machine, because
+  pip skips them there and builds the sdist.
+- **GitHub assets**: only the libc family the asset name states. A numeric glibc floor lives in the
+  binary's ELF version needs, and reading it means downloading the binary, which is out of scope. A
+  musl build runs on a glibc machine when it is statically linked, which the name does not say.
+
+The `python` comparison is against the interpreter running the script, not a project's venv, and the
+report labels it `python3` for that reason.
+
+## GitHub releases
+
 **A repo's release list is its version history when there is no registry.** `github <owner/repo>`
 reads one page of `repos/<repo>/releases` (the newest 100) for the cadence and says so when the page
 is full. A release is off the stable line when GitHub flags it **or** its tag is spelled as a

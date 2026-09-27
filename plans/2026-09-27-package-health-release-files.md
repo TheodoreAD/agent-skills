@@ -328,8 +328,21 @@ Against "What building it fully entails":
   retired form exits 2 with the new spelling. The caller count was smaller than recorded: the two
   older plans (`2026-09-05-a-piped-gate-that-cannot-lie`, `2026-09-07-script-coverage-…`) name the
   script only, and `evals/dependency-health.json` names no command line, so none needed editing. The
-  store plan outside this repo (`_unscoped/2026-09-26-google-api-access-foundation.md`) is left for
-  its own session.
+  store plan outside this repo (`_unscoped/2026-09-26-google-api-access-foundation.md`) was read,
+  not edited: it too names only `package_health.py`, never a command line.
+- **Build stage 2, `github <owner/repo>`, landed 2026-09-27** (`06aa9d3`). The maintenance axis, the
+  stable cadence from one page of the releases list (pre-release by GitHub's flag or by tag
+  spelling, drafts skipped), and the latest release's Linux assets through a `LatestRelease` that
+  `Upstream` now extends. Fixtures `ripgrep-releases.json` (75 releases) and `ripgrep-repo.json`.
+  Monorepo tags such as `@biomejs/biome@2.5.14` read as their version. [UNVERIFIED: a monorepo's
+  releases list mixes packages — `biomejs/biome` interleaves `@biomejs/js-api@6.0.0` with the CLI's
+  — so its cadence counts all of them. Not handled; a filter by tag prefix is the obvious fix if it
+  misleads in practice.]
+- **Build stage 3, floors, landed 2026-09-27** (`9ef0a2d`). One `floors` section, the machine read
+  through the transport seam (`python3`, glibc via `os.confstr`, `node --version` when on PATH) so
+  tests pin it. PyPI: `requires_python` and the lowest manylinux glibc floor, a musllinux-only
+  release flagged on glibc. GitHub: the libc family per asset name. A small PEP 440 and npm-range
+  evaluator answers `not compared` rather than guess on a spelling it does not parse.
 
 [DEFERRED: repointing the home `AGENTS.md` install rule from
 `curl -s https://pypi.org/pypi/<name>/json` to this script. That rule is a fragment in

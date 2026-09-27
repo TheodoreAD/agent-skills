@@ -108,6 +108,56 @@ two isolated virtualenvs: 14 MB across 12 packages versus 15 MB across 18. A con
 size alone said "equivalent"; from count alone, "half again as much". Report both, and resolve them
 against what actually matters for the consumer — usually the transitive names, not the bytes.
 
+## What a release ships, and whether a wrapper tracks its upstream
+
+**Read the file list, not a summary of it.** Whether a PyPI wrapper around a binary ships that
+binary inside its wheels or fetches it at install time is exactly what a search summary gets wrong,
+and it goes wrong in both directions. A summary claimed `hadolint-py` downloads at install; it ships
+real 12 MB wheels, and it was nearly rejected for a false reason. `lychee-bin` turned out to be one
+78 MB wheel with a single release ever, which reversed a decision already made to adopt it. Both
+answers sit in the PyPI JSON payload the script already fetches, so the `ships` section costs no
+request.
+
+**The machine is fixed at x86_64 Linux, on purpose.** Reading `platform.machine()` would make the
+same command answer differently on two machines, and the report is meant to be comparable across
+sessions. A reader on another platform reads the full list, which `--json` always carries.
+
+**`sdist-only` is the install-time cost, not a packaging detail.** With no wheel for the machine,
+pip builds from source — or the build hook downloads a binary, which is the same network fetch the
+wrapper existed to avoid. Real case in the test fixture: `shellcheck-py` 0.9.0.3 shipped a 3 kB
+sdist and nothing else.
+
+**The upstream is a second repo, and the flag names it.** A wrapper's own repo (`shellcheck-py/…`)
+says nothing about whether it keeps up with the project it repackages (`koalaman/shellcheck`), so
+`--upstream` is separate from the positional repo rather than inferred from it.
+
+[DECISION: wrapper and upstream versions are matched by spelling alone — the upstream version
+exactly, or followed by a `.`, `+`, `_` or `-`. Wrappers commonly append a build number (`0.11.0` →
+`0.11.0.1`), and some use schemes unrelated to upstream's. Parsing every scheme is unbounded work,
+and a wrong match reads as a false "tracks upstream", which is worse than no answer. So a miss
+prints `NO MATCHING WRAPPER RELEASE` beside both versions and the reader compares them. Lag is
+measured from upstream's `published_at` to the wrapper version's earliest upload.]
+
+[DECISION: `releases/latest` is the upstream read, because GitHub defines it as the newest release
+that is neither a draft nor a pre-release — the stable line, the same trap the PyPI cadence avoids.
+A project that publishes tags and no releases answers 404, which is reported as a finding and does
+not fail the rest of the report.]
+
+**A checksum from the publisher and GitHub's digest are different claims.** The GitHub API reports a
+`digest` (sha256) on release assets, computed by GitHub at upload — present on every asset of both
+captures below, including ones uploaded in 2025. It proves the download matches what was uploaded
+and nothing about who uploaded it. A `.sha256` sidecar or a `checksums.txt` manifest is the
+publisher's own statement, and a `.sig`/`.asc`/`.minisig` beside either is the only thing here that
+speaks to identity. The report keeps all three apart. Recorded 2026-09-27: `koalaman/shellcheck`
+v0.11.0 ships no checksum or signature file at all, only GitHub's digests; `BurntSushi/ripgrep`
+15.2.0 puts a `.sha256` beside every asset.
+
+**Asset names follow no single convention.** Rust uses target triples (`x86_64-unknown-linux-musl`),
+Go tools `linux_amd64`, shellcheck `linux.x86_64`, and a `.deb` names no OS at all. The filter takes
+any of the arch spellings together with `linux` or a Linux package extension, and reads libc from
+`musl`/`gnu` in the name. A static binary that names neither is reported as `unspecified`, not
+guessed.
+
 ## Why this lives here rather than in a skill of its own
 
 [DECISION: `research-library` already owns "before fetching anything from the web, check the

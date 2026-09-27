@@ -605,7 +605,7 @@ def _beside(name: str, suffixes: tuple[str, ...], names: set[str]) -> str | None
 def release_assets(release: dict[str, Any]) -> tuple[list[Asset], list[str], int]:
     """This machine's assets, each with the checksum and signature files that sit beside it.
 
-    `github_digest` is GitHub's own sha256 of the upload, reported in the API since 2025. It proves
+    `github_digest` is GitHub's own sha256 of the upload, the asset's `digest` field. It proves
     the download matches what was uploaded and nothing about who uploaded it, so it is carried
     separately from a publisher's checksum or signature rather than counted as one.
     """

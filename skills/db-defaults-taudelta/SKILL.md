@@ -1,5 +1,5 @@
 ---
-name: db-defaults
+name: db-defaults-taudelta
 description: "Use when adding local data persistence to a Python project — caching, relational storage (simple, complex/OLTP, or analytical/OLAP), document storage, full-text search, vector/embedding search, background job queues, cron/scheduled tasks, pub/sub/event streaming, graph data, blob storage, or time-series data — and no explicit \"evaluate the best DB for this\" request was made. Gives the default technology per category, chosen for permissive licensing, pytest-local testability with no docker/cloud, and low-boilerplate LLM-agent-friendly APIs, so picks stay consistent across projects instead of drifting session to session."
 ---
 
@@ -217,12 +217,12 @@ facing recommendation. Each category's "Escalate to" line is the pick for that s
 
 ## Editing this skill
 
-This file is _copied_ into `~/.agents/skills/db-defaults` at install time, never symlinked, so
-**editing the deployed copy is local drift** — the exact thing this skill exists to prevent, and it
-reaches no other machine. Edit the source in the repo this was installed from, push, and re-run
-`skills add <that source> --global --skill db-defaults` to refresh every project's copy. If you
-installed it from someone else's repo rather than your own fork, the source is theirs: open an issue
-or a pull request there instead.
+This file is _copied_ into `~/.agents/skills/db-defaults-taudelta` at install time, never symlinked,
+so **editing the deployed copy is local drift** — the exact thing this skill exists to prevent, and
+it reaches no other machine. Edit the source in the repo this was installed from, push, and re-run
+`skills add <that source> --global --skill db-defaults-taudelta` to refresh every project's copy. If
+you installed it from someone else's repo rather than your own fork, the source is theirs: open an
+issue or a pull request there instead.
 
 ## Starter snippets
 

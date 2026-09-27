@@ -5,8 +5,8 @@
     "its description had to widen to reach it — the old wording named only the library at",
     "$RESEARCH_HOME, so none of the positives below could have fired on it.",
     "",
-    "The pair to watch is db-defaults, which owns 'which datastore for this shape of data'. The",
-    "boundary drawn here is that db-defaults answers what KIND of thing to reach for and this skill",
+    "The pair to watch is db-defaults-taudelta, which owns 'which datastore for this shape of data'. The",
+    "boundary drawn here is that db-defaults-taudelta answers what KIND of thing to reach for and this skill",
     "answers whether a NAMED candidate is fit to depend on. The two negatives are the boundary,",
     "not decoration: a description written as 'choosing a library' would take the datastore case",
     "too, and a suite of positives alone would pass for it.",
@@ -32,7 +32,7 @@
     "Measured 2026-09-27, candidate mode, 3 runs: 12/13. Each of the four new-source positives",
     "went 3/3 to the candidate wording and 0/3 to the incumbent, which is the adopt test; the old",
     "positives stayed with the incumbent twin, so the split was 12 fires each. All three negatives",
-    "stayed silent and db-defaults kept its case. The one failure is the kept py.typed boundary."
+    "stayed silent and db-defaults-taudelta kept its case. The one failure is the kept py.typed boundary."
   ],
   "cases": [
     {
@@ -73,7 +73,7 @@
     },
     {
       "prompt": "We need somewhere to keep session state that survives a restart. What kind of datastore fits?",
-      "expect": "db-defaults"
+      "expect": "db-defaults-taudelta"
     },
     {
       "prompt": "Add the pinned version of requests to this project's dependency group and lock it.",

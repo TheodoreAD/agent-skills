@@ -9,7 +9,7 @@
     "reading. This suite is the check that has to pass before the split is worth doing.",
     "",
     "Three things it has to show: each piece wins its own requests; the pieces do not steal from",
-    "each other; and neither invoke-task-conventions-taudelta nor db-defaults loses ground, since the whole",
+    "each other; and neither invoke-task-conventions-taudelta nor db-defaults-taudelta loses ground, since the whole",
     "reason python-conventions-taudelta was suspected of shadowing them was its breadth."
   ],
   "cases": [
@@ -55,7 +55,7 @@
     },
     {
       "prompt": "This Python service needs a local cache that survives restarts. What should I reach for?",
-      "expect": "db-defaults"
+      "expect": "db-defaults-taudelta"
     },
     {
       "prompt": "What is the capital of France?",

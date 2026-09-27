@@ -24,18 +24,18 @@
     },
     {
       "prompt": "How should I model these few thousand records and persist them in a Python project?",
-      "expect": "db-defaults",
-      "why": "python-conventions-taudelta explicitly claims data modeling; persistence is db-defaults'"
+      "expect": "db-defaults-taudelta",
+      "why": "python-conventions-taudelta explicitly claims data modeling; persistence is db-defaults-taudelta'"
     },
     {
       "prompt": "I need to keep some structured application data around between runs. What's the standard choice here?",
-      "expect": "db-defaults",
-      "why": "no storage vocabulary at all, so nothing lexical points at db-defaults"
+      "expect": "db-defaults-taudelta",
+      "why": "no storage vocabulary at all, so nothing lexical points at db-defaults-taudelta"
     },
     {
       "prompt": "Reviewing a Python module that shells out to run background jobs on a schedule. What should it be using?",
-      "expect": "db-defaults",
-      "why": "'reviewing Python' is python-conventions-taudelta; scheduled jobs are a db-defaults category"
+      "expect": "db-defaults-taudelta",
+      "why": "'reviewing Python' is python-conventions-taudelta; scheduled jobs are a db-defaults-taudelta category"
     },
     {
       "prompt": "Our automation scripts have grown messy and inconsistent. Where do I start cleaning them up?",

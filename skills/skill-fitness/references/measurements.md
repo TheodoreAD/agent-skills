@@ -77,13 +77,14 @@ library at `$RESEARCH_HOME`, so none of the new positives could have fired on it
 | "will this pydantic cap hold us back"         | candidate 3/3                                    |
 | "clone anyio into the research library"       | **incumbent** 3/3 — the old responsibility, kept |
 | "does this package ship py.typed"             | nothing, 0/3                                     |
-| "what kind of datastore fits" (negative)      | `db-defaults` 3/3                                |
+| "what kind of datastore fits" (negative)      | `db-defaults-taudelta` 3/3                       |
 | "add the pinned requests and lock it" (null)  | nothing, 3/3                                     |
 
 **6/7, and the candidate won 9 of 12 fires for the skill.** Adopted on the test this file states: it
-won cases the incumbent could not have won and lost none the incumbent held. `db-defaults` was the
-pair to watch — it owns "which _kind_ of datastore" — and it kept its case cleanly, which is the
-boundary the widening was written around: a named candidate's fitness here, a category choice there.
+won cases the incumbent could not have won and lost none the incumbent held. `db-defaults-taudelta`
+was the pair to watch — it owns "which _kind_ of datastore" — and it kept its case cleanly, which is
+the boundary the widening was written around: a named candidate's fitness here, a category choice
+there.
 
 The py.typed miss is the interesting one and the case is **kept rather than reworded**. It names no
 package and no repo, so it reads as a generic typing question, and the description is deliberately

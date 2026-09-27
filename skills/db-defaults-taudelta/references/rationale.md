@@ -1,4 +1,4 @@
-# Rationale for the db-defaults table
+# Rationale for the db-defaults-taudelta table
 
 Research passes: 2026-08-15 (initial 11 categories) and 2026-08-15 (follow-up: OLAP split,
 cron/scheduler category, pub/sub category, Kuzu fork check). Stats below (GitHub stars/forks/

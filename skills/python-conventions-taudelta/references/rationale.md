@@ -449,10 +449,10 @@ request/process/test can't see coming** — architecture-level (don't let a proc
 memory outlives the request), not a ban on any object anywhere holding data.
 
 **Legitimate, source-acknowledged exceptions — not edge cases to explain away.** Caches, connection
-pools, and rate limiters are the standard trio, and this project's own `db-defaults` skill research
-already contains the sharpest example: a `time.monotonic()`-based rate limiter's entire job is
-tracking "how many hits already happened in this window" — there is no stateless implementation of
-rate limiting, full stop. The correct move per every source checked isn't eliminating this state,
+pools, and rate limiters are the standard trio, and this project's own `db-defaults-taudelta` skill
+research already contains the sharpest example: a `time.monotonic()`-based rate limiter's entire job
+is tracking "how many hits already happened in this window" — there is no stateless implementation
+of rate limiting, full stop. The correct move per every source checked isn't eliminating this state,
 it's making it explicit, scoped, and (if concurrent) protected — the free-threading porting guide's
 own pitfall list (global config state, an ad-hoc dict used as a cache) is framed as "be aware and
 guard this," not "eliminate all mutable state."

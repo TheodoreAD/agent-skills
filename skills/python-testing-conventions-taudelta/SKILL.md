@@ -82,10 +82,10 @@ thing.
 - The deciding question is that lifetime test, not a list of technologies — a list goes stale and
   invites arguing about membership, while "can this suite start it and stop it" answers a new case
   on its own.
-- Why: it is the premise `db-defaults` already selects on. Every default there is chosen partly for
-  "pytest-local testability with no docker/cloud", and doubling the database throws away the thing
-  the dependency was picked for. You get to run the real thing _because_ the choice was made to let
-  you.
+- Why: it is the premise `db-defaults-taudelta` already selects on. Every default there is chosen
+  partly for "pytest-local testability with no docker/cloud", and doubling the database throws away
+  the thing the dependency was picked for. You get to run the real thing _because_ the choice was
+  made to let you.
 - **Real is not the same as sandboxed, and running real services makes the difference matter more.**
   The `tmp_path` rule above is the sharp version: a test that reaches `Path.home()` writes into the
   real one. A real service under test needs its own temporary state as much as a fake would.

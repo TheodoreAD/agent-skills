@@ -1,7 +1,7 @@
 {
   "about": [
     "Written for the pair fitness.py flagged, not for one skill in isolation: python-conventions-taudelta",
-    "covers python-conventions-taudelta -> invoke-task-conventions-taudelta at 0.176 and -> db-defaults at 0.139,",
+    "covers python-conventions-taudelta -> invoke-task-conventions-taudelta at 0.176 and -> db-defaults-taudelta at 0.139,",
     "both above this corpus's shadow cut of 0.089. The question these cases answer is whether that",
     "static signal is real - does a request meant for a narrow skill actually go to the broad one.",
     "Negative cases are half the suite on purpose: a description that fires on everything passes",
@@ -18,11 +18,11 @@
     },
     {
       "prompt": "This Python service needs a local cache that survives restarts. What should I reach for?",
-      "expect": "db-defaults"
+      "expect": "db-defaults-taudelta"
     },
     {
       "prompt": "I want full-text search over a few thousand documents, locally, no Docker. What do I use?",
-      "expect": "db-defaults"
+      "expect": "db-defaults-taudelta"
     },
     {
       "prompt": "Should this config object be a dataclass or a Pydantic model?",

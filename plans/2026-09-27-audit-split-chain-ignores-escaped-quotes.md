@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-27
+status: landed
+updated: 2026-09-28
 ---
 
 # Audit split chain ignores escaped quotes
@@ -45,3 +45,11 @@ the same places.]
 4. Note the instrument change. A baseline saved before the fix straddles it, so any `--compare`
    across the fix must say that the `chain*` rows moved for this reason (see the harvest skill's
    straddle rule).
+
+## Migrated to
+
+- **The rule, the measurement and the rejected rebuild** — `split_chain`'s docstring in
+  `skills/session-bash-audit/scripts/audit.py`, and the agreement test in `tests/unit/test_audit.py`
+  (`bda4d44`).
+- **The instrument change** — the commit message. Baselines already record the `audit.py` version
+  that made them, and `session-harvest`'s straddle rule covers comparing across it, so no new text.

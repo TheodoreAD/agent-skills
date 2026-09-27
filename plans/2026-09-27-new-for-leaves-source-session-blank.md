@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-27
+status: landed
+updated: 2026-09-28
 ---
 
 # New --for leaves source_session blank
@@ -43,3 +43,11 @@ be a plausible, precise and wrong value, which is worse than a blank that asks.]
 2. A test with the variable set and unset.
 3. A PITFALL line in the SKILL.md section on plans that arrive from another repo: in a background
    job, the job id and the transcript id differ, and only the transcript id is a `source_session`.
+
+## Migrated to
+
+- **The fill and the job-id pitfall** — `skills/plan-conveyor/SKILL.md`, "Plans that arrive from
+  another repo"; `claude_transcript` in `plans.py`, whose docstring carries the incident
+  (`e514be7`).
+- **Why `source_moment` stays blank** — `e514be7`'s message only: the field's template comment
+  already says it is the moment of the turn, which is the whole argument.

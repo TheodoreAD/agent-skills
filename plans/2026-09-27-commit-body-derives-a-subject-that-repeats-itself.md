@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-27
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/freshful-polite-mcp
 source_session: 0134b98b-f28c-4444-8923-f0c22c667296.jsonl
 source_moment: 2026-09-26T23:58:00Z
@@ -55,3 +55,9 @@ retirement subjects routinely pass 100 characters — both retirements committed
 decided did — so refusing above ~70 would send every retirement back to `-m`, the one flow the skill
 documents as needing no message. Truncating would cut the destination list, the part of a retirement
 subject that says where to look.]
+
+## Migrated to
+
+- **Both fixes and why there is no cap** — `skills/plan-conveyor/SKILL.md`, under the table of what
+  a diff commits as; `_unstamped` and the topic dedupe in `derive_subject` in `plans.py`
+  (`b62a699`).

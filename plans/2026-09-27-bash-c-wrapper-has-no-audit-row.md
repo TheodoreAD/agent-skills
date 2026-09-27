@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-27
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/repo-tasks
 source_session: bcf810d6-38c7-48d3-adfe-2ff30399d4c9.jsonl
 source_moment: 2026-09-26
@@ -60,3 +60,10 @@ Add a `bash-c-wrapper` row matching a command whose first word is `bash`/`sh`/`z
 pointing at the `~/AGENTS.md` rule. The case this session shows is worth naming in the row's note:
 the wrapper was used to keep a `cd` from persisting and to give `time` a whole chain, and each has a
 replacement (`git -C`/the tool's own directory flag; a script file under the scratchpad).
+
+## Migrated to
+
+- **The row, its scope and both replacements** — the `bash-c` entry and its comment in
+  `skills/session-bash-audit/scripts/audit.py`, now in `SESSION_ROWS` and `SAMPLE_TAGS`, with tests
+  in `tests/unit/test_audit.py` (`2cd8c2c`).
+- **Not migrated**: the SKILL.md table line — there is no such table; each row documents itself.

@@ -1195,6 +1195,9 @@ with the number-bearing lines this session wrote there and any others in the fil
 `(authorship unestablished)`; and lists every plans-store commit since session start as this
 session's, `(authorship unestablished)` or `(not attributed)` — the store is shared, so a commit
 inside the window is not yours by virtue of being there, and a marked row is reported, never edited.
+Only the newest ten `(not attributed)` rows print, the rest as a count, and `--verbose` lists them
+all: on a resumed session they were ~190 rows to find this session's 3 (2026-09-27). The counts line
+and every row that is this session's or `(authorship unestablished)` always print in full.
 
 **`(not attributed)` says the check could not tie the commit to this session, and no more.** It used
 to read `(another session)`, which asserted something the evidence never established and was wrong

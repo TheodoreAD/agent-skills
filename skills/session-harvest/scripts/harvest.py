@@ -3995,11 +3995,11 @@ def cmd_filed(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     }
     if args.json:
         return payload
-    _print_filed(payload)
+    _print_filed(payload, getattr(args, "verbose", False))
     return payload
 
 
-def _print_filed(payload: dict[str, Any]) -> None:
+def _print_filed(payload: dict[str, Any], verbose: bool = False) -> None:
     transcript = payload.get("transcript", {})
     print(f"# transcript: {transcript.get('path')}")
     print(f"# session started: {payload.get('session_started')}")
@@ -4041,10 +4041,17 @@ def _print_filed(payload: dict[str, Any]) -> None:
         print("    recognise one as yours through a write this check cannot see, and then say so")
 
     for state in payload.get("stores") or []:
-        _print_store_commits(state)
+        _print_store_commits(state, verbose)
 
 
-def _print_store_commits(state: dict[str, Any]) -> None:
+# How many `(not attributed)` store commits `filed` prints before folding the rest into a count. The
+# rows are worth seeing — a parallel session may be working on the same files — but on a session
+# resumed after days they are a wall: ~190 to find this session's 3, and 116 to find 1 (2026-09-27).
+# Newest first, so the ones kept are the ones most likely to be live.
+UNATTRIBUTED_SHOWN = 10
+
+
+def _print_store_commits(state: dict[str, Any], verbose: bool = False) -> None:
     print(f"\n## store {state['store']}: {state['path']}")
     if not state.get("present"):
         print("    not present")
@@ -4076,8 +4083,15 @@ def _print_store_commits(state: dict[str, Any]) -> None:
         print("    its own reported making them: often the owning repo absorbing or correcting a filing, which")
         print("    means it landed. Not this session's output to count or to correct — unless you know one is")
         print("    yours through a command whose output did not show the commit, and then say so")
-    for commit in theirs:
+    _print_unattributed(theirs, verbose)
+
+
+def _print_unattributed(theirs: list[dict[str, Any]], verbose: bool) -> None:
+    shown = theirs if verbose else theirs[:UNATTRIBUTED_SHOWN]
+    for commit in shown:
         print(f"    (not attributed) {commit['sha']}  {commit['when']}  {commit['subject'][:100]}")
+    if len(shown) < len(theirs):
+        print(f"    + {len(theirs) - len(shown)} older (not attributed) — --verbose lists them")
     if theirs:
         # Deliberately not "(another session)". The evidence establishes only that nothing tied the
         # commit to this session, and the two readings — somebody else's work, versus this session's
@@ -4176,6 +4190,11 @@ def build_parser() -> argparse.ArgumentParser:
     filed.add_argument("--since", help="session start (default: the transcript's first timestamp)")
     filed.add_argument("--until", help="ignore harvest runs at or after this instant (the boundary)")
     filed.add_argument("--repo", action="append", default=[], help="add a repo the transcript cannot show")
+    filed.add_argument(
+        "--verbose",
+        action="store_true",
+        help=f"list every unattributed store commit, not only the newest {UNATTRIBUTED_SHOWN}",
+    )
     return parser
 
 

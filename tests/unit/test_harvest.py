@@ -2374,6 +2374,31 @@ def test_a_path_match_is_contact_with_a_file_not_authorship_of_a_commit(tmp_path
         assert f"(authorship unestablished) {sha}" in out
 
 
+def test_unattributed_store_commits_fold_past_a_handful(capsys):
+    """The resumed-session wall, 2026-09-27: ~190 rows to find 3. The session's own rows and the
+    counts line are never folded; only the unattributed tail is, and --verbose brings it back."""
+    theirs = [
+        {"sha": f"f{n:08d}", "when": "2026-09-20", "subject": f"other {n}", "this_session": False, "touched": False}
+        for n in range(harvest.UNATTRIBUTED_SHOWN + 5)
+    ]
+    mine = {"sha": "a00000000", "when": "2026-09-27", "subject": "mine", "this_session": True, "touched": False}
+    state = {"store": "plans", "path": "/p", "present": True, "commits": [mine, *theirs]}
+
+    harvest._print_store_commits(state)
+    out = capsys.readouterr().out
+    assert f"1 commit(s) this session, 0 of authorship unestablished, {len(theirs)} not attributable" in out
+    assert "a00000000" in out
+    assert out.count("(not attributed) f") == harvest.UNATTRIBUTED_SHOWN
+    assert theirs[0]["sha"] in out, "newest first, so the ones kept are the likeliest to be live"
+    assert theirs[-1]["sha"] not in out
+    assert "+ 5 older (not attributed) — --verbose lists them" in out
+
+    harvest._print_store_commits(state, verbose=True)
+    out = capsys.readouterr().out
+    assert out.count("(not attributed) f") == len(theirs)
+    assert "older" not in out
+
+
 def test_a_store_swept_as_a_repo_prints_its_unpushed_commits_once(capsys):
     """The store is a git repository, so a session that touched it gets both sections: `== repo ==`
     for the git state and `== store ==` for what plan-conveyor means by it. Confirmed 2026-09-18: 32

@@ -81,16 +81,18 @@ recommended direction below (print the gap) over the anchor change, on this evid
 
 ## Open questions
 
-[NEEDS CLARIFICATION: is the right anchor the session's **last activity before the boundary** rather
-than its start? That is one line to compute and it makes every window mean "since this session
-stopped working", which is what the checks are actually asking. Against: for an ordinary same-day
-session the two instants are minutes apart and the change buys nothing, so this is a fix for a case
-that may be rare enough to handle by printing the gap instead.]
+[DECISION: **the anchor stays at session start** (decided with the user 2026-09-28). The question
+was whether to anchor at the session's last activity before the boundary instead. Against it, and
+decisive: for an ordinary same-day session the two instants are minutes apart and the change buys
+nothing, and the second sample showed the attribution already discounting correctly where the
+commits were this session's. What a resumed session lacked was the window's age, which the printed
+gap now supplies.]
 
-[NEEDS CLARIFICATION: should `filed`'s unattributed store listing be capped the way `sweep`'s stale-
-plan check already folds its noisy rows — a count plus `--verbose`? The rows are not useless (a
-parallel session's commit touching your filing is worth seeing), but past some number they are a
-wall rather than a list, and the threshold is a judgement no measurement here settles.]
+[DECISION: **`filed` folds its `(not attributed)` rows past ten**, newest first, into a count line,
+and `--verbose` lists them all — the shape `sweep`'s may-have-landed section already uses (decided
+with the user 2026-09-28). Ten is not measured; it is small against the 116 and ~190 observed and
+large against the 1 and 3 rows that were the session's own. Only the unattributed tail folds: this
+session's rows, the `(authorship unestablished)` rows and the counts line always print.]
 
 ## Recommended direction
 
@@ -106,5 +108,4 @@ benefits most, because it is the one whose output turns directly into "go and re
 consecutive transcript entries, with its two instants — and, past `LONG_IDLE` (one day), a note that
 every `started:`-anchored window spans it. `--json` carries it as `longest_idle`. It lives in
 `transcript` rather than `boundary` so the harvest's first command still cannot fail on transcript
-resolution. The anchor question and the `filed` cap remain open; the second sample above is the
-evidence against re-anchoring so far.
+resolution. The `filed` fold followed the same day; both decisions are above.

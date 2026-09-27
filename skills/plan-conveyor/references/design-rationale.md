@@ -616,6 +616,16 @@ is published yet, so a hit is an edit rather than the purge decision it becomes 
 Thereafter `--mode staged` per commit is what keeps history clean, and `--mode history` reverts to
 being the audit it already was for repo-held plans.]
 
+**Before a commit, though, `--mode tree` is not the weaker check, and a plan proposing to count it
+as a miss was closed on that ground (2026-09-28).** `tree` reads every tracked and
+untracked-not-ignored file as it stands on disk, which contains what is staged unless a file was
+edited again after `git add`, so as a commit gate it is the broader one. It is also the common one:
+over 60 days of this machine's transcripts, 243 commits in 64 sessions followed a tree scan and no
+staged one, against 1,236 after a staged scan. Neither an audit row nor a nudge in `scan` was added,
+since both would flag a safe habit. The miss in the incident that prompted it was the push without a
+history scan, which is the pitfall above; the number that is a real gap is the 1,201 commits in the
+same data that followed no scan at all.
+
 [PITFALL: **after a `git filter-branch`, `--mode history` reports the same hit count as before, and
 it is not because the rewrite failed.** The scan reads `git log --all -p`; filter-branch saves the
 pre-rewrite refs under `refs/original/`, and `--all` walks those too. Measured 2026-08-29 on this

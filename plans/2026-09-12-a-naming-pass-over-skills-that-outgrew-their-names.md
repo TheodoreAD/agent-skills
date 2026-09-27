@@ -5,6 +5,27 @@ updated: 2026-09-27
 
 # A naming pass over the skills that outgrew their names
 
+## Migrated to
+
+- **The rules**, in `AGENTS.md`'s authoring section: a skill that asserts how to work carries
+  `-taudelta` and a skill that does a job does not; the flavour slot is only free where the current
+  word is inaccurate; and the corrected naming bullet, which no longer offers `research-trove` as an
+  adopted example.
+- **The reasoning, the measurements and the rejected candidates**, in
+  `skills/skill-authoring-taudelta/references/naming.md` — the tool-versus-opinion split and both
+  reasons the mark rests on, the leading-versus-trailing corpus measurement with the three reasons
+  that beat the corpus habit, the four rejected marks with the Thad frequency data, the retracted
+  truncation argument, why a name that is already accurate is finished, the agent-noun pitfall that
+  killed the animal candidates, why `-conventions` survived and `-defaults` lost, and what a rename
+  does to the public index and to existing installs.
+- **The config and variable migration** it turned up, in `plan-conveyor`'s own `SKILL.md` and
+  `config_path`'s docstring, with four tests in `tests/unit/test_locations.py`.
+- **The execution**, in the eight rename commits `2b4a548`..`81626a9`, each naming why that skill
+  takes the mark and what its citation surface was.
+
+Nothing here is left to carry, so the file is deleted in the next commit.
+`plans.py archive --search` reads it back out of git history.
+
 ## Context
 
 Raised by the user 2026-09-12: _"plan docs is a name I let happen without much scrutiny, but it's

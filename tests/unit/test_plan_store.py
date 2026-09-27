@@ -1072,6 +1072,30 @@ def test_a_bogus_neutral_variable_fails_loudly_rather_than_silently_degrading(ws
         plans.session_anchor(plans.load_config())
 
 
+def _source_session(ws: Workspace, topic: str) -> str:
+    plans.main(["new", topic, "--for", "client.com-bitbucket/team/api", "--path", str(ws.personal)])
+    filed = (ws.sensitive / "client.com-bitbucket" / "team" / "api" / f"{plans.today()}-{topic}.md").read_text(
+        encoding="utf-8"
+    )
+    return next(ln for ln in filed.splitlines() if ln.startswith("source_session:"))
+
+
+def test_new_for_names_this_sessions_transcript_when_the_harness_says(ws, monkeypatch, capsys):
+    """2026-09-27: a background job typed its job id here, which names no transcript. The variable
+    held the right stem, so it is written for the filer — and only when a transcript by that name
+    exists, which is what a job id never has."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+
+    assert _source_session(ws, "no-harness") == "source_session: # transcript filename, or blank"
+
+    anchor_session_to(ws, ws.personal, monkeypatch)
+    assert _source_session(ws, "under-claude") == "source_session: sess-1.jsonl"
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "1767aa06-a-job-id")
+    assert _source_session(ws, "job-id") == "source_session: # transcript filename, or blank"
+    capsys.readouterr()
+
+
 def test_the_pre_rename_variables_still_answer_and_say_so(ws, monkeypatch):
     """A harness exporting the `PLAN_DOCS_` names it was told to before 2026-09-27 keeps working,
     the current name wins where both are set, and the anchor names the variable actually read."""

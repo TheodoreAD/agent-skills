@@ -2475,6 +2475,21 @@ def claude_session_repo(cfg: Config) -> Path | None:
     The encoding is lossy (several characters all become `-`), so candidates are encoded and
     compared rather than the directory name being decoded, which would be ambiguous.
     """
+    transcript = claude_transcript()
+    if transcript is None:
+        return None
+    encoded = transcript.parent.name
+    return next((repo for repo in _candidate_repos(cfg) if encode_project_dir(repo) == encoded), None)
+
+
+def claude_transcript() -> Path | None:
+    """This session's transcript, when Claude Code exported an id naming exactly one that exists.
+
+    Also what `new --for` writes as `source_session`, which it used to leave for the filer to type.
+    Confirmed 2026-09-27: a background-job session typed its **job** id there, read off the task
+    output paths it had open, on two plans — a value naming no transcript, and nothing in the file
+    could show it was wrong. The variable held the right stem all along.
+    """
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session_id):
         return None
@@ -2482,10 +2497,7 @@ def claude_session_repo(cfg: Config) -> Path | None:
         matches = list(transcript_root().glob(f"*/{session_id}.jsonl"))
     except OSError:
         return None
-    if len(matches) != 1:
-        return None
-    encoded = matches[0].parent.name
-    return next((repo for repo in _candidate_repos(cfg) if encode_project_dir(repo) == encoded), None)
+    return matches[0] if len(matches) == 1 else None
 
 
 class SessionAnchor(NamedTuple):
@@ -2716,9 +2728,10 @@ def write_plan(
     # absorbing session implemented exactly what it was handed. What was missing was a named place to
     # look. Blank is a legitimate answer and means "this reports a fact, not a proposal".
     if source_repo is not None:
+        transcript = claude_transcript()
         lines += [
             f"source_repo: {source_repo}",
-            "source_session: # transcript filename, or blank",
+            f"source_session: {transcript.name}" if transcript else "source_session: # transcript filename, or blank",
             "source_moment: # ISO timestamp of the turn",
             "source_plan: # the filing repo's plan that owns this decision, or blank if it reports a fact",
         ]

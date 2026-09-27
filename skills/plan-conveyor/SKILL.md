@@ -1327,7 +1327,7 @@ happened in another:
 
 ```yaml
 source_repo: <the repo you were in> # filled in for you, from where the session was
-source_session: 8f3c….jsonl # the harness's transcript for that session
+source_session: 8f3c….jsonl # filled in under Claude Code; elsewhere, the transcript's filename
 source_moment: 2026-08-22T16:50:15Z # plus a distinctive quoted phrase in the body
 source_plan: plans/2026-08-22-why-this.md # the filing repo's plan that owns this decision
 ```
@@ -1372,6 +1372,12 @@ friction unprompted and correctly, then paraphrased the incident instead of citi
 that had every reason to do better. 2026-09-01, the session _reading the plan that describes that
 failure_ filed a cross-repo plan and paraphrased it too. Two for two, which is why the fields are
 emitted as blanks in the file rather than described in a skill someone might not open.]
+
+[PITFALL: **in a background job the job id is not the session id, and only the transcript's id is a
+`source_session`.** Confirmed 2026-09-27: a job session typed the id from its task-output paths into
+two plans, and it named no transcript. So `new --for` now fills the field itself when Claude Code
+exports `$CLAUDE_CODE_SESSION_ID` and a transcript by that name exists; on any other harness it is
+still yours to type, and the filename under the harness's transcript directory is the value.]
 
 ## Where retired content goes
 

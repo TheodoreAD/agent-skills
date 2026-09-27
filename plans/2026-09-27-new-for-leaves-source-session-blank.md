@@ -29,10 +29,12 @@ transcript stem. So the script held the answer and asked a human to type it.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: fill `source_session` automatically when `$CLAUDE_CODE_SESSION_ID` is set, as
-`<id>.jsonl`, and leave the placeholder only when it isn't? This is the same move as `source_repo`,
-which is already filled in. And `source_moment` as the current UTC instant, which is at least the
-filing moment, if not the moment of the evidence?]
+[DECISION: **fill `source_session`, leave `source_moment`** (decided with the user 2026-09-28).
+`new --for` writes `<id>.jsonl` when `$CLAUDE_CODE_SESSION_ID` names exactly one transcript that
+exists, through the same lookup the session anchor uses, and keeps the placeholder otherwise. A job
+id fails that check, so the 2026-09-27 mistake cannot be written automatically either.
+`source_moment` stays the filer's: it means when the evidence happened, and the filing instant would
+be a plausible, precise and wrong value, which is worse than a blank that asks.]
 
 ## Recommended direction
 

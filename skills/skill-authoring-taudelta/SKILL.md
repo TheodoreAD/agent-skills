@@ -152,6 +152,31 @@ still loadable, with its old description still competing for triggers. That is w
 the duplicate is precisely the trigger contention the section below says to design against. After a
 rename or deletion, run `skills remove -g --skill <old-name> -y` and re-check the count.
 
+**And when a rename moves state that lives _outside_ the skill directory, move that state after the
+install, never before.** A config directory, an environment variable name, an installed path cited
+in an always-loaded instructions file — each is named by the skill and not contained in it, so
+renaming one splits the change into two events with an interval between them. During that interval
+the code running on the machine is the **old installed copy**, which knows only the old location,
+while the state has already moved to the new one. Every other session on the machine is pointed at
+that copy by the very instructions file that names it, and none of them has a reason to look.
+
+[PITFALL: **a compatibility fallback shipped with the rename cannot close this, and reads as though
+it does.** Confirmed 2026-09-27, renaming `plan-docs` to `plan-conveyor`: the rename moved
+`~/.config/plan-docs/` to `~/.config/plan-conveyor/` and shipped a fallback reading the pre-rename
+path, in two scripts, with four tests — then moved the directory **thirty minutes before the push**.
+A parallel session in another repo hit the gap ten minutes in. The fallback lives in the new code,
+so it protects the upgrade; the failure is the mirror image, old code looking for state that has
+already moved, and no amount of care inside the repo reaches it. The renaming session even verified
+the right invariant in the wrong direction — the same 61 private terms through the fallback and
+after the move — a check that would have passed identically while the damage was happening.]
+
+**Verify the failure mode before assuming the gap is loud.** The same instance is the argument: an
+unconfigured `plans.py new --for <repo>` did not error, it **succeeded** and filed into the
+sensitive store, because with no config every root defaults to non-shareable. A path that errors is
+a session stopping; a path that writes to the wrong place is a session continuing with a plausible
+result. So the order is push → install → move the state, and the check afterwards is that the state
+is readable from the **installed** copy, not from the checkout.
+
 **Iterating without a push per edit.** The CLI accepts a local path as a first-class source, so
 `skills add ../my-skills --skill <name>` installs the working tree as-is. Use it while drafting;
 push before treating the change as done, or the next install from the remote silently reverts it.

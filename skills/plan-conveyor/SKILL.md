@@ -1074,6 +1074,12 @@ satisfy it is the padding this warns against.]
 | a deletion after `## Migrated to` | `<repo>: retire <topic>, migrated to <where>`      |
 | a status transition               | `<repo>: <topic> is now <status>`                  |
 | tags opened or closed             | `<repo>: <topic> opens 2 DECISION`                 |
+| a new `##` section                | `<repo>: <topic> adds <heading>`                   |
+
+A topic is named once however many store mirrors the commit touches, and a heading loses a leading
+"Added 2026-09-26:" stamp, since the subject already says `adds` and the commit carries its date.
+There is deliberately no length cap: a retirement's subject is often long, and refusing it would
+break the one flow documented to need no message.
 
 **`--body` is the body, always and only** — it goes under the derived subject and never replaces it.
 So there is one thing to write and never a question of how to format it.

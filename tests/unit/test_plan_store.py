@@ -2939,6 +2939,35 @@ def test_commit_names_the_status_a_transition_moved_to(ws, capsys):
     assert "message:   api: cutover is now in-progress" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    ("heading", "kept"),
+    [
+        ("Added 2026-09-26: rebuilding the venv breaks the server", "rebuilding the venv breaks the server"),
+        ("Update: a second sample", "a second sample"),
+        ("2026-09-28 — the gap is printed", "the gap is printed"),
+        ("Added 2026-09-26 a note", "a note"),
+        # Headings that only look like stamps stay whole.
+        ("Fixed point iteration", "Fixed point iteration"),
+        ("Updated numbers from the second run", "Updated numbers from the second run"),
+        ("Evidence", "Evidence"),
+    ],
+)
+def test_a_new_sections_date_stamp_is_not_repeated_after_adds(heading, kept):
+    assert plans._unstamped(heading) == kept
+
+
+def test_one_addition_to_two_mirrors_of_a_plan_names_its_topic_once():
+    """The 2026-09-26 subject: `robots-… and robots-…: adds Added 2026-09-26: …`, ~180 characters."""
+    topic = "2026-09-26-robots-wildcards-are-inert.md"
+    detail = "adds " + plans._unstamped("Added 2026-09-26: the venv rebuild breaks the server")
+    changes = [
+        plans.Change(Path("github.com-personal/temu-mcp") / topic, "edited", detail),
+        plans.Change(Path("github.com-personal/olx-mcp") / topic, "edited", detail),
+    ]
+    subject = plans.derive_subject("store", changes)
+    assert subject == "store: robots-wildcards-are-inert: adds the venv rebuild breaks the server"
+
+
 def test_commit_counts_the_tags_an_edit_opened_and_closed(ws, capsys):
     """A tag appearing or disappearing is a real event in this vocabulary — a question answered, a
     decision recorded — and it is the one thing a diff of prose can be read for honestly."""

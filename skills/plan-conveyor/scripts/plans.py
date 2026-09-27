@@ -4271,8 +4271,30 @@ def _edit_detail(before: str, after: str) -> str:
     had = set(_sections(before))
     fresh = [head for head in _sections(after) if head not in had]
     if fresh:
-        return f"adds {', '.join(head.removeprefix('## ') for head in fresh[:2])}"
+        return f"adds {', '.join(_unstamped(head.removeprefix('## ')) for head in fresh[:2])}"
     return ""
+
+
+_STAMP_VERB = r"(?:added|updated?|fixed|amended)"
+_STAMP_DATE = r"\d{4}-\d{2}-\d{2}"
+_STAMP_CLOSE = f"[:{chr(0x2014)}{chr(0x2013)}]"  # colon, em dash, en dash
+# A verb and/or a date closed by a colon or dash, or a date (optionally after a verb) and a space.
+# A bare verb needs its colon: "Fixed point iteration" is a heading, not a stamp.
+HEADING_STAMP_RE = re.compile(
+    rf"^(?:{_STAMP_VERB}\s+{_STAMP_DATE}|{_STAMP_VERB}|{_STAMP_DATE})\s*{_STAMP_CLOSE}\s*"
+    rf"|^(?:{_STAMP_VERB}\s+)?{_STAMP_DATE}\s+",
+    re.IGNORECASE,
+)
+
+
+def _unstamped(heading: str) -> str:
+    """A section heading without the "Added 2026-09-26:" an addition to a plan is headed with.
+
+    The subject already says `adds`, and the commit already has a date. Kept, it read `adds Added
+    2026-09-26: rebuilding the venv…` — the first subject this derivation produced for a session
+    outside the authoring repo, 2026-09-26, and the convention makes it recur rather than a one-off.
+    """
+    return HEADING_STAMP_RE.sub("", heading, count=1) or heading
 
 
 def _sections(text: str) -> list[str]:
@@ -4321,11 +4343,10 @@ def derive_subject(label: str, changes: list[Change]) -> str | None:
     if kind == "edited" and not changes[0].detail:
         return None
     template = single if len(changes) == 1 else several
-    body = template.format(
-        n=len(changes),
-        topics=_joined([change.topic for change in changes]),
-        detail=changes[0].detail,
-    )
+    # One topic listed once, however many store mirrors hold a plan by that name: the same addition
+    # to two repos' copies of one plan read `<topic> and <topic>: adds …` (2026-09-26).
+    topics = list(dict.fromkeys(change.topic for change in changes))
+    body = template.format(n=len(changes), topics=_joined(topics), detail=changes[0].detail)
     return f"{label}: {body}"
 
 

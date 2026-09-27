@@ -47,7 +47,11 @@ Rough — the derivation is this repo's to design:
 3. Consider a length cap with an ellipsis, since a derived subject is the one part of the message
    nobody reviews before it lands.
 
-[NEEDS CLARIFICATION: whether the derivation should refuse and ask for `-m` when it cannot produce a
-subject under ~70 characters, rather than emitting a long one. Refusing costs a round trip; emitting
-costs a permanent line. The skill's own convention for commit messages is strict about subjects,
-which argues for refusing.]
+[DECISION: **tidy, no cap** (decided with the user 2026-09-28). Items 1 and 2 above are done: a
+topic is listed once however many mirrors it spans, and a leading "Added/Updated/Fixed <date>:" is
+stripped from a new heading before `adds` (a bare verb without its colon is left alone, since "Fixed
+point iteration" is a heading). Item 3 and the refusal were both declined. The derivation's own
+retirement subjects routinely pass 100 characters — both retirements committed the evening this was
+decided did — so refusing above ~70 would send every retirement back to `-m`, the one flow the skill
+documents as needing no message. Truncating would cut the destination list, the part of a retirement
+subject that says where to look.]

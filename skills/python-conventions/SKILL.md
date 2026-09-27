@@ -13,8 +13,9 @@ picking something different for no reason, not to forbid judgment calls.
 
 **Two topics were split out on 2026-08-31** and are separate installs: test-suite conventions are in
 `python-testing-conventions`, and the stdio-logging, tool-boundary and tool-docstring rules for MCP
-servers are in `mcp-python-conventions`. The split was measured before it was made — the pieces were
-checked against real requests to confirm each wins its own and none steals from the others.
+servers are in `mcp-python-conventions-taudelta`. The split was measured before it was made — the
+pieces were checked against real requests to confirm each wins its own and none steals from the
+others.
 
 **This is design guidance, not tool config.** Nothing here tells you which type checker or linter to
 install, or how to configure one — that belongs to whatever your repo uses to enforce its own

@@ -39,11 +39,11 @@
     },
     {
       "prompt": "My MCP server's logging is corrupting the protocol. Where is log output supposed to go?",
-      "expect": "mcp-python-conventions"
+      "expect": "mcp-python-conventions-taudelta"
     },
     {
       "prompt": "When a tool in my MCP server raises, what should the calling model actually see?",
-      "expect": "mcp-python-conventions"
+      "expect": "mcp-python-conventions-taudelta"
     },
     {
       "prompt": "I've finished writing an MCP server. How do I get Claude Code to actually use it on this machine?",

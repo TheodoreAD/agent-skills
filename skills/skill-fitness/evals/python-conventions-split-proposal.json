@@ -11,7 +11,7 @@
       "description": "Use when writing or restructuring Python tests — deciding how much duplication a test should carry before it stops being readable, what a fixture should cover and at what scope, when a test is asserting on implementation instead of behaviour, how to name and organise test modules, what belongs in a fast default suite versus a slower marked tier, and whether a given check is worth a test at all. Also for pytest specifics: parametrize, fixtures, markers, conftest placement, and keeping a suite from writing into the real home directory."
     },
     {
-      "name": "mcp-python-conventions",
+      "name": "mcp-python-conventions-taudelta",
       "description": "Use when writing the Python inside an MCP server and deciding how it should behave — where log output may go when stdout carries JSON-RPC framing, what an exception at a tool boundary should turn into for the calling model, how much detail an error may safely expose, and how to write a tool docstring the model reads as its instructions. For a server's packaging, installation and registration rather than its code, see the shipping skill instead."
     }
   ]

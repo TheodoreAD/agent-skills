@@ -1,5 +1,5 @@
 ---
-name: mcp-python-conventions
+name: mcp-python-conventions-taudelta
 description: "Use when writing the Python inside an MCP server and deciding how it should behave — where log output may go when stdout carries JSON-RPC framing and why a stray print breaks the protocol, what an exception at a tool boundary should turn into for the calling model, how much internal detail an error may safely expose, and how to write a tool docstring that the model reads as its instructions rather than as documentation for a human. Scoped to stdio-transport servers. For a server's packaging, installation and registration rather than its code, see the MCP server shipping skill; for general Python design questions, see the Python conventions skill."
 ---
 
@@ -93,9 +93,9 @@ sketch of the tool-boundary error handling described here.
 
 ## Editing this skill
 
-This file is _copied_ into `~/.agents/skills/mcp-python-conventions` at install time, never
+This file is _copied_ into `~/.agents/skills/mcp-python-conventions-taudelta` at install time, never
 symlinked, so **editing the deployed copy is local drift** — the exact thing this skill exists to
 prevent, and it reaches no other machine. Edit the source in the repo this was installed from, push,
-and re-run `skills add <that source> --global --skill mcp-python-conventions` to refresh every
-project's copy. If you installed it from someone else's repo rather than your own fork, the source
-is theirs: open an issue or a pull request there instead.
+and re-run `skills add <that source> --global --skill mcp-python-conventions-taudelta` to refresh
+every project's copy. If you installed it from someone else's repo rather than your own fork, the
+source is theirs: open an issue or a pull request there instead.

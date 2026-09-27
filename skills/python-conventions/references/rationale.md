@@ -723,10 +723,10 @@ install via `uv tool install`; a shared library like `repo-tasks` installs via `
 
 The user's own framing when this research started: "we can start with those" — a starting set, not
 the full scope. The async/concurrency gap this section used to list was closed by §12, and the
-MCP-scoped logging gap by the sections now living in `mcp-python-conventions`. Still open: **general
-logging conventions for non-MCP code** (log levels, structured logging vs. stdlib `logging`,
-applicable to `power-user-linux-setup` itself and any future CLI tool in the family — the MCP skill
-covers only the stdio stdout/stderr constraint, not logging style broadly) and
+MCP-scoped logging gap by the sections now living in `mcp-python-conventions-taudelta`. Still open:
+**general logging conventions for non-MCP code** (log levels, structured logging vs. stdlib
+`logging`, applicable to `power-user-linux-setup` itself and any future CLI tool in the family — the
+MCP skill covers only the stdio stdout/stderr constraint, not logging style broadly) and
 **CLI-argument-parsing conventions** (no CLI-heavy repo in the family yet to ground against —
 `product-research-pipeline`'s orchestrator is the most likely first real case). Two narrower
 follow-ups surfaced during the MCP-docstring and retry research, worth tracking even though they are

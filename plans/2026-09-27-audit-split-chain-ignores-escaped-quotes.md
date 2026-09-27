@@ -22,16 +22,20 @@ Found by a harvest on 2026-09-27, session `a953b16f-c02c-45d9-99e8-21a7277c781d`
 - `rg -n "help:\"|gcloud|services enable|Remove|os\.Remove|Stdin|\"-\"" <files>`
 - `rg -o --no-filename -N "['\"](gmail|calendar|tasks|…)\.[a-zA-Z]+['\"]" <dir> --glob …`
 
-[UNVERIFIED: that this is the whole cause of those two hits, and whether the session's 4 `chain`
-hits share it. Confirmed by reading the code, not by running `split_chain` on the samples. The first
-step is a test with these two commands as input.]
+**Verified 2026-09-28, by running both versions on the session.** The pre-fix `audit.py` reports
+`chain 5, chain5 2` for `a953b16f` (194 calls); the fixed one reports 0 and 0. So this was the whole
+cause, of every chain hit the session had, not only the two samples. `strip_heredoc` runs first in
+both readers, so the order needed no change.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: fix `split_chain` to honour `\` inside double quotes, which is the POSIX rule;
-single quotes have no escapes. Or rebuild it on `strip_quoted` so there is a single quote model. One
-model is the durable answer, since the two have already diverged once. Check `strip_heredoc`'s order
-too.]
+[DECISION: **the POSIX escape rule in `split_chain`, plus an agreement test** (decided with the user
+2026-09-28). Rebuilding `split_chain` on `QUOTED_RE` was the other option — one quote model, so no
+second drift — and was not taken: it is a rewrite behind four rows for protection a test gives more
+cheaply, and it would change behaviour on an unclosed quote, which today swallows the rest of the
+command and would then split it. The test asserts that blanking quotes with `strip_quoted` never
+changes `split_chain`'s segment count, which holds only while both readers put quote boundaries in
+the same places.]
 
 ## Recommended direction
 

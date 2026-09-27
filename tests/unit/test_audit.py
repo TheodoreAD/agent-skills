@@ -75,6 +75,38 @@ def test_a_heredoc_body_is_not_a_command():
     assert "heredoc" in tags_of(cmd)
 
 
+ESCAPED_QUOTE_SAMPLES = [
+    # The two 2026-09-27 samples, each one `rg` call that was tagged `chain5`.
+    r'rg -n "help:\"|gcloud|services enable|Remove|os\.Remove|Stdin|\"-\"" main.go cmd.go',
+    r"""rg -o --no-filename -N "['\"](gmail|calendar|tasks)\.[a-zA-Z]+['\"]" src --glob '*.go'""",
+]
+
+
+@pytest.mark.parametrize("cmd", ESCAPED_QUOTE_SAMPLES)
+def test_an_escaped_quote_does_not_close_a_double_quoted_string(cmd):
+    assert len(audit.split_chain(cmd)) == 1
+    assert not {tag for tag in tags_of(cmd) if tag.startswith("chain")}
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        *ESCAPED_QUOTE_SAMPLES,
+        'rg -n "a|b" f | tail -1',
+        "echo 'it | is' > f && ls",
+        r"echo 'back\slash | kept' ; ls",  # no escapes inside single quotes
+        r'git commit -m "say \"x | y\"" -- a b',
+        r'printf "%s\n" "a;b" | rg x',
+        "cd ../other && git status",
+    ],
+)
+def test_split_chain_and_strip_quoted_agree_on_where_quotes_are(cmd):
+    """Two readers of the same quoting, which had drifted once: `QUOTED_RE` honoured `\\` inside
+    double quotes and `split_chain` did not. Blanking the quotes first must not change the segment
+    count, which holds only while both put the quote boundaries in the same places."""
+    assert len(audit.split_chain(cmd)) == len(audit.split_chain(audit.strip_quoted(cmd)))
+
+
 def test_strip_quoted_keeps_the_shell_shape():
     assert audit.strip_quoted('rg -n "a|b" f | tail -1') == 'rg -n "" f | tail -1'
     assert audit.strip_quoted("echo 'it | is' > f") == 'echo "" > f'

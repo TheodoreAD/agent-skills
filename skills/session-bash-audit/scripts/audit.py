@@ -186,7 +186,14 @@ def strip_quoted(cmd: str) -> str:
 
 def split_chain(cmd: str) -> list[str]:
     """Split on the separators Claude Code's permission engine recognizes (&&, ||, ;, |, newline),
-    outside quotes. Crude on purpose — this is a habit audit, not a shell parser."""
+    outside quotes. Crude on purpose — this is a habit audit, not a shell parser.
+
+    A backslash escapes the next character inside double quotes and nothing inside single ones —
+    the POSIX rule, and the one `QUOTED_RE` already follows. Without it `rg -n "a:\\"|b"` closed its
+    quote at the escape and read the alternation as a pipe. Found by a harvest 2026-09-27; re-run
+    after the fix, that 194-call session went from `chain 5, chain5 2` to 0 and 0 — every chain hit
+    it had was this. A test holds the two quote readers in agreement.
+    """
     body = strip_heredoc(cmd)
     parts: list[str] = []
     buf = ""
@@ -194,6 +201,10 @@ def split_chain(cmd: str) -> list[str]:
     i = 0
     while i < len(body):
         c = body[i]
+        if quote == '"' and c == "\\":
+            buf += body[i : i + 2]
+            i += 2
+            continue
         if quote:
             buf += c
             if c == quote:

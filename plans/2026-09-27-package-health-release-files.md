@@ -320,6 +320,17 @@ Stages 1–3 are mechanical and low-risk. Stages 4–6 are each a session's wort
   refactor, stage 1 of "What building it fully entails".
 - Stages 1–2 were pushed 2026-09-27 (`c800f05`) and the skills re-installed.
 
+Against "What building it fully entails":
+
+- **Build stage 1, the subcommand refactor, landed 2026-09-27** (`54f609d`). `pypi` is the only
+  subcommand so far; each source adds its own as it lands. `--repo` is filled from `project_urls`
+  (source-like keys first, then `home_page`) and the report's `repo from` line names the field. The
+  retired form exits 2 with the new spelling. The caller count was smaller than recorded: the two
+  older plans (`2026-09-05-a-piped-gate-that-cannot-lie`, `2026-09-07-script-coverage-…`) name the
+  script only, and `evals/dependency-health.json` names no command line, so none needed editing. The
+  store plan outside this repo (`_unscoped/2026-09-26-google-api-access-foundation.md`) is left for
+  its own session.
+
 [DEFERRED: repointing the home `AGENTS.md` install rule from
 `curl -s https://pypi.org/pypi/<name>/json` to this script. That rule is a fragment in
 `power-user-linux-setup` (`config/agents-md/`), so once this lands, file it with

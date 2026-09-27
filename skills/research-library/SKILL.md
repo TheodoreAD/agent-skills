@@ -240,16 +240,18 @@ bar beats a more popular one that does not. Stated 2026-08-30 while choosing bet
 libraries, and it is the reason the script prints stars under `not scored`.
 
 ```shell
-python3 $S/scripts/package_health.py <pypi-name> <owner/repo>
-python3 $S/scripts/package_health.py anyio agronholm/anyio --clone $RESEARCH_HOME/repos/github.com--agronholm--anyio
-python3 $S/scripts/package_health.py shellcheck-py shellcheck-py/shellcheck-py --upstream koalaman/shellcheck
+python3 $S/scripts/package_health.py pypi <name>
+python3 $S/scripts/package_health.py pypi anyio --clone $RESEARCH_HOME/repos/github.com--agronholm--anyio
+python3 $S/scripts/package_health.py pypi shellcheck-py --upstream koalaman/shellcheck
 ```
 
-Stdlib only, `S=~/.agents/skills/research-library`. PyPI over HTTPS, GitHub through `gh api` so it
-uses your own token and rate limit. `--clone` adds what no API answers — `py.typed`, the
-test-to-source ratio, the CI inventory, the licence files actually present. `--generated <glob>` is
-repeatable and marks a mechanical layer so the ratio is taken against hand-written code. `--json`
-for the whole answer.
+Stdlib only, `S=~/.agents/skills/research-library`. **The source is a required subcommand** — there
+is no default registry, so name it every time. The package's own GitHub repo is read from its
+metadata, and the report's `repo from` line says where; pass `--repo <owner/repo>` when that lookup
+is wrong or missing. PyPI over HTTPS, GitHub through `gh api` so it uses your own token and rate
+limit. `--clone` adds what no API answers — `py.typed`, the test-to-source ratio, the CI inventory,
+the licence files actually present. `--generated <glob>` is repeatable and marks a mechanical layer
+so the ratio is taken against hand-written code. `--json` for the whole answer.
 
 The four axes it reports, plus what the release ships and whom it tracks, and what each is for:
 

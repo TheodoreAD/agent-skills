@@ -129,7 +129,28 @@ sdist and nothing else.
 
 **The upstream is a second repo, and the flag names it.** A wrapper's own repo (`shellcheck-py/…`)
 says nothing about whether it keeps up with the project it repackages (`koalaman/shellcheck`), so
-`--upstream` is separate from the positional repo rather than inferred from it.
+`--upstream` is separate from `--repo` rather than inferred from it.
+
+## The command line
+
+[DECISION: the source is a required subcommand — `pypi`, and each registry as it lands — with no
+default. Decided 2026-09-27: a default is exactly what an agent carries over from the previous call
+without noticing, and a subcommand puts the registry in `--help` as the first choice to make. It
+beat a bare name meaning PyPI and a `--registry` flag, both of which have a default by
+construction.]
+
+[DECISION: the retired form `package_health.py httpx encode/httpx` exits 2 with one line naming its
+replacement (`package_health.py pypi httpx --repo encode/httpx`) rather than quietly still meaning
+PyPI. A silent fallback would be a default by another name; the cost is one line of correction for
+anyone running an old example from memory, never a wrong answer.]
+
+**The package's repo is read from its metadata, and the report names the field.** PyPI's
+`project_urls` are tried source-like keys first (`Source`, `Repository`, `Code`), then any other
+key, then `home_page`; a `github.com/sponsors/…` funding link is never taken for a repo. Checked
+live 2026-09-27: httpx lists `Changelog`, `Homepage` and `Source` on GitHub, and `shellcheck-py`
+names only a `Homepage` that GitHub redirects. The lookup can therefore be missing, point at a docs
+repo, or resolve through a rename, which is why the `repo from` line is always printed and `--repo`
+always wins.
 
 [DECISION: wrapper and upstream versions are matched by spelling alone — the upstream version
 exactly, or followed by a `.`, `+`, `_` or `-`. Wrappers commonly append a build number (`0.11.0` →

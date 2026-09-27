@@ -442,7 +442,7 @@ def test_the_upstream_section_reaches_the_report_and_the_json():
         pypi_payload=fixture("shellcheck-py-pypi"),
         github_payloads={"repos/koalaman/shellcheck/releases/latest": fixture("shellcheck-release")},
     )
-    argv = ["shellcheck-py", "--upstream", "koalaman/shellcheck"]
+    argv = ["pypi", "shellcheck-py", "--upstream", "koalaman/shellcheck"]
     result = health.gather(transport, "shellcheck-py", None, upstream_repo="koalaman/shellcheck", now=RELEASES_CAPTURED)
     rendered = health.render(result)
     assert "upstream (koalaman/shellcheck)" in rendered
@@ -712,5 +712,87 @@ def test_main_reports_a_bad_name_as_the_callers_error(capsys):
         def github(self, path):
             raise AssertionError("never reached")
 
-    assert health.main(["no-such-distribution-xyz"], transport=Refusing()) == 1
+    assert health.main(["pypi", "no-such-distribution-xyz"], transport=Refusing()) == 1
     assert "404" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------------------------------------
+# The command line: the source is a required subcommand, and the retired form says so loudly
+
+
+@pytest.mark.parametrize(
+    ("argv", "spelled"),
+    [
+        (["httpx", "encode/httpx"], "package_health.py pypi httpx --repo encode/httpx"),
+        (["httpx"], "package_health.py pypi httpx"),
+        (
+            ["httpx", "encode/httpx", "--clone", "/r/x"],
+            "package_health.py pypi httpx --repo encode/httpx --clone /r/x",
+        ),
+        (["shellcheck-py", "--upstream", "a/b"], "package_health.py pypi shellcheck-py --upstream a/b"),
+    ],
+)
+def test_the_retired_positional_form_exits_2_naming_the_new_spelling(argv, spelled, capsys):
+    """Decided 2026-09-27: a silent fallback to PyPI would be a default by another name. The
+    cost is one line of correction for anyone running an old example from memory."""
+    assert health.main(argv, transport=FakeTransport()) == 2
+    err = capsys.readouterr().err
+    assert spelled in err
+    assert len(err.strip().splitlines()) == 1
+
+
+def test_there_is_no_default_source(capsys):
+    with pytest.raises(SystemExit) as raised:
+        health.main([], transport=FakeTransport())
+    assert raised.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://github.com/encode/httpx", "encode/httpx"),
+        ("git+https://github.com/biomejs/biome.git", "biomejs/biome"),
+        ("git@github.com:evanw/esbuild.git", "evanw/esbuild"),
+        ("https://github.com/encode/httpx/blob/master/CHANGELOG.md", "encode/httpx"),
+        ("github:owner/repo", "owner/repo"),
+        ("https://github.com/sponsors/encode", None),
+        ("https://gitlab.com/owner/repo", None),
+        ("https://www.python-httpx.org", None),
+        (None, None),
+    ],
+)
+def test_a_github_repo_is_read_from_any_common_spelling_of_its_url(url, expected):
+    assert health.repo_from_url(url) == expected
+
+
+def test_the_repo_is_read_from_project_urls_source_keys_first_and_the_report_says_so():
+    """Live 2026-09-27: httpx's `project_urls` carry `Changelog`, `Documentation`, `Homepage` and
+    `Source`, three of them on GitHub. The source-like key wins, and the report names it."""
+    payload = fixture("httpx-pypi") | {
+        "info": fixture("httpx-pypi")["info"]
+        | {
+            "project_urls": {
+                "Changelog": "https://github.com/encode/httpx/blob/master/CHANGELOG.md",
+                "Documentation": "https://www.python-httpx.org",
+                "Homepage": "https://github.com/encode/httpx",
+                "Source": "https://github.com/encode/httpx",
+            }
+        }
+    }
+    transport = httpx_transport()
+    transport.pypi_payload = payload
+    result = health.gather(transport, "httpx", None, now=CAPTURED)
+    assert result.repo_choice == health.RepoChoice("encode/httpx", 'PyPI project_urls "Source"')
+    assert result.repository is not None
+    rendered = health.render(result)
+    assert 'repo from        PyPI project_urls "Source"; --repo overrides' in rendered
+
+
+def test_an_explicit_repo_overrides_the_metadata_and_says_so():
+    result = health.gather(httpx_transport(), "httpx", "encode/httpx", now=CAPTURED)
+    assert result.repo_choice == health.RepoChoice("encode/httpx", "--repo")
+
+
+def test_no_repo_in_the_metadata_is_said_and_the_flag_is_named():
+    rendered = health.render(health.gather(FakeTransport(), "httpx", None, now=CAPTURED))
+    assert "none read — PyPI metadata names no GitHub repo; pass --repo owner/repo" in rendered

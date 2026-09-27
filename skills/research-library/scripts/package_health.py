@@ -12,10 +12,15 @@ threshold it is a weak signal, and the question that matters is whether this pro
 clears a maintenance bar. Star and fork counts are reported because they are free, and they are
 deliberately not scored.
 
-    package_health.py <pypi-name> <owner/repo>
-    package_health.py httpx encode/httpx --clone ~/research/repos/github.com--encode--httpx
-    package_health.py httpx encode/httpx --json
-    package_health.py shellcheck-py shellcheck-py/shellcheck-py --upstream koalaman/shellcheck
+    package_health.py pypi httpx
+    package_health.py pypi httpx --repo encode/httpx --clone ~/research/repos/github.com--encode--httpx
+    package_health.py pypi httpx --json
+    package_health.py pypi shellcheck-py --upstream koalaman/shellcheck
+
+**The source is a required subcommand, with no default**, so the registry is the first choice an
+agent makes rather than one it carries over from the previous call without noticing. The package's
+own GitHub repo is `--repo`; left out, it is read from the source's own metadata (PyPI's
+`project_urls`), and the report says which of the two it used, because that lookup can be wrong.
 
 Stdlib only, so it runs by path from any repo with no install step. PyPI is read over HTTPS; GitHub
 is read through `gh api`, which uses the caller's own token and rate limit rather than needing one
@@ -29,7 +34,8 @@ at install time. `--upstream <owner/repo>` names the project a wrapper repackage
 wrapper's own repo: its latest stable GitHub release, the wrapper version matching it and the lag in
 days, and that release's Linux x86_64 assets with the checksum and signature files beside them.
 
-Exit codes: 0 ok, 1 error, 2 argparse usage.
+Exit codes: 0 ok, 1 error, 2 usage — including the retired `package_health.py <name> <owner/repo>`
+form, which names its replacement rather than quietly still meaning PyPI.
 """
 
 from __future__ import annotations
@@ -394,6 +400,60 @@ def requirement_names(requirements: list[str]) -> list[str]:
 
 def is_bot(login: str) -> bool:
     return any(pattern.search(login) for pattern in BOT_PATTERNS)
+
+
+# `https://github.com/o/r`, `git+https://github.com/o/r.git`, `git@github.com:o/r.git`,
+# `https://github.com/o/r/blob/main/CHANGELOG.md` — the first two path segments are the repo.
+GITHUB_URL_RE = re.compile(r"github\.com[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)", re.IGNORECASE)
+# npm's shorthand spellings: `github:o/r` and a bare `o/r`.
+GITHUB_SHORTHAND_RE = re.compile(r"^(?:github:)?([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$")
+# A `project_urls` key that names the source, tried before a homepage that merely happens to be one.
+SOURCE_KEY_RE = re.compile(r"source|repo|code|github", re.IGNORECASE)
+# GitHub paths whose first segment is not an owner: a `Funding` URL is `github.com/sponsors/<who>`.
+GITHUB_NON_OWNERS = frozenset({"sponsors", "orgs", "apps", "marketplace", "features", "topics"})
+
+
+def repo_from_url(url: str | None) -> str | None:
+    """`owner/repo` from any common spelling of a GitHub URL, or `None` for anything else."""
+    if not url:
+        return None
+    text = url.strip()
+    match = GITHUB_URL_RE.search(text) or GITHUB_SHORTHAND_RE.match(text)
+    if not match:
+        return None
+    owner, name = match.group(1), match.group(2).removesuffix(".git")
+    if owner.lower() in GITHUB_NON_OWNERS:
+        return None
+    return f"{owner}/{name}" if owner and name else None
+
+
+@dataclass(frozen=True)
+class RepoChoice:
+    """Which GitHub repo the maintenance axis read, and where that name came from.
+
+    [PITFALL] The metadata lookup can be wrong as well as missing: a homepage can point at an
+    organisation's docs repo, and a renamed repo still resolves through GitHub's redirect under its
+    old name. So the report always says which of the two it used, and `--repo` stays the override.
+    """
+
+    repo: str | None
+    origin: str
+
+
+def pypi_repo(info: dict[str, Any]) -> RepoChoice:
+    """The first GitHub URL among `project_urls`, source-like keys first, then `home_page`."""
+    urls = info.get("project_urls") or {}
+    ordered = sorted(urls.items(), key=lambda item: 0 if SOURCE_KEY_RE.search(item[0]) else 1)
+    for key, url in ordered:
+        if found := repo_from_url(str(url)):
+            return RepoChoice(found, f'PyPI project_urls "{key}"')
+    if found := repo_from_url(info.get("home_page")):
+        return RepoChoice(found, "PyPI home_page")
+    return RepoChoice(None, "PyPI metadata names no GitHub repo")
+
+
+def choose_repo(explicit: str | None, from_metadata: RepoChoice) -> RepoChoice:
+    return RepoChoice(explicit, "--repo") if explicit else from_metadata
 
 
 @dataclass(frozen=True)
@@ -806,6 +866,7 @@ class Health:
     issues: IssueSample | None
     clone: CloneFacts | None
     upstream: Upstream | None = None
+    repo_choice: RepoChoice | None = None
 
 
 def gather(
@@ -818,15 +879,12 @@ def gather(
     upstream_repo: str | None = None,
     now: datetime | None = None,
 ) -> Health:
+    """PyPI's answer. `repo` is `--repo`; when it is `None` the repo is read from `project_urls`."""
     now = now or datetime.now(UTC)
     payload = transport.pypi(name)
     info = payload.get("info", {})
-    repo_facts, people, issues = None, None, None
-    if repo:
-        repo_facts = repository(transport.github(f"repos/{repo}"), now=now)
-        people = _contributor_window(transport, repo, now=now)
-        if repo_facts.has_issues:
-            issues = issue_sample(transport.github(f"repos/{repo}/issues?state=closed&per_page={ISSUE_SAMPLE}"))
+    choice = choose_repo(repo, pypi_repo(info))
+    repo_facts, people, issues = maintenance(transport, choice.repo, now=now)
     return Health(
         name=info.get("name", name),
         version=info.get("version"),
@@ -840,7 +898,22 @@ def gather(
         issues=issues,
         clone=clone_facts(clone, generated or []) if clone else None,
         upstream=upstream(transport, upstream_repo, release_dates(payload), now=now) if upstream_repo else None,
+        repo_choice=choice,
     )
+
+
+def maintenance(
+    transport: Transport, repo: str | None, *, now: datetime
+) -> tuple[Repository | None, Contributors | None, IssueSample | None]:
+    """The GitHub half of the maintenance axis, shared by every source that names a repo."""
+    if not repo:
+        return None, None, None
+    repo_facts = repository(transport.github(f"repos/{repo}"), now=now)
+    people = _contributor_window(transport, repo, now=now)
+    issues = None
+    if repo_facts.has_issues:
+        issues = issue_sample(transport.github(f"repos/{repo}/issues?state=closed&per_page={ISSUE_SAMPLE}"))
+    return repo_facts, people, issues
 
 
 def _contributor_window(transport: Transport, repo: str, *, now: datetime) -> Contributors:
@@ -882,26 +955,7 @@ def render(health: Health) -> str:
         )
     if pace.yanked:
         lines.append(f"  yanked           {len(pace.yanked)}: {', '.join(pace.yanked[:6])}")
-
-    if health.repository:
-        repo = health.repository
-        lines.append(f"  repo             {repo.full_name}{'  ARCHIVED' if repo.archived else ''}")
-        lines.append(f"  last push        {repo.pushed or '?'} ({_or_unknown(repo.days_since_push, 'd ago')})")
-        lines.append(f"  open issues+PRs  {repo.open_issues}   (GitHub counts both in this field)")
-        lines.append(f"  issue tracker    {_issue_line(repo, health.issues)}")
-        lines.append(f"  licence (field)  {repo.license_field or 'none reported'}   — verify against the files")
-        lines.append(f"  not scored       {repo.stars} stars, {repo.forks} forks")
-
-    if health.contributors:
-        people = health.contributors
-        top = ", ".join(f"{login} {count}" for login, count in people.humans[:5]) or "none"
-        lines.append(
-            f"  humans/{people.window_days}d      {people.human_count} over {people.commits_read} commits"
-            f"{' (truncated)' if people.truncated else ''}"
-        )
-        lines.append(f"  bus factor       {people.bus_factor}   top: {top}")
-        if people.bots:
-            lines.append(f"  bots excluded    {', '.join(f'{login} {count}' for login, count in people.bots[:5])}")
+    lines.extend(_github_lines(health.repo_choice, health.repository, health.contributors, health.issues))
 
     names = ", ".join(requirement_names(health.runtime_requirements)) or "none"
     lines.append("")
@@ -936,6 +990,39 @@ def render(health: Health) -> str:
     lines.append("Judge this against the bar before comparing it to anything. See the skill for the")
     lines.append("traps these numbers hide: a version cap is not a cost until its historical lag says so.")
     return "\n".join(lines)
+
+
+def _github_lines(
+    choice: RepoChoice | None,
+    repo: Repository | None,
+    people: Contributors | None,
+    issues: IssueSample | None,
+) -> list[str]:
+    """The repo half of the maintenance section, whichever source named the repo."""
+    lines: list[str] = []
+    if choice is not None:
+        if choice.repo:
+            override = "" if choice.origin == "--repo" else "; --repo overrides"
+            lines.append(f"  repo from        {choice.origin}{override}")
+        else:
+            lines.append(f"  repo             none read — {choice.origin}; pass --repo owner/repo")
+    if repo:
+        lines.append(f"  repo             {repo.full_name}{'  ARCHIVED' if repo.archived else ''}")
+        lines.append(f"  last push        {repo.pushed or '?'} ({_or_unknown(repo.days_since_push, 'd ago')})")
+        lines.append(f"  open issues+PRs  {repo.open_issues}   (GitHub counts both in this field)")
+        lines.append(f"  issue tracker    {_issue_line(repo, issues)}")
+        lines.append(f"  licence (field)  {repo.license_field or 'none reported'}   — verify against the files")
+        lines.append(f"  not scored       {repo.stars} stars, {repo.forks} forks")
+    if people:
+        top = ", ".join(f"{login} {count}" for login, count in people.humans[:5]) or "none"
+        lines.append(
+            f"  humans/{people.window_days}d      {people.human_count} over {people.commits_read} commits"
+            f"{' (truncated)' if people.truncated else ''}"
+        )
+        lines.append(f"  bus factor       {people.bus_factor}   top: {top}")
+        if people.bots:
+            lines.append(f"  bots excluded    {', '.join(f'{login} {count}' for login, count in people.bots[:5])}")
+    return lines
 
 
 # Past this many files the listing names the Linux x86_64 wheels and the sdist and counts the rest:
@@ -1069,29 +1156,79 @@ def payload_of(health: Health) -> dict[str, Any]:
     return data
 
 
-def main(argv: list[str] | None = None, transport: Transport | None = None) -> int:
+SOURCES = ("pypi",)
+
+
+def retired_form(argv: list[str]) -> str | None:
+    """The one-line correction for `package_health.py <name> [<owner/repo>] …`, or `None`.
+
+    [DECISION] The old form fails loudly rather than quietly still meaning PyPI: a silent fallback
+    would be a default by another name, which is exactly what the subcommand exists to remove.
+    """
+    if not argv or argv[0].startswith("-") or argv[0] in SOURCES:
+        return None
+    # The retired form's second positional, when present, came straight after the name.
+    if len(argv) > 1 and not argv[1].startswith("-"):
+        spelled = ["pypi", argv[0], "--repo", argv[1], *argv[2:]]
+    else:
+        spelled = ["pypi", *argv]
+    return (
+        f"the source is a required subcommand now ({', '.join(SOURCES)}); "
+        f"for PyPI: package_health.py {' '.join(spelled)}"
+    )
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("name", help="the distribution name on PyPI")
-    parser.add_argument("repo", nargs="?", help="owner/repo on GitHub; omit to read PyPI only")
-    parser.add_argument("--clone", type=Path, help="a local clone, for what the APIs cannot answer")
-    parser.add_argument(
+    sources = parser.add_subparsers(dest="source", required=True, metavar="{" + ",".join(SOURCES) + "}")
+
+    pypi = sources.add_parser("pypi", help="a distribution on PyPI", description="Judge a PyPI distribution.")
+    pypi.add_argument("name", help="the distribution name on PyPI")
+    _add_repo_flag(pypi, "PyPI's project_urls")
+    pypi.add_argument("--clone", type=Path, help="a local clone, for what the APIs cannot answer")
+    pypi.add_argument(
         "--generated",
         action="append",
         default=[],
         metavar="GLOB",
         help="source that is mechanical rather than hand-written, relative to the clone; repeatable",
     )
+    _add_upstream_flag(pypi)
+    _add_json_flag(pypi)
+    return parser
+
+
+def _add_repo_flag(parser: argparse.ArgumentParser, where: str) -> None:
+    parser.add_argument(
+        "--repo",
+        metavar="OWNER/REPO",
+        help=f"the package's own GitHub repo, for the maintenance axis; default: read from {where}",
+    )
+
+
+def _add_upstream_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--upstream",
         metavar="OWNER/REPO",
         help="the project a wrapper repackages: its latest GitHub release, the wrapper's lag, its Linux assets",
     )
+
+
+def _add_json_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="the whole answer as JSON")
-    args = parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None, transport: Transport | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if correction := retired_form(argv):
+        print(f"error: {correction}", file=sys.stderr)
+        return 2
+    args = _parser().parse_args(argv)
+    transport = transport or LiveTransport()
 
     try:
         health = gather(
-            transport or LiveTransport(),
+            transport,
             args.name,
             args.repo,
             clone=args.clone,

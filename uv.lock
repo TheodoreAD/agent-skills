@@ -241,8 +241,8 @@ wheels = [
 
 [[package]]
 name = "invoke-stubs"
-version = "0.1.0"
-source = { git = "https://github.com/TheodoreAD/invoke-stubs#c2a1a7ce13126d79380a41ff4a440895bf31429e" }
+version = "0.3.1"
+source = { git = "https://github.com/TheodoreAD/invoke-stubs#33d0970c23b1456a633afb7ff9851c5922371915" }
 
 [[package]]
 name = "nodejs-wheel-binaries"

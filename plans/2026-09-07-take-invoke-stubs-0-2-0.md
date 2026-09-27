@@ -32,9 +32,10 @@ Measured for this repo before filing: **no file here indexes `.collections[`**, 
 
 ## Open questions
 
-[NEEDS CLARIFICATION: does anything here type-check invoke at all, or is the `invoke-stubs` entry
-inherited from the `repo-tasks-quality` manifest and never exercised? If it is the latter, the bump
-is a lock line and nothing else, and this plan can be retired the moment the gate is green.]
+[DECISION: **inherited and never exercised; the bump is a lock line** (2026-09-28). No Python file
+here imports `invoke` — `tasks.py` imports `repo_tasks` — so the stubs have nothing to check.
+`inv deps.lock --package invoke-stubs` moved it past 0.2.0 straight to 0.3.1 (`33d0970`), the lock
+diff is those two lines, and the gate was green on it.]
 
 ## Recommended direction
 

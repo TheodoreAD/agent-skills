@@ -5,8 +5,9 @@ updated: 2026-09-27
 
 # Package health: report what a release actually ships
 
-Scope: PyPI, npm and Rust (crates.io, plus the GitHub release assets Rust binaries actually ship
-as). The user widened it from PyPI alone on 2026-09-27.
+Scope: PyPI, npm, Rust (crates.io, plus the GitHub release assets Rust binaries actually ship as),
+**apt**, and **GitHub repositories on their own**. The user widened it from PyPI alone on
+2026-09-27, in two steps.
 
 ## Context
 
@@ -129,34 +130,126 @@ prints both versions and the lag in days, from upstream's `published_at` to the 
 version's earliest upload. On a miss it prints `NO MATCHING WRAPPER RELEASE` rather than guessing.
 Implemented 2026-09-27, with the rationale in `references/dependency-health.md`.]
 
-[NEEDS CLARIFICATION: the CLI shape once three registries are in scope. Options:
+[DECISION: **the source is a required subcommand, with no default** (user, 2026-09-27: "we should
+avoid having a default … the index/source platform should be a subcommand so the agent can't miss
+it"):
 
-- a registry prefix on the name (`pypi:ruff`, `npm:@biomejs/biome`, `crates:ripgrep`), with a bare
-  name meaning PyPI, so existing calls keep working;
-- `--registry`;
-- a separate script per registry.
+```
+package_health.py pypi   <name>          [--repo owner/repo] [--upstream owner/repo] [--clone …]
+package_health.py npm    <name>          [--repo …] [--upstream …]
+package_health.py crates <name>          [--repo …]
+package_health.py apt    <name>
+package_health.py github <owner/repo>
+```
 
-The prefix keeps one entry point, and it matches how package URLs are written (the `purl` spec uses
-`pkg:pypi/…`, `pkg:npm/…`, `pkg:cargo/…`). Check whether a purl-style spelling is worth adopting
-outright.]
+It beat a registry prefix with a bare name meaning PyPI, and a `--registry` flag, because a default
+is exactly what an agent carries over from the previous call without noticing. A subcommand shows up
+in `--help` as the first choice to make.
 
-[NEEDS CLARIFICATION: which of `package_health.py`'s existing axes carry over.
+The package's own GitHub repo moves from a second positional to `--repo`. Every source can fill it
+from its own metadata, but the lookup can be wrong or missing: npm `repository`, crates
+`repository`, PyPI `project_urls`. An explicit `--repo` stays the override, and the report says
+which one it used.]
 
-- Maintenance carries over whole: stable-line cadence, contributors and bus factor, push versus
-  release.
-- Fit mostly carries over: dependency count, licence.
-- Typing is Python-specific. npm's analogue is "ships its own `types`, or needs `@types/…`". Rust
-  has no analogue.
-- Battle-tested (`--clone`) carries over as-is.
+[DECISION, with the user's push-back invitation answered: the break is loud, not silent. The old
+form `package_health.py httpx encode/httpx` exits 2 with one line naming the new form
+(`package_health.py
+pypi httpx --repo encode/httpx`), rather than quietly still meaning PyPI. A
+silent fallback would be a default by another name.
 
-Decide whether npm and crates get the full four-axis report or only maintenance plus release files
-at first.]
+The callers were counted on 2026-09-27. In this repo: `SKILL.md`, `references/dependency-health.md`,
+`evals/dependency-health.json`, `tests/unit/test_package_health.py`, and two older plans that cite
+it in prose. Outside it: one store plan. All of them are updated in the same change.
 
-[NEEDS CLARIFICATION: does the release-file report belong in `research-library` at all, or in
-`power-user-linux-setup`, which owns the install rule and `setup.toml`? It belongs here if judging
-"what does installing this cost" counts as part of judging a dependency, which the skill's
-description already claims ("whether a version cap it carries will hold you back"). And the skill is
-what's installed on every machine.]
+The cost is anyone who installed the skill before the change and runs an old example from memory.
+They get a one-line correction, not a wrong answer.]
+
+[DECISION: a **`github <owner/repo>`** subcommand for tools that have no registry at all: Go and
+Rust binaries shipped only as release assets, such as gog, gmailctl and helm. The user asked for
+this on 2026-09-27 ("make sure we can get github releases/stars/contributors/etc").
+
+It is the maintenance axis the script already computes from `gh api` (commits, contributors, bus
+factor, issue close time, push versus release, archived flag, licence, and stars unscored), plus the
+release view: the stable-release cadence from the GitHub releases list, and the latest release's
+Linux assets with checksums and signatures, which stage 2 already built for `--upstream`. The
+registry subcommands reuse the same code for their `--repo`. Item 5's standalone `--assets` becomes
+this subcommand.]
+
+[DECISION: **apt** as a source (user, 2026-09-27). What it answers is different from the others, and
+the report says so. An apt package's maintenance is the **distro's**, not upstream's, so the key
+question is how far behind upstream the packaged version is, and whether this machine's suite gets
+security updates for it. That means:
+
+- candidate version and origin (`archive.ubuntu.com noble/universe`, or a third-party repo), from
+  `apt-cache policy`;
+- installed size and dependencies, from `apt-cache show`;
+- main (Canonical-supported) versus universe (community);
+- with `--upstream owner/repo`, the lag behind upstream's latest release.
+
+`apt-cache` is local and describes **this machine's** sources, which is the right answer for an
+install decision. Checked on Ubuntu 24.04.5 LTS.]
+
+[NEEDS CLARIFICATION: whether apt also needs a cross-release view (which Ubuntu and Debian releases
+carry which version), from Debian's madison API or Launchpad. It's useful when choosing between apt
+and a release binary for a future LTS. Leave it out of the first cut unless the user wants it.]
+
+[DECISION: **typing applies only to dynamically typed ecosystems.** Settled with the user
+2026-09-27: statically typed languages are typed by construction, so a typing line for crates, or
+for a Go or Rust binary, would carry no information.
+
+- **PyPI**: `py.typed`, as today.
+- **npm**: the package ships its own `types`/`typings`, or is written in TypeScript, versus needing
+  a separate `@types/<name>`, versus neither.
+- **crates, apt, github**: no typing section.]
+
+[DECISION: **a floors line for every source**, replacing the idea of "MSRV for crates". The user
+pointed out on 2026-09-27 that a minimum-version requirement applies across all languages and OSes.
+Each source reports every floor its metadata states, read from the metadata and never inferred:
+
+| source | floors                                                                                                                                                          |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pypi   | `requires_python` (already reported), and the **glibc floor from the manylinux tag** (`manylinux_2_17` means glibc ≥ 2.17; musllinux means musl)                |
+| npm    | `engines.node` (and `engines.npm`), and a platform package's `os`/`cpu`/`libc`                                                                                  |
+| crates | `rust_version` (MSRV), and "undeclared" when null                                                                                                               |
+| apt    | the suite it is packaged for, and versioned `Depends` such as `libc6 (>= 2.34)`                                                                                 |
+| github | libc family from the asset name (gnu or musl); a numeric glibc floor would need downloading the binary and reading its ELF version needs, which is out of scope |
+
+Each floor is compared with this machine where the machine's value is cheap to read (Python version,
+glibc from `ldd --version`, node if present), and a floor above this machine is flagged.]
+
+[DECISION: stays in `research-library` (user, 2026-09-27). Judging what installing something costs
+is part of judging a dependency, and the skill is installed on every machine. power-user-linux-setup
+only repoints its install rule; see the DEFERRED item below.]
+
+[DECISION: **npm platform packages are resolved by default** (user, 2026-09-27), at one extra
+request, because otherwise the reported size is wrong by about 80 times (Biome: 64.7 MB against 779
+kB).]
+
+### What building it fully entails
+
+The user asked, 2026-09-27. For scale, the script is 1,115 lines with 716 lines of tests after
+stages 1–2. Each stage below is one or more commits, each passing the gate, each with recorded
+fixtures and no network in tests.
+
+1. **The subcommand refactor.** The CLI moves to subparsers, the old form gets its loud error, and
+   `pypi` becomes the first subcommand. SKILL.md, the references, evals, tests and the plans that
+   cite the old form are updated. No new data, so it's mostly moving code and rewriting examples.
+2. **`github`.** A new entry point over code that already exists (maintenance, plus stage 2's
+   assets), plus the stable-release cadence from the releases list. Small.
+3. **Floors.** A cross-cutting section: the glibc floor from manylinux tags for PyPI and a
+   comparison against this machine. The other sources add their rows as they land. Small.
+4. **npm.** Packument parsing (optional size fields, `dist-tags`, deprecation, provenance), install
+   scripts, platform-package resolution, typing, `engines`, and `repository` → `--repo`. The largest
+   new parser, about the size of the PyPI one.
+5. **crates.** The crate API (stable version, cadence, yanked, size, `bin_names`, MSRV), and
+   `repository` → the `github` release view for binaries. Medium; the fixture exists.
+6. **apt.** `apt-cache policy` and `show` parsing, main versus universe, and upstream lag. Medium,
+   and the first source read from a local command rather than HTTP, so tests fake the command output
+   instead of a payload.
+7. **SKILL.md and trigger check.** The description must now say npm, crates, apt and GitHub without
+   stealing triggers. Measure with `skill-fitness`'s `trigger.py candidate`.
+
+Stages 1–3 are mechanical and low-risk. Stages 4–6 are each a session's worth of focused work.
 
 ## Recommended direction
 
@@ -219,8 +312,10 @@ what's installed on every machine.]
     lands, where the release repo is the crate's own `repository`.
 - SKILL.md has the `Ships` and `Upstream` lines and the `shellcheck-py` example. The reasoning is in
   `references/dependency-health.md`.
-- **npm and crates.io: fields verified, parsers not written.** That is blocked on the CLI-shape and
-  axes questions above.
+- **npm and crates.io: fields verified, parsers not written.** The CLI-shape and axes questions that
+  blocked them were settled 2026-09-27 (see the decisions above). Next up is the subcommand
+  refactor, stage 1 of "What building it fully entails".
+- Stages 1–2 were pushed 2026-09-27 (`c800f05`) and the skills re-installed.
 
 [DEFERRED: repointing the home `AGENTS.md` install rule from
 `curl -s https://pypi.org/pypi/<name>/json` to this script. That rule is a fragment in

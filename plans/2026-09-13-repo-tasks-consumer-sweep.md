@@ -16,6 +16,11 @@ bump", and marked two complement items as reported by `consumers.diff`. The deci
 pinning is owned by `repo-tasks`' `plans/2026-08-25-consumer-transitions.md`: read it before
 implementing, since it may have moved on since.
 
+**Amended again 2026-09-27** by merging in `2026-09-27-sweep-to-repo-tasks-v0-5-0.md`, filed from
+`repo-tasks` session `bcf810d6-38c7-48d3-adfe-2ff30399d4c9` after `v0.5.0` was released. That filed
+plan said this one "may fold into this one". It is the same sweep one release later, so it lands
+here as the section "What v0.5.0 adds, measured 2026-09-27", and not as a second plan for one job.
+
 ## Why this arrives now, three days after being recorded as a consumer
 
 `repo-tasks` ships four config files and a `repo-tasks-quality` dependency manifest that every
@@ -51,6 +56,40 @@ Four files and two missing manifest entries. `scaffoldapy` is behind on three fi
 reports two more lines of its own, `bootstrap unpinned` and no caller for `security-reusable.yml`.
 Both used to be complement items that someone had to remember; the tool now reports them. See the
 sweep's step 7 and "What no diff can tell you" below.
+
+## What v0.5.0 adds, measured 2026-09-27
+
+`repo-tasks` `v0.5.0` was released 2026-09-27, and this machine's global tool is on it. It was
+measured read-only from `repo-tasks`' session with the installed tool, and `git status` here was
+clean after. This repo had the largest findings of the five consumers.
+
+- **`inv configs.check-include`: `skills/` holds 34 tracked `.py` files that basedpyright has never
+  checked**, plus 1 under `plans/`. The skill scripts are shipped code that other machines run, so
+  `skills*` probably belongs in `repo-tasks.toml`'s `[pyright] extra-include`, then
+  `inv configs.pull`. `plans*` belongs in `[pyright] unchecked`. How many findings basedpyright
+  reports once `skills/` is covered was not measured. Stdlib-only scripts written without the gate
+  may carry a real backlog.
+- **`inv deps.check-currency`, run after `inv deps.lock`: 7 of 14 manifest entries are behind.**
+  `invoke-stubs` is 0.1.0, locked at `c2a1a7c`, while its default branch is at `f70ff01` (0.3.0),
+  the same lag `power-user-linux-setup` has. Also behind:
+  - `basedpyright` 1.39.10 (latest 1.40.1)
+  - `ruff` 0.16.4 (0.16.9)
+  - `shfmt-py` 4.0.0 (4.2.0)
+  - `dprint-py` 0.56.1.0 (0.57.4.0)
+  - `actionlint-py` 1.7.12.24 (1.7.12.25)
+  - `zizmor` 1.29.0 (1.30.1)
+
+  A plain lock keeps old pins, so take each one with `inv deps.lock --package <name>`.
+- **`pytest-socket` and `pytest-timeout` are still missing from the dev group**, as in the
+  2026-09-13 table. `configs.ensure-deps` adds them (step 5).
+- Also new in `v0.5.0`, not needed for this sweep: `inv dist.check-isolated`, the pin-comment check
+  in `inv ci.check-actions`, `inv repo-tasks.status --latest`, `docker.logout`/`helm.logout`, and
+  `venv.sync --extra/--group`.
+
+[NEEDS CLARIFICATION: cover `skills/` in this sweep, or first measure its basedpyright backlog
+without declaring it? Declaring it makes the gate red until the backlog is fixed. The filing
+session's recommendation: measure first (`basedpyright skills` against this repo's venv), then
+decide whether to declare now or in a follow-up.]
 
 ## The one item that can turn this repo's gate red, and it is a real defect
 
@@ -97,7 +136,10 @@ other perfectly and neither is looking at 3.11.]
 3. Fix the `typing.override` import, per the section above. The gate will not pass until it is done.
 4. Edit `hadolint-py` to `hadolint-py!=2.15.1.2` by hand — `ensure-deps` is additive and will not
    rewrite an entry already present.
-5. `inv configs.ensure-deps` for the two missing entries, `inv deps.lock`, sync.
+5. `inv configs.ensure-deps` for the two missing entries, `inv deps.lock`, then
+   `inv deps.check-currency` and `inv deps.lock --package <name>` for each entry it names
+   (`invoke-stubs` among them; see "What v0.5.0 adds"), then sync. Run `inv configs.check-include`
+   and settle `skills/` per the open question there.
 
    [PITFALL: before 2026-09-26, `configs.ensure-deps` corrupted a consumer whose dev group opens
    with an extras entry (`"pkg[extra]"`), because its array regex stopped at the first `]`. This

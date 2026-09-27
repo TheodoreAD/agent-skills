@@ -57,7 +57,13 @@ runs over the accepted set only. Full reasoning is in that repo's `contributing/
 2. Add the index-table case as the third bullet of "How to apply", roughly: when a page runs past
    what two `AskUserQuestion` calls can cover, a pre-filled table the user edits by index is the
    lighter shape, provided the common case is one token (`ok`), the parse is echoed back before
-   anything irreversible, and `AskUserQuestion` keeps the page-level and confirmation steps.
+   anything irreversible, and `AskUserQuestion` keeps the page-level and confirmation steps. Two
+   details learned only by running it (see the live run below) go in the same bullet:
+   - **Number rows continuously across pages** (11–20 after 1–10), never 1–10 per page. The previous
+     table is still on screen, so a per-page `-5` is ambiguous between two tables.
+   - **Echo the parse back in one line before any irreversible call.** It caught nothing in the live
+     run because nothing was ambiguous, and it stays: it is the only thing between a mistyped index
+     and a wrong item in a real cart, at one line per page.
 3. Cite `freshful-polite-mcp`'s `reorder-suggest` as the worked example, since it is the flow both
    the original feedback and the amendment came from.
 
@@ -66,6 +72,25 @@ homogeneous items with a sane default per item". Quantities over a product list 
 well-suited to defaults; a set of genuinely different either/or decisions is not, and a table would
 be a worse surface there. Scoping it narrowly is the safer first version.]
 
-[UNVERIFIED: the table flow itself has not been run against the real account yet — see the source
-plan's own open points. If the index grammar turns out to need more hand-holding in practice, this
-amendment should say so rather than describing the ideal version.]
+## The flow has run live (2026-09-26)
+
+Merged 2026-09-27 from `2026-09-27-the-index-table-flow-is-now-verified-live.md`, filed from
+`freshful-polite-mcp` (session `0134b98b-f28c-4444-8923-f0c22c667296`, 2026-09-26T23:55:28Z) and
+absorbed out of the store the same day. It replaces this plan's former `UNVERIFIED` tag on the table
+flow never having run against the real account.
+
+- A full reorder ran against the real account: eight pages of ten candidates, 80 shown, 43 more
+  dumped as one plain list on request, and 26 items in a real cart.
+- **Every reply was an index expression, and none needed clarifying**: `-5,6,7,8,9`,
+  `only 22,23,26`, `only 41`, `only 52,53,54,55`, `only 62,63,66`, `only 77,78`, and
+  `only 117,98,114,116` against the plain list. Each is two to eleven characters, against five
+  sequential `AskUserQuestion` round trips per twenty candidates under the old flow. The user also
+  picked out of order (`only 35,31`), which the grammar has to tolerate and did.
+- `AskUserQuestion` kept exactly the roles predicted above: the page step, the first-live-mutation
+  confirmation, and the out-of-stock alternatives offer. The last fired once, on a genuinely
+  unavailable regular, and was answered in one word. It is the clearest argument for this shape: the
+  five substitutes the site returned were irrelevant (for rye crispbread it offered peanuts, seeds,
+  crisps and popcorn), and a flow that auto-substituted the closest price would have put crisps in
+  the cart.
+- Nothing from the run argues for widening past "many homogeneous items with a sane default each",
+  so the open question above stands as it is.

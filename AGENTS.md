@@ -37,12 +37,34 @@ description more carefully.
   order to decide _whether to open the file_ goes here; everything else goes in the body.
 - **`name` keeps the domain in the first token and may carry flavour in the second.** The first
   token is what a reader scans when a listing is truncated to bare names, which happens — so `plan-`
-  and `research-` stay put, and `-conveyor` and `-trove` are where character goes. A slightly
-  fantasy or sci-fi register is the house preference, admissible **exactly while the word still
-  denotes**: a stranger seeing `research-trove` with no description infers roughly the right thing,
-  which is why `manifold` was rejected for the same slot. Check the name is free before adopting it
-  — `skill-authoring-taudelta`'s `names.py` — because a duplicate is dropped silently and a rename
-  later reads as a delete.
+  and `research-` stay put, and `-conveyor` is where character goes. A slightly fantasy or sci-fi
+  register is the house preference, admissible **exactly while the word still denotes**: `manifold`
+  was rejected for telling a stranger nothing, and so were `research-octopus` and `research-guild`,
+  because the register is dense in nouns for a **doer** where most of these skills name a **thing**.
+  Check the name is free before adopting it — `skill-authoring-taudelta`'s `names.py` — because a
+  duplicate is dropped silently and a rename later reads as a delete.
+- **The flavour slot is only free where the current word is inaccurate.** `-docs` never described
+  what `plan-conveyor` became, so replacing it bought real information. `-library` already describes
+  what `research-library` is, which is why the 2026-09-12 proposal to rename it was abandoned on
+  2026-09-27: flavour there would have traded accuracy for register and got nothing back. A name
+  that is already right is finished.
+- **A skill that asserts how to work carries the author mark `-taudelta`; a skill that does a job
+  does not.** Adopted 2026-09-27 over eight renames. The test is whether another author would
+  plausibly assert differently: `python-conventions-taudelta`, `db-defaults-taudelta` and
+  `skill-authoring-taudelta` are rulings and clash by nature, while `plan-conveyor`,
+  `research-library`, `skill-fitness` and `session-harvest` do a job and are named for the job. Two
+  reasons, and the second is the one that generalises. **Mechanically**, an opinion-set name is the
+  most contested slot there is — `python-standards` is published by 17 repos, `python-guidelines` by
+  9 — and first-seen-wins by traversal order, so a generic one cannot be defended or even observed
+  losing. **Editorially**, the mark is what lets the accurate category word stay: a distinctive
+  synonym buys the same immunity by trading away the word that describes the content, which is why
+  `-conventions` survived and the `-defaults` harmonisation was closed rather than decided. It also
+  disclaims authority by fact rather than by connotation — `python-canon` reads as _Python's_ canon,
+  where the mark cannot. The position is the suffix, against the corpus habit (0 of 24 repos mark by
+  suffix, 4 by prefix) and for three reasons: the mark must strip back to the name that citations
+  already spell, a mark is legible only where its position is fixed, and a trailing qualifier is
+  what the ecosystem uses for a variant (`libssl-dev`, `python:3.12-slim`) while a leading one is
+  for a namespace. Full reasoning and the rejected marks are in the plan this landed from.
 - Keep the body to what an agent must follow. Reasoning, prior art, measurements and rejected
   alternatives go in `references/` — loaded only when the agent needs them.
 - Cite evidence with a date when a rule came from something that actually happened ("Confirmed live

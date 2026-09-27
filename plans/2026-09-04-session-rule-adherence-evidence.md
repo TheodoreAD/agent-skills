@@ -363,6 +363,9 @@ store should read as a genuine miss rather than as a cost being avoided.
 `exit-masked` at 23% needs no re-run: 21 of the 44 masked calls wrapped a gate, and `setopt`
 answered `pipefail`, so the 8 green-gate claims stood on real exit codes. `head/tail` at 33% cost
 **nothing measurable** — 0 of 64 actually cut output, by the truncation counter this session added.
+_(Corrected 2026-09-27: that counter cannot see a `tail` truncation at all, and this sample's own
+masked calls are `| tail -N` runs, so the 0 cannot support the conclusion either way. See "An
+eleventh sample" below.)_
 
 ## Open questions
 
@@ -532,3 +535,64 @@ split looks like across them. Two instances are not a rate, and `compaction_inst
 sweep cheap — one pass over the transcripts already loaded by `--days`. The two here were each found
 by accident, which is the sampling bias to expect: a split gets noticed when someone is already
 looking at the session for another reason.]
+
+## An eleventh sample, 2026-09-27 — and the truncation counter cannot see `tail`
+
+Merged 2026-09-27 from `2026-09-27-truncation-counter-cannot-see-tail.md`, filed from
+`freshful-polite-mcp` (session `85dbbcbf-3342-4aed-ad2c-cfa67141452f`, 2026-09-27T19:07:49+03:00)
+and absorbed out of the store the same day. Its filer asked for it to land here, in the plan that
+added the counter and holds the corpus its samples accumulate in.
+
+**The defect.** `session-bash-audit`'s `head/tail` row prints
+`n actually cut output (exit
+141/120)`, and a harvest reads that number to decide whether the habit
+cost anything. It detects a producer killed by SIGPIPE. **`head` produces that signal and `tail`
+structurally cannot**, so the counter measures one half of the pattern it is attached to and reports
+the other half as harmless. Measured directly:
+
+```
+$ seq 1 100000 | head -3 >/dev/null ; echo ${PIPESTATUS[0]}   -> 141
+$ seq 1 100000 | tail -3 >/dev/null ; echo ${PIPESTATUS[0]}   -> 0
+```
+
+`tail` has to read to EOF to know which lines are last, so the producer always exits 0 and the
+discarded lines leave no trace.
+
+**A real instance.** The filing session ran `python spike_cart_shape.py 2>&1 | tail -60` against
+about 63 lines of output, and lost the first three: the spike's own header, including the cart key
+list it had been run to obtain. The audit reported
+`head/tail 4 5% 0 actually cut output
+(exit 141/120)`. That was zero while output had demonstrably
+been cut. The session noticed only because it had written the script and knew what its first line
+was.
+
+**The row, for the corpus.** `claude-opus-5`, freshful-polite-mcp, against `2026-09-12.json`,
+`--until` the harvest boundary:
+
+```
+n=79  chain=11%(-22pp OK)  head/tail=5%(-15pp OK)  exit-masked=3% (0 wrapped a gate)
+sed-n=3%(-1pp OK)  cat-view=1%(+0pp MISS)  heredoc=1%(-5pp OK)  cut-message=0/13(OK)
+16/17 expectations met
+```
+
+- **`0 wrapped a gate` was right.** Both masked calls were listings, and the session's two
+  green-gate claims came from unpiped `inv check` runs.
+- **The single MISS is `cat-view`**, one call: `tail -20 <design-notes.md>` to see the end of a
+  roughly 700-line file before appending to it. The honest remedy is not "use `Read` with an
+  offset", because the wanted part was the last 20 lines. It is the one shape in this family where
+  the habit has a real motivation, and a rule that names no replacement for it gets broken by
+  sessions that follow every other row.
+
+[NEEDS CLARIFICATION: fixing the counter. Two candidates from the filing session:
+
+- Compare the tool result's line count with `tail -N`'s N. A result shorter than N proves nothing
+  was cut; N lines out is a floor, not proof. That gives cheap certainty about the harmless case and
+  silence about the rest.
+- Split the row, so `head` carries a measured count and `tail` says explicitly that a cut is not
+  detectable.
+
+Either way, **the label is the bug**: `0 actually cut output` reads as "nothing was lost" and means
+"no producer was killed by a signal". Printing
+`0 of 4 killed a producer (head only — tail is
+undetectable)` would have stopped both misreadings
+recorded here, at the cost of one string.]

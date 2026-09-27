@@ -85,25 +85,60 @@ history — and a session that has just written its files is a session whose tre
 the two modes usually return the same answer. They diverge exactly when it matters: a plan that
 named a client, was reworded, and was committed again leaves a clean tree and a dirty history.]
 
+## Measured 2026-09-28: frequent, and not a leak
+
+Over 60 days of this machine's transcripts, 47,867 Bash calls deduped by `tool_use` id,
+`plans.py
+scan` ran 1,265 times with `--mode staged`, 185 with `--mode tree`, 168 with no `--mode`
+(which is tree), and 96 with `--mode history`. Walking each session's commits in order, among
+sessions that ran a scan at all:
+
+| what preceded the commit, since the previous one | commits | sessions |
+| ------------------------------------------------ | ------: | -------: |
+| a `staged` scan                                  |   1,236 |      110 |
+| a `tree` scan and no `staged` one                |     243 |       64 |
+| a `history` scan only                            |      32 |       20 |
+| no scan at all                                   |   1,201 |      116 |
+
+So the tree-as-commit-gate shape is a habit, not a one-off. **But it does not leak.** `scan_targets`
+reads, for `tree`, every tracked and untracked-not-ignored file as it is on disk — which contains
+the staged content, except for a file edited again after `git add`. A tree scan before a commit is
+the broader check, not the weaker one. What this plan's incident actually lacked was the **history**
+scan before a push, which `plan-conveyor`'s `SKILL.md` already names as the mistake, correctly, and
+which neither `tree` nor `staged` replaces for commits made before the scanning started.
+
+The number that does matter is the last row: 1,201 commits with no scan since the one before, in
+sessions that knew how to run it. That is
+`2026-09-26-sweep-has-no-row-for-public-commits-without-a-
+scan.md`'s question, and the count is
+noted there.
+
 ## Open questions
 
-[NEEDS CLARIFICATION: is a `session-bash-audit` row the right home? That skill's description already
-invites "a newly noticed Bash anti-pattern so the next audit measures it", it already carries a
-`store-write-by-git` row for a neighbouring plan-docs misuse, and the pattern is trivially greppable
-— `plans.py scan` with `--mode tree`, or with no `--mode` at all if the default is tree. The
-counter-argument is that one instance does not justify a row, and every row costs display space in
-every audit forever.]
+[DECISION (2026-09-28): **no audit row, no nudge in `scan`.** Both were proposed on the premise that
+tree before a commit is a miss; the code says it is a superset, so a row would count a safe habit
+and a nudge would put advice in front of a check that was already sufficient. The instance is
+recorded here, and the part that was a miss — no history scan before the push — is already the
+skill's stated rule. The three questions below are kept as filed.]
 
-[NEEDS CLARIFICATION: how often does it actually happen? Nothing here establishes a rate. The corpus
-is right there — one pass over `~/.claude/projects/*.jsonl` for `plans.py scan` calls, split by
-mode, would say whether this is a habit or a one-off, and that answer decides whether anything at
+[As filed, answered above — is a `session-bash-audit` row the right home? That skill's description
+already invites "a newly noticed Bash anti-pattern so the next audit measures it", it already
+carries a `store-write-by-git` row for a neighbouring plan-docs misuse, and the pattern is trivially
+greppable — `plans.py scan` with `--mode tree`, or with no `--mode` at all if the default is tree.
+The counter-argument is that one instance does not justify a row, and every row costs display space
+in every audit forever.]
+
+[As filed, answered above — how often does it actually happen? Nothing here establishes a rate. The
+corpus is right there — one pass over `~/.claude/projects/*.jsonl` for `plans.py scan` calls, split
+by mode, would say whether this is a habit or a one-off, and that answer decides whether anything at
 all should change. Run that before adding a row.]
 
-[NEEDS CLARIFICATION: should `scan` itself say something? A `--mode tree` run immediately followed
-by a commit is a shape the script could notice — it knows the repo, so it could check whether the
-index is non-empty and print one line pointing at `--mode staged`. That is a nudge rather than a
-gate, which is the shape the global rules prefer over a mechanism that fires behind the agent's
-back. But it also puts advice in a command whose output a session skims for the hit count.]
+[As filed, answered above — should `scan` itself say something? A `--mode tree` run immediately
+followed by a commit is a shape the script could notice — it knows the repo, so it could check
+whether the index is non-empty and print one line pointing at `--mode staged`. That is a nudge
+rather than a gate, which is the shape the global rules prefer over a mechanism that fires behind
+the agent's back. But it also puts advice in a command whose output a session skims for the hit
+count.]
 
 ## Recommended direction
 

@@ -32,6 +32,13 @@ the procedure asks it.
   makes the row easy to drop, because it looks the same whether or not the gate ran. The adherence
   corpus in `power-user-linux-setup` has this shape at least twice, and this session is filed there
   as a sample.
+- **The rate, measured 2026-09-28** for the scan-mode plan over 60 days of deduped Bash calls: in
+  sessions that ran `plans.py scan` at least once, **1,201 commits had no scan of any mode since the
+  previous commit**, across 116 sessions, against 1,236 preceded by a staged scan. Not filtered to
+  publishable repos, so an upper bound — commits to the sensitive store and to work repos need no
+  scan — but it says the gap is routine rather than rare. Deciding publishability is the part this
+  row needs that `harvest.py` does not have yet: `scan` cannot tell, and `plans.py` derives it from
+  `public_roots` or the roots routed `repo`.
 
 ## Recommended direction
 

@@ -356,6 +356,28 @@ Against "What building it fully entails":
   `crate_size`, `bin_names`, MSRV floor (`undeclared` when null). `repository` feeds the maintenance
   axis and, when `bin_names` is non-empty, a `prebuilt binary` section from the latest GitHub
   release. [UNVERIFIED: what crates.io does without a `User-Agent`; the script always sends one.]
+- **Build stage 6, apt, landed 2026-09-27.** Fixtures first (`5f056f8`), then the parser
+  (`471b08b`). Both cross-release endpoints were verified live before any parser existed:
+  - Debian madison (`?package=<binary>&f=json`) is keyed by suite name and carries `-debug` and
+    `buildd-` suites, skipped; the `amd64` build wins where a suite holds two versions.
+  - Launchpad `getPublishedSources` wants the **source** name (`rust-ripgrep`), taken from
+    `apt-cache show`'s `Source:`. It keeps end-of-life series `Published`, so `ubuntu/series` is
+    read too and its `status` drops obsolete series; `Proposed` is skipped. That is one request more
+    than the decision named.
+  - `apt-cache` runs under `LC_ALL=C`; an unknown package makes `policy` print nothing and `show`
+    exit 100.
+  - Upstream comes from `--upstream` or, when it is GitHub, the package's `Homepage` — the same
+    auto-fill-and-say-so rule as `--repo`. The lag counts upstream stable releases newer than the
+    packaged version (noble's ripgrep: 4 behind, 920 days).
+  - No GitHub maintenance axis for apt, per the decision that its maintenance is the distro's.
+- **Build stage 7, SKILL.md and trigger check, landed 2026-09-27** (`698a92c`). The description
+  names all five sources; the body is regrouped into shared axes and per-source additions;
+  `compatibility:` names every endpoint and `apt-cache`, and the disclosure section lists
+  `apt-cache` and `node --version` as run and madison and Launchpad as reached. Measured with
+  `trigger.py candidate`, 3 runs: 12/13, each new-source positive 3/3 to the new wording, all
+  negatives silent; the failure is the py.typed boundary case the suite keeps on purpose.
+- All seven build stages are committed, not pushed, and the installed skill is not refreshed. Live
+  runs of all five subcommands against real packages matched the fixture-driven tests.
 
 [DEFERRED: repointing the home `AGENTS.md` install rule from
 `curl -s https://pypi.org/pypi/<name>/json` to this script. That rule is a fragment in

@@ -343,6 +343,19 @@ Against "What building it fully entails":
   tests pin it. PyPI: `requires_python` and the lowest manylinux glibc floor, a musllinux-only
   release flagged on glibc. GitHub: the libc family per asset name. A small PEP 440 and npm-range
   evaluator answers `not compared` rather than guess on a spelling it does not parse.
+- **Build stage 4, npm, landed 2026-09-27** (`c35eb28`). Every field in the verified list above is
+  read. Platform packages: the `optionalDependencies` **named** Linux x64 are fetched (two for
+  biome, one for esbuild, never all 26), and each one's own `os`/`cpu`/`libc` picks the one this
+  machine installs; `install size` is wrapper plus that. A pin naming no published version (biome
+  2.0.3's `workspace:*`) prints `UNRESOLVED`. Typing: `types`/`typings`, a `types` condition in
+  `exports`, else one request for `@types/<name>`, a 404 meaning none. New fixtures: `express-npm`
+  (latest-4 newer than latest, sizes missing before 4.16.3), `types-express-npm`,
+  `biome-cli-linux-x64-musl-npm`, `esbuild-linux-x64-npm`. Floor verdict wording changed from
+  `ABOVE THIS MACHINE` to `NOT MET HERE`, because a libc mismatch is not "above".
+- **Build stage 5, crates, landed 2026-09-27** (`31118d8`). `max_stable_version`, cadence, yanked,
+  `crate_size`, `bin_names`, MSRV floor (`undeclared` when null). `repository` feeds the maintenance
+  axis and, when `bin_names` is non-empty, a `prebuilt binary` section from the latest GitHub
+  release. [UNVERIFIED: what crates.io does without a `User-Agent`; the script always sends one.]
 
 [DEFERRED: repointing the home `AGENTS.md` install rule from
 `curl -s https://pypi.org/pypi/<name>/json` to this script. That rule is a fragment in

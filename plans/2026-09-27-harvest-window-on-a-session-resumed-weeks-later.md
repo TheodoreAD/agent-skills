@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-27
+status: landed
+updated: 2026-09-28
 source_repo: github.com-personal/invoke-stubs
 source_session: 65f8437a-a90e-41c6-9b1f-9b43d713ed9b.jsonl
 source_moment: 2026-09-27T19:47:51Z
@@ -109,3 +109,14 @@ consecutive transcript entries, with its two instants — and, past `LONG_IDLE` 
 every `started:`-anchored window spans it. `--json` carries it as `longest_idle`. It lives in
 `transcript` rather than `boundary` so the harvest's first command still cannot fail on transcript
 resolution. The `filed` fold followed the same day; both decisions are above.
+
+## Migrated to
+
+- **The gap and why the anchor stays** — `skills/session-harvest/SKILL.md`, the paragraph opening
+  "`transcript` prints the session's longest idle gap"; the code and both samples' figures are in
+  `longest_idle`'s docstring in `harvest.py` (`2415103`).
+- **The `filed` fold** — the same SKILL.md, under "`python3 $H filed --until <the boundary>`", and
+  the comment on `UNATTRIBUTED_SHOWN` (`3209e06`).
+- **Not migrated**: the two sample tables row by row, and the four-check census of the first run.
+  The destinations cite the figures that decided each question; `plans.py archive` reads the rest
+  back from here.

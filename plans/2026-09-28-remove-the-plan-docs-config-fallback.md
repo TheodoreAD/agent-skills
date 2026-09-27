@@ -33,6 +33,13 @@ reads it back.
 Remove the fallback from `plans.py` and the independent one in `harvest.py`, their four tests in
 `tests/unit/test_locations.py`, and the SKILL.md paragraph describing the rename fallback.
 
+[DECISION: **removed as a read, kept as a refusal** (2026-09-28). This machine is migrated, but the
+skill is published and cannot know every installer's is, so the pitfall below is answered by its own
+second option. In `plans.py` a config still at the old directory, or named only by the old variable,
+now raises with the move to make; `harvest.py`, which writes nothing, simply stops reading the old
+locations. The four tests became refusal tests. `$PLAN_DOCS_SESSION_REPO` and `$PLAN_DOCS_DEVICE`,
+renamed only today, still read: neither guards a file a writer would skeletonise over.]
+
 [PITFALL: the fallback guards `[private] extra`. The writers lay down a config skeleton whenever the
 current path is absent, so a machine that still keeps its config at the old path would silently get
 an empty config and a shorter scan term list. Before removing, confirm no machine you use still

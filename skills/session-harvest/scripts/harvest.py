@@ -1135,16 +1135,15 @@ def plan_conveyor_config() -> dict[str, Any]:
     Two independently installed skills share a location by both reading the same configuration —
     the environment variables and `~/.config/plan-conveyor/config.toml` — never by one importing the
     other, which would hard-code the install hub and break whenever one is installed without the
-    other. Resolution copies `plans.py`'s lines: `$PLAN_CONVEYOR_CONFIG`, then the pre-rename
-    `$PLAN_DOCS_CONFIG`, then `$XDG_CONFIG_HOME`, then the platform default, and finally the
-    pre-rename directory if the current one holds nothing. An absent or unreadable file is an empty
-    mapping, so every default below still applies.
+    other. Resolution copies `plans.py`'s lines: `$PLAN_CONVEYOR_CONFIG`, then `$XDG_CONFIG_HOME`,
+    then the platform default. An absent or unreadable file is an empty mapping, so every default
+    below still applies.
 
-    The legacy pair is honoured here for the same reason as in `plans.py`, and independently of it:
-    this reader is deliberately not an import, so a fallback that lived only over there would leave
-    these two skills resolving different files on a machine that had not migrated.
+    The pre-rename `plan-docs` directory and variable are not read, here or there, since
+    2026-09-28. `plans.py` refuses when it finds them, naming the move; this reader writes nothing,
+    so there is no skeleton to guard against and it simply sees no config until the move is made.
     """
-    override = os.environ.get("PLAN_CONVEYOR_CONFIG") or os.environ.get("PLAN_DOCS_CONFIG")
+    override = os.environ.get("PLAN_CONVEYOR_CONFIG")
     if override:
         path = Path(override).expanduser()
     else:
@@ -1157,10 +1156,6 @@ def plan_conveyor_config() -> dict[str, Any]:
         else:
             base = Path.home() / ".config"
         path = base / "plan-conveyor" / "config.toml"
-        if not path.exists():
-            legacy = base / "plan-docs" / "config.toml"
-            if legacy.exists():
-                path = legacy
     try:
         return tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):

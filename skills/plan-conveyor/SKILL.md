@@ -387,14 +387,14 @@ own_accounts = ["your-account"] # unset = no repo's ownership is checked at all
 `$PLAN_CONVEYOR_CONFIG` overrides the config location.
 
 **This skill was called `plan-docs` until 2026-09-27**, and both halves of that name were derived
-from it: the config directory and the override variable. So `~/.config/plan-docs/config.toml` is
-still read when the current path holds nothing, `$PLAN_DOCS_CONFIG` is still honoured one step below
-the current variable, and a run that falls back prints where the file is and where to move it. The
-fallback exists because the writers lay down a skeleton over an absent config: without it the first
-run after the rename would answer with an empty config instead of an error, dropping the
-`[private] extra` terms that `scan` cannot derive from directory names. The other two variables,
-`$PLAN_CONVEYOR_SESSION_REPO` and `$PLAN_CONVEYOR_DEVICE`, kept the old prefix until 2026-09-28 and
-fall back to it the same way.
+from it: the config directory and the override variable. A config still at
+`~/.config/plan-docs/config.toml`, or named only by `$PLAN_DOCS_CONFIG`, **stops every command**
+with the move to make, rather than being read or ignored. Ignoring it is the dangerous option: the
+writers lay down a skeleton over an absent config, so the next run would answer with an empty one
+and drop the `[private] extra` terms that `scan` cannot derive from directory names. Both were read,
+with a note, until 2026-09-28. The other two variables, `$PLAN_CONVEYOR_SESSION_REPO` and
+`$PLAN_CONVEYOR_DEVICE`, kept the old prefix until that day and still accept it, since neither
+guards a file.
 
 **The config is per-machine, not per-user, and is deliberately not version-controlled.** It maps the
 repos that happen to be cloned on _this_ box to routes, so it says nothing meaningful anywhere else

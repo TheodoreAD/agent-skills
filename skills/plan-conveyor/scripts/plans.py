@@ -641,10 +641,12 @@ LEGACY_CONFIG_VAR = "PLAN_DOCS_CONFIG"
 def setting(name: str) -> tuple[str, str]:
     """`$PLAN_CONVEYOR_<name>`, else the pre-rename `$PLAN_DOCS_<name>`: which one answered, and its value.
 
-    The same fallback `config_path` keeps for the config variable, for the same reason: a harness
-    or shell exporting the old name keeps working, and nothing outside this file has to move first.
-    `DEVICE` and `SESSION_REPO` kept the old prefix through the 2026-09-27 rename and caught up
-    2026-09-28. The variable is returned so a message can name the one actually in effect.
+    A harness or shell exporting the old name keeps working, so nothing outside this file has to
+    move first. `DEVICE` and `SESSION_REPO` kept the old prefix through the 2026-09-27 rename and
+    caught up 2026-09-28, the same day the config variable's read-fallback was replaced by a
+    refusal in `config_path` — a harness told to export these has had hours, not days, to move.
+    Reading them costs nothing a refusal would prevent: neither guards a file that a writer would
+    skeletonise over. The variable is returned so a message can name the one actually in effect.
     """
     current = f"PLAN_CONVEYOR_{name}"
     for var in (current, f"PLAN_DOCS_{name}"):
@@ -663,15 +665,22 @@ def config_path() -> Path:
     a cache. `~/.config` on Windows would be a directory nothing else on the machine looks in.
 
     **The directory is named after the skill, so the 2026-09-27 rename off `plan-docs` moved it**,
-    and both the old directory and the old variable are still honoured. That is not politeness: the
-    writers below lay down `CONFIG_SKELETON` whenever this path is absent, so a rename without a
-    fallback would answer with an empty config instead of an error — dropping `[private] extra`,
-    whose terms are the ones a public-repo scan cannot derive from directory names. The scan would
-    then pass with a shorter term list and say nothing. The fallback reports the move rather than
-    performing it, because moving a file the user has not been told about is the same surprise in
+    and a config still at the old directory or named by the old variable is refused, never ignored.
+    The writers below lay down `CONFIG_SKELETON` whenever this path is absent, so ignoring the old
+    one would answer with an empty config instead of an error — dropping `[private] extra`, whose
+    terms are the ones a public-repo scan cannot derive from directory names, and the scan would
+    then pass with a shorter term list and say nothing. Until 2026-09-28 both were *read* instead,
+    with a note; that shim came out once this machine's instructions stopped naming the old path,
+    and the refusal stays because a published skill cannot know every machine has moved. It names
+    the move rather than performing it: moving a file nobody was told about is the same surprise in
     the other direction.
     """
-    override = os.environ.get(CONFIG_VAR) or os.environ.get(LEGACY_CONFIG_VAR)
+    override = os.environ.get(CONFIG_VAR)
+    if not override and os.environ.get(LEGACY_CONFIG_VAR):
+        raise PlanError(
+            f"${LEGACY_CONFIG_VAR} is set, and it is this skill's pre-rename variable, no longer read — "
+            f"export ${CONFIG_VAR} with the same value instead"
+        )
     if override:
         return Path(override).expanduser()
     xdg = os.environ.get("XDG_CONFIG_HOME")
@@ -683,12 +692,11 @@ def config_path() -> Path:
     else:
         base = Path.home() / ".config"
     current = base / CONFIG_DIR / "config.toml"
-    if not current.exists():
-        legacy = base / LEGACY_CONFIG_DIR / "config.toml"
-        if legacy.exists():
-            print(f"note: reading {legacy}, the path this skill used before it was renamed.", file=sys.stderr)
-            print(f"      move it to {current} and the note stops.", file=sys.stderr)
-            return legacy
+    legacy = base / LEGACY_CONFIG_DIR / "config.toml"
+    if not current.exists() and legacy.exists():
+        raise PlanError(
+            f"the config is at {legacy}, this skill's pre-rename path, no longer read — move it to {current}"
+        )
     return current
 
 

@@ -116,37 +116,41 @@ def test_the_explicit_variable_beats_everything(bare_env, monkeypatch):
     assert plans.config_path() == bare_env / "pinned.toml"
 
 
-def test_the_pre_rename_variable_is_still_read(bare_env, monkeypatch):
-    """`$PLAN_DOCS_CONFIG` was this skill's variable before the 2026-09-27 rename, and a reader who
-    exported it then still means the same file now."""
+def test_the_pre_rename_variable_alone_is_refused_not_ignored(bare_env, monkeypatch):
+    """`$PLAN_DOCS_CONFIG` was this skill's variable before the 2026-09-27 rename, read as a fallback
+    until 2026-09-28. Ignoring it would resolve the default path, which the writers skeletonise, so a
+    reader who still exports it is told the new name instead."""
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(bare_env / "pinned.toml"))
-    assert plans.config_path() == bare_env / "pinned.toml"
+    with pytest.raises(plans.PlanError, match="PLAN_CONVEYOR_CONFIG"):
+        plans.config_path()
 
 
-def test_the_current_variable_wins_over_the_pre_rename_one(bare_env, monkeypatch):
+def test_the_current_variable_set_makes_a_leftover_old_one_harmless(bare_env, monkeypatch):
     """Both exported is a machine mid-migration, and the current name is the one that means now."""
     monkeypatch.setenv("PLAN_DOCS_CONFIG", str(bare_env / "old.toml"))
     monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(bare_env / "new.toml"))
     assert plans.config_path() == bare_env / "new.toml"
 
 
-def test_the_pre_rename_directory_is_read_when_the_current_one_is_absent(bare_env, monkeypatch, capsys):
-    """The rename moved a directory named after the skill, and the writers lay down a skeleton over
-    an absent path — so without this the first run after a rename would answer with an empty config
-    rather than an error, silently dropping the `[private] extra` terms a public-repo scan cannot
-    derive. The note names both paths, because the fallback reports the move and never performs it."""
+def test_a_config_left_at_the_pre_rename_directory_is_refused_with_the_move(bare_env, monkeypatch):
+    """The writers lay down a skeleton over an absent path, so reading past a config still at the
+    old directory would answer with an empty one, silently dropping the `[private] extra` terms a
+    public-repo scan cannot derive. The refusal names both paths and moves nothing."""
     legacy = bare_env / ".config" / "plan-docs" / "config.toml"
     legacy.parent.mkdir(parents=True)
     legacy.write_text("[private]\nextra = []\n", encoding="utf-8")
-    assert plans.config_path() == legacy
-    err = capsys.readouterr().err
-    assert str(legacy) in err
-    assert str(bare_env / ".config" / "plan-conveyor" / "config.toml") in err
+    current = bare_env / ".config" / "plan-conveyor" / "config.toml"
+    with pytest.raises(plans.PlanError) as refused:
+        plans.config_path()
+    assert str(legacy) in str(refused.value)
+    assert str(current) in str(refused.value)
+    assert legacy.is_file()
+    assert not current.exists()
 
 
 def test_the_current_directory_wins_and_stays_quiet(bare_env, monkeypatch, capsys):
-    """Once migrated, the pre-rename directory is not consulted and nothing is printed — the note
-    exists to stop, so a machine that has moved the file must never see it again."""
+    """Once migrated, the pre-rename directory is not consulted and nothing is printed, even while
+    a copy is still sitting there."""
     for name in ("plan-docs", "plan-conveyor"):
         path = bare_env / ".config" / name / "config.toml"
         path.parent.mkdir(parents=True)

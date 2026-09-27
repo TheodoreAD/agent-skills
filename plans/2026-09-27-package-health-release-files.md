@@ -189,9 +189,12 @@ security updates for it. That means:
 `apt-cache` is local and describes **this machine's** sources, which is the right answer for an
 install decision. Checked on Ubuntu 24.04.5 LTS.]
 
-[NEEDS CLARIFICATION: whether apt also needs a cross-release view (which Ubuntu and Debian releases
-carry which version), from Debian's madison API or Launchpad. It's useful when choosing between apt
-and a release binary for a future LTS. Leave it out of the first cut unless the user wants it.]
+[DECISION: apt also reports a **cross-release view** (user, 2026-09-27): which Ubuntu and Debian
+releases carry which version. It's for choosing between apt and a release binary, and for knowing
+what the next LTS brings. Candidate sources are Debian's madison API
+(`api.ftp-master.debian.org/madison`) and Launchpad's published-sources API for Ubuntu. Verify both
+against live responses and record them as fixtures before writing a parser, as was done for npm and
+crates.io.]
 
 [DECISION: **typing applies only to dynamically typed ecosystems.** Settled with the user
 2026-09-27: statically typed languages are typed by construction, so a typing line for crates, or

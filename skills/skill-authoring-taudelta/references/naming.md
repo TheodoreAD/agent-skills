@@ -100,8 +100,28 @@ reads to auto-migrate, **live with 9 entries across 292 plugins**. Most strip a 
 
 **Skills have neither.** No `displayName`, no `renames` map; the name is identifier and label at
 once. `skill-creator` accordingly instructs "**Preserve the original name** … use them unchanged."
-Confirmed locally: this repo renamed one skill and the pre-rename slug is still listed in the public
-index with its own install count, beside the live one.
+
+**So a rename forks rather than moves, and the fork is permanent.** Registry rows are keyed
+`source/skillId` and carry their own install counter. This repo deleted `mcp-skill-shipping` on
+2026-08-28; on 2026-09-27 `skills.sh/api/search` still returned it at 2 installs, beside
+`mcp-server-shipping` at 36. Thirty days, no pruning, and nothing in the CLI exposes an unpublish or
+de-list path — publishing is a crawl that adds without retiring. The consequence is not clutter: the
+surviving row advertises `source/<old name>` for a skill the repo no longer has, so a visitor who
+acts on the listing gets a failed add. When the 2026-09-27 batch renamed eight skills, 274 installs
+of history stayed on the dead rows and all eight successors started at zero.
+
+**On the installed side the CLI reads a vanished name as a deletion.** `update.ts` classifies a
+locked skill missing from its source as deleted upstream, prints "appear to have been deleted
+upstream", and asks whether to remove the local copies; the new name arrives separately as a _new_
+skill, so nobody is migrated automatically. In non-interactive mode (`--yes`, or no TTY, so any CI
+or scripted setup) it prints "Skipping deletion in non-interactive mode" and **keeps** the old copy,
+so those consumers hold both and the two compete for triggers until someone intervenes by hand.
+
+[PITFALL: **`names.py check` cannot answer the question for a name you already publish.** Run
+against `skill-fitness` and `db-defaults-taudelta` it reports `collides: true` and exits 1 with this
+repo as the sole owner — your own registry row read as a competitor. So a check of an existing name
+has to be read owner by owner rather than by exit code; only a check of a _candidate_ name is
+answered by the exit status.]
 
 ## The name-only regime, which is the one place selection could turn on a name
 
@@ -142,6 +162,154 @@ is merely ahead of its install. Confirmed while writing this: the check flagged
 
 Homebrew is the closest analogue and its cookbook is worth quoting on the single-token risk: it
 rejects "Go" as a formula name because it is "too common and there are too many implementations".
+
+## The author mark, and the split it rests on
+
+Adopted 2026-09-27 over eight renames, after a first pass on 2026-09-12 had rejected an author
+_prefix_ and never considered a suffix. The rule is in `AGENTS.md`; this is why it holds.
+
+**The corpus divides into two kinds of skill, and only one has an identity problem.** A skill that
+**does a job** is closer to an app than to a rule set — nobody expects a replica of someone else's
+app, so the name should say what it does and the author is the least valuable thing it could carry.
+A skill that **asserts how to work** predictably clashes with other developers' and vendors' rules,
+and there the author is the fact a reader most needs, because these are one person's rulings and may
+contradict theirs.
+
+Two reasons, and the second is the one that generalises beyond this corpus.
+
+- **Mechanically, an opinion-set name cannot be defended.** Measured 2026-09-27: `python-standards`
+  is published by **17** repos, `python-guidelines` by **9**, `python-idioms` by 2 — while every
+  tool-shaped candidate checked was free first time. It is the name every developer and every vendor
+  independently reaches for, and first-seen-wins is by **traversal order**, not popularity, so the
+  outcome is arbitrary and silent in both directions. Both names this repo vacated were already
+  losing on their own exact slug: `python-conventions` to a 75-install rival against 37 here, and
+  `skill-authoring` to `grafana/skills` at **3,072** against 38.
+- **Editorially, the mark is what lets the accurate category word stay.** A distinctive synonym
+  (`python-rulebook`, `python-canon`) buys the same collision immunity by sacrificing the word that
+  describes the content. The mark buys it and keeps `-conventions`. It also disclaims authority by
+  fact rather than by connotation: `python-canon` parses as _Python's_ canon, PEP-level and
+  community-wide, and `-conventions` carries a milder version of the same; a personal mark cannot be
+  misread that way, where `-rulebook` and `-house-style` only soften it.
+
+### The position: trailing, against the corpus habit
+
+Measured over the same corpus (1,044 skills, 40 repos, 24 with five or more skills), for a shared
+**trailing** token — which the 2026-09-12 pass measured only for leading:
+
+| position     | repos sharing it across ≥50% of their skills                           | what the shared token is                                     |
+| ------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **leading**  | **4 / 24** — `baoyu-` 95%, `caveman-` 71%, `tres-` 71%, `publish-` 50% | an author, a vendor, or a verb                               |
+| **trailing** | **0 / 24** — highest is `-conventions` at 44% (`Goldziher/ai-rulez`)   | a category: `-writer`, `-fetcher`, `-change`, `-development` |
+
+So author-marking does happen and **every repo that does it marks in front**; a trailing brand has
+no prior art here, and the tail slot is trained as the category slot. Three reasons beat that:
+
+1. **The mark must strip back to the current name.** `python-conventions` and `db-defaults` are
+   lexical units that existing citations already spell — 155 of them for `plan-docs` alone.
+   `python-conventions-taudelta` is the old name plus a mark, recoverable by eye;
+   `python-taudelta-conventions` is a new string containing the same tokens.
+2. **A mark is legible only where its position is fixed.** At the end it sits at the same
+   offset-from-right in every name; medially it floats with the length of the first token.
+3. **The ecosystem splits by what the token means.** An author _namespace_ leads (`@scope/pkg`,
+   `owner/repo`, `com.example.*`, `publisher.name`); a _variant qualifier_ trails (`libssl-dev`,
+   `python3-doc`, `python:3.12-slim`, `settings.local.json`). A house ruling is a variant: among the
+   many possible sets of Python conventions, this is one flavour.
+
+The cost is accepted: English wants modifiers before the head, this corpus is head-final, and
+`db-defaults-taudelta` does put a non-head token in the head's slot. It survives because the mark is
+not a word — nothing parses `taudelta` as a category — and because names ending the same way teach
+the reader once.
+
+[PITFALL: **"programmers narrow scope left to right" is not a sound reason for either order.**
+Reverse-DNS narrows left to right, file variants right to left. If narrowing were the principle it
+would equally license a prefix. The author-versus-variant split above is what decides it.]
+
+[RETRACTED 2026-09-27: **"truncation eats the tail, so the mark is the droppable part."** Argued in
+session for the suffix, then checked and found false — a truncated listing drops a description
+**whole**; the harness keeps or drops and does not shorten, so names are never character-truncated.
+A long name costs eye-scan and listing bytes, never information. The three reasons above are
+unaffected.]
+
+### The string, and the four that lost
+
+`-taudelta` was chosen because it was already the author's published mark (`mkdocs-taudelta`) and is
+tau + delta, their initials in a script that does not announce them. The mark's whole job is to say
+_mine_, which a second, different mark would defeat: two personal marks is the same as none.
+
+- **`-tad`** — shortest, and derivable from the GitHub handle at a glance. But "a tad" means
+  _slightly_, so the tail reads as a diminutive: a hedge welded into the primary key of skills whose
+  purpose is to assert that the rules are decided.
+- **`-thad`** — not common vocabulary and reads as a personal name, the right category for a mark.
+  But Thad is a real given name that is not the author's, so a reader who decodes it confidently
+  decodes it wrong, and a false friend is worse than an opaque mark. It is also narrowly American:
+  846th most common US male given name in the 1990 census (parent `Thaddeus` 611th, ~#798 today,
+  peak 416 births in 2016), and no other language clips Thaddeus that way — Polish Tadeusz → Tadek,
+  Lithuanian Tadas, Italian Taddeo, Spanish Tadeo, Portuguese Tadeu, French Thaddée, Irish Tadhg →
+  Thady. The Slavic and Romanian route goes to `Tad-`, so of the two short forms the h is the
+  imported one.
+- **`-pulse`** — names a different repo of the author's, and a real English noun in the tail is
+  exactly what gets read as a category word.
+- **A given name spelled out** (`-theodore`) — ecosystem norms would tolerate it, so there is no
+  reputational reason to avoid it. The structural one stands alone: **a given name in a primary key
+  ages badly.** Old slugs are permanent, so if the skills are ever co-authored or published under an
+  org, `-theodore` becomes false while a brand mark stays true.
+
+[PITFALL: **a mark that sounds like a standards body re-introduces the over-claim defect**,
+institutional instead of linguistic. `-iso`, `-labs`, `-foundation` would do it.]
+
+## When a name is already finished
+
+**The flavour slot is only free where the current word is inaccurate.** `-docs` never described what
+`plan-conveyor` became — a status lifecycle plus a cross-repo transport — so replacing it bought
+real information. `-library` already describes what `research-library` is, which is why a rename
+proposed 2026-09-12 and carried as settled for a fortnight was **abandoned** 2026-09-27.
+
+The candidate that lost was `research-trove`, and it lost on the same name-alone test the rest of
+this file rests on. "Trove" lives almost entirely inside "treasure trove", so the image is _a pile
+of valuable things_, and specifically things **found** — while the store is deliberately assembled,
+catalogued and pruned. It also inspires no image of organisation or filing, which is the store's
+whole value: canonical clone names, a provenance file per entry, a check command validating entries
+against the conventions. "Library" carries the filing; "trove" carries only the accumulation. The
+2026-09-12 argument for moving — "a doctrine plus a dependency-vetting procedure, neither of which
+is a library" — does not survive either: the store half is literally a library, and vetting a source
+before relying on it is reference-desk work.
+
+[PITFALL: **a fantasy or sci-fi register is dense in nouns for a doer, and most skills name a
+thing.** Rejected in one session for the same structural reason: `research-octopus`,
+`research-guild`, and a round of hoarder animals (`research-magpie`, `-squirrel`, `-bowerbird`,
+`-packrat`, `-jackdaw`, `-dragon`, all free). An animal or an organisation names an agent, while
+that skill names a store — a directory of clones on disk. In two cases the metaphor argued for the
+behaviour the skill exists to prevent: an octopus's many arms and a guild sending adventurers out to
+fetch are both page-at-a-time fan-out, where the doctrine is clone once and grep locally, and git's
+own _octopus merge_ already means many-at-once in a dev context. The register's **material** nouns
+are the set that can pass — trove, hoard, reliquary, codex, atlas, stacks — though `research-vault`
+is taken (2 repos), `research-archive` (1), and `research-codex` collides with a coding-agent brand,
+which misleads about what kind of thing a skill is. Per-animal defects, so none is re-proposed:
+magpie collects indiscriminately where the skill vets, packrat never discards where the library is
+pruned, jackdaw steals where the store records provenance, squirrel is diminutive, bowerbird is
+opaque, dragon names the guardian rather than the hoard.]
+
+## Why `-conventions` survived and `-defaults` lost
+
+Five skills end in `-conventions`, and a 2026-09-12 proposal would have harmonised them onto
+`db-defaults`' suffix. Closed 2026-09-27 against the content:
+
+- **`db-defaults` does not generalise.** Its body is one section per storage category, each with a
+  `Default:` line and an `Escalate to:` line, opening "pick from this table, don't re-litigate". It
+  is a **product-selection** skill, and `-defaults` is right because the content is a defaults
+  table.
+- **The cluster is not mostly selection.** Of `python-conventions`' 13 sections only Data modeling,
+  AnyIO and HTTP client are picks from a menu; guard clauses and EAFP, statelessness and
+  immutability, type hygiene, `src/` layout and modules-as-singletons are _how to write it_, with no
+  product to default to. `mcp-python-conventions` is zero selection. So `mcp-python-defaults` would
+  promise a table and deliver rules.
+- **The words differ on authority, not on pick-versus-survey.** A convention is what a community
+  does; a default is what you get if you don't choose. These skills do a third thing: they rule.
+- **`-conventions` has the corpus's highest trailing-token share** as a category word, 12 of 27 in
+  `Goldziher/ai-rulez`.
+
+The collision on `python-conventions` was the only reason that did not depend on anyone's ear, and
+the mark answers it without touching the word.
 
 ## Unverified
 

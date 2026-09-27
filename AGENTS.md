@@ -64,7 +64,8 @@ description more carefully.
   suffix, 4 by prefix) and for three reasons: the mark must strip back to the name that citations
   already spell, a mark is legible only where its position is fixed, and a trailing qualifier is
   what the ecosystem uses for a variant (`libssl-dev`, `python:3.12-slim`) while a leading one is
-  for a namespace. Full reasoning and the rejected marks are in the plan this landed from.
+  for a namespace. Full reasoning, the rejected marks, and what a rename does to the public index
+  are in `skills/skill-authoring-taudelta/references/naming.md`.
 - Keep the body to what an agent must follow. Reasoning, prior art, measurements and rejected
   alternatives go in `references/` — loaded only when the agent needs them.
 - Cite evidence with a date when a rule came from something that actually happened ("Confirmed live

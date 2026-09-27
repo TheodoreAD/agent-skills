@@ -21,7 +21,18 @@
     "The py.typed case failed 0/3 and is KEPT rather than reworded. It names no package and no repo",
     "— 'does this package ship py.typed' reads as a generic typing question, and the description is",
     "deliberately scoped to a NAMED candidate. It is the boundary seen from the inside, and a suite",
-    "that only holds cases the description already wins measures nothing."
+    "that only holds cases the description already wins measures nothing.",
+    "",
+    "2026-09-27: package_health.py gained npm, crates, apt and github sources, and the description",
+    "widened to name them. The four new positives are one per new source, each phrased the way the",
+    "question actually arrives: a size worry, an apt-versus-binary choice, a binary-only tool, a",
+    "crate's binary and MSRV. The two new negatives are the same boundary as requests: running npm",
+    "install and adding an apt repository are ordinary work on a dependency already chosen.",
+    "",
+    "Measured 2026-09-27, candidate mode, 3 runs: 12/13. Each of the four new-source positives",
+    "went 3/3 to the candidate wording and 0/3 to the incumbent, which is the adopt test; the old",
+    "positives stayed with the incumbent twin, so the split was 12 fires each. All three negatives",
+    "stayed silent and db-defaults kept its case. The one failure is the kept py.typed boundary."
   ],
   "cases": [
     {
@@ -45,11 +56,35 @@
       "expect": "research-library"
     },
     {
+      "prompt": "Is @biomejs/biome on npm worth adopting, or does installing it pull in something huge?",
+      "expect": "research-library"
+    },
+    {
+      "prompt": "Should I install ripgrep from apt or grab the release binary? How far behind is the Ubuntu package?",
+      "expect": "research-library"
+    },
+    {
+      "prompt": "gmailctl only ships GitHub release binaries. Is the repo still maintained and do the assets have checksums?",
+      "expect": "research-library"
+    },
+    {
+      "prompt": "Does the ripgrep crate ship a binary, and what Rust version does it need to build?",
+      "expect": "research-library"
+    },
+    {
       "prompt": "We need somewhere to keep session state that survives a restart. What kind of datastore fits?",
       "expect": "db-defaults"
     },
     {
       "prompt": "Add the pinned version of requests to this project's dependency group and lock it.",
+      "expect": null
+    },
+    {
+      "prompt": "Run npm install for the frontend and fix the lockfile conflict it leaves.",
+      "expect": null
+    },
+    {
+      "prompt": "Add the Docker apt repository to this machine's sources and install docker-ce.",
       "expect": null
     }
   ]

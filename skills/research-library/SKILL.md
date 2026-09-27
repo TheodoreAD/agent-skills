@@ -1,7 +1,7 @@
 ---
 name: research-library
-description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library. Also owns judging a named third-party package or repo before depending on it: whether it is still maintained, who is actually committing to it, how often it releases on its stable line, whether it ships py.typed, how much test suite is behind it, whether a version cap it carries will hold you back — read from PyPI, the GitHub API and the project's own source rather than from a search summary."
-compatibility: Python 3.11+ (stdlib only), git, and network access - clones from the URL you give, and package health from PyPI's JSON API and the GitHub API through gh, so your own token and rate limit apply. Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs none of that. A library directory ($RESEARCH_HOME, default ~/research) that you create.
+description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library. Also owns judging a named package or tool before depending on or installing it — from PyPI, npm, crates.io or apt, or shipped only as GitHub release binaries: whether it is still maintained, who actually commits to it, how often it releases on its stable line, what a release really ships and costs (wheel or sdist, npm platform packages and install scripts, prebuilt binaries), whether its Python, node or glibc floor fits this machine, how far an apt package lags upstream, whether it ships types, how much test suite backs it, whether a version cap will hold you back — read from the registry, the GitHub API and the project's own source rather than from a search summary."
+compatibility: Python 3.11+ (stdlib only), git, network - clones from the URL you give; package health from PyPI, npm, crates.io, Debian madison and Launchpad over HTTPS and GitHub through gh (your own token and rate limit); the apt source needs apt-cache (Debian or Ubuntu). Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs neither. A library directory ($RESEARCH_HOME, default ~/research) that you create.
 ---
 
 # Research library
@@ -235,9 +235,10 @@ permission is stripped from the manifest.
 
 ## Judging a candidate dependency
 
-Picking a library is the same activity as the rule above, one step earlier: the question is what the
-source says, not what the summary claims. **Judge a package from its own PyPI file list rather than
-from a search summary** — this is what to look at once you are there.
+Picking a library or a tool is the same activity as the rule above, one step earlier: the question
+is what the source says, not what the summary claims. **Judge a package from its own registry
+metadata and file list rather than from a search summary** — this is what to look at once you are
+there.
 
 **Judge each candidate against an absolute bar, on its own, before any head-to-head.** Popularity is
 a weak signal past a threshold and is never a tiebreaker — a less popular project that clears the
@@ -254,76 +255,86 @@ python3 $S/scripts/package_health.py apt ripgrep
 python3 $S/scripts/package_health.py github BurntSushi/ripgrep
 ```
 
-Stdlib only, `S=~/.agents/skills/research-library`. **The source is a required subcommand** — there
-is no default registry, so name it every time. The package's own GitHub repo is read from its
-metadata, and the report's `repo from` line says where; pass `--repo <owner/repo>` when that lookup
-is wrong or missing. PyPI, npm and crates.io over HTTPS, GitHub through `gh api` so it uses your own
-token and rate limit. `--clone` adds what no API answers — `py.typed`, the test-to-source ratio, the
-CI inventory, the licence files actually present. `--generated <glob>` is repeatable and marks a
-mechanical layer so the ratio is taken against hand-written code. `--json` for the whole answer.
+Stdlib only, `S=~/.agents/skills/research-library`. **The source is a required subcommand** —
+`pypi`, `npm`, `crates`, `apt` or `github`, with no default, so name it every time; the retired
+`package_health.py <name> <owner/repo>` form exits 2 naming its replacement. When one tool is
+offered through several channels — a PyPI or npm wrapper, a crate, an apt package, a release binary
+— run each channel's source and compare what they ship and cost. The package's own GitHub repo is
+read from its metadata and the report's `repo from` line says where; pass `--repo <owner/repo>` when
+that lookup is wrong or missing. Registries over HTTPS, GitHub through `gh api` so it uses your own
+token and rate limit. `--json` for the whole answer on every source.
 
-The four axes it reports, plus what the release ships and whom it tracks, and what each is for:
+The axes every source reports where they apply, and what each is for:
 
 - **Maintenance** — releases on the **stable** line and their median gap, last push against last
   release (which separates "actively developed, slow to release" from "stalled"), human contributor
-  count and bus factor over the last year, time to close an issue, archived flag, licence, yanked
-  releases.
-- **Typing** — `py.typed`, the project's own type-checker config and its strictness, which predicts
-  what leaks. Then measure: run **your** checker in **your** mode over a small real usage sample.
-  Nothing else tells you what your gate will say.
-- **Battle-tested** — test-to-source ratio against hand-written source, whether coverage is enforced
-  in CI or only reported, and what the CI workflows actually cover.
+  count and bus factor over the last year, time to close an issue, archived flag, licence, yanked or
+  deprecated releases.
+- **Typing**, for dynamically typed ecosystems only — PyPI's `py.typed` (with `--clone`) and npm's
+  own types against a separate `@types/…` against neither. For Python, also the project's own
+  type-checker config and its strictness, which predicts what leaks. Then measure: run **your**
+  checker in **your** mode over a small real usage sample. Nothing else tells you what your gate
+  will say.
+- **Battle-tested** — with `pypi --clone`: test-to-source ratio against hand-written source
+  (`--generated <glob>` marks a mechanical layer), whether coverage is enforced in CI or only
+  reported, and what the CI workflows actually cover.
 - **Fit** — runtime dependency count and names (never the raw `requires_dist`, which is mostly
   extras), version ceilings and whether they bind the distributed artifact or only the dev lockfile,
   licence compatibility, and whether the thing can be exercised offline.
-- **Ships** — the latest stable release's files, from the same PyPI payload: wheel or sdist, wheel
-  tags, size, upload date. Read its `linux x86_64` line before adopting a wrapper around a binary: a
-  wheel present means the binary is inside it; `SDIST ONLY` or `NO WHEEL for this machine` means pip
-  builds it, or a build hook downloads it, on every install. `largest` is the adoption cost.
-- **Upstream**, with `--upstream <owner/repo>` — for a wrapper, name the project it repackages,
-  which is not the wrapper's own repo. It reports upstream's latest stable GitHub release, the
-  wrapper version spelled to match it and the lag in days, and that release's Linux x86_64 assets
-  with any checksum or signature file beside them. `NO MATCHING WRAPPER RELEASE` means the spelling
-  differs or the wrapper is behind: compare the two versions printed. `GitHub digest` is GitHub's
-  hash of the upload, not a publisher's checksum.
+- **Ships** — what installing the latest stable release actually downloads, and its size: the
+  adoption cost. What that means differs per source; see below.
 - **Floors** — every minimum version the metadata states, never inferred, each compared with this
-  machine where that is cheap: PyPI's `requires_python` against this `python3`, the glibc floor a
-  `manylinux` tag states against this machine's glibc, npm's `engines.node` against this `node`.
-  `NOT MET HERE` is the finding; `not compared` says why it was not.
-- **`npm <name>`** — the same axes from the full packument, judged on `dist-tags.latest`. Its
-  `ships` section adds what npm alone has: `install scripts` (`RUNS AT INSTALL` means code executes
-  on your machine at install time), `provenance`, and the **platform package** that actually carries
-  a binary — resolved by default, because a wrapper like `@biomejs/biome` is 779 kB and its Linux
-  package 64.7 MB. `install size` is the two together. `typing` says whether the package ships its
-  own types, needs a separate `@types/…`, or has neither.
-- **`crates <name>`** — crates.io's own stable version, cadence, yanked releases, the crate's size
-  and `bin_names`, and the MSRV as a floor (`undeclared` when null). A crate is source that
-  `cargo install` compiles; when it has binaries, the report adds the `prebuilt binary` section, the
-  latest GitHub release's Linux assets read from the crate's `repository`. No typing line — a
-  statically typed language is typed by construction.
-- **`apt <name>`** — a different question, and the report says so: an apt package is maintained by
-  the **distro**, so it reports this machine's candidate and where it comes from (`main` is
-  Canonical-supported; `universe` gets Canonical security fixes only with Ubuntu Pro; a third-party
-  repo is its publisher's), sizes, versioned `Depends` as floors, the **lag** behind upstream's
-  stable GitHub releases (upstream read from the package's `Homepage`, or `--upstream`), and a
-  **cross-release** view of which Ubuntu and Debian releases carry which version — for choosing
-  between apt and a release binary, and for what the next LTS brings.
-- **`github <owner/repo>`**, for a tool with no registry at all — a Go or Rust binary shipped only
-  as release assets. The same maintenance axis, the stable-release cadence read from the GitHub
-  releases list (pre-releases by GitHub's flag or by spelling, drafts skipped), and the latest
-  stable release's Linux x86_64 assets as `--upstream` reports them.
+  machine where that is cheap: `requires_python` against this `python3`, the glibc floor a
+  `manylinux` tag or a `libc6` dependency states against this machine's glibc, `engines.node`
+  against this `node`, a crate's MSRV, the libc family an asset name states. `NOT MET HERE` is the
+  finding; `not compared` says why it was not.
+- **Upstream**, with `--upstream <owner/repo>` on `pypi` and `npm` — for a wrapper, name the project
+  it repackages, which is not the wrapper's own repo. It reports upstream's latest stable GitHub
+  release, the wrapper version spelled to match it and the lag in days, and that release's Linux
+  x86_64 assets with any checksum or signature file beside them. `NO MATCHING WRAPPER
+  RELEASE`
+  means the spelling differs or the wrapper is behind: compare the two versions printed.
+  `GitHub digest` is GitHub's hash of the upload, not a publisher's checksum.
 
-**Three of the report's lines are traps wearing the shape of an answer, so read them as written:**
+What each source adds:
+
+- **`pypi <name>`** — the wheels and sdist, their tags, sizes and upload dates. Read the
+  `linux
+  x86_64` line before adopting a wrapper around a binary: a wheel present means the binary
+  is inside it; `SDIST ONLY` or `NO WHEEL for this machine` means pip builds it, or a build hook
+  downloads it, on every install. `--clone <path>` adds what no API answers — `py.typed`, the
+  test-to-source ratio, the CI inventory, the licence files actually present.
+- **`npm <name>`** — judged on `dist-tags.latest`, never the newest publish. `install scripts`
+  (`RUNS AT INSTALL` means code executes on your machine at install time), `provenance`, and the
+  **platform package** that actually carries a binary — resolved by default, because a wrapper like
+  `@biomejs/biome` is 779 kB and its Linux package 64.7 MB. `install size` is the two together.
+- **`crates <name>`** — crates.io's own stable version, the crate's size and `bin_names`, and the
+  MSRV (`undeclared` when null). A crate is source that `cargo install` compiles; when it has
+  binaries, a `prebuilt binary` section lists the latest GitHub release's Linux assets.
+- **`apt <name>`** — a different question, and the report says so: an apt package is maintained by
+  the **distro**. It reports this machine's candidate and who maintains it (`main` is
+  Canonical-supported; `universe` gets Canonical security fixes only with Ubuntu Pro; a third-party
+  repo is its publisher's), sizes, the **lag** behind upstream's stable GitHub releases (upstream
+  read from the package's `Homepage`, or `--upstream`), and a **cross-release** view of which Ubuntu
+  and Debian releases carry which version — for choosing between apt and a release binary, and for
+  what the next LTS brings.
+- **`github <owner/repo>`** — for a tool with no registry at all, a Go or Rust binary shipped only
+  as release assets: the maintenance axis, the stable-release cadence from the releases list, and
+  the latest stable release's Linux x86_64 assets.
+
+**Four of the report's lines are traps wearing the shape of an answer, so read them as written:**
 `open issues+PRs` is GitHub's field and counts both; a `PRE-RELEASE ONLY` or `pre-releases` line
 means a dev version is moving while the stable one may not be; a `shallow clone` line means any
-history question needs `git fetch --deepen` first. Confirmed 2026-09-02 on `httpx`: read naively,
-PyPI says 4 releases in the last year with the newest yesterday. On the stable line it is **zero in
-the last year, the last one 634 days ago** — the opposite answer to "is this maintained for me".
+history question needs `git fetch --deepen` first; an npm `tarball` size is the wrapper alone, and
+`install size` is the number that counts. Confirmed 2026-09-02 on `httpx`: read naively, PyPI says 4
+releases in the last year with the newest yesterday. On the stable line it is **zero in the last
+year, the last one 634 days ago** — the opposite answer to "is this maintained for me".
 
 Everything the numbers hide — the bot that dominates a bus factor, the dual-licensed project the API
-reports as GPL, why a version cap is not a cost until its historical lag says so, and how to prove
-offline-testability — is in [`references/dependency-health.md`](references/dependency-health.md).
-Read it before writing a recommendation, not before running the script.
+reports as GPL, why a version cap is not a cost until its historical lag says so, how to prove
+offline-testability, and each registry's own traps — is in
+[`references/dependency-health.md`](references/dependency-health.md). Read it before writing a
+recommendation, not before running the script.
 
 ## No symlinks into project repos
 

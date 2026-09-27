@@ -19,8 +19,8 @@ compatibility: >-
 # Skill fitness
 
 Measures whether a set of skills works, so the fix is chosen from numbers rather than from a hunch.
-Authoring guidance is `skill-authoring`'s job and this skill does not repeat it; Bash-usage auditing
-is `session-bash-audit`'s.
+Authoring guidance is `skill-authoring-taudelta`'s job and this skill does not repeat it; Bash-usage
+auditing is `session-bash-audit`'s.
 
 Evidence behind the rules below, loaded only when you need it:
 [`references/measurements.md`](references/measurements.md) for what was measured here — the 119-run
@@ -259,7 +259,7 @@ description length, all of them with the same single-line-parse bug that a real 
 have.
 
 Propose the absorption as a diff. Do not apply it silently — where the code lands is an authoring
-decision, and `skill-authoring` owns that.
+decision, and `skill-authoring-taudelta` owns that.
 
 **`derivable` asks the same question of the skill instead of the transcripts.** `absorb` needs a
 transcript store and only sees what an agent already re-wrote by hand; `derivable` reads the
@@ -275,8 +275,9 @@ it. Each fenced command line lands in one of three buckets:
 **Read the samples, not the count.** Legitimate residue exists and the report prints it alongside
 everything else: an external CLI's own documented one-liner, a one-off emergency procedure, the
 consuming repo's own gate command a portable script must not hard-code. What is not residue is a
-composed pipeline, a query, a parse, or a multi-step sequence — see `skill-authoring`'s "Anything
-the skill can derive deterministically goes in a script" for the authoring rule this measures.
+composed pipeline, a query, a parse, or a multi-step sequence — see `skill-authoring-taudelta`'s
+"Anything the skill can derive deterministically goes in a script" for the authoring rule this
+measures.
 
 **A single run cannot show drift, which is the question this exists for.** Save a baseline while a
 corpus is in good shape and compare after a run of edits; a rise in a skill's derivable count is the

@@ -29,7 +29,7 @@ considered and rejected).
   and `docker` when installed, `ps`/`ss` on Linux or PowerShell/`netstat` on Windows, and
   `plans.py absorb` read-only. Nothing through a shell. **It never installs, re-installs or removes
   a skill**: `skills-state` compares the installed copy with its source and reports the difference,
-  and deploying a fix is `skill-authoring`'s sequence, not this skill's.
+  and deploying a fix is `skill-authoring-taudelta`'s sequence, not this skill's.
 - **Writes**: **the script writes nothing.** The procedure writes, through the agent, only inside
   the set stated at the top of it — the session repo, its `plans/`, and the plans store through
   `plan-docs`. **It never edits, moves or deletes a plan somebody else filed for a different repo**;
@@ -149,8 +149,8 @@ asked.
 
 **A difference has four causes, and only one of them is a stale install.** The subcommand prints the
 verdict; report the row it names. **A harvest reports install state and never deploys** — pushing,
-installing and reloading a skill are `skill-authoring`'s sequence, including why each row below
-needs a different move — so the report says which row applies and whose move it is:
+installing and reloading a skill are `skill-authoring-taudelta`'s sequence, including why each row
+below needs a different move — so the report says which row applies and whose move it is:
 
 | the checkout is              | what it means        | what the report says                               |
 | ---------------------------- | -------------------- | -------------------------------------------------- |
@@ -462,9 +462,9 @@ For what survives the significance test:
   default") → the relevant existing skill's own docs, not a feedback memory** — even though on the
   surface "how to approach work" sounds like the `feedback` bucket. Resolved via `AskUserQuestion`
   during this skill's own design: a preference about how _new skills_ should be authored belongs in
-  the skill-authoring skill (durable, version-controlled, visible to every contributor/tool), not
-  this harness's private memory store. Use that as the default for similar cases rather than
-  re-asking each time.
+  the skill-authoring-taudelta skill (durable, version-controlled, visible to every
+  contributor/tool), not this harness's private memory store. Use that as the default for similar
+  cases rather than re-asking each time.
 
 ### 3. There is no memory tier
 
@@ -1120,7 +1120,7 @@ correct, gate-green edits to this file and committed them in a repo it had no bu
 left sitting in `git log` for whichever session pushed next.]
 
 **Deploying the skill edit is not a harvest step.** The push is outward-facing and always asked,
-under step 5's rules; installing and reloading the skill afterwards are `skill-authoring`'s
+under step 5's rules; installing and reloading the skill afterwards are `skill-authoring-taudelta`'s
 sequence, and the report names that as outstanding rather than performing it. Confirmed 2026-08-28:
 `Bash(git commit:*)` and `Bash(git push:*)` are both allowlisted on this machine, so no permission
 prompt guards the push — the discipline is entirely instruction-side, deliberately (see
@@ -1400,13 +1400,13 @@ the current session:
   checkout's copy for the rest of the run, or note which results predate the edit; do not re-derive
   the results from the new source and assume they match.
 - **Say plainly that a committed edit reaches no installed copy yet**, this session's and other
-  projects' on the same machine included, and that deploying it is `skill-authoring`'s sequence.
-  **Then measure the install state before reporting what the machine runs** — on a machine with
-  parallel sessions another one may already have deployed it, so the state is shared. Diff it; that
-  is what `skills-state` is for. Confirmed 2026-08-30: a harvest closed with "this one keeps running
-  the old copy", the user asked, and the installed copy already carried the fix, deployed by another
-  session twenty minutes earlier — a confident, specific, wrong sentence in the zone of the report
-  reserved for what needs action.
+  projects' on the same machine included, and that deploying it is `skill-authoring-taudelta`'s
+  sequence. **Then measure the install state before reporting what the machine runs** — on a machine
+  with parallel sessions another one may already have deployed it, so the state is shared. Diff it;
+  that is what `skills-state` is for. Confirmed 2026-08-30: a harvest closed with "this one keeps
+  running the old copy", the user asked, and the installed copy already carried the fix, deployed by
+  another session twenty minutes earlier — a confident, specific, wrong sentence in the zone of the
+  report reserved for what needs action.
 
 ## Full rationale
 

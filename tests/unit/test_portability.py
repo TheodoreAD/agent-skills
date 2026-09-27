@@ -113,7 +113,7 @@ def test_one_env_var_never_covers_another(tmp_path):
 
 def test_the_xdg_base_directories_are_portable(tmp_path):
     """`~/.config` is not the author's path, it is the specification's default, and it means the
-    same thing on every machine. Found 2026-09-04: documenting the destinations in `skill-authoring`
+    same thing on every machine. Found 2026-09-04: documenting the destinations in `skill-authoring-taudelta`
     produced eleven findings for a section whose whole purpose is declaring where things go."""
     row = scan_one(
         tmp_path,

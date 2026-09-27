@@ -1,6 +1,6 @@
 """Where a skill's script puts its config and its state, on both platforms it can run on.
 
-`skill-authoring` states the resolution order once — explicit argument, then the skill's own
+`skill-authoring-taudelta` states the resolution order once — explicit argument, then the skill's own
 variable, then `$XDG_*`, then the platform default — and every script copies three lines rather than
 importing a sibling, because skills install individually and one cannot import another. Duplicated
 code is what drifts, so the order is pinned here for each copy rather than trusted to review.

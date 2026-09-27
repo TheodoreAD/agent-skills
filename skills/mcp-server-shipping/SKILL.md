@@ -13,7 +13,7 @@ the author's own servers — a family of `*-polite-mcp` repos — because a conc
 than a placeholder; substitute your own everywhere.
 
 Shipping an **Agent Skill** is a different job with a different mechanism — see the
-`skill-authoring` skill, which also covers getting an edit to an existing skill deployed.
+`skill-authoring-taudelta` skill, which also covers getting an edit to an existing skill deployed.
 
 ## What this skill reads, runs and writes
 

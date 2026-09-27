@@ -381,10 +381,10 @@ pipeline correctly on every run was the wrong half to keep.
 
 ## Why the author-side sections are opt-in (2026-09-02, built 2026-09-05)
 
-This tool is the concentration of a corpus-wide problem — `skill-authoring`'s "a skill's output is
-for whoever ran it" carries the rule and the 34-findings measurement — and the reason the split is a
-property of the **command** rather than of the corpus in front of it is worth keeping, because the
-cheaper-looking options both fail on a machine the author cannot test.
+This tool is the concentration of a corpus-wide problem — `skill-authoring-taudelta`'s "a skill's
+output is for whoever ran it" carries the rule and the 34-findings measurement — and the reason the
+split is a property of the **command** rather than of the corpus in front of it is worth keeping,
+because the cheaper-looking options both fail on a machine the author cannot test.
 
 Sorting the sections by who owns the remedy is what made the size of the problem visible:
 `inventory`, `budget` and `usage` belong to the installer, while `overlap`, `absorb`, `derivable`,

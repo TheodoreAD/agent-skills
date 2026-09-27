@@ -128,8 +128,8 @@ and real.
 [PITFALL: **a local name collision is always across loader scopes.** Two rival skills cannot share
 one hub — the second overwrites the first — so the clash is the user hub against a project's
 `.agents/skills`. Comparing a source checkout against the hub instead flags every skill whose source
-is merely ahead of its install. Confirmed while writing this: the check flagged `skill-authoring`
-against its own installed copy, because the file had just been edited.]
+is merely ahead of its install. Confirmed while writing this: the check flagged
+`skill-authoring-taudelta` against its own installed copy, because the file had just been edited.]
 
 ## Adjacent ecosystems, and whether their reasons transfer
 

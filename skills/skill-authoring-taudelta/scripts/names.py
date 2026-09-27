@@ -14,7 +14,7 @@ which is why a rename reads as a **delete** rather than a move, and why skills h
 `displayName` nor the `renames` map Anthropic shipped for plugins after exactly this problem.
 
 Measured 2026-09-12 against the public registry: five of one fifteen-skill corpus were names other
-repos had already published, `skill-authoring` among them, claimed by six others including two
+repos had already published, `skill-authoring-taudelta` among them, claimed by six others including two
 vendor repos. None of that was visible from the authoring side.
 
 **What it does not do.** It does not judge a name. There is no published naming convention to judge

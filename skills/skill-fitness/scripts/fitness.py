@@ -754,7 +754,7 @@ def scan_derivable(skills: list[Skill]) -> list[dict[str, Any]]:
 # assumption about a *particular* machine: they are published defaults that mean the same thing on
 # every one, so naming them is the opposite of the finding this measure looks for — a skill that
 # says it keeps state in `~/.local/state/<name>/` has told its reader everything there is to know.
-# Added 2026-09-04, when documenting the destinations in `skill-authoring` produced eleven findings
+# Added 2026-09-04, when documenting the destinations in `skill-authoring-taudelta` produced eleven findings
 # for a section whose entire purpose is declaring where things go.
 PORTABLE_HOME = (
     "~/.agents/skills",

@@ -810,13 +810,13 @@ Each of the three was tested against what the skill needs, and the answers diffe
 
 - **Broad local reads are the skill** — transcripts, processes, git state across the repos a session
   touched — and they stay, disclosed where they already were.
-- **Install and re-install guidance is not this skill's job.** `skill-authoring`'s description names
-  the deploy sequence as its own, and its body already carried every piece harvest repeated: the
-  push being necessary but not sufficient, the default branch, the linked worktree, the install
-  commands. Two skills owning one procedure is the trigger contention this repo's instructions tell
-  every author to design out. Step 0 now reports which of the four install states applies and whose
-  move it is; the moves themselves are `skill-authoring`'s. The one fact that was only here,
-  reloading a skill in the session that changed it, moved there as its step 8.
+- **Install and re-install guidance is not this skill's job.** `skill-authoring-taudelta`'s
+  description names the deploy sequence as its own, and its body already carried every piece harvest
+  repeated: the push being necessary but not sufficient, the default branch, the linked worktree,
+  the install commands. Two skills owning one procedure is the trigger contention this repo's
+  instructions tell every author to design out. Step 0 now reports which of the four install states
+  applies and whose move it is; the moves themselves are `skill-authoring-taudelta`'s. The one fact
+  that was only here, reloading a skill in the session that changed it, moved there as its step 8.
 - **Editing a plan somebody else filed for a different repo was not needed either.** It was how step
   2 put evidence into an already-owned plan. Filing the evidence for that repo as a new plan naming
   its owner reaches the same end through `absorb`, which pairs the two for the owning repo's session

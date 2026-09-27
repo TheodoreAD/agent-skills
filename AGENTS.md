@@ -41,8 +41,8 @@ description more carefully.
   fantasy or sci-fi register is the house preference, admissible **exactly while the word still
   denotes**: a stranger seeing `research-trove` with no description infers roughly the right thing,
   which is why `manifold` was rejected for the same slot. Check the name is free before adopting it
-  — `skill-authoring`'s `names.py` — because a duplicate is dropped silently and a rename later
-  reads as a delete.
+  — `skill-authoring-taudelta`'s `names.py` — because a duplicate is dropped silently and a rename
+  later reads as a delete.
 - Keep the body to what an agent must follow. Reasoning, prior art, measurements and rejected
   alternatives go in `references/` — loaded only when the agent needs them.
 - Cite evidence with a date when a rule came from something that actually happened ("Confirmed live
@@ -69,7 +69,8 @@ description more carefully.
   reader or a scanner finds it in the same place in every skill, and
   `test_a_skill_that_touches_the_machine_discloses_it` gates its presence. The gate cannot check
   that a disclosure is true — it is a statement for a reader checking the skill by hand against its
-  code, never a manifest anything enforces, and `skill-authoring` says how to scrutinise one.
+  code, never a manifest anything enforces, and `skill-authoring-taudelta` says how to scrutinise
+  one.
 - A skill directory may hold `references/`, `scripts/` and `evals/`, and nothing else. `evals/` was
   added 2026-08-31 for trigger cases — JSON files of prompts with the skill each should select, run
   by `skills/skill-fitness/scripts/trigger.py`. Write them for a **pair** the fitness analyzer
@@ -87,10 +88,10 @@ description more carefully.
 - **Anything the skill can derive deterministically belongs in `scripts/`, not in the body** — a
   CLI's flags, an HTTP request shape, a SQL query, a JSON traversal, any multi-step sequence. Prose
   telling an agent how to spell a command has to be followed correctly on every run and fails
-  silently when it is not; a script is followed once. `skill-authoring` carries the rule and what
-  legitimately stays in prose, and `fitness.py derivable --compare <baseline>` measures the drift,
-  which is the part that actually happens: a skill grows one harmless-looking command line at a
-  time. A rise against `tests/fixtures/derivable-*.json` fails `tests/unit/test_derivable.py`, so
+  silently when it is not; a script is followed once. `skill-authoring-taudelta` carries the rule
+  and what legitimately stays in prose, and `fitness.py derivable --compare <baseline>` measures the
+  drift, which is the part that actually happens: a skill grows one harmless-looking command line at
+  a time. A rise against `tests/fixtures/derivable-*.json` fails `tests/unit/test_derivable.py`, so
   the gate reports it rather than the next reader.
 - An install command in a fenced block must carry `--global` when its source is an `owner/repo`.
   Without the flag the CLI picks scope from the reader's cwd and silently writes `.agents/skills/`,

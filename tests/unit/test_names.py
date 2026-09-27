@@ -1,4 +1,4 @@
-"""Tests for `skills/skill-authoring/scripts/names.py`.
+"""Tests for `skills/skill-authoring-taudelta/scripts/names.py`.
 
 Two behaviours carry this script and both are easy to get subtly wrong: the registry endpoint is a
 *fuzzy* search, so an exact-match filter is the difference between a useful report and noise; and a
@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "skills" / "skill-authoring" / "scripts" / "names.py"
+SCRIPT = REPO_ROOT / "skills" / "skill-authoring-taudelta" / "scripts" / "names.py"
 
 
 def _load():
@@ -136,10 +136,10 @@ def test_one_skill_in_two_roots_is_not_a_collision(tmp_path):
 def test_two_different_skills_under_one_name_is_a_collision(tmp_path):
     """The silent-drop condition itself: the loader keeps the first it walks and says nothing."""
     mine, theirs = tmp_path / "mine", tmp_path / "theirs"
-    skill_at(mine, "skill-authoring", "my version")
-    skill_at(theirs, "skill-authoring", "somebody else's version")
+    skill_at(mine, "skill-authoring-taudelta", "my version")
+    skill_at(theirs, "skill-authoring-taudelta", "somebody else's version")
     local = names.local_skills([mine, theirs])
-    check = names.NameCheck(name="skill-authoring", local=local["skill-authoring"])
+    check = names.NameCheck(name="skill-authoring-taudelta", local=local["skill-authoring-taudelta"])
     assert check.local_conflict is True
     assert check.collides is True
 

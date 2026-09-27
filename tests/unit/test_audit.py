@@ -604,7 +604,7 @@ def test_a_reader_can_score_against_their_own_expectations(tmp_path, monkeypatch
     """The shipped set is one author's reading of one `~/AGENTS.md` — `find-not-fd` is `down`
     because that file prefers `fd`. A reader whose instructions differ gets rows that are still true
     and a verdict scoring them against rules they never adopted, and cannot retune it without
-    forking, because editing an installed skill is what `skill-authoring` forbids."""
+    forking, because editing an installed skill is what `skill-authoring-taudelta` forbids."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     shipped, source = audit.load_expectations(None)
     assert shipped == audit.EXPECTATIONS

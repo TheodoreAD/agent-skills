@@ -381,4 +381,4 @@ hook design is in `references/research.md`.
 
 Every one of those writes goes in this skill's own source, not the installed copy under
 `~/.agents/skills/` — that copy is overwritten by the next install and reaches nothing else. The
-`skill-authoring` skill has the edit → gate → commit → push → re-install → verify sequence.
+`skill-authoring-taudelta` skill has the edit → gate → commit → push → re-install → verify sequence.

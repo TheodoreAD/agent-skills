@@ -907,7 +907,7 @@ def load_expectations(explicit: Path | None) -> tuple[dict[str, str], str]:
     `cd-own-repo` is `zero` because it bans the shape outright. A reader whose instructions say
     something else gets rows that are still true and a verdict that scores them against rules they
     never adopted — and cannot retune it, because editing an installed skill is what
-    `skill-authoring` forbids. So the set is replaceable from a file the reader owns.
+    `skill-authoring-taudelta` forbids. So the set is replaceable from a file the reader owns.
 
     **The file replaces the set wholesale rather than patching it.** A merge would leave a verdict
     attributable to two documents at once, and no way to read either and know what was scored;

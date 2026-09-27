@@ -539,11 +539,11 @@ fact, while the origin URL is the identity that survives the clone being moved o
 
 Settled with the user 2026-09-03, when the corpus's on-disk locations were reviewed against XDG
 orthodoxy: **`~/plans`, `~/plans-sensitive` and `~/research` stay exactly where they are**, for
-parity with `~/projects`. The general rule that puts them there is `skill-authoring`'s — the axis is
-whether something is the user's material or the tool's bookkeeping, and the concrete test is whether
-a human would ever `cd` here. A store is a git working tree that gets `git log` run on it and, for
-the shareable tier, pushed; XDG's base directories are for what an application manages on the user's
-behalf. Moving them would touch git remotes and config for an aesthetic gain.
+parity with `~/projects`. The general rule that puts them there is `skill-authoring-taudelta`'s —
+the axis is whether something is the user's material or the tool's bookkeeping, and the concrete
+test is whether a human would ever `cd` here. A store is a git working tree that gets `git log` run
+on it and, for the shareable tier, pushed; XDG's base directories are for what an application
+manages on the user's behalf. Moving them would touch git remotes and config for an aesthetic gain.
 
 Two store-specific consequences of that decision, both of which read as arbitrary without it:
 
@@ -567,8 +567,8 @@ sensitive tier is obvious. The shareable tier gets it too because "shareable" me
 the people you choose, not readable by any local uid, and it costs nothing. The research library
 holds clones of public third-party repos, so `0700` there would protect nothing — and **a rule that
 does visibly meaningless things is a rule that gets copied without thought.** Why nothing checks the
-mode afterwards is `skill-authoring`'s to explain; it is the same decision seen from the corpus
-level.
+mode afterwards is `skill-authoring-taudelta`'s to explain; it is the same decision seen from the
+corpus level.
 
 ### Why the store is two git repositories split by sensitivity
 

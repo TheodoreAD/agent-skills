@@ -1,5 +1,5 @@
 ---
-name: skill-authoring
+name: skill-authoring-taudelta
 description: "Use when writing a new Agent Skill, editing an existing SKILL.md, or getting a skill change actually deployed — where the source lives versus the installed copy, why editing the installed copy silently does nothing, the edit → gate → commit → push → re-install → verify sequence, how to publish a skill repo so `skills add` finds it, how to word a `description` so it triggers on real requests without stealing another skill's, and when something should be an instructions-file rule instead of a skill at all."
 compatibility: Node (npx) for the skills CLI install commands; the skill-fitness skill's scripts for the measurements it asks for. Its own scripts/names.py is stdlib Python 3.11+ and reaches skills.sh over the network unless run with --offline.
 ---
@@ -202,17 +202,17 @@ What the script is defending against, each verified in the installer's own sourc
   neither, so the name is identifier and label at once.
 
 Measured 2026-09-12 against the public index: **five of this corpus's fifteen names were already
-published by other repos** — `skill-authoring` by six of them, including two vendor repos. None of
-that is visible from the authoring side, and all five predate the check.
+published by other repos** — `skill-authoring-taudelta` by six of them, including two vendor repos.
+None of that is visible from the authoring side, and all five predate the check.
 
 [PITFALL: **a local collision is always _across scopes_, and a source checkout is not a scope.** Two
 rival skills cannot share one hub — the second overwrites the first — so the real clash is the user
 hub against a project's own `.agents/skills`, where the spec says the project wins and a warning is
 expected. Auditing a source `skills/` alongside the hub instead reports every skill whose source is
 merely ahead of its install, which is what authoring looks like every day. Confirmed while writing
-this section: editing this file made the check flag `skill-authoring` against its own installed
-copy. So the default roots are the loader's scopes, `--root skills` is the deliberate authoring
-call, and a digest decides whether two copies are the same file or two different ones.]
+this section: editing this file made the check flag `skill-authoring-taudelta` against its own
+installed copy. So the default roots are the loader's scopes, `--root skills` is the deliberate
+authoring call, and a digest decides whether two copies are the same file or two different ones.]
 
 **Renaming a published skill is a breaking change.** It strands every existing install, and the old
 slug stays in the public index forever: this repo renamed one skill and the pre-rename slug is still

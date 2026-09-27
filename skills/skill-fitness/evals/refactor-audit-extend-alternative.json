@@ -49,7 +49,7 @@
     },
     {
       "prompt": "What should a pytest fixture cover, and at what scope?",
-      "expect": "python-testing-conventions"
+      "expect": "python-testing-conventions-taudelta"
     },
     {
       "prompt": "Rename the variable `tmp2` in this function to something readable.",

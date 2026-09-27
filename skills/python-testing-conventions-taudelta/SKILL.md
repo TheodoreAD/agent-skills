@@ -1,5 +1,5 @@
 ---
-name: python-testing-conventions
+name: python-testing-conventions-taudelta
 description: "Use when writing or restructuring Python tests — deciding how much duplication a test should carry before it stops being readable, what a fixture should cover and at what scope, when to parametrize instead of writing another test, whether a dependency should be doubled or run for real, and what belongs in a fast default suite versus a slower marked tier. Also for pytest specifics: fixtures, conftest placement, parametrize ids, markers, and keeping a suite from writing into the real home directory. Gives the default answer per question rather than an evaluation, so choices stay consistent across projects instead of drifting session to session, and each entry says whether it overrides a model's own instinct or just confirms it."
 ---
 
@@ -111,9 +111,9 @@ fixture and parametrize shapes described here.
 
 ## Editing this skill
 
-This file is _copied_ into `~/.agents/skills/python-testing-conventions` at install time, never
-symlinked, so **editing the deployed copy is local drift** and reaches no other machine. Edit the
-source in the repo this was installed from, push, and re-run
-`skills add <that source> --global --skill python-testing-conventions` to refresh every project's
-copy. If you installed it from someone else's repo rather than your own fork, the source is theirs:
-open an issue or a pull request there instead.
+This file is _copied_ into `~/.agents/skills/python-testing-conventions-taudelta` at install time,
+never symlinked, so **editing the deployed copy is local drift** and reaches no other machine. Edit
+the source in the repo this was installed from, push, and re-run
+`skills add <that source> --global --skill python-testing-conventions-taudelta` to refresh every
+project's copy. If you installed it from someone else's repo rather than your own fork, the source
+is theirs: open an issue or a pull request there instead.

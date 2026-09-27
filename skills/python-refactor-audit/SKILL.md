@@ -13,7 +13,7 @@ design, and whole-module state threading is precisely what no diff contains.
 
 This skill is about **how the pass is run**, which matters more than the target shape. What the
 resulting code should look like is `python-conventions`; what a test should cover is
-`python-testing-conventions`. The loop, the oracle rules and the stopping rule below are
+`python-testing-conventions-taudelta`. The loop, the oracle rules and the stopping rule below are
 language-neutral; the examples are Python.
 
 The worked example every rule here comes from is in [`references/pilot.md`](references/pilot.md) — a

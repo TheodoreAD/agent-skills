@@ -27,15 +27,15 @@
     },
     {
       "prompt": "How much duplication is acceptable in a test before it stops being readable?",
-      "expect": "python-testing-conventions"
+      "expect": "python-testing-conventions-taudelta"
     },
     {
       "prompt": "What scope should this pytest fixture have, and should it go in conftest?",
-      "expect": "python-testing-conventions"
+      "expect": "python-testing-conventions-taudelta"
     },
     {
       "prompt": "My test suite keeps writing into my real home directory. How should I isolate it?",
-      "expect": "python-testing-conventions"
+      "expect": "python-testing-conventions-taudelta"
     },
     {
       "prompt": "My MCP server's logging is corrupting the protocol. Where is log output supposed to go?",

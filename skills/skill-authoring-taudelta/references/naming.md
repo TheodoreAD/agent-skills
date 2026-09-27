@@ -117,11 +117,17 @@ skill, so nobody is migrated automatically. In non-interactive mode (`--yes`, or
 or scripted setup) it prints "Skipping deletion in non-interactive mode" and **keeps** the old copy,
 so those consumers hold both and the two compete for triggers until someone intervenes by hand.
 
-[PITFALL: **`names.py check` cannot answer the question for a name you already publish.** Run
-against `skill-fitness` and `db-defaults-taudelta` it reports `collides: true` and exits 1 with this
-repo as the sole owner — your own registry row read as a competitor. So a check of an existing name
-has to be read owner by owner rather than by exit code; only a check of a _candidate_ name is
-answered by the exit status.]
+[PITFALL: **pass `--mine <your registry source>` whenever you check a name you already publish**, or
+your own row is counted against you. Without it, `check skill-fitness db-defaults-taudelta` reports
+`collides: true` and exits 1 with this repo as the sole owner, and the failure text — "Pick a free
+name now" — reads as though a stranger holds the slug. With `--mine theodoread` the same call is
+clean. `audit` takes the flag too, and is the form to reach for after a rename.
+
+Recorded because the flag was missed in exactly the session that most needed it: a rename batch's
+verification run on 2026-09-27 read that exit 1 as a defect in the script, and the wrong conclusion
+was written into this file before the argument parser was checked. The script was right. The lesson
+is narrower than "tools lie" — read `--help` before calling an unexpected exit code a bug,
+especially in a script this repo owns.]
 
 ## The name-only regime, which is the one place selection could turn on a name
 

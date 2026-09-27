@@ -39,11 +39,10 @@ No user correction is involved; this is a measurement, not a report of anything 
 
 ## Open questions
 
-[NEEDS CLARIFICATION: does `setup-uv` v10's cache change reach these workflows? v10 disables the
-cache under `enable-cache: auto` for `pull_request_target`, `workflow_run` and `release` events, as
-cache-poisoning defence. Elsewhere in the family that reached nothing, because no workflow used
-those triggers — check the two here rather than assuming it carries over, particularly the Windows
-job.]
+[DECISION: **it does not reach them; bumped to v10.2.0** (2026-09-28). Both workflows trigger on
+`push` and `pull_request` only, and neither `setup-uv` step passes any `with:` — so the cache stays
+on `auto` for events v10 leaves cached. v10.0.0's release notes list that cache change as the only
+breaking one. `inv ci.check-actions` read v10.2.0 as latest, and 0 of 2 behind afterwards.]
 
 ## Recommended direction
 

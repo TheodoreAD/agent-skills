@@ -1,5 +1,5 @@
 ---
-name: polite-mcp-conventions
+name: polite-mcp-conventions-taudelta
 description: "Use when working in one of the *-polite-mcp personal automation repos (olx-polite-mcp, emag-polite-mcp, altex-polite-mcp, freshful-polite-mcp, temu-polite-mcp) or product-research-pipeline — implementing a new tool, running a live spike/CDP exploration against a real logged-in site, deciding whether an action needs confirmation before running it, or asking the user for several small per-item decisions (quantities, yes/no per item) during a reorder/shopping flow. Covers: confirming before the first live mutating action against a real personal account, batching interactive AskUserQuestion decisions instead of asking for a typed list, and writing spike/research findings into PLAN.md before or alongside implementing."
 ---
 

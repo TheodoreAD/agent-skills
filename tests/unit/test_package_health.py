@@ -63,10 +63,11 @@ def _no_network(monkeypatch):
 class FakeTransport:
     """The captured responses, keyed the way the script asks for them."""
 
-    def __init__(self, pypi_payload=None, github_payloads=None, npm_payloads=None):
+    def __init__(self, pypi_payload=None, github_payloads=None, npm_payloads=None, crates_payloads=None):
         self.pypi_payload: object = pypi_payload if pypi_payload is not None else fixture("httpx-pypi")
         self.github_payloads: dict[str, object] = github_payloads or {}
         self.npm_payloads: dict[str, object] = npm_payloads or {}
+        self.crates_payloads: dict[str, object] = crates_payloads or {}
         self.asked: list[str] = []
 
     def npm(self, name: str):
@@ -86,6 +87,12 @@ class FakeTransport:
             if path.startswith(prefix):
                 return payload
         return []
+
+    def crates(self, name: str):
+        self.asked.append(f"crates:{name}")
+        if name not in self.crates_payloads:
+            raise health.NotFound(f"crates.io returned 404 for {name!r} — check the name")
+        return self.crates_payloads[name]
 
     def machine(self):
         return MACHINE
@@ -1142,3 +1149,79 @@ def test_the_npm_subcommand_runs_end_to_end_with_json(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["ships"]["install_size"] == 779173 + 64693040
     assert payload["typing"]["verdict"] == "none"
+
+
+# ------------------------------------------------------------------------------------------------
+# crates.io. `ripgrep-crates.json` is the real crate payload, recorded 2026-09-27 and trimmed to
+# four of its 59 versions; the release view reuses the ripgrep GitHub captures above.
+
+
+def ripgrep_crate_transport():
+    transport = ripgrep_transport()
+    transport.crates_payloads = {"ripgrep": fixture("ripgrep-crates")}
+    return transport
+
+
+def test_crates_judges_max_stable_version_and_its_size_and_binaries():
+    result = health.gather_crates(ripgrep_crate_transport(), "ripgrep", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.version == "15.2.0"
+    assert result.ships.crate_size == 223476
+    assert result.ships.bin_names == ["rg"]
+    assert result.ships.has_lib is False
+    assert result.cadence.releases == 4
+    assert result.cadence.last_release == "2026-07-15"
+
+
+def test_a_crate_with_binaries_gets_the_github_release_view_from_its_repository_field():
+    """`cargo install` compiles from source; the prebuilt binary is a GitHub release asset."""
+    transport = ripgrep_crate_transport()
+    result = health.gather_crates(transport, "ripgrep", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.repo_choice == health.RepoChoice("BurntSushi/ripgrep", 'crates.io "repository"')
+    assert result.release is not None
+    assert result.release.version == "15.2.0"
+    rendered = health.render_crates(result)
+    assert "prebuilt binary (BurntSushi/ripgrep, latest stable release)" in rendered
+    assert "cargo install compiles it here" in rendered
+    assert "version skew" not in rendered
+
+
+def test_a_library_crate_is_never_asked_for_a_release():
+    payload = fixture("ripgrep-crates")
+    for version in payload["versions"]:
+        version["bin_names"] = []
+    transport = ripgrep_crate_transport()
+    transport.crates_payloads = {"ripgrep": payload}
+    result = health.gather_crates(transport, "ripgrep", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.release is None
+    assert "repos/BurntSushi/ripgrep/releases/latest" not in transport.asked
+
+
+def test_the_msrv_is_a_floor_and_null_means_undeclared():
+    """Real capture: ripgrep declares `rust_version` from 14.0.0 on; 0.1.0 has null."""
+    payload = fixture("ripgrep-crates")
+    stable = next(item for item in payload["versions"] if item["num"] == "15.2.0")
+    old = next(item for item in payload["versions"] if item["num"] == "0.1.0")
+    assert health.crate_floors(stable, None, MACHINE)[0].required == ">=1.85"
+    undeclared = health.crate_floors(old, None, MACHINE)[0]
+    assert undeclared.required == "undeclared"
+    assert "not unknown" in (undeclared.note or "")
+
+
+def test_yanked_crate_versions_are_listed_and_the_stable_fallback_skips_them():
+    versions = [
+        {"num": "2.0.0", "yanked": True, "created_at": "2026-02-01T00:00:00Z"},
+        {"num": "2.1.0-rc.1", "yanked": False, "created_at": "2026-03-01T00:00:00Z"},
+        {"num": "1.9.0", "yanked": False, "created_at": "2026-01-01T00:00:00Z"},
+    ]
+    assert health.crate_stable_version({}, versions) == "1.9.0"
+    transport = FakeTransport(crates_payloads={"x": {"crate": {"name": "x"}, "versions": versions}})
+    result = health.gather_crates(transport, "x", None, now=RELEASES_CAPTURED, machine=MACHINE)
+    assert result.cadence.yanked == ["2.0.0"]
+    assert result.repo_choice.repo is None
+
+
+def test_the_crates_subcommand_runs_end_to_end(capsys):
+    assert health.main(["crates", "ripgrep"], transport=ripgrep_crate_transport()) == 0
+    out = capsys.readouterr().out
+    assert "ripgrep 15.2.0" in out
+    assert "rust     >=1.85" in out

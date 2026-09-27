@@ -31,9 +31,9 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
   or a copy into a project repo, and nothing outside the store is ever touched.
 - **Reads from the environment**: `RESEARCH_HOME` for the store, and `RESEARCH_TEXT_ONLY` for
   whether `add` clones text-only by default.
-- **Network**: the clone URL you give; PyPI, the npm registry and GitHub for `package_health.py`,
-  and GitHub for the pre-clone size question, GitHub through your own `gh` login. Nothing is
-  uploaded.
+- **Network**: the clone URL you give; PyPI, the npm registry, crates.io and GitHub for
+  `package_health.py`, and GitHub for the pre-clone size question, GitHub through your own `gh`
+  login. Nothing is uploaded.
 
 ## Before fetching anything from the web
 
@@ -246,15 +246,16 @@ python3 $S/scripts/package_health.py pypi <name>
 python3 $S/scripts/package_health.py pypi anyio --clone $RESEARCH_HOME/repos/github.com--agronholm--anyio
 python3 $S/scripts/package_health.py pypi shellcheck-py --upstream koalaman/shellcheck
 python3 $S/scripts/package_health.py npm @biomejs/biome
+python3 $S/scripts/package_health.py crates ripgrep
 python3 $S/scripts/package_health.py github BurntSushi/ripgrep
 ```
 
 Stdlib only, `S=~/.agents/skills/research-library`. **The source is a required subcommand** — there
 is no default registry, so name it every time. The package's own GitHub repo is read from its
 metadata, and the report's `repo from` line says where; pass `--repo <owner/repo>` when that lookup
-is wrong or missing. PyPI and npm over HTTPS, GitHub through `gh api` so it uses your own token and
-rate limit. `--clone` adds what no API answers — `py.typed`, the test-to-source ratio, the CI
-inventory, the licence files actually present. `--generated <glob>` is repeatable and marks a
+is wrong or missing. PyPI, npm and crates.io over HTTPS, GitHub through `gh api` so it uses your own
+token and rate limit. `--clone` adds what no API answers — `py.typed`, the test-to-source ratio, the
+CI inventory, the licence files actually present. `--generated <glob>` is repeatable and marks a
 mechanical layer so the ratio is taken against hand-written code. `--json` for the whole answer.
 
 The four axes it reports, plus what the release ships and whom it tracks, and what each is for:
@@ -291,6 +292,11 @@ The four axes it reports, plus what the release ships and whom it tracks, and wh
   a binary — resolved by default, because a wrapper like `@biomejs/biome` is 779 kB and its Linux
   package 64.7 MB. `install size` is the two together. `typing` says whether the package ships its
   own types, needs a separate `@types/…`, or has neither.
+- **`crates <name>`** — crates.io's own stable version, cadence, yanked releases, the crate's size
+  and `bin_names`, and the MSRV as a floor (`undeclared` when null). A crate is source that
+  `cargo install` compiles; when it has binaries, the report adds the `prebuilt binary` section, the
+  latest GitHub release's Linux assets read from the crate's `repository`. No typing line — a
+  statically typed language is typed by construction.
 - **`github <owner/repo>`**, for a tool with no registry at all — a Go or Rust binary shipped only
   as release assets. The same maintenance axis, the stable-release cadence read from the GitHub
   releases list (pre-releases by GitHub's flag or by spelling, drafts skipped), and the latest

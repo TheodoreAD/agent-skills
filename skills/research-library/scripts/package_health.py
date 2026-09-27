@@ -69,6 +69,7 @@ from typing import Any, Protocol
 
 PYPI_JSON = "https://pypi.org/pypi/{name}/json"
 NPM_PACKUMENT = "https://registry.npmjs.org/{name}"
+CRATES_API = "https://crates.io/api/v1/crates/{name}"
 USER_AGENT = "package-health/1.0 (+https://github.com/TheodoreAD/agent-skills)"
 TIMEOUT_SECONDS = 30
 
@@ -122,6 +123,8 @@ class Transport(Protocol):
 
     def npm(self, name: str) -> dict[str, Any]: ...
 
+    def crates(self, name: str) -> dict[str, Any]: ...
+
     def machine(self) -> Machine: ...
 
 
@@ -153,6 +156,13 @@ class LiveTransport:
         payload = self._get_json(NPM_PACKUMENT.format(name=urllib.parse.quote(name, safe="@")), "npm", name)
         if not isinstance(payload, dict):
             raise HealthError(f"npm returned a non-object for {name!r}")
+        return payload
+
+    def crates(self, name: str) -> dict[str, Any]:
+        """The crate and every version inline. crates.io's policy asks for a descriptive User-Agent."""
+        payload = self._get_json(CRATES_API.format(name=urllib.parse.quote(name, safe="")), "crates.io", name)
+        if not isinstance(payload, dict):
+            raise HealthError(f"crates.io returned a non-object for {name!r}")
         return payload
 
     def machine(self) -> Machine:
@@ -1421,6 +1431,127 @@ def gather_npm(
     )
 
 
+# ------------------------------------------------------------------------------------------------
+# crates.io: the crate API, and the GitHub release that holds the binary
+
+
+@dataclass(frozen=True)
+class CrateShips:
+    """What `cargo install` builds, and whether a prebuilt binary exists instead.
+
+    [PITFALL] A crate is source. `cargo install` compiles it, which costs a toolchain at least as
+    new as the MSRV plus minutes of build time; the prebuilt binaries a Rust CLI ships are GitHub
+    release assets, which `cargo-binstall` resolves. So the release view is read whenever the crate
+    has binaries and a repo, and never counted as the crate itself.
+    """
+
+    version: str | None
+    crate_size: int | None
+    bin_names: list[str]
+    has_lib: bool | None
+    edition: str | None
+    checksum: str | None
+
+
+@dataclass(frozen=True)
+class CratesHealth:
+    name: str
+    version: str | None
+    description: str | None
+    license: str | None
+    downloads: int | None
+    recent_downloads: int | None
+    cadence: Cadence
+    ships: CrateShips
+    repo_choice: RepoChoice
+    repository: Repository | None
+    contributors: Contributors | None
+    issues: IssueSample | None
+    release: LatestRelease | None
+    floors: list[Floor]
+
+
+def crate_stable_version(crate: dict[str, Any], versions: list[dict[str, Any]]) -> str | None:
+    """`max_stable_version`, crates.io's own answer; else the newest non-yanked, non-pre-release."""
+    if stated := crate.get("max_stable_version"):
+        return str(stated)
+    candidates = [
+        (stamp, str(item.get("num")))
+        for item in versions
+        if item.get("num") and not item.get("yanked") and not npm_is_prerelease(str(item.get("num")))
+        if (stamp := _parse_stamp(item.get("created_at")))
+    ]
+    return max(candidates)[1] if candidates else crate.get("max_version")
+
+
+def crates_repo(crate: dict[str, Any]) -> RepoChoice:
+    if found := repo_from_url(crate.get("repository")):
+        return RepoChoice(found, 'crates.io "repository"')
+    if found := repo_from_url(crate.get("homepage")):
+        return RepoChoice(found, 'crates.io "homepage"')
+    return RepoChoice(None, 'crates.io "repository" names no GitHub repo')
+
+
+def crate_floors(entry: dict[str, Any], release: LatestRelease | None, machine: Machine | None) -> list[Floor]:
+    """`rust_version` (the MSRV), which is null unless the crate declares one — so null is undeclared."""
+    msrv = entry.get("rust_version")
+    floors = [
+        Floor("rust", f">={msrv}", "rust_version (MSRV)", note="needed only to build it; rustc is not read here")
+        if msrv
+        else Floor("rust", "undeclared", "rust_version (MSRV)", note="null means the crate states none, not unknown")
+    ]
+    if release is not None:
+        floors.extend(asset_floors(release, machine))
+    return floors
+
+
+def gather_crates(
+    transport: Transport,
+    name: str,
+    repo: str | None,
+    *,
+    now: datetime | None = None,
+    machine: Machine | None = None,
+) -> CratesHealth:
+    """crates.io's answer, and the GitHub release view when the crate ships binaries."""
+    now = now or datetime.now(UTC)
+    payload = transport.crates(name)
+    crate = payload.get("crate") or {}
+    versions = [item for item in payload.get("versions") or [] if isinstance(item, dict)]
+    stable = crate_stable_version(crate, versions)
+    entry = next((item for item in versions if item.get("num") == stable), {})
+    stamps = {str(item["num"]): _parse_stamp(item.get("created_at")) for item in versions if item.get("num")}
+    dates = {version: stamp for version, stamp in stamps.items() if stamp}
+    yanked = sorted(str(item["num"]) for item in versions if item.get("num") and item.get("yanked"))
+    choice = choose_repo(repo, crates_repo(crate))
+    repo_facts, people, issues = maintenance(transport, choice.repo, now=now)
+    bins = [str(found) for found in entry.get("bin_names") or []]
+    release = latest_release(transport, choice.repo, now=now) if bins and choice.repo else None
+    return CratesHealth(
+        name=str(crate.get("name") or name),
+        version=stable,
+        description=(crate.get("description") or "").strip() or None,
+        license=entry.get("license"),
+        downloads=_int_or_none(crate.get("downloads")),
+        recent_downloads=_int_or_none(crate.get("recent_downloads")),
+        cadence=cadence(dates, yanked, now=now, prerelease=npm_is_prerelease),
+        ships=CrateShips(
+            version=stable,
+            crate_size=_int_or_none(entry.get("crate_size")),
+            bin_names=bins,
+            has_lib=entry.get("has_lib") if isinstance(entry.get("has_lib"), bool) else None,
+            edition=entry.get("edition"),
+            checksum=entry.get("checksum"),
+        ),
+        repo_choice=choice,
+        repository=repo_facts,
+        contributors=people,
+        issues=issues,
+        release=release,
+        floors=crate_floors(entry, release, machine),
+    )
+
+
 def _int_or_none(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
@@ -1763,6 +1894,41 @@ def render_npm(health: NpmHealth) -> str:
     return "\n".join(lines)
 
 
+def render_crates(health: CratesHealth) -> str:
+    lines = [f"{health.name} {health.version or '?'}  —  {' '.join((health.description or 'no description').split())}"]
+    lines.append("")
+    lines.append("maintenance")
+    lines.extend(_cadence_lines(health.cadence))
+    lines.extend(_github_lines(health.repo_choice, health.repository, health.contributors, health.issues))
+    if health.downloads is not None:
+        recent = health.recent_downloads or 0
+        lines.append(f"  not scored       {health.downloads} downloads, {recent} in the last 90 days")
+
+    lines.append("")
+    lines.append("fit")
+    lines.append(f"  licence          {health.license or 'none stated'}")
+
+    ships = health.ships
+    lines.append("")
+    lines.append(f"ships ({ships.version or '?'})")
+    lines.append(f"  crate            {_size(ships.crate_size)} of source — cargo install compiles it here")
+    kinds = ", ".join(kind for kind, present in (("library", ships.has_lib), ("binary", ships.bin_names)) if present)
+    lines.append(f"  kind             {kinds or 'unknown'}; edition {ships.edition or '?'}")
+    if ships.bin_names:
+        lines.append(f"  commands         {', '.join(ships.bin_names)}")
+    if health.release is not None:
+        lines.append("")
+        heading = f"prebuilt binary ({health.release.repo}, latest stable release)"
+        lines.extend(_latest_release_lines(health.release, heading))
+        if health.release.version and health.release.version != ships.version:
+            lines.append(f"  version skew     GitHub release {health.release.version} against crate {ships.version}")
+    elif ships.bin_names:
+        lines.append("  prebuilt         not looked for — no GitHub repo; pass --repo owner/repo")
+    lines.extend(_floor_lines(health.floors))
+    lines.extend(CLOSING)
+    return "\n".join(lines)
+
+
 def _npm_ship_lines(ships: NpmShips) -> list[str]:
     lines = [f"ships ({ships.version or '?'})"]
     count = f", {ships.file_count} files" if ships.file_count is not None else ""
@@ -2010,7 +2176,7 @@ def payload_of(health: Any) -> dict[str, Any]:
     return data
 
 
-SOURCES = ("pypi", "npm", "github")
+SOURCES = ("pypi", "npm", "crates", "github")
 
 
 def retired_form(argv: list[str]) -> str | None:
@@ -2055,6 +2221,11 @@ def _parser() -> argparse.ArgumentParser:
     _add_repo_flag(npm, 'npm\'s "repository" field')
     _add_upstream_flag(npm)
     _add_json_flag(npm)
+
+    crates = sources.add_parser("crates", help="a crate on crates.io", description="Judge a crate on crates.io.")
+    crates.add_argument("name", help="the crate name on crates.io")
+    _add_repo_flag(crates, 'crates.io\'s "repository" field')
+    _add_json_flag(crates)
 
     github = sources.add_parser(
         "github",
@@ -2111,6 +2282,9 @@ def _run(args: argparse.Namespace, transport: Transport, machine: Machine) -> tu
             raise HealthError(f"{args.repo!r} is not owner/repo")
         found = gather_github(transport, args.repo, machine=machine)
         return found, render_github(found)
+    if args.source == "crates":
+        crate = gather_crates(transport, args.name, args.repo, machine=machine)
+        return crate, render_crates(crate)
     if args.source == "npm":
         npm = gather_npm(transport, args.name, args.repo, upstream_repo=args.upstream, machine=machine)
         return npm, render_npm(npm)

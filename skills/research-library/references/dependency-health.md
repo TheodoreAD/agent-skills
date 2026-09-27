@@ -210,6 +210,26 @@ test fixtures.
   library it describes, which is why it is not reported as equivalent to shipping types.
 - **Download counts** are a separate API and are not fetched, for the same reason as PyPI's.
 
+## crates.io: the crate is source, the binary is a release asset
+
+`crates.io/api/v1/crates/<name>` carries the crate and every version inline, one request — verified
+2026-09-27 on ripgrep (59 versions, 93 kB) with the descriptive `User-Agent` crates.io's policy asks
+for.
+
+- **`max_stable_version` is the version judged**, crates.io's own answer; the fallback is the newest
+  version neither yanked nor spelled as a semver pre-release.
+- **`bin_names` answers "does this ship a binary"** directly, populated back to ripgrep 0.1.0.
+- **`rust_version` is the MSRV and is null unless declared.** ripgrep has it on 9 of 59 versions,
+  from 14.0.0 on, so null reads as `undeclared`, never as unknown. It constrains only a build, and
+  `rustc` is not read, so it is reported and not compared.
+- **The prebuilt binary is not on crates.io.** `cargo install` compiles from source, which costs a
+  toolchain and build time; Rust CLIs ship binaries as GitHub release assets per target triple,
+  which `cargo-binstall` resolves. So a crate with `bin_names` and a GitHub `repository` gets the
+  `prebuilt binary` section, and a `version skew` line when the release and the crate disagree.
+- **Not read**: dependencies (a second request per version, at `links.dependencies`) and
+  `linecounts`, which is code and comment lines per language, not a test-to-source split. Downloads
+  are printed under `not scored`, because the payload carries them for free.
+
 ## Floors: what a release needs from this machine
 
 [DECISION: every source reports every floor its metadata states, in one `floors` section, rather
@@ -228,6 +248,7 @@ node is on `PATH`.]
 - **npm**: `engines.node`, compared with `node --version` when node is on `PATH`; `engines.npm`,
   reported and not compared; and the chosen platform package's `os`/`cpu`/`libc`. When no Linux x64
   platform package states this machine's libc, that is the finding.
+- **crates**: `rust_version`, `undeclared` when null, plus the release assets' libc family.
 - **GitHub assets**: only the libc family the asset name states. A numeric glibc floor lives in the
   binary's ELF version needs, and reading it means downloading the binary, which is out of scope. A
   musl build runs on a glibc machine when it is statically linked, which the name does not say.

@@ -1,0 +1,230 @@
+{
+  "crate": {
+    "name": "ripgrep",
+    "description": "ripgrep is a line-oriented search tool that recursively searches the current\ndirectory for a regex pattern while respecting gitignore rules. ripgrep has\nfirst class support on Windows, macOS and Linux.\n",
+    "created_at": "2016-09-14T01:16:59.748952Z",
+    "updated_at": "2026-07-15T16:28:46.152381Z",
+    "default_version": "15.2.0",
+    "max_stable_version": "15.2.0",
+    "max_version": "15.2.0",
+    "newest_version": "15.2.0",
+    "num_versions": 59,
+    "downloads": 1580566,
+    "recent_downloads": 109770,
+    "repository": "https://github.com/BurntSushi/ripgrep",
+    "homepage": "https://github.com/BurntSushi/ripgrep",
+    "yanked": false,
+    "trustpub_only": false,
+    "links": {
+      "version_downloads": "/api/v1/crates/ripgrep/downloads",
+      "versions": null,
+      "owners": "/api/v1/crates/ripgrep/owners",
+      "owner_team": "/api/v1/crates/ripgrep/owner_team",
+      "owner_user": "/api/v1/crates/ripgrep/owner_user",
+      "reverse_dependencies": "/api/v1/crates/ripgrep/reverse_dependencies"
+    }
+  },
+  "versions": [
+    {
+      "num": "15.2.0",
+      "created_at": "2026-07-15T16:28:46.152381Z",
+      "updated_at": "2026-07-15T16:28:46.152381Z",
+      "yanked": false,
+      "yank_message": null,
+      "crate_size": 223476,
+      "license": "Unlicense OR MIT",
+      "rust_version": "1.85",
+      "bin_names": [
+        "rg"
+      ],
+      "has_lib": false,
+      "edition": "2024",
+      "downloads": 54751,
+      "checksum": "a30750b6d0743bfdd2656ebbaf4555aa278c43144b84bc389bcbfa399485ec71",
+      "linecounts": {
+        "languages": {
+          "Fish": {
+            "code_lines": 22,
+            "comment_lines": 5,
+            "files": 1
+          },
+          "Rust": {
+            "code_lines": 10615,
+            "comment_lines": 427,
+            "files": 21
+          },
+          "Shell": {
+            "code_lines": 22,
+            "comment_lines": 6,
+            "files": 1
+          },
+          "Zsh": {
+            "code_lines": 378,
+            "comment_lines": 235,
+            "files": 1
+          }
+        },
+        "total_code_lines": 11037,
+        "total_comment_lines": 673
+      },
+      "links": {
+        "dependencies": "/api/v1/crates/ripgrep/15.2.0/dependencies",
+        "version_downloads": "/api/v1/crates/ripgrep/15.2.0/downloads",
+        "authors": "/api/v1/crates/ripgrep/15.2.0/authors"
+      },
+      "trustpub_data": null,
+      "published_by": {
+        "login": "BurntSushi"
+      }
+    },
+    {
+      "num": "15.1.0",
+      "created_at": "2025-10-22T13:00:06.246632Z",
+      "updated_at": "2025-10-22T13:00:06.246632Z",
+      "yanked": false,
+      "yank_message": null,
+      "crate_size": 222357,
+      "license": "Unlicense OR MIT",
+      "rust_version": "1.85",
+      "bin_names": [
+        "rg"
+      ],
+      "has_lib": false,
+      "edition": "2024",
+      "downloads": 189331,
+      "checksum": "f388c4955f85477c28a8667355819844a06614b083c23517f0e86bd1d6d82b73",
+      "linecounts": {
+        "languages": {
+          "Fish": {
+            "code_lines": 22,
+            "comment_lines": 5,
+            "files": 1
+          },
+          "Rust": {
+            "code_lines": 10633,
+            "comment_lines": 427,
+            "files": 21
+          },
+          "Shell": {
+            "code_lines": 22,
+            "comment_lines": 6,
+            "files": 1
+          },
+          "Zsh": {
+            "code_lines": 364,
+            "comment_lines": 239,
+            "files": 1
+          }
+        },
+        "total_code_lines": 11041,
+        "total_comment_lines": 677
+      },
+      "links": {
+        "dependencies": "/api/v1/crates/ripgrep/15.1.0/dependencies",
+        "version_downloads": "/api/v1/crates/ripgrep/15.1.0/downloads",
+        "authors": "/api/v1/crates/ripgrep/15.1.0/authors"
+      },
+      "trustpub_data": null,
+      "published_by": {
+        "login": "BurntSushi"
+      }
+    },
+    {
+      "num": "15.0.0",
+      "created_at": "2025-10-16T03:30:12.408695Z",
+      "updated_at": "2025-10-16T03:30:12.408695Z",
+      "yanked": false,
+      "yank_message": null,
+      "crate_size": 222218,
+      "license": "Unlicense OR MIT",
+      "rust_version": "1.85",
+      "bin_names": [
+        "rg"
+      ],
+      "has_lib": false,
+      "edition": "2024",
+      "downloads": 8547,
+      "checksum": "db22b6e9aabd9f3648652bdd9a7bcdfda7a8e36b12d5a0ea38a3eb5e2d99f946",
+      "linecounts": {
+        "languages": {
+          "Fish": {
+            "code_lines": 22,
+            "comment_lines": 5,
+            "files": 1
+          },
+          "Rust": {
+            "code_lines": 10633,
+            "comment_lines": 427,
+            "files": 21
+          },
+          "Shell": {
+            "code_lines": 22,
+            "comment_lines": 6,
+            "files": 1
+          },
+          "Zsh": {
+            "code_lines": 364,
+            "comment_lines": 239,
+            "files": 1
+          }
+        },
+        "total_code_lines": 11041,
+        "total_comment_lines": 677
+      },
+      "links": {
+        "dependencies": "/api/v1/crates/ripgrep/15.0.0/dependencies",
+        "version_downloads": "/api/v1/crates/ripgrep/15.0.0/downloads",
+        "authors": "/api/v1/crates/ripgrep/15.0.0/authors"
+      },
+      "trustpub_data": null,
+      "published_by": {
+        "login": "BurntSushi"
+      }
+    },
+    {
+      "num": "0.1.0",
+      "created_at": "2016-09-14T01:16:59.748952Z",
+      "updated_at": "2017-11-30T03:27:08.650789Z",
+      "yanked": false,
+      "yank_message": null,
+      "crate_size": 68331,
+      "license": "Unlicense/MIT",
+      "rust_version": null,
+      "bin_names": [
+        "rg"
+      ],
+      "has_lib": false,
+      "edition": null,
+      "downloads": 1733,
+      "checksum": "dc9aea0e1e05c4be246e94f70ef91f1f40cbb53f5d950292e41d1dff0fc2491c",
+      "linecounts": {
+        "languages": {
+          "Rust": {
+            "code_lines": 4350,
+            "comment_lines": 272,
+            "files": 14
+          },
+          "Shell": {
+            "code_lines": 134,
+            "comment_lines": 14,
+            "files": 4
+          },
+          "Vim Script": {
+            "code_lines": 1,
+            "comment_lines": 0,
+            "files": 1
+          }
+        },
+        "total_code_lines": 4485,
+        "total_comment_lines": 286
+      },
+      "links": {
+        "dependencies": "/api/v1/crates/ripgrep/0.1.0/dependencies",
+        "version_downloads": "/api/v1/crates/ripgrep/0.1.0/downloads",
+        "authors": "/api/v1/crates/ripgrep/0.1.0/authors"
+      },
+      "trustpub_data": null,
+      "published_by": null
+    }
+  ]
+}

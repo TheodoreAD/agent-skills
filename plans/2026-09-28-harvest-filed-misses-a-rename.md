@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-28
 source_repo: github.com-personal/ingesta
 source_session: 20a2d59c-46f5-4aba-af3d-967f7ac699d9.jsonl
@@ -45,3 +45,15 @@ Treat a `plans.py rename <old> <new-topic>` call in the transcript as a cause, t
 retirement cause reads the session's own commit output: print `renamed by this session to <new>` and
 follow the new path, so its retirement (or presence) is what the row reports. Because the old name
 may never have been committed, the cause has to come from the command, not from git.
+
+## Migrated to
+
+- **The code:** `plan_renames`, `rename_cause` and `_cause` in
+  `skills/session-harvest/scripts/harvest.py`, the incident in `rename_cause`'s docstring.
+- **Usage docs:** the `filed` causes paragraph in `skills/session-harvest/SKILL.md`.
+- **Tests:** `test_a_plan_this_session_renamed_is_reported_as_renamed_not_missing` and
+  `test_a_rename_flag_is_never_read_as_the_new_topic` in `tests/unit/test_harvest.py`.
+
+The new name is derived from the command (date prefix kept, per `plans.py rename`) rather than from
+the command's printed output, since the transcript's tool results are not paired with calls anywhere
+else in `harvest.py`. A chain of renames is followed. Not migrated: the evidence section.

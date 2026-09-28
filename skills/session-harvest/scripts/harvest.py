@@ -3908,7 +3908,8 @@ def missing_cause(runner: Runner, path: Path, receipts: Sequence[str]) -> str | 
     retired eight plans, and `filed` listed all eight plus one absorption as `MISSING (cause not
     determined)`, leaving nine to be re-derived by reading the session — the common case for a
     well-run session, not the odd one. A rename is not a deletion to git's rename detection, so a
-    plan moved elsewhere falls through to undetermined rather than reading as retired.
+    plan moved elsewhere falls through to undetermined rather than reading as retired — which is
+    why `rename_cause` reads a rename from the session's own command before this runs.
     """
     start = path.parent
     while not start.exists() and start != start.parent:
@@ -3931,12 +3932,60 @@ def missing_cause(runner: Runner, path: Path, receipts: Sequence[str]) -> str | 
     return None
 
 
+# `plans.py rename <file> <new-topic>`: the date prefix is kept, so the new name follows from the
+# command alone. A topic never starts with `-`, which keeps a flag from being read as one.
+RENAME_CALL_RE = re.compile(r"plans\.py\s+rename\s+(\S+)\s+(?!-)([\w.-]+)")
+PLAN_DATE_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+
+
+def plan_renames(entries: Iterable[dict[str, Any]]) -> dict[str, str]:
+    """Old plan basename to new, for every `plans.py rename` this session ran."""
+    renamed: dict[str, str] = {}
+    for _, command in bash_calls(entries):
+        for match in RENAME_CALL_RE.finditer(command):
+            old = Path(match.group(1).strip("'\"")).name
+            prefix = PLAN_DATE_PREFIX_RE.match(old)
+            if old.endswith(".md") and prefix is not None:
+                renamed[old] = f"{prefix.group(0)}{match.group(2)}.md"
+    return renamed
+
+
+def rename_cause(path: Path, renames: dict[str, str], runner: Runner | None, receipts: Sequence[str]) -> str | None:
+    """`renamed by this session to <new>`, following the new name to what became of it.
+
+    **Read from the command, not from git, because the old name may never have been committed.**
+    Confirmed 2026-09-28: an ingesta session absorbed a plan, merged a second into it and renamed it
+    before its first commit — `plan-conveyor` says to keep the name describing the merged subject —
+    and `filed` listed the old name as `MISSING (cause not determined)` beside the new one's
+    correctly classified retirement. Both rows were one plan.
+    """
+    name, seen = path.name, set()
+    while name in renames and name not in seen:
+        seen.add(name)
+        name = renames[name]
+    if not seen:
+        return None
+    final = path.parent / name
+    if final.exists():
+        return f"renamed by this session to {name}"
+    later = missing_cause(runner, final, receipts) if runner is not None else None
+    return f"renamed by this session to {name}, then {later or 'gone, cause not determined'}"
+
+
+def _cause(path: Path, renames: dict[str, str], runner: Runner | None, receipts: Sequence[str]) -> str | None:
+    renamed = rename_cause(path, renames, runner, receipts)
+    if renamed is not None or runner is None:
+        return renamed
+    return missing_cause(runner, path, receipts)
+
+
 def filed_plans(
     entries: Sequence[dict[str, Any]], repos: Sequence[Path], runner: Runner | None = None
 ) -> list[dict[str, Any]]:
     """Plan files this session wrote, wherever they landed, each with its measurement lines — and,
     given a runner, the cause of any that are gone, where `missing_cause` can read one."""
     receipts = commit_receipts(entries) if runner else []
+    renames = plan_renames(entries)
     roots = plan_roots(repos)
     found: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -3960,7 +4009,7 @@ def filed_plans(
                 "root": str(root),
                 "exists": exists,
                 "written_in_worktree": str(written) if main is not None else None,
-                "cause": None if exists or runner is None else missing_cause(runner, path, receipts),
+                "cause": None if exists else _cause(path, renames, runner, receipts),
                 "measurements": mine,
                 "measurements_unestablished": unestablished,
             }

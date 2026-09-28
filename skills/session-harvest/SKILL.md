@@ -1262,7 +1262,10 @@ session hits this more often than a sloppy one. **So the row now names the two c
 commit can establish** — `retired by this session (<sha>)` when this session's own output shows the
 commit, `absorbed (<sha>)` when its subject says so — and keeps `cause not determined` for the rest.
 Added 2026-09-28, after a session that retired eight plans got nine undetermined rows to re-derive.
-**A plan written in a linked worktree the session has since removed is looked up on `main`**, at the
+A third cause comes from the session's own command rather than from git: **a `plans.py rename` it
+ran reads `renamed by this session to <new>`**, followed to what became of the new name, because the
+old name is often never committed — renaming a merged plan on absorption is the common case. **A
+plan written in a linked worktree the session has since removed is looked up on `main`**, at the
 same path under the repo's `plans/`, with a line naming the worktree path it was written as — before
 2026-09-28 it dropped out of the list entirely, and a background session, which writes every plan
 through a worktree, got a count of one for five.

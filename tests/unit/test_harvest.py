@@ -2389,6 +2389,37 @@ def test_a_plan_written_in_a_removed_worktree_is_found_on_main(tmp_path):
     assert row["measurements"] == ["- 9 files, all scratch"]
 
 
+def test_a_plan_this_session_renamed_is_reported_as_renamed_not_missing(tmp_path):
+    """Confirmed 2026-09-28: an ingesta session absorbed a plan, merged a second into it and renamed
+    it before its first commit, and `filed` listed the old name as `MISSING (cause not determined)`.
+    The old name was never committed, so only the session's own command can say where it went."""
+    plans_dir = tmp_path / "repo" / "plans"
+    plans_dir.mkdir(parents=True)
+    old = plans_dir / "2026-09-18-pin-the-application-tier-at-3-14.md"
+    (plans_dir / "2026-09-18-pin-python-version-3-14.md").write_text("# merged\n", encoding="utf-8")
+    entries = [
+        write_entry(str(old), content="# merged\n"),
+        bash_entry(f"python3 ~/.agents/skills/plan-conveyor/scripts/plans.py rename {old} pin-python-version-3-14"),
+    ]
+
+    assert harvest.plan_renames(entries) == {old.name: "2026-09-18-pin-python-version-3-14.md"}
+    (row,) = harvest.filed_plans(entries, repos=[tmp_path / "repo"])
+    assert row["exists"] is False
+    assert row["cause"] == "renamed by this session to 2026-09-18-pin-python-version-3-14.md"
+
+    # Renamed and then gone too: the row says so rather than claiming the new name exists.
+    (plans_dir / "2026-09-18-pin-python-version-3-14.md").unlink()
+    (row,) = harvest.filed_plans(entries, repos=[tmp_path / "repo"])
+    assert row["cause"] == (
+        "renamed by this session to 2026-09-18-pin-python-version-3-14.md, then gone, cause not determined"
+    )
+
+
+def test_a_rename_flag_is_never_read_as_the_new_topic():
+    entries = [bash_entry("python3 plans.py rename plans/2026-09-01-a.md --update-refs")]
+    assert harvest.plan_renames(entries) == {}
+
+
 def test_a_determined_cause_replaces_the_hedge_in_the_row(capsys):
     row = {"path": "plans/2026-09-06-landed.md", "exists": False, "cause": "retired by this session (abc123400)"}
     harvest._print_filed({"plans_written": [row]})

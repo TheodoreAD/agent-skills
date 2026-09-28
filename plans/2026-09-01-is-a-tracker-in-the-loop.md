@@ -59,6 +59,14 @@ produce exactly that format, so designing it first would fix the format by accid
 - **One-way, per the boundary below.** The agent fetches the epic and its children through the same
   CLI or MCP server the export uses, and a script turns that payload into drafts. Nothing here talks
   to a tracker directly.
+- **The read path decides how much survives, and the tools differ sharply** (read at source
+  2026-09-28, detail in the sibling plan's prior-art section). `mcp-atlassian` flattens a ticket's
+  rich text to plain text, so list and table structure is gone; the official Atlassian server
+  returns markdown even when the raw format is asked for; `jira-cli issue view --raw` returns the
+  raw JSON, the only lossless read seen. An import that is to be edited and re-exported needs the
+  lossless one.
+- **BMAD already does this**: in `bmad-preview-ticketing`, a ticket the tracker knows and the local
+  tree does not gets its file at the first query. Read its `board.md` before designing this.
 - **An imported draft is tracker-authoritative from birth**, the reverse of an exported one. It
   carries its key and a digest of what was fetched from the start, so the same drift comparison the
   export writes can run on it.

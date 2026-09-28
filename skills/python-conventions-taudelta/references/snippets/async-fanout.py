@@ -20,10 +20,11 @@ class SiteQueryError(Exception):
     site's failure doesn't cancel the whole fan-out (see below)."""
 
 
-async def _query_site(site: str, *, fail: bool = False) -> SiteResult:
-    """Stand-in for an async fastmcp.client call to one site MCP."""
+async def _query_site(site: str) -> SiteResult:
+    """Stand-in for an async fastmcp.client call to one site MCP. A site
+    named "down" fails, so the tests below can exercise both shapes."""
     await asyncio.sleep(0)
-    if fail:
+    if site == "down":
         raise SiteQueryError(f"{site} did not respond")
     return SiteResult(site=site, price=10.0)
 
@@ -38,8 +39,13 @@ async def query_sites_tolerant(sites: list[str], *, max_concurrent: int = 3) -> 
     results: list[SiteResult] = []
 
     async def _bounded_query(site: str) -> None:
-        async with semaphore, contextlib.suppress(SiteQueryError):
-            results.append(await _query_site(site))
+        # Two statements, not `async with semaphore, contextlib.suppress(...)`:
+        # one `async with` needs every manager to be asynchronous, and
+        # `suppress` is not, so the combined form raises TypeError on every
+        # call.
+        async with semaphore:
+            with contextlib.suppress(SiteQueryError):
+                results.append(await _query_site(site))
 
     async with asyncio.TaskGroup() as tg:
         for site in sites:
@@ -66,7 +72,7 @@ async def query_sites_fail_fast(sites: list[str]) -> list[SiteResult]:
 
 
 def test_tolerant_fan_out_skips_failed_sites() -> None:
-    results = asyncio.run(query_sites_tolerant(["a", "b"]))
+    results = asyncio.run(query_sites_tolerant(["a", "down", "b"]))
     assert {r.site for r in results} == {"a", "b"}
 
 

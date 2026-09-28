@@ -459,7 +459,16 @@ class PlanError(Exception):
 
 
 class NeedsDecision(Exception):
-    """No rule covers this repo. The agent has to ask the user, not pick a side for them."""
+    """No rule covers this repo. The agent has to ask the user, not pick a side for them.
+
+    `explained` marks a message that already names its own choices as commands — the store-link
+    decisions — so the generic "repo | store | both" line is not printed under it, where it would
+    offer answers to a question nobody asked.
+    """
+
+    def __init__(self, message: str, *, explained: bool = False) -> None:
+        super().__init__(message)
+        self.explained = explained
 
 
 # --------------------------------------------------------------------------------------------
@@ -605,15 +614,17 @@ class Config:
         """The store a repo's mirrored plans live in."""
         return self.store_of(self.tier_of(rel))
 
-    def attachments_dir(self, rel: str | None, stem: str) -> Path:
-        """Where one plan's local-only attachments live: in its tier's store, outside every tree.
+    @staticmethod
+    def attachments_dir(store: Store, folder: str | None, stem: str) -> Path:
+        """Where one plan's local-only attachments live: in its store, outside every tree.
 
-        Keyed on the repo's path and the plan's filename stem, neither of which changes when the
-        plan itself moves between the repo and the store — so absorption moves a markdown file and
-        never the bytes. The tier lookup is the same one routing uses, which is what keeps a
-        sensitive root's evidence out of the half that may have a remote.
+        Keyed on the repository's store folder and the plan's filename stem, neither of which
+        changes when the plan itself moves between the repo and the store — so absorption moves a
+        markdown file and never the bytes. The store and folder are the ones routing resolved, from
+        the link table where there is one, which is what keeps a private repository's evidence out
+        of the store that may have a remote and lets every clone of a repository find it.
         """
-        return self.store_for(rel).path / ATTACHMENTS_DIR / (rel or UNSCOPED_DIR) / stem
+        return store.path / ATTACHMENTS_DIR / (folder or UNSCOPED_DIR) / stem
 
     def stores(self) -> list[Store]:
         """Every distinct store on the machine, shareable first.
@@ -902,6 +913,26 @@ class Routing:
     # Who the repository belongs to, read once here so nothing downstream shells out again. None
     # means no remote — a local clone, which is "no evidence" and never "not yours".
     remote: Remote | None = None
+    # Which store, and which folder in it, hold this repository's plans — `store_dir` is the two
+    # joined. Every command that reads or writes a store-held plan, or keys an attachment, takes the
+    # store from here rather than re-deriving it from `rel`: the folder is recorded in the store's
+    # link table and is no longer the clone path, so a second derivation would disagree.
+    store: Store | None = None
+    folder: str | None = None
+    identity: str | None = None  # what `repo:` records, and the link table's key
+    linked: bool = False  # the folder came from the link table, not the clone path's default
+    note: str = ""  # one line worth showing on `where` — a case-only match, a stricter store
+    refusal: str = ""  # non-empty: a store write must stop with this message; reads still work
+
+    def require_store_write(self) -> None:
+        """Stop a write into the store while its folder is undecided or unsafe. Reads never call this."""
+        if self.refusal:
+            raise NeedsDecision(self.refusal, explained=True)
+
+    @property
+    def tier_label(self) -> str:
+        """`shareable` or `private` for the store this repository's plans live in, for a person."""
+        return TIER_WORDS.get(self.store.tier, self.store.tier) if self.store else "(no store)"
 
     @property
     def repo_dir(self) -> Path | None:
@@ -927,9 +958,16 @@ class Routing:
         return None
 
     @property
+    def writes_refused(self) -> bool:
+        """Whether this repository's own route is a store write that a link decision has stopped."""
+        return bool(self.refusal and self.rule and self.rule.write == "store")
+
+    @property
     def write_dir(self) -> Path:
         if self.rule is None or self.verdict != "ok":
             raise PlanError(self.reason)
+        if self.writes_refused:
+            raise NeedsDecision(self.refusal, explained=True)
         target = self.dir_for(self.rule.write)
         if target is None:
             raise PlanError(f"this repo has no {self.rule.write!r} directory to write to")
@@ -1426,7 +1464,7 @@ class Links:
 
     @property
     def path(self) -> Path:
-        return self.store.path / LINKS_FILE
+        return self.store.path.expanduser() / LINKS_FILE
 
     def lookup(self, identity: str) -> LinkMatch | None:
         """The entry for an identity: the exact spelling first, else one differing only in case."""
@@ -1485,7 +1523,7 @@ LINKS_HEADER = """\
 
 def read_links(store: Store) -> Links:
     """The store's link table, empty when the store has none yet."""
-    path = store.path / LINKS_FILE
+    path = store.path.expanduser() / LINKS_FILE
     try:
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -1515,8 +1553,217 @@ def write_links(links: Links) -> Path:
     text = render_links(links)
     if tomllib.loads(text) != links.entries:
         raise PlanError(f"refusing to write {links.path}: the rendered table does not read back as written")
+    links.path.parent.mkdir(parents=True, exist_ok=True)
     links.path.write_text(text, encoding="utf-8")
     return links.path
+
+
+class StoreRoute(NamedTuple):
+    """Which store folder a clone's plans live in, and whether a write may go there.
+
+    `refusal` non-empty means writes stop with that message while reads may still use the folder,
+    when there is one: a plan already in the shareable store is safe to read from a private clone,
+    and hiding it would only make the refusal harder to act on.
+    """
+
+    store: Store | None
+    folder: str | None
+    identity: str | None
+    linked: bool
+    note: str = ""
+    refusal: str = ""
+
+
+# The human words for the two tiers. The code's `sensitive` is relative jargon; a reader deciding
+# where a plan may go recognises "private", and the store's own path is printed beside it.
+TIER_WORDS = {SHAREABLE: "shareable", SENSITIVE: "private", SINGLE: "only"}
+LINKS_DOC = "references/store-links.md"
+
+
+def _which_remote_message(clone: CloneIdentity) -> str:
+    width = max(len(name) for name, _ in clone.remotes)
+    remotes = "\n".join(f"            {name:<{width}}  -> {identity}" for name, identity in clone.remotes)
+    choices = "\n".join(
+        f"    plans.py link --remote {name:<{width}}   # plans shared with every clone of {identity}"
+        for name, identity in clone.remotes
+    )
+    return (
+        "plans: can't tell which repository this clone belongs to.\n"
+        f"  clone:    {display_path(clone.root)}\n"
+        f"  remotes:\n{remotes}\n"
+        '  There is no remote called "origin", and none of these has a plans folder yet. Plans are kept\n'
+        "  per repository and shared by every clone of it, so guessing could put this clone's plans\n"
+        "  where its other clones never look.\n"
+        f"  Choose one:\n{choices}\n"
+        f"  Nothing was written. More: {LINKS_DOC}#which-remote"
+    )
+
+
+def _remotes_disagree_message(clone: CloneIdentity, hits: list[tuple[Links, LinkMatch]]) -> str:
+    found = "\n".join(
+        f"            {match.identity}  -> {display_path(links.store.path / match.directory)}" for links, match in hits
+    )
+    return (
+        "plans: this clone's remotes belong to repositories with different plans folders.\n"
+        f"  clone:    {display_path(clone.root)}\n"
+        f"  linked:\n{found}\n"
+        '  There is no remote called "origin" to say which one this clone is, and each answer shows a\n'
+        "  different set of plans. Choose the repository this clone is a checkout of:\n"
+        + "\n".join(f"    plans.py link --remote {name}" for name, _ in clone.remotes)
+        + f"\n  Nothing was written. More: {LINKS_DOC}#which-remote"
+    )
+
+
+def _listed_twice_message(identity: str, hits: list[tuple[Links, LinkMatch]]) -> str:
+    found = "\n".join(f"                {display_path(links.path)}  -> {match.directory}" for links, match in hits)
+    return (
+        "plans: stopped, because the plans index is inconsistent.\n"
+        f"  repository: {identity} is listed in more than one store:\n{found}\n"
+        "  Only one can be right, and picking one could publish private plans. No command writes plans\n"
+        "  for this repository until it is resolved.\n"
+        "    plans.py links fix     # shows both folders side by side and asks which to keep\n"
+        f"  Nothing was written. More: {LINKS_DOC}#listed-twice"
+    )
+
+
+def _known_before_message(clone: CloneIdentity, now: str, links: Links, match: LinkMatch) -> str:
+    held = len(plans_in(links.store.path / match.directory, "store"))
+    return (
+        "plans: this clone looks like a repository that already has plans under another name.\n"
+        f"  clone:        {display_path(clone.root)}\n"
+        f"  remote now:   {now}\n"
+        f"  known before: {match.identity}, plans folder {match.directory}, {held} plan(s)\n"
+        "  The first commit is the same, so this is usually the repository being pushed for the first\n"
+        "  time, or its remote being renamed.\n"
+        "  Choose one:\n"
+        f"    plans.py link --to {match.directory}   # same repository: keep its {held} plan(s) (usual)\n"
+        "    plans.py link --new                          # a different repository that shares history\n"
+        f"  Nothing was written. More: {LINKS_DOC}#renamed-or-first-push"
+    )
+
+
+def _folder_taken_message(clone: CloneIdentity, now: str, links: Links, folder: str) -> str:
+    owners = ", ".join(links.identities_of(folder))
+    held = len(plans_in(links.store.path / folder, "store"))
+    return (
+        "plans: this clone's plans folder already belongs to another repository name.\n"
+        f"  clone:        {display_path(clone.root)}\n"
+        f"  remote now:   {now}\n"
+        f"  folder:       {folder}, {held} plan(s), linked to {owners}\n"
+        "  Usually the remote was renamed and this is the same repository; sometimes a different\n"
+        "  repository was cloned into the same place.\n"
+        "  Choose one:\n"
+        f"    plans.py link --to {folder}   # same repository under a new name: keep its plans\n"
+        "    plans.py link --new                     # a different repository: give it a folder of its own\n"
+        f"  Nothing was written. More: {LINKS_DOC}#renamed-or-first-push"
+    )
+
+
+def _shareable_refusal_message(clone: CloneIdentity, rel: str, links: Links, match: LinkMatch) -> str:
+    return (
+        "plans: refused, because this plan could be published.\n"
+        f"  clone:        {display_path(clone.root)}   (under {rel.split('/', maxsplit=1)[0]}, a private folder)\n"
+        f"  repository:   {match.identity}\n"
+        f"  plans folder: {display_path(links.store.path / match.directory)}   (the SHAREABLE store)\n"
+        "  This repository's plans are kept in the shareable store, which may be pushed to a remote,\n"
+        "  but this clone sits under a private folder. A plan written from here may mention private\n"
+        "  work (a client, a ticket, why they need a change), and the shareable store would publish it.\n"
+        "  Choose one:\n"
+        "    plans.py link --move-to private   # ALL of this repository's plans move to the private store\n"
+        "    or move this clone under a shareable folder, if nothing private is ever written from it\n"
+        f"  Reading its plans still works. Nothing was written. More: {LINKS_DOC}#shareable-and-private"
+    )
+
+
+def store_route(cfg: Config, clone: CloneIdentity, rel: str | None) -> StoreRoute:
+    """Which store folder holds this clone's plans: the link table first, the clone path otherwise.
+
+    The order matters and is the design. A link, in either store, is the recorded answer and wins
+    over wherever this clone happens to sit — that is what lets parallel clones share one folder.
+    Only a repository with no link falls back to its clone path, which is exactly the behaviour every
+    store had before the table existed, so an unlinked machine routes as it always did.
+    """
+    tables = [read_links(store) for store in cfg.stores()]
+    wanted = [clone.own] if clone.own else [identity for _, identity in clone.remotes]
+    hits = [(links, match) for links in tables for identity in wanted if (match := links.lookup(identity))]
+
+    if len({links.path for links, _ in hits}) > 1:
+        identity = hits[0][1].identity
+        return StoreRoute(None, None, identity, False, refusal=_listed_twice_message(identity, hits))
+    if clone.own is None:
+        if not hits:
+            return StoreRoute(None, None, None, False, refusal=_which_remote_message(clone))
+        if len({match.directory for _, match in hits}) > 1:
+            return StoreRoute(None, None, None, False, refusal=_remotes_disagree_message(clone, hits))
+    if hits:
+        return _linked_route(cfg, clone, rel, *hits[0])
+    if clone.own is None:  # unreachable: every no-origin case returned above; kept for the type checker
+        return StoreRoute(None, None, None, False, refusal=_which_remote_message(clone))
+    return _unlinked_route(cfg, clone, clone.own, rel, tables)
+
+
+def _linked_route(cfg: Config, clone: CloneIdentity, rel: str | None, links: Links, match: LinkMatch) -> StoreRoute:
+    """A repository the table knows: its folder, unless that store is looser than this clone's own.
+
+    The two directions get opposite answers because only one of them can publish anything. Linked
+    private while the clone path says shareable is the stricter store, used silently with a note;
+    linked shareable while the clone path says private would send a private clone's plan to the
+    store with a remote, so writes stop there.
+    """
+    note = "" if match.exact else f"matched {match.identity} (ignoring letter case)"
+    route = StoreRoute(links.store, match.directory, match.identity, True, note)
+    if not cfg.split_by_sensitivity or rel is None:
+        return route
+    path_tier = cfg.tier_of(rel)
+    if links.store.tier == SHAREABLE and path_tier == SENSITIVE:
+        return route._replace(refusal=_shareable_refusal_message(clone, rel, links, match))
+    if links.store.tier == SENSITIVE and path_tier == SHAREABLE:
+        stricter = "private: this repository is linked there; this clone's own folder would have chosen shareable"
+        return route._replace(note="; ".join(filter(None, (note, stricter))))
+    return route
+
+
+def _unlinked_route(cfg: Config, clone: CloneIdentity, own: str, rel: str | None, tables: list[Links]) -> StoreRoute:
+    """A repository the table does not know: the clone path, unless that would split a known one.
+
+    Two things look new and are not — a first push (the first commit is linked under `local:`) and a
+    renamed remote (the clone path's folder is linked to another name). Both stop and ask, because a
+    silent new folder is exactly the split the table exists to prevent.
+    """
+    if clone.first_commit and own != clone.first_commit:
+        for links in tables:
+            if (match := links.lookup(clone.first_commit)) is not None:
+                refusal = _known_before_message(clone, own, links, match)
+                return StoreRoute(links.store, match.directory, own, False, refusal=refusal)
+    if rel is None:
+        return StoreRoute(None, None, own, False)
+    store = cfg.store_for(rel)
+    links = next(table for table in tables if table.store.path == store.path)
+    if links.identities_of(rel):
+        return StoreRoute(store, rel, own, False, refusal=_folder_taken_message(clone, own, links, rel))
+    return StoreRoute(store, rel, own, False)
+
+
+def record_link(routing: Routing) -> str:
+    """Link this repository to the folder a write just used, the first time it writes there.
+
+    Committed on the spot through the private index, like every other store write, so a link never
+    sits uncommitted where a parallel session's next commit could carry it under another message.
+    Returns the line to print, or "" when there was nothing to record.
+    """
+    if routing.linked or not (routing.store and routing.folder and routing.identity):
+        return ""
+    links = read_links(routing.store).linked(routing.identity, routing.folder)
+    path = write_links(links)
+    root = routing.store.path.expanduser()
+    head = f"linked:  {routing.identity} -> {routing.folder}"
+    if not is_git_repo(root):
+        return f"{head}  (written to {path}; the store is not a git repository)"
+    try:
+        commit_paths(root, [path], f"links: {routing.identity} -> {routing.folder}")
+    except PlanError as exc:
+        return f"{head}  (written, NOT committed: {exc})"
+    return f"{head}  (committed in {display_path(root)})"
 
 
 def resolve(start: Path, cfg: Config) -> Routing:
@@ -1535,34 +1782,59 @@ def resolve(start: Path, cfg: Config) -> Routing:
     # into `<store>/<root>/<repo>/.claude/worktrees/<name>`, a directory the main checkout's `list`
     # and `absorb` never look in — and a plan filed *for* that repo by another session landed in the
     # main mirror, which the worktree session's `absorb` never looks in. Both directions silent.
-    identity = linked_worktree_of(root) or root
+    main = linked_worktree_of(root) or root
     try:
-        rel = identity.resolve().relative_to(cfg.projects_root.resolve()).as_posix()
+        rel = main.resolve().relative_to(cfg.projects_root.resolve()).as_posix()
     except (ValueError, OSError):
         rel = None
 
     # Read from the repository, not from the checkout: every worktree of a repo shares its remote,
-    # the same reason `identity` above is the repository rather than this particular tree.
-    remote = remote_of(identity)
+    # the same reason `main` above is the repository rather than this particular tree.
+    remote = remote_of(main)
     rule, source = match_rule(cfg, rel, remote)
-    # The tier lookup lives here and nowhere else: every command that writes, reads, moves or
-    # archives a store-held plan goes through `routing.store_dir`, so one substitution routes all of
-    # them and none of them has to know a tier exists.
-    store_dir = None if rel is None else cfg.store_for(rel).path / rel
+    # The store lookup lives here and nowhere else: every command that writes, reads, moves or
+    # archives a store-held plan goes through `routing.store`/`store_dir`, so one substitution
+    # routes all of them and none of them has to know a tier or a link table exists.
+    clone = clone_identity(main)
+    place = store_route(cfg, clone, rel) if clone is not None else StoreRoute(None, None, None, False)
+    store_dir = None if place.store is None or place.folder is None else place.store.path / place.folder
+    ok = Routing(
+        "ok",
+        "",
+        root,
+        rel,
+        rule,
+        source,
+        store_dir,
+        remote,
+        store=place.store,
+        folder=place.folder,
+        identity=place.identity,
+        linked=place.linked,
+        note=place.note,
+        refusal=place.refusal,
+    )
+
+    def decide(reason: str) -> Routing:
+        return replace(ok, verdict="needs-decision", reason=reason)
 
     if rule is not None and rule.write == "repo" and (refusal := foreign_org_refusal(cfg, remote, rel, source)):
-        return Routing("needs-decision", refusal, root, rel, rule, source, store_dir, remote)
+        return decide(refusal)
 
     if rule is None:
         reason = f"no rule matches {rel or root} and no default is set in {cfg.path}" if cfg.exists else no_config(cfg)
-        return Routing("needs-decision", reason, root, rel, None, source, store_dir, remote)
-    if "store" in rule.read and rel is None:
+        return decide(reason)
+    # A link-table decision stops store *writes* and nothing else, so it is carried on an ok route
+    # rather than turned into a verdict: every writer into the store checks it (`write_dir`,
+    # `require_store_write`), while `list`, `refs` and the rest keep working — a reader deciding
+    # what to do about the message needs to see the plans it is about.
+    if "store" in rule.read and store_dir is None and not place.refusal:
         reason = (
             f"{root} is not under projects_root ({cfg.projects_root}), so its store path cannot be "
             f'mirrored; move the clone under it or give this repo a mode = "repo" entry'
         )
-        return Routing("needs-decision", reason, root, rel, rule, source, store_dir, remote)
-    return Routing("ok", "", root, rel, rule, source, store_dir, remote)
+        return decide(reason)
+    return ok
 
 
 def no_config(cfg: Config) -> str:
@@ -1701,9 +1973,24 @@ def family_plans(cfg: Config, repos: list[str]) -> list[ScopedPlan]:
     at each `.git` — no repo's own contents are walked.
     """
     found: list[ScopedPlan] = []
+    seen: set[Path] = set()
+
+    def read(label: str, directory: Path, where: str) -> None:
+        key = directory.expanduser().resolve()
+        if key not in seen:
+            seen.add(key)
+            found.extend(ScopedPlan(label, plan) for plan in plans_in(directory, where))
+
+    # Linked folders first, from the tables rather than from the clones: a folder whose repository
+    # has no clone at a matching path — a parallel clone's, one checked out elsewhere, one on another
+    # machine — was invisible to a listing that walked clone paths, which is half of what the link
+    # table exists to fix. The clone-path folder is read after, for every repository not linked yet.
+    for store in cfg.stores():
+        for folder in sorted(set(read_links(store).entries.values())):
+            read(folder, store.path / folder, "store")
     for rel in repos:
-        for where, directory in (("repo", cfg.projects_root / rel / "plans"), ("store", cfg.store_for(rel).path / rel)):
-            found.extend(ScopedPlan(rel, plan) for plan in plans_in(directory, where))
+        read(rel, cfg.projects_root / rel / "plans", "repo")
+        read(rel, cfg.store_for(rel).path / rel, "store")
     found.extend(ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
     return found
 
@@ -2314,9 +2601,8 @@ def archive_sources(ws: Workspace, routing: Routing | None) -> list[Source]:
     for read in routing.read_dirs():
         if read.where == "repo" and routing.repo_root is not None:
             found.append(Source("repo", routing.repo_root, "plans/"))
-        elif read.where == "store" and routing.rel is not None:
-            store = cfg.store_for(routing.rel)
-            found.append(Source("store", store.path, f"{routing.rel}/", tier_of_store(store)))
+        elif read.where == "store" and routing.store is not None and routing.folder is not None:
+            found.append(Source("store", routing.store.path, f"{routing.folder}/", tier_of_store(routing.store)))
     return found
 
 
@@ -2606,37 +2892,70 @@ def _print_where_remote(cfg: Config, remote: Remote | None) -> None:
     print(f"remote:  {remote.org or remote.url}  ({'yours' if cfg.owns(remote) else 'NOT one of your accounts'})")
 
 
+def _print_where_link(routing: Routing) -> None:
+    """Which repository this clone is, and whether its store folder is recorded or only the default.
+
+    Said on every `where` because it is the answer to "why did my plan go there?" once a folder can
+    differ from the clone path — and "not linked yet" is worth seeing too: the first store write
+    records it, and a reader who knows that is not surprised by the commit it makes.
+    """
+    if routing.identity is None and routing.folder is None:
+        return
+    print(f"identity: {routing.identity or '(undecided — see reason)'}")
+    if routing.folder is not None and routing.store is not None:
+        how = "linked" if routing.linked else "clone path; linked on the first store write"
+        print(f"folder:  {routing.folder}  ({how}, {routing.tier_label} store)")
+    if routing.note:
+        print(f"note:    {routing.note}")
+    if routing.refusal:
+        # Store writes only: reading still works, so the verdict above can say ok while this says
+        # a write would stop — and for a repo routed to its own `plans/`, before a `--to store`.
+        print("store writes are stopped until this is decided:")
+        print(routing.refusal)
+
+
+def _where_payload(cfg: Config, routing: Routing) -> dict[str, object]:
+    """`where --json`: everything the text form says, as fields an agent can act on."""
+    rule = routing.rule
+    return {
+        "verdict": routing.verdict,
+        "reason": routing.reason,
+        "repo_root": str(routing.repo_root) if routing.repo_root else None,
+        "worktree_of": str(main) if routing.repo_root and (main := linked_worktree_of(routing.repo_root)) else None,
+        "rel": routing.rel,
+        "remote": None
+        if routing.remote is None
+        else {
+            "url": routing.remote.url,
+            "host": routing.remote.host,
+            "owner": routing.remote.owner,
+            "org": routing.remote.org,
+            "own_account": cfg.owns(routing.remote),
+            "checked": bool(cfg.own_accounts),
+        },
+        "rule": None if rule is None else {"read": list(rule.read), "write": rule.write},
+        "source": routing.source,
+        "write_dir": None
+        if rule is None or routing.verdict != "ok" or routing.writes_refused
+        else str(routing.write_dir),
+        "read_dirs": {where: str(path) for where, path in routing.read_dirs()},
+        "tier": routing.store.tier if routing.store else cfg.tier_of(routing.rel),
+        "store": str((routing.store or cfg.store_for(routing.rel)).path),
+        "folder": routing.folder,
+        "identity": routing.identity,
+        "linked": routing.linked,
+        "note": routing.note or None,
+        "store_write_refused": routing.refusal or None,
+        "config": str(cfg.path),
+    }
+
+
 def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
     cfg = ws.config
     routing = ws.routing
     if args.json:
-        rule = routing.rule
-        payload = {
-            "verdict": routing.verdict,
-            "reason": routing.reason,
-            "repo_root": str(routing.repo_root) if routing.repo_root else None,
-            "worktree_of": str(main) if routing.repo_root and (main := linked_worktree_of(routing.repo_root)) else None,
-            "rel": routing.rel,
-            "remote": None
-            if routing.remote is None
-            else {
-                "url": routing.remote.url,
-                "host": routing.remote.host,
-                "owner": routing.remote.owner,
-                "org": routing.remote.org,
-                "own_account": cfg.owns(routing.remote),
-                "checked": bool(cfg.own_accounts),
-            },
-            "rule": None if rule is None else {"read": list(rule.read), "write": rule.write},
-            "source": routing.source,
-            "write_dir": str(routing.write_dir) if rule and routing.verdict == "ok" else None,
-            "read_dirs": {where: str(path) for where, path in routing.read_dirs()},
-            "tier": cfg.tier_of(routing.rel),
-            "store": str(cfg.store_for(routing.rel).path),
-            "config": str(cfg.path),
-        }
-        print(json.dumps(payload, indent=2))
-        return 0 if routing.verdict == "ok" else NEEDS_DECISION
+        print(json.dumps(_where_payload(cfg, routing), indent=2))
+        return 0 if routing.verdict == "ok" and not routing.writes_refused else NEEDS_DECISION
 
     print(f"verdict: {routing.verdict}")
     if routing.verdict != "ok":
@@ -2653,6 +2972,7 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
         print("          store plans are shared with it; a `repo` plan stays here, on this branch")
     print(f"rel:     {routing.rel or '(not under projects_root)'}")
     _print_where_remote(cfg, routing.remote)
+    _print_where_link(routing)
     if routing.rule:
         print(f"rule:    {routing.rule.describe()}  ({routing.source})")
     if routing.rel and routing.rel in cfg.roots and routing.source != f'roots entry "{routing.rel}"':
@@ -2661,12 +2981,12 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
         print(f'note:    [roots] "{routing.rel}" names this repo, not a directory of repos, so it')
         print(f"         matched nothing. Use: config set repos.{routing.rel} <repo|store>")
     if routing.verdict == "ok" and routing.rule:
-        print(f"write:   {routing.write_dir}")
+        print(f"write:   {'(stopped — see above)' if routing.writes_refused else routing.write_dir}")
         for where, path in routing.read_dirs():
             print(f"read:    {where:<6} {path}")
     print(f"config:  {cfg.path}{'' if cfg.exists else ' (does not exist)'}")
     if cfg.split_by_sensitivity:
-        tier = cfg.tier_of(routing.rel)
+        tier = routing.store.tier if routing.store else cfg.tier_of(routing.rel)
         print("device:  contractor — the store splits by sensitivity")
         print(f"tier:    {tier} — this repo's store-held plans live in the {tier} half")
         for store in cfg.stores():
@@ -2674,7 +2994,7 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
     else:
         print("device:  work — one organisation, so one store and no tier to choose")
         print(f"store:   {cfg.store.path} (from {cfg.store.source})")
-    return 0 if routing.verdict == "ok" else NEEDS_DECISION
+    return 0 if routing.verdict == "ok" and not routing.writes_refused else NEEDS_DECISION
 
 
 def transcript_root() -> Path:
@@ -2814,41 +3134,46 @@ def resolve_repo_argument(value: str, cfg: Config) -> Path:
     raise PlanError(f"no repo at {value!r}: tried {direct} and {candidate}")
 
 
+def _refuse_a_foreign_tree(topic: str, cfg: Config, routing: Routing) -> None:
+    """Refused rather than warned: `--for` is the correct way to record something against another
+    repo, so writing a new file into its tree has no remaining legitimate use."""
+    anchored = session_is_anchored(cfg)
+    source = "this session started in" if anchored else "cwd says this session is in"
+    drifted = "\n  If that IS the repo you are in:    cwd has drifted; cd back and re-run without --path."
+    hint = "" if anchored else drifted
+    raise PlanError(
+        f"{source} {session_repo(cfg)}, but this would create a plan in {routing.repo_root} "
+        f"— a tree a parallel session may be holding.\n"
+        f"  If the plan belongs to that repo:  new {topic} --for {routing.rel or routing.repo_root}"
+        f"{hint}"
+    )
+
+
+def _new_unscoped(args: argparse.Namespace, ws: Workspace, cfg: Config) -> int:
+    if args.to or args.for_repo:
+        raise PlanError("--unscoped belongs to no repo, so it cannot be combined with --to or --for")
+    code = write_plan(cfg.unscoped, args.topic, args.status, "unscoped", None, cfg)
+    inside = ws.routing
+    if inside.rule is not None and inside.repo_root is not None:
+        # A plan created unscoped from inside a routed repo is very likely that repo's, and the
+        # unscoped area is where `absorb` never looks. Confirmed 2026-09-13: filed there to keep a
+        # busy tree clean, it sat unoffered for three hours until a harvest moved it.
+        print(f"note:    you are in {inside.rel or inside.repo_root} — if this is that repo's plan,")
+        print(f"         `new {args.topic} --to store` keeps it out of the tree and absorb offers it there")
+    return code
+
+
 def cmd_new(args: argparse.Namespace, ws: Workspace) -> int:
     if not TOPIC_RE.match(args.topic):
         raise PlanError(f"topic {args.topic!r} must be kebab-case: lowercase letters, digits and single hyphens")
     cfg = ws.require_config()
     if args.unscoped:
-        if args.to or args.for_repo:
-            raise PlanError("--unscoped belongs to no repo, so it cannot be combined with --to or --for")
-        code = write_plan(cfg.unscoped, args.topic, args.status, "unscoped", None, cfg)
-        inside = ws.routing
-        if inside.rule is not None and inside.repo_root is not None:
-            # A plan created unscoped from inside a routed repo is very likely that repo's, and the
-            # unscoped area is where `absorb` never looks. Confirmed 2026-09-13: filed there to keep a
-            # busy tree clean, it sat unoffered for three hours until a harvest moved it.
-            print(f"note:    you are in {inside.rel or inside.repo_root} — if this is that repo's plan,")
-            print(f"         `new {args.topic} --to store` keeps it out of the tree and absorb offers it there")
-        return code
+        return _new_unscoped(args, ws, cfg)
     if args.for_repo:
         return file_for_repo(args, ws)
     routing = ws.routing
     if routing.rule and routing.rule.write == "repo" and is_foreign(routing.repo_root, cfg):
-        # Refused rather than warned: `--for` is the correct way to record something against
-        # another repo, so writing a new file into its tree has no remaining legitimate use.
-        anchored = session_is_anchored(cfg)
-        source = "this session started in" if anchored else "cwd says this session is in"
-        hint = (
-            ""
-            if anchored
-            else "\n  If that IS the repo you are in:    cwd has drifted; cd back and re-run without --path."
-        )
-        raise PlanError(
-            f"{source} {session_repo(cfg)}, but this would create a plan in {routing.repo_root} "
-            f"— a tree a parallel session may be holding.\n"
-            f"  If the plan belongs to that repo:  new {args.topic} --for {routing.rel or routing.repo_root}"
-            f"{hint}"
-        )
+        _refuse_a_foreign_tree(args.topic, cfg, routing)
     if args.to is None:
         ws.require_routable()
         target = routing.write_dir
@@ -2859,14 +3184,18 @@ def cmd_new(args: argparse.Namespace, ws: Workspace) -> int:
             raise PlanError(f"cannot write to {args.to!r} for this repo: {routing.reason or 'no such directory'}")
         target, where = chosen, args.to
 
-    origin = None
-    if where == "store" and routing.repo_root:
-        # The store's directory tree encodes the clone path; the origin URL is the identity that
-        # survives the clone being moved or renamed, so that is what the file itself records.
-        origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
+    identity = None
+    if where == "store":
+        routing.require_store_write()
+        # The repository's identity, not the clone path: it is the link table's key, it survives the
+        # clone being moved or renamed, and every clone of the repository records the same string.
+        identity = routing.identity or routing.rel
     belongs = routing.rel or (str(routing.repo_root) if routing.repo_root else None)
-    tier_store = cfg.store_for(routing.rel).path if where == "store" else None
-    return write_plan(target, args.topic, args.status, where, origin, cfg, belongs_to=belongs, store=tier_store)
+    tier_store = routing.store.path if where == "store" and routing.store else None
+    code = write_plan(target, args.topic, args.status, where, identity, cfg, belongs_to=belongs, store=tier_store)
+    if where == "store" and (linked := record_link(routing)):
+        print(linked)
+    return code
 
 
 def file_for_repo(args: argparse.Namespace, ws: Workspace) -> int:
@@ -2895,27 +3224,29 @@ def file_for_repo(args: argparse.Namespace, ws: Workspace) -> int:
             f"--for names the repo this session is already in; use plain `new {args.topic}`, or "
             f"`new {args.topic} --to store` to keep it out of a working tree another session is holding"
         )
+    routing.require_store_write()
     store_dir = routing.store_dir
-    if store_dir is None:
+    store = routing.store
+    if store_dir is None or store is None:
         raise PlanError(
             f"{routing.repo_root} is not under projects_root ({cfg.projects_root}), so it has no store "
             "mirror to file into; move the clone under it or plan in that repo directly"
         )
 
-    origin = git(["remote", "get-url", "origin"], routing.repo_root) or routing.rel
-    store = cfg.store_for(routing.rel)
     source = ws.routing
     code = write_plan(
         store_dir,
         args.topic,
         args.status,
         "store",
-        origin,
+        routing.identity or routing.rel,
         cfg,
         store=store.path,
         source_repo=source.rel or (str(source.repo_root) if source.repo_root else None),
     )
     print(f"filed for: {routing.rel or routing.repo_root}")
+    if linked := record_link(routing):
+        print(linked)
     if cfg.split_by_sensitivity:
         print(f"tier:      {store.tier}")
     if routing.rule and routing.rule.write == "repo":
@@ -3076,9 +3407,10 @@ def cmd_list(args: argparse.Namespace, ws: Workspace) -> int:
 
     print(f"scope:   {scope}{' (auto)' if args.scope == 'auto' else ''}")
     if scope == "repo":
-        tier = f"  [{cfg.tier_of(routing.rel)}]" if cfg.split_by_sensitivity else ""
+        store = routing.store or cfg.store_for(routing.rel)
+        tier = f"  [{store.tier}]" if cfg.split_by_sensitivity else ""
         print(f"repo:    {routing.rel or routing.repo_root}")
-        print(f"store:   {cfg.store_for(routing.rel).path}{tier}")
+        print(f"store:   {store.path}{tier}")
     else:
         print(f"root:    {cfg.projects_root}")
         for store in cfg.stores():
@@ -3546,7 +3878,7 @@ def _absorb_filed(
         print(f"CONFLICT: {plan.path.name} already exists in {target}; resolve it by hand — the two")
         print(f"          cover the same topic, which is a merge, not a rename. Filed copy: {plan.path}")
     if moved:
-        store = cfg.store_for(routing.rel)
+        store = routing.store or cfg.store_for(routing.rel)
         print(f"\n{len(moved)} absorbed. Run this repo's quality gate, then commit here and in {store.path}.")
         # The removal command spelled out, with the paths the caller would otherwise assemble by hand
         # from basenames — the step where a store-relative spelling once reached a same-named plan in
@@ -3722,9 +4054,10 @@ def cmd_move(args: argparse.Namespace, ws: Workspace) -> int:
         return 0
 
     text = plan.path.read_text(encoding="utf-8")
+    if args.to == "store":
+        routing.require_store_write()
     if args.to == "store" and "repo:" not in parse_frontmatter(text):
-        origin = git(["remote", "get-url", "origin"], routing.repo_root) if routing.repo_root else None
-        text = text.replace("\nupdated:", f"\nrepo: {origin or routing.rel}\nupdated:", 1)
+        text = text.replace("\nupdated:", f"\nrepo: {routing.identity or routing.rel}\nupdated:", 1)
     if args.to == "repo":
         # The other half of the round trip. Without it the key is added going out and never removed
         # coming back, so a repo-held plan carries a field the skill defines as meaning "in the
@@ -3738,6 +4071,8 @@ def cmd_move(args: argparse.Namespace, ws: Workspace) -> int:
     print(f"to:      {destination}")
     if carried:
         print(f"with:    {carried}  (its attachments, moved with it)")
+    if args.to == "store" and (linked := record_link(routing)):
+        print(linked)
     if plan.where == "repo":
         print("note:    stage the deletion in the repo (git rm / git add -u on that path) and commit it")
     return 0
@@ -3803,14 +4138,11 @@ def rename_plan(
     and then found its attachments blocked would leave the two halves under different names."""
     old = plan.path
     moved: list[tuple[Path, Path, str]] = [(old, new, "the plan")]
-    for label, source, landing in (
-        ("committed attachments", attachments_of(old), attachments_of(new)),
-        (
-            "local attachments",
-            cfg.attachments_dir(_attachment_key(routing, plan), old.stem),
-            cfg.attachments_dir(_attachment_key(routing, plan), new.stem),
-        ),
-    ):
+    candidates = [("committed attachments", attachments_of(old), attachments_of(new))]
+    if (place := _attachment_place(cfg, routing, plan)) is not None:
+        local = ("local attachments", cfg.attachments_dir(*place, old.stem), cfg.attachments_dir(*place, new.stem))
+        candidates.append(local)
+    for label, source, landing in candidates:
         if not source.is_dir():
             continue
         if landing.exists():
@@ -4056,8 +4388,8 @@ def attachments_held(cfg: Config, routing: Routing, name: str) -> dict[str, list
         for where in ("repo", "store")
         if (directory := routing.dir_for(where)) is not None and (directory / stem).is_dir()
     ]
-    local = cfg.attachments_dir(routing.rel, stem)
-    unscoped = cfg.attachments_dir(None, stem)
+    unscoped = cfg.attachments_dir(cfg.store, None, stem)
+    local = cfg.attachments_dir(routing.store, routing.folder, stem) if routing.store else unscoped
     return {
         "committed": sorted({path for root in committed for path in root.rglob("*") if path.is_file()}),
         "local": sorted(
@@ -4104,28 +4436,32 @@ def with_attachments(plans: list[Path]) -> list[Path]:
     return found
 
 
-def _attachment_key(routing: Routing, plan: PlanFile) -> str | None:
-    """Which repo an attachment is filed under: the session's, or none at all for an unscoped plan.
+def _attachment_place(cfg: Config, routing: Routing, plan: PlanFile) -> tuple[Store, str | None] | None:
+    """Which store and folder an attachment is filed under: the repository's, or the unscoped area's.
 
     Read from the plan's own location rather than from the route, for the same reason `where` is:
     an unscoped plan is visible from every repo, so the repo a session happens to be in says
-    nothing about where that plan's evidence belongs.
+    nothing about where that plan's evidence belongs. None when the repository has no store folder.
     """
-    return None if plan.where == "unscoped" else routing.rel
+    if plan.where == "unscoped":
+        return cfg.store, None
+    if routing.store is None or routing.folder is None:
+        return None
+    return routing.store, routing.folder
 
 
 def _attachment_target(cfg: Config, routing: Routing, plan: PlanFile, *, committed: bool) -> Path:
     """The directory one plan's attachments go in, for whichever of the two destinations applies."""
     if committed:
         return plan.path.parent / plan.path.stem
-    rel = _attachment_key(routing, plan)
-    if rel is None and plan.where != "unscoped":
+    place = _attachment_place(cfg, routing, plan)
+    if place is None:
         raise PlanError(
             f"{routing.repo_root} is not under projects_root ({cfg.projects_root}), so it has no "
             "store to keep a local attachment in — commit it with --commit, or move the clone under "
             "the projects root"
         )
-    return cfg.attachments_dir(rel, plan.path.stem)
+    return cfg.attachments_dir(*place, plan.path.stem)
 
 
 def attachment_sources(names: list[str]) -> list[Path]:
@@ -4159,8 +4495,8 @@ def _attach_one(cfg: Config, routing: Routing, plan: PlanFile, source: Path, *, 
         warn_cross_repo(repo, cfg, f"attach {source.name}")
     target.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
-    if not committed:
-        exclude_attachments(cfg.store_for(_attachment_key(routing, plan)).path)
+    if not committed and (place := _attachment_place(cfg, routing, plan)) is not None:
+        exclude_attachments(place[0].path)
     return Attached(
         name=source.name,
         destination=destination,
@@ -4420,17 +4756,17 @@ def absorbed_from(cfg: Config, repo: Path, added: Path) -> Path | None:
     """The store path an added plan came out of, when this addition is the far half of an absorption.
 
     The mirror of `absorbed_to`, and answerable for the same reason: the store path is
-    `<store>/<rel>/<name>` where `<rel>` is the repo's path under `projects_root`, so an addition in
-    `<repo>/plans/` has exactly one place it could have been absorbed from. Both halves of the
-    store's state count — the file still sitting there (the move not yet committed on that side) and
-    one `HEAD` still holds (the removal already staged) — because `absorb --apply` and the two
-    commits it owes are routinely three different moments.
+    `<store>/<folder>/<name>`, where `<folder>` is the one routing resolves for that repository —
+    from the link table, else its path under `projects_root` — so an addition in `<repo>/plans/` has
+    exactly one place it could have been absorbed from. Both halves of the store's state count — the
+    file still sitting there (the move not yet committed on that side) and one `HEAD` still holds
+    (the removal already staged) — because `absorb --apply` and the two commits it owes are
+    routinely three different moments.
     """
-    try:
-        rel = added.resolve().parent.parent.relative_to(cfg.projects_root.resolve())
-    except ValueError:
+    store_dir = resolve(added.resolve().parent.parent, cfg).store_dir
+    if store_dir is None:
         return None
-    source = cfg.store_for(rel.as_posix()).path / rel / added.name
+    source = store_dir / added.name
     if source.is_file():
         return source
     return deleted_plan(source)
@@ -5952,15 +6288,17 @@ def cmd_graduate(args: argparse.Namespace, ws: Workspace) -> int:
         raise PlanError(f"{destination} already exists")
 
     text = plan.path.read_text(encoding="utf-8")
-    if routing.rule and routing.rule.write == "store" and "repo" not in parse_frontmatter(text):
-        origin = git(["remote", "get-url", "origin"], routing.repo_root) if routing.repo_root else None
-        text = text.replace("\nupdated:", f"\nrepo: {origin or routing.rel}\nupdated:", 1)
+    into_store = bool(routing.rule and routing.rule.write == "store")
+    if into_store and "repo" not in parse_frontmatter(text):
+        text = text.replace("\nupdated:", f"\nrepo: {routing.identity or routing.rel}\nupdated:", 1)
     target.mkdir(parents=True, exist_ok=True)
     destination.write_text(text, encoding="utf-8")
     carried = move_attachments(plan.path, target)
     plan.path.unlink()
     print(f"graduated: {plan.path.name}")
     print(f"to:        {destination}")
+    if into_store and (linked := record_link(routing)):
+        print(linked)
     if carried:
         print(f"with:      {carried}  (its attachments, moved with it)")
     print(f"route:     {routing.rule.write if routing.rule else '?'} ({routing.source})")
@@ -6345,10 +6683,18 @@ def misfiled_plans(cfg: Config) -> list[str]:
     for store in cfg.stores():
         if not store.path.is_dir():
             continue
+        linked = set(read_links(store).entries.values())
         for path in sorted(store.path.iterdir()):
             if not path.is_dir() or path.name.startswith(".") or path.name in {UNSCOPED_DIR, ATTACHMENTS_DIR}:
                 continue
             actual = cfg.tier_of(path.name)
+            # A folder the store's link table names is where it is on purpose — a repository linked
+            # into the private store from a clone under a shareable root is the safe direction, and
+            # reporting it as misfiled would send the reader to undo the very decision that protects
+            # it. Only plans outside every linked folder still count.
+            holding = {plan.parent.relative_to(store.path).as_posix() for plan in path.rglob("*.md")}
+            if holding and holding <= linked:
+                continue
             if actual != store.tier:
                 found.append(
                     f"{path} is in the {store.tier} store but {path.name} is a {actual} root — "
@@ -7083,6 +7429,9 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.func(args, ws))
     except NeedsDecision as exc:
         print("verdict: needs-decision", file=sys.stderr)
+        if exc.explained:
+            print(exc, file=sys.stderr)
+            return NEEDS_DECISION
         print(f"reason:  {exc}", file=sys.stderr)
         print("choices: repo | store | both — ask the user, then record it in the config", file=sys.stderr)
         return NEEDS_DECISION

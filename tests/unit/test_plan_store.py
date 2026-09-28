@@ -252,14 +252,21 @@ def test_non_repo_directory_needs_a_decision(ws):
 # creating, listing, moving
 
 
-def test_new_writes_into_the_store_with_the_origin_url(ws, capsys):
+def test_new_writes_into_the_store_with_the_repository_identity(ws, capsys):
+    """`repo:` records which repository, not how one clone reached it: the ssh and https clones of one
+    repository write the same string, which is also the link table's key (decided 2026-09-28)."""
     write_config(ws, 'default = "store"\n')
     assert plans.main(["new", "store-routing", "--path", str(ws.client)]) == 0
-    created = Path(capsys.readouterr().out.splitlines()[0].split(": ", 1)[1])
+    out = capsys.readouterr().out
+    created = Path(out.splitlines()[0].split(": ", 1)[1])
     assert created.parent == ws.sensitive / "client.com-bitbucket" / "team" / "api"
     front = plans.parse_frontmatter(created.read_text(encoding="utf-8"))
     assert front["status"] == "idea"
-    assert front["repo"] == "git@example.com:x/api.git"
+    assert front["repo"] == "example.com/x/api"
+    # The first store write records the folder it used, so the next clone of the repo finds it.
+    assert "linked:  example.com/x/api -> client.com-bitbucket/team/api" in out
+    stores = plans.load_config().stores()
+    assert plans.read_links(stores[-1]).entries == {"example.com/x/api": "client.com-bitbucket/team/api"}
 
 
 def test_new_in_a_repo_route_omits_the_repo_field(ws, capsys, monkeypatch):
@@ -326,7 +333,7 @@ def test_move_relocates_and_stamps_the_repo_field(ws, capsys):
     capsys.readouterr()
     moved = ws.sensitive / "client.com-bitbucket" / "team" / "api" / "2026-01-01-old.md"
     assert not source.exists()
-    assert plans.parse_frontmatter(moved.read_text(encoding="utf-8"))["repo"] == "git@example.com:x/api.git"
+    assert plans.parse_frontmatter(moved.read_text(encoding="utf-8"))["repo"] == "example.com/x/api"
 
 
 def test_moving_back_to_the_repo_drops_the_repo_field(ws, capsys):
@@ -686,7 +693,7 @@ def test_set_status_bumps_updated_and_keeps_other_fields(ws):
     front = plans.parse_frontmatter(path.read_text(encoding="utf-8"))
     assert front["status"] == "blocked on the store landing"
     assert front["updated"] == plans.today()
-    assert front["repo"] == "git@example.com:x/api.git"
+    assert front["repo"] == "example.com/x/api"
     assert path.read_text(encoding="utf-8").count("## Context") == 1
 
 
@@ -978,7 +985,7 @@ def test_filing_for_another_repo_never_touches_its_tree(ws, capsys):
     # A repo-routed target means the file is in transit, and the note has to say how it lands.
     assert "in transit" in out
     assert "move <file> --to repo" in out
-    assert plans.parse_frontmatter(filed.read_text(encoding="utf-8"))["repo"] == "git@example.com:x/agent-skills.git"
+    assert plans.parse_frontmatter(filed.read_text(encoding="utf-8"))["repo"] == "example.com/x/agent-skills"
 
 
 def anchor_session_to(ws: Workspace, repo: Path, monkeypatch) -> None:
@@ -1645,7 +1652,7 @@ def test_graduate_moves_an_idea_into_its_new_repo(ws, capsys):
     assert (ws.personal / "plans" / source.name).is_file()
 
 
-def test_graduate_into_a_store_routed_repo_stamps_the_origin(ws, capsys):
+def test_graduate_into_a_store_routed_repo_stamps_the_identity(ws, capsys):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "grown-up", "--unscoped", "--path", str(ws.client)])
     source = next((ws.store / "_unscoped").glob("*-grown-up.md"))
@@ -1653,7 +1660,7 @@ def test_graduate_into_a_store_routed_repo_stamps_the_origin(ws, capsys):
 
     plans.main(["graduate", source.name, "--to", str(ws.client), "--path", str(ws.client)])
     landed = ws.sensitive / "client.com-bitbucket" / "team" / "api" / source.name
-    assert plans.parse_frontmatter(landed.read_text(encoding="utf-8"))["repo"] == "git@example.com:x/api.git"
+    assert plans.parse_frontmatter(landed.read_text(encoding="utf-8"))["repo"] == "example.com/x/api"
 
 
 # --------------------------------------------------------------------------------------------
@@ -2136,6 +2143,161 @@ def test_a_broken_table_is_refused_with_its_path_named(tmp_path, body):
     (tmp_path / "plans" / plans.LINKS_FILE).write_text(body, encoding="utf-8")
     with pytest.raises(plans.PlanError, match=r"repos\.toml"):
         plans.read_links(links_in(tmp_path).store)
+
+
+# --------------------------------------------------------------------------------------------
+# routing through the link table
+#
+# Both repos route to the store, split by tier: the personal root is shareable, the client root
+# private. Unlinked, every route is the clone path, exactly as before the table existed — which is
+# what the rest of this file already pins; these tests are for what a link changes.
+
+STORE_ROUTED = 'default = "store"\npublic_roots = ["github.com-personal"]\n'
+
+
+def link(ws: Workspace, store: Path, identity: str, folder: str) -> None:
+    target = next(s for s in plans.load_config().stores() if s.path.expanduser() == store)
+    plans.write_links(plans.read_links(target).linked(identity, folder))
+
+
+def test_a_parallel_clone_writes_into_the_folder_its_repository_is_linked_to(ws, capsys):
+    """The request this exists for, end to end: the first write links the folder, and a second clone
+    elsewhere — typed with different capitalisation, over https — reads and writes the same one."""
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
+    commit(ws.personal, "notes.md", "x\n")
+    assert plans.main(["new", "first", "--path", str(ws.personal)]) == 0
+    capsys.readouterr()
+
+    second = clone(ws.personal, ws.projects / "github.com-personal" / "agent-skills-review" / "agent-skills")
+    set_remote(second, "https://github.com/theodoread/agent-skills")
+    routing = route(second)
+    assert routing.store_dir == ws.store / "github.com-personal" / "agent-skills"
+    assert routing.linked
+    assert "ignoring letter case" in routing.note
+
+    assert plans.main(["new", "second", "--path", str(second)]) == 0
+    assert len(list((ws.store / "github.com-personal" / "agent-skills").glob("*.md"))) == 2
+
+
+def test_a_linked_folder_is_listed_even_where_no_clone_sits_at_its_path(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    plan(ws.store / "github.com-personal" / "moved-away", "2026-09-01-orphaned.md", "status: idea")
+    link(ws, ws.store, "github.com/theodoread/moved-away", "github.com-personal/moved-away")
+    assert plans.main(["list", "--scope", "family", "--path", str(ws.personal)]) == 0
+    assert "2026-09-01-orphaned.md" in capsys.readouterr().out
+
+
+def test_several_remotes_and_no_origin_stop_with_the_choices_spelled_out(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    drop_remote(ws.personal)
+    add_remote(ws.personal, "fork", "git@github.com:me/agent-skills.git")
+    add_remote(ws.personal, "upstream", "git@github.com:TheodoreAD/agent-skills.git")
+
+    assert plans.main(["new", "undecided", "--path", str(ws.personal)]) == plans.NEEDS_DECISION
+    err = capsys.readouterr().err
+    assert "can't tell which repository this clone belongs to" in err
+    assert "plans.py link --remote fork" in err
+    assert "plans.py link --remote upstream" in err
+    assert "Nothing was written" in err
+    # The generic routing choices answer a different question, and would read as the way out.
+    assert "repo | store | both" not in err
+    assert not list(ws.store.rglob("*-undecided.md"))
+
+
+def test_several_remotes_resolve_through_the_one_that_is_linked(ws):
+    write_config(ws, STORE_ROUTED)
+    drop_remote(ws.personal)
+    add_remote(ws.personal, "fork", "git@github.com:me/agent-skills.git")
+    add_remote(ws.personal, "upstream", "git@github.com:TheodoreAD/agent-skills.git")
+    link(ws, ws.store, "github.com/TheodoreAD/agent-skills", "github.com-personal/agent-skills")
+    routing = route(ws.personal)
+    assert (routing.identity, routing.refusal) == ("github.com/TheodoreAD/agent-skills", "")
+
+
+def test_a_shareable_link_refuses_a_write_from_a_private_clone_but_still_reads(ws, capsys):
+    """The direction that could publish: a private clone writing into the store with a remote."""
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.client, "git@github.com:someone/lib.git")
+    link(ws, ws.store, "github.com/someone/lib", "github.com-personal/lib")
+    plan(ws.store / "github.com-personal" / "lib", "2026-09-01-existing.md", "status: idea")
+
+    assert plans.main(["new", "leaky", "--path", str(ws.client)]) == plans.NEEDS_DECISION
+    err = capsys.readouterr().err
+    assert "refused, because this plan could be published" in err
+    assert "SHAREABLE" in err
+    assert "plans.py link --move-to private" in err
+    assert not list(ws.store.rglob("*-leaky.md"))
+
+    assert plans.main(["list", "--scope", "repo", "--path", str(ws.client)]) == 0
+    assert "2026-09-01-existing.md" in capsys.readouterr().out
+
+
+def test_a_private_link_wins_over_a_shareable_clone_path_and_says_so(ws, capsys):
+    """The safe direction is silent in the verdict but visible on `where`."""
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.personal, "git@client.example:team/api.git")
+    link(ws, ws.sensitive, "client.example/team/api", "client.com-bitbucket/team/api")
+    routing = route(ws.personal)
+    assert routing.store_dir == ws.sensitive / "client.com-bitbucket" / "team" / "api"
+    assert plans.main(["where", "--path", str(ws.personal)]) == 0
+    assert "this clone's own folder would have chosen shareable" in capsys.readouterr().out
+
+
+def test_a_first_push_is_asked_about_rather_than_given_a_new_folder(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    drop_remote(ws.personal)
+    commit(ws.personal, "notes.md", "x\n")
+    local = plans.clone_identity(ws.personal).own
+    link(ws, ws.store, local, "github.com-personal/agent-skills")
+    add_remote(ws.personal, "origin", "git@github.com:TheodoreAD/agent-skills.git")
+
+    assert plans.main(["new", "after-push", "--path", str(ws.personal)]) == plans.NEEDS_DECISION
+    err = capsys.readouterr().err
+    assert "already has plans under another name" in err
+    assert f"known before: {local}" in err
+    assert "plans.py link --to github.com-personal/agent-skills" in err
+
+
+def test_a_folder_already_linked_to_another_name_is_asked_about(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills-renamed.git")
+    link(ws, ws.store, "github.com/TheodoreAD/agent-skills", "github.com-personal/agent-skills")
+    assert plans.main(["new", "renamed", "--path", str(ws.personal)]) == plans.NEEDS_DECISION
+    assert "already belongs to another repository name" in capsys.readouterr().err
+
+
+def test_a_repository_listed_in_both_stores_stops_every_store_write(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
+    link(ws, ws.store, "github.com/TheodoreAD/agent-skills", "github.com-personal/agent-skills")
+    link(ws, ws.sensitive, "github.com/TheodoreAD/agent-skills", "github.com-personal/agent-skills")
+    assert plans.main(["new", "twice", "--path", str(ws.personal)]) == plans.NEEDS_DECISION
+    assert "listed in more than one store" in capsys.readouterr().err
+
+
+def test_the_first_store_write_commits_its_link_in_the_store(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.store, check=True)
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
+    capsys.readouterr()
+    assert plans.main(["new", "committed", "--path", str(ws.personal)]) == 0
+    assert "(committed in" in capsys.readouterr().out
+    log = subprocess.run(["git", "log", "--format=%s"], cwd=ws.store, capture_output=True, text=True, check=True)
+    assert "links: github.com/TheodoreAD/agent-skills -> github.com-personal/agent-skills" in log.stdout
+
+
+def test_a_local_attachment_follows_the_link_not_the_clone_path(ws):
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
+    link(ws, ws.store, "github.com/TheodoreAD/agent-skills", "github.com-personal/agent-skills")
+    second = clone(ws.personal, ws.projects / "github.com-personal" / "wrapper" / "agent-skills")
+    set_remote(second, "git@github.com:TheodoreAD/agent-skills.git")
+    routing = route(second)
+    placed = plans.Config.attachments_dir(routing.store, routing.folder, "2026-09-01-x")
+    assert placed == ws.store / plans.ATTACHMENTS_DIR / "github.com-personal" / "agent-skills" / "2026-09-01-x"
 
 
 def test_an_orgs_entry_beats_the_roots_entry_the_clone_happens_to_sit_under(ws):

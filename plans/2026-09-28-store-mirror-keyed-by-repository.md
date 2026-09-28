@@ -267,9 +267,15 @@ ok route**, rather than being a needs-decision verdict, because the verdict also
 the plan says reads keep working. The `link` command (show, `--remote`, `--to`, `--new`,
 `--move-to private`) landed with it, since the messages name it.
 
-**Not pushed yet, deliberately.** Still owed before the push: the listed-twice message names
-`links fix`, which does not exist yet; every message links to `references/store-links.md`, which
-does not exist yet; and step 3's test that every command a message names parses.
+Steps 3 to 6 landed the same day: `references/store-links.md` with one section per message, the
+tests that every command a message names parses and every section it cites exists, `links` (show,
+`fix`, `merge`, `claim`) with `doctor` reporting the decisions, and `SKILL.md` and the rationale
+rewritten. One addition over the design: `links claim <folder> <identity>`, because an orphan folder
+needed a command to resolve it and the planned `link --dir --identity` would have been a second
+spelling of the same act. The dry run of `links fix` on this machine is all automatic: four folders
+to link, 15 `repo:` values to rewrite, five empty folders left behind by absorption.
+
+Owed: step 7 — push, re-install, then `links fix --yes` on this machine.
 
 ### 3. The table's store and the path rule disagree
 

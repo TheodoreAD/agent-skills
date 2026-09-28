@@ -481,8 +481,12 @@ PATTERNS: dict[str, tuple[Predicate, str]] = {
         "turns a completeness search into a sample without saying so (count first: rg -c / wc -l)",
     ),
     "sed-n": (_rx(r"\bsed\s+-n\b"), "file view via Bash; Read(offset/limit) does it with no Bash gate"),
+    # Both spellings of the count. Until 2026-09-28 only `head -20` matched, so `tail -n 3 a.md b.md`
+    # — three calls in the session that found it, viewing plan tails for edit anchors — read 0.
     "cat-view": (
-        lambda cmd: bool(re.fullmatch(r"\s*(cat|head -\d+|tail -\d+)\s+[^|;&<>]+", strip_heredoc(cmd))),
+        lambda cmd: bool(
+            re.fullmatch(r"\s*(cat|(?:head|tail)\s+(?:-\d+|-n\s*\+?\d+))\s+[^|;&<>]+", strip_heredoc(cmd))
+        ),
         "whole-file view via Bash; Read does it with no Bash gate",
     ),
     # Three rows cover these commands and they answer three different questions. Keep them straight:

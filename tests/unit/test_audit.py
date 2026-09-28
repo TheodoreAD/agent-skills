@@ -135,6 +135,22 @@ def test_bash_c_is_in_the_session_view():
     assert "bash-c" not in audit.EXPECTATIONS, "reported, not judged — not decided"
 
 
+@pytest.mark.parametrize(
+    ("cmd", "tagged"),
+    [
+        ("cat plans/a.md", True),
+        ("head -20 plans/a.md", True),
+        # The 2026-09-28 spelling that read 0: `-n` with the count.
+        ("tail -n 3 plans/a.md plans/b.md", True),
+        ("head -n 40 SKILL.md", True),
+        ("tail -f server.log", False),  # following a log is not viewing a file
+        ("git log --oneline | head -5", False),  # a pipe, which head/tail counts instead
+    ],
+)
+def test_cat_view_counts_both_spellings_of_a_line_count(cmd, tagged):
+    assert ("cat-view" in tags_of(cmd)) is tagged
+
+
 def test_strip_quoted_keeps_the_shell_shape():
     assert audit.strip_quoted('rg -n "a|b" f | tail -1') == 'rg -n "" f | tail -1'
     assert audit.strip_quoted("echo 'it | is' > f") == 'echo "" > f'

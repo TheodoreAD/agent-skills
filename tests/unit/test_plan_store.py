@@ -2318,7 +2318,10 @@ def test_the_first_store_write_commits_its_link_in_the_store(ws, capsys):
     set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
     capsys.readouterr()
     assert plans.main(["new", "committed", "--path", str(ws.personal)]) == 0
-    assert "(committed in" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "(committed in" in out
+    # The receipt session-harvest's `filed` attributes a store commit by, on a line of its own.
+    assert re.search(r"^committed: [0-9a-f]{12}  links: ", out, re.MULTILINE)
     log = subprocess.run(["git", "log", "--format=%s"], cwd=ws.store, capture_output=True, text=True, check=True)
     assert "links: github.com/TheodoreAD/agent-skills -> github.com-personal/agent-skills" in log.stdout
 

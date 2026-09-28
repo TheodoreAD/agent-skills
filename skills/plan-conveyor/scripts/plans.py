@@ -1770,9 +1770,14 @@ def save_links(links: Links, message: str, extra: Sequence[Path] = ()) -> str:
     if not is_git_repo(root):
         return f"written to {path}; the store is not a git repository"
     try:
-        commit_paths(root, [path, *extra], message)
+        commit = commit_paths(root, [path, *extra], message)
     except PlanError as exc:
         return f"written, NOT committed: {exc}"
+    # The same `committed: <sha>` line `plans.py commit` prints, on a line of its own: it is the
+    # receipt a session's own output carries, and `session-harvest`'s `filed` attributes a store
+    # commit to a session by exactly that. Without it this session's own migration commit read as
+    # somebody else's (2026-09-28).
+    print(f"committed: {commit[:12]}  {message}")
     return f"committed in {display_path(root)}"
 
 

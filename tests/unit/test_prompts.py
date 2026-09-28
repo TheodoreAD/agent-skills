@@ -10,26 +10,39 @@ recorded in `references/research.md`, so a test that starts failing is a claim t
 rather than a detail that moved.
 """
 
-# The module under test is a standalone CLI script that imports its sibling by bare name, so the
-# scripts directory goes on the path and both resolve the way they do at the command line.
+# The module under test is a standalone CLI script that imports its sibling by bare name.
 # pyright: reportAny=false, reportExplicitAny=false
 
-import importlib
+import importlib.util
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "skills" / "session-bash-audit" / "scripts"
-# `prompts.py` imports `audit` by bare name, exactly as it resolves at the command line, so the
-# scripts directory goes on the path and both are then imported dynamically — a static import would
-# be one the type checker cannot resolve, since `skills/` holds no importable package.
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
 
-prompts = importlib.import_module("prompts")
-audit = importlib.import_module("audit")
+
+def _load(name: str) -> ModuleType:
+    """A script loaded from its file and registered under its bare name.
+
+    `prompts.py` does `from audit import …`, which resolves at the command line because the script's
+    own directory is on the path. Registering `audit` in `sys.modules` first satisfies that import the
+    same way without putting a directory on `sys.path`, which the shipped ruff config bans. A static
+    import would be one the type checker cannot resolve, since `skills/` holds no importable package.
+    """
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+audit = _load("audit")
+prompts = _load("prompts")
 
 PROJECT = "-tmp-work"
 

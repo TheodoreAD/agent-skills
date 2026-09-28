@@ -1,0 +1,16 @@
+# This repo's declarations to repo-tasks. Everything here is read by `inv configs.*`; see repo-tasks'
+# contributing/file-discovery.md for the keys.
+
+[pyright]
+# Trees basedpyright does not check, on purpose, so `inv configs.check-include` reports them as
+# declared rather than failing.
+#
+# `plans*`: a plan's probe scripts, written to answer one question and never run again.
+#
+# `skills*`: the shipped skill scripts, until repo-tasks can express the decision in this repo's
+# plans/2026-09-13-repo-tasks-consumer-sweep.md: check `skills/*/scripts` with the Any/Unknown rules
+# relaxed, and leave `references/snippets/` out. A pulled pyrightconfig.json takes neither a
+# per-repo rule tier nor a sub-tree glob today. Measured 2026-09-29: 1,202 errors and 931 warnings,
+# about 2,020 of them untyped-JSON noise. Filed for repo-tasks as
+# 2026-09-29-consumer-pyright-tier-and-subtree-include.md; drop this entry once it lands.
+unchecked = ["plans*", "skills*"]

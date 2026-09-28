@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: landed
 updated: 2026-09-28
 source_repo: github.com-personal/ingesta
 source_session: 20a2d59c-46f5-4aba-af3d-967f7ac699d9.jsonl
@@ -87,15 +87,16 @@ gap — the sharper of the three findings, and the one to fix first.
 All three parts of the recommended direction below are implemented in
 `skills/plan-conveyor/scripts/plans.py` (`_push_one`, `_run_push`, `push_command`,
 `outgoing_range`), with tests in `tests/unit/test_plan_store.py` and a paragraph in the SKILL.md
-push section. `push` now names foreign commits; it does not stop on them. What is left is the open
-question below, which is a decision rather than a fix.
+push section. `push` now names foreign commits; it does not stop on them.
 
-## Open questions
+## Decided
 
-[NEEDS CLARIFICATION: whether the store should follow the global "name foreign commits before
-pushing" rule at all. It is a shared log that every session pushes wholesale, and asking per foreign
-commit may be pure friction there — in which case the global rule wants an explicit exception for
-the store rather than a silent one.]
+[DECISION: a store push names other sessions' commits and never stops or asks on them. Decided by
+the user 2026-09-28. A store is a shared log every session pushes wholesale, and every outgoing
+commit passes the same scan, so asking per foreign commit is friction protecting nothing. Stopping
+was the rejected alternative. Recorded in SKILL.md's push section as an explicit exception, and
+filed for power-user-linux-setup as `2026-09-28-store-push-exception-to-foreign-commit-rule.md`,
+since the global rule it overrides lives in that repo's agents-md fragments.]
 
 ## Recommended direction
 
@@ -109,3 +110,18 @@ One change to `push`, three parts:
    is the pusher's. Whether a foreign commit should then stop the push, or just be named, is the
    question above.
 3. **On a non-zero `git push`, print git's stderr** under the `FAILED:` line, verbatim.
+
+## Migrated to
+
+- **The code:** `_push_one`, `_publish`, `_run_push`, `push_command` and `outgoing_range` in
+  `skills/plan-conveyor/scripts/plans.py`. The scan-then-push race and the dropped stderr are in the
+  docstrings of `push_command` and `_run_push`.
+- **Usage docs:** the push section of `skills/plan-conveyor/SKILL.md`: the pinned tip, the commit
+  listing, and the foreign-commit decision.
+- **Tests:** `test_push_names_each_outgoing_commit_and_sets_the_upstream_on_a_first_push`,
+  `test_push_publishes_the_scanned_tip_not_a_commit_landing_after_the_scan` and
+  `test_a_failed_push_prints_what_git_said` in `tests/unit/test_plan_store.py`.
+- **The global rule's exception:** filed for power-user-linux-setup as
+  `2026-09-28-store-push-exception-to-foreign-commit-rule.md`.
+
+Not migrated: the two evidence narratives, which the docstrings and SKILL.md summarise.

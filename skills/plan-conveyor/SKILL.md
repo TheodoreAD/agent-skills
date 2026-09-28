@@ -620,6 +620,12 @@ such a commit went out unscanned.
 **It lists every outgoing commit before pushing**, so a commit you did not make is on screen before
 it is published rather than found in `git log` afterwards. A failed push prints git's own error.
 
+**Another session's commit is named, never a reason to stop or ask.** A store is a shared log that
+every session commits into and pushes wholesale, and its commits are scanned like yours, so the home
+instructions' "ask before your push publishes a commit you did not make" does not apply to a store
+push. Mention the foreign commits in your report so the user knows what went out. Decided by the
+user 2026-09-28, after asking per commit was weighed as friction with nothing to protect.
+
 On a hit it **refuses and publishes nothing**, naming the lines. A push cannot be taken back by a
 later edit: the content stays in the history, and a repo's history is as readable as its tip.
 

@@ -15,6 +15,8 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -2378,6 +2380,213 @@ def test_link_move_to_private_carries_the_plans_and_unblocks_the_private_clone(w
 
     assert plans.main(["new", "now-private", "--path", str(ws.client)]) == 0
     assert list((ws.sensitive / folder).glob("*-now-private.md"))
+
+
+# --------------------------------------------------------------------------------------------
+# moving a store onto links, and repairing it: `links fix`, `merge`, `claim`
+
+
+def seeded(ws: Workspace, folder: str, *repos: str, first: int = 1) -> list[Path]:
+    """Plans in a shareable-store folder, one per `repo:` value given ('' writes none), committed."""
+    made = []
+    for n, repo in enumerate(repos, start=first):
+        front = f"status: idea\nupdated: 2026-09-0{n}" + (f"\nrepo: {repo}" if repo else "")
+        made.append(plan(ws.store / folder, f"2026-09-0{n}-p{n}.md", front))
+    subprocess.run(["git", "add", "-A"], cwd=ws.store, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=ws.store, check=True)
+    return made
+
+
+def test_links_fix_is_a_dry_run_until_told_otherwise(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    folder = "github.com-personal/tool"
+    seeded(ws, folder, "git@github.com:TheodoreAD/tool.git", "https://github.com/TheodoreAD/tool")
+    capsys.readouterr()
+
+    assert plans.main(["links", "fix", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert f"link github.com/TheodoreAD/tool -> {folder}" in out
+    assert "rewrite repo: in 2 plan(s)" in out
+    assert "dry run: nothing was changed" in out
+    assert not (ws.store / plans.LINKS_FILE).exists()
+
+
+def test_links_fix_yes_links_rewrites_commits_and_then_has_nothing_to_do(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    folder = "github.com-personal/tool"
+    made = seeded(ws, folder, "git@github.com:TheodoreAD/tool.git", "")
+
+    assert plans.main(["links", "fix", "--yes", "--path", str(ws.personal)]) == 0
+    assert plans.read_links(plans.load_config().store).entries == {"github.com/TheodoreAD/tool": folder}
+    # A raw URL and a missing field both end up as the identity.
+    assert {plans.parse_frontmatter(p.read_text(encoding="utf-8"))["repo"] for p in made} == {
+        "github.com/TheodoreAD/tool"
+    }
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=ws.store, capture_output=True, text=True, check=True)
+    assert status.stdout == ""
+    capsys.readouterr()
+    assert plans.main(["links", "fix", "--path", str(ws.personal)]) == 0
+    assert "nothing to do" in capsys.readouterr().out
+
+
+def test_links_fix_turns_a_path_repo_value_into_the_first_commit(ws):
+    """The old fallback for a clone with no remote wrote its path into `repo:`."""
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    drop_remote(ws.personal)
+    commit(ws.personal, "notes.md", "x\n")
+    folder = "github.com-personal/agent-skills"
+    seeded(ws, folder, folder)
+    assert plans.main(["links", "fix", "--yes", "--path", str(ws.personal)]) == 0
+    local = plans.clone_identity(ws.personal).own
+    assert plans.read_links(plans.load_config().store).entries == {local: folder}
+
+
+def test_links_fix_asks_before_merging_two_folders_of_one_repository(ws, capsys):
+    """Today's bug as data: parallel clones wrote two folders. The main one is linked, the other is
+    a decision with the merge spelled out — never merged on --yes."""
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    seeded(ws, "github.com-personal/billing", "git@github.com:acme/billing.git")
+    seeded(ws, "github.com-personal/billing-hotfix/billing", "git@github.com:acme/billing.git", first=2)
+    capsys.readouterr()
+    assert plans.main(["links", "fix", "--yes", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "plans.py links merge github.com-personal/billing-hotfix/billing --into github.com-personal/billing" in out
+    assert (ws.store / "github.com-personal" / "billing-hotfix" / "billing").is_dir()
+
+    merged = ["links", "merge", "github.com-personal/billing-hotfix/billing", "--into", "github.com-personal/billing"]
+    assert plans.main([*merged, "--path", str(ws.personal)]) == 0
+    assert len(list((ws.store / "github.com-personal" / "billing").glob("*.md"))) == 2
+    assert not (ws.store / "github.com-personal" / "billing-hotfix" / "billing").exists()
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=ws.store, capture_output=True, text=True, check=True)
+    assert status.stdout == ""
+
+
+def test_links_merge_refuses_two_plans_with_one_name(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    seeded(ws, "github.com-personal/a", "git@github.com:acme/x.git")
+    seeded(ws, "github.com-personal/b", "git@github.com:acme/x.git")
+    merged = ["links", "merge", "github.com-personal/b", "--into", "github.com-personal/a"]
+    assert plans.main([*merged, "--path", str(ws.personal)]) == 1
+    assert "a merge of content, not a move" in capsys.readouterr().err
+    assert (ws.store / "github.com-personal" / "b" / "2026-09-01-p1.md").is_file()
+
+
+def test_an_orphan_folder_is_claimed_rather_than_guessed(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    seeded(ws, "github.com-personal/gone", "")
+    capsys.readouterr()
+    assert plans.main(["links", "fix", "--path", str(ws.personal)]) == 0
+    assert "plans.py links claim github.com-personal/gone <identity>" in capsys.readouterr().out
+    claimed = ["links", "claim", "github.com-personal/gone", "https://github.com/TheodoreAD/gone.git"]
+    assert plans.main([*claimed, "--path", str(ws.personal)]) == 0
+    entries = plans.read_links(plans.load_config().store).entries
+    assert entries == {"github.com/TheodoreAD/gone": "github.com-personal/gone"}
+
+
+def test_links_fix_puts_a_private_root_in_the_shareable_store_before_everything(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    seeded(ws, "client.com-bitbucket/team/api", "git@example.com:x/api.git")
+    capsys.readouterr()
+    assert plans.main(["links", "fix", "--yes", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "before anything else" in out
+    assert "is in the SHAREABLE store, but client.com-bitbucket is a private root" in out
+    assert plans.read_links(plans.load_config().store).entries == {}
+
+
+def test_links_fix_refuses_a_store_another_session_is_writing_in(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    seeded(ws, "github.com-personal/tool", "git@github.com:TheodoreAD/tool.git")
+    busy = ws.store / "github.com-personal" / "tool" / "2026-09-09-busy.md"
+    busy.write_text("---\nstatus: idea\n---\n", encoding="utf-8")
+    assert plans.main(["links", "fix", "--yes", "--path", str(ws.personal)]) == 1
+    assert "has uncommitted changes" in capsys.readouterr().err
+    assert not (ws.store / plans.LINKS_FILE).exists()
+
+
+def test_empty_folders_are_listed_and_removed_only_when_asked(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    seeded(ws, "github.com-personal/tool", "git@github.com:TheodoreAD/tool.git")  # commits the store's README
+    (ws.store / "github.com-personal" / "absorbed").mkdir(parents=True)
+    capsys.readouterr()
+    assert plans.main(["links", "fix", "--yes", "--path", str(ws.personal)]) == 0
+    assert "github.com-personal" in capsys.readouterr().out
+    assert (ws.store / "github.com-personal" / "absorbed").is_dir()
+    assert plans.main(["links", "fix", "--yes", "--prune-empty", "--path", str(ws.personal)]) == 0
+    assert not (ws.store / "github.com-personal" / "absorbed").exists()
+    assert (ws.store / "github.com-personal" / "tool").is_dir()
+
+
+def test_doctor_summarises_what_links_fix_would_do(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    seeded_dir = ws.store / "github.com-personal" / "tool"
+    plan(seeded_dir, "2026-09-01-p.md", "status: idea\nupdated: 2026-09-01\nrepo: git@github.com:TheodoreAD/tool.git")
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "1 folder(s) to link and 1 repo: value(s) to rewrite" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------------------------
+# the messages are the documented interface, so they are tested like one
+
+
+def _sample_messages() -> list[str]:
+    store = plans.Store(plans.SHAREABLE, Path("/home/me/plans"), "test")
+    links = plans.Links(store, {"github.com/acme/x": "github.com-acme/x"})
+    match = plans.LinkMatch("github.com/acme/x", "github.com-acme/x", True)
+    clone = plans.CloneIdentity(
+        Path("/home/me/projects/github.com-acme/x"),
+        None,
+        (("fork", "github.com/me/x"), ("upstream", "github.com/acme/x")),
+        "local:a1b2c3d4e5f6",
+    )
+    return [
+        plans._which_remote_message(clone),
+        plans._remotes_disagree_message(clone, [(links, match), (links, match)]),
+        plans._listed_twice_message("github.com/acme/x", [(links, match), (links, match)]),
+        plans._known_before_message(clone, "github.com/acme/x", links, match),
+        plans._folder_taken_message(clone, "github.com/acme/x-renamed", links, "github.com-acme/x"),
+        plans._shareable_refusal_message(clone, "client.com-bitbucket/team/x", links, match),
+    ]
+
+
+def test_every_command_a_message_names_is_one_the_parser_accepts():
+    """A message naming a flag that does not exist sends its reader into an error at the exact moment
+    they were promised a way out — this corpus has shipped that once already."""
+    parser = plans.build_parser()
+    checked = 0
+    for message in _sample_messages():
+        assert "Nothing was written" in message
+        for line in message.splitlines():
+            if "plans.py " not in line:
+                continue
+            command = line.split("plans.py ", 1)[1].split("#", 1)[0]
+            try:
+                parser.parse_args(shlex.split(command))
+            except SystemExit:
+                pytest.fail(f"a message names a command the parser refuses: plans.py {command.strip()}")
+            checked += 1
+    assert checked >= 8
+
+
+def test_every_section_a_message_points_at_exists():
+    doc = (SCRIPT.parent.parent / "references" / "store-links.md").read_text(encoding="utf-8")
+    anchors = {
+        re.sub(r"[^a-z0-9 -]", "", line.lstrip("# ").strip().lower()).replace(" ", "-")
+        for line in doc.splitlines()
+        if line.startswith("## ")
+    }
+    cited = {m for message in _sample_messages() for m in re.findall(r"store-links\.md#([a-z0-9-]+)", message)}
+    assert cited, "messages stopped citing the background doc"
+    assert cited <= anchors, f"missing sections: {cited - anchors}"
 
 
 def test_a_local_attachment_follows_the_link_not_the_clone_path(ws):

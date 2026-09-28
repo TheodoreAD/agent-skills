@@ -1931,6 +1931,390 @@ def _show_link(cfg: Config, clone: CloneIdentity, routing: Routing) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------------------------
+# the tables as a whole: surveyed, repaired, and folders merged or claimed
+
+
+# A `repo:` value already in identity form: `<host>/<owner>/<repo>`, a dotted host and no scheme.
+IDENTITY_SHAPE = re.compile(r"[^/\s:]+\.[^/\s:]+(?:/[^/\s]+)+")
+
+
+def repo_value_identity(cfg: Config, value: str) -> str | None:
+    """The identity a plan's `repo:` value names, whichever of its historical shapes it is in.
+
+    Three shapes have been written there: a raw remote URL (until 2026-09-28), a clone path under
+    `projects_root` (the fallback for a clone with no remote), and the identity itself (since).
+    """
+    value = value.strip()
+    if not value:
+        return None
+    if value.startswith((LOCAL_IDENTITY, FILE_IDENTITY)):
+        return value
+    if (remote := parse_remote(value)) is not None:
+        return remote_identity(remote)
+    if (clone := cfg.projects_root / value).is_dir() and (found := clone_identity(clone)) is not None:
+        return found.own
+    return value if IDENTITY_SHAPE.fullmatch(value) else None
+
+
+def store_plan_folders(store: Store) -> dict[str, list[Path]]:
+    """Every folder in a store that directly holds plan files, with those files.
+
+    The store's own areas (`_unscoped`, `_attachments`, anything dotted) are not repository
+    folders. A plan's committed attachments sit in a sibling directory named for its stem, and an
+    attached markdown file there is evidence, not a plan, so those directories are skipped.
+    """
+    root = store.path.expanduser()
+    found: dict[str, list[Path]] = {}
+    if not root.is_dir():
+        return found
+    for path in sorted(root.rglob("*.md")):
+        rel = path.relative_to(root)
+        if len(rel.parts) < 2 or rel.parts[0].startswith(("_", ".")):
+            continue
+        if (path.parent.parent / f"{path.parent.name}.md").is_file():
+            continue  # inside a plan's attachment directory
+        found.setdefault(path.parent.relative_to(root).as_posix(), []).append(path)
+    return found
+
+
+def empty_store_folders(store: Store) -> list[Path]:
+    """Folders holding no file at all, outermost only — what `absorb` and moves leave behind."""
+    root = store.path.expanduser()
+    if not root.is_dir():
+        return []
+    empty = {
+        path
+        for path in root.rglob("*")
+        if path.is_dir()
+        and not path.relative_to(root).parts[0].startswith(("_", "."))
+        and not any(child.is_file() for child in path.rglob("*"))
+    }
+    return sorted(path for path in empty if path.parent not in empty)
+
+
+class LinkFinding(NamedTuple):
+    group: str  # first | automatic | decision | left
+    text: str
+    commands: tuple[str, ...] = ()
+
+
+@dataclass
+class LinkSurvey:
+    """What `links fix` found in one store, and the automatic repairs it would make."""
+
+    store: Store
+    links: Links
+    findings: list[LinkFinding] = field(default_factory=list)
+    to_link: dict[str, str] = field(default_factory=dict)  # identity -> folder
+    rewrites: dict[Path, str] = field(default_factory=dict)  # plan file -> identity for `repo:`
+    empty: list[Path] = field(default_factory=list)
+
+
+def _folder_identities(cfg: Config, folder: str, files: list[Path]) -> tuple[dict[str, str], list[Path], int]:
+    """The identities a folder's plans record, by comparison key; the plans whose `repo:` needs
+    writing (a raw URL, a path, or none at all); and how many name something unresolvable.
+
+    A plan with no `repo:` at all adopts the folder's one identity, since it was written there by
+    the same routing; a value that resolves to nothing is a question, never a guess.
+    """
+    identities: dict[str, str] = {}
+    rewrite: list[Path] = []
+    unresolved = 0
+    for path in files:
+        value = str(parse_frontmatter(path.read_text(encoding="utf-8")).get("repo", ""))
+        identity = repo_value_identity(cfg, value) if value else None
+        if not value:
+            rewrite.append(path)
+        elif identity is None:
+            unresolved += 1
+        else:
+            identities.setdefault(identity_key(identity), identity)
+            if value != identity:
+                rewrite.append(path)
+    if not identities and (clone := clone_identity(cfg.projects_root / folder)) is not None and clone.own:
+        # Nothing recorded, but a clone sits at exactly this path: the old one-folder-per-path
+        # assumption, used once as evidence and never again as a rule.
+        identities[identity_key(clone.own)] = clone.own
+    return identities, rewrite, unresolved
+
+
+def with_repo_field(text: str, identity: str) -> str:
+    """A plan's text with `repo:` set to this identity, where the store's convention puts it."""
+    text = strip_frontmatter_key(text, "repo")
+    if "\nupdated:" in text:
+        return text.replace("\nupdated:", f"\nrepo: {identity}\nupdated:", 1)
+    return text.replace("---\n", f"---\nrepo: {identity}\n", 1)
+
+
+def _survey_linked(cfg: Config, survey: LinkSurvey, folder: str, files: list[Path]) -> None:
+    names = survey.links.identities_of(folder)
+    keys = {identity_key(name): name for name in names}
+    for path in files:
+        value = str(parse_frontmatter(path.read_text(encoding="utf-8")).get("repo", ""))
+        identity = repo_value_identity(cfg, value) if value else None
+        if identity is None:
+            continue
+        spelled = keys.get(identity_key(identity))
+        if spelled is None:
+            survey.findings.append(
+                LinkFinding(
+                    "decision",
+                    f"{folder}/{path.name} records {identity}, but {folder} is linked to {', '.join(names)}",
+                    (f"plans.py links claim {folder} {identity}   # if they are the same repository",),
+                )
+            )
+        elif value != spelled:
+            survey.rewrites[path] = spelled
+
+
+def _survey_unlinked(cfg: Config, survey: LinkSurvey, folder: str, files: list[Path], seen: dict[str, str]) -> None:
+    identities, rewrite, unresolved = _folder_identities(cfg, folder, files)
+    held = f"{len(files)} plan(s)"
+    if not identities:
+        survey.findings.append(
+            LinkFinding(
+                "decision",
+                f"{folder} ({held}): no plan records a repository and no clone sits at that path",
+                (f"plans.py links claim {folder} <identity>   # e.g. github.com/<owner>/<repo>",),
+            )
+        )
+        return
+    if len(identities) > 1 or unresolved:
+        unknown = f", and {unresolved} plan(s) naming something unrecognised" if unresolved else ""
+        listed = ", ".join(sorted(identities.values())) + unknown
+        survey.findings.append(
+            LinkFinding(
+                "decision",
+                f"{folder} ({held}) holds plans for several repositories: {listed}",
+                (f"plans.py links claim {folder} <identity>   # the one this folder is for",),
+            )
+        )
+        return
+    identity = next(iter(identities.values()))
+    if cfg.split_by_sensitivity and survey.store.tier == SHAREABLE and cfg.tier_of(folder) == SENSITIVE:
+        survey.findings.append(
+            LinkFinding(
+                "first",
+                f"{folder} ({held}) is in the SHAREABLE store, but {folder.partition('/')[0]} is a private root",
+                ("plans.py link --move-to private   # run from a clone of it, once it is linked",),
+            )
+        )
+        return
+    for store in cfg.stores():
+        if (match := read_links(store).lookup(identity)) is not None and match.directory != folder:
+            where = f"{TIER_WORDS[store.tier]} store"
+            survey.findings.append(
+                LinkFinding(
+                    "decision",
+                    f"{folder} ({held}) is {identity}, which is already linked to {match.directory} ({where})",
+                    (f"plans.py links merge {folder} --into {match.directory}",)
+                    if store.path == survey.store.path
+                    else (),
+                )
+            )
+            return
+    key = identity_key(identity)
+    if key in seen:
+        survey.findings.append(
+            LinkFinding(
+                "decision",
+                f"{folder} ({held}) and {seen[key]} both hold plans for {identity}",
+                (f"plans.py links merge {folder} --into {seen[key]}",),
+            )
+        )
+        return
+    seen[key] = folder
+    survey.to_link[identity] = folder
+    survey.rewrites.update(dict.fromkeys(rewrite, identity))
+
+
+def survey_links(cfg: Config) -> list[LinkSurvey]:
+    """Every store's table against what is actually in the store — read-only."""
+    surveys = [LinkSurvey(store, read_links(store)) for store in cfg.stores()]
+    tables = {survey.store.path: survey.links for survey in surveys}
+    homes: dict[str, list[str]] = {}
+    for links in tables.values():
+        for identity in links.entries:
+            homes.setdefault(identity_key(identity), []).append(display_path(links.path))
+    for survey in surveys:
+        for group in survey.links.case_clashes():
+            survey.findings.append(
+                LinkFinding("decision", f"{', '.join(group)} differ only in letter case, in {survey.links.path}")
+            )
+        seen: dict[str, str] = {}
+        for folder, files in store_plan_folders(survey.store).items():
+            if folder in survey.links.entries.values():
+                _survey_linked(cfg, survey, folder, files)
+            else:
+                _survey_unlinked(cfg, survey, folder, files, seen)
+        survey.empty = empty_store_folders(survey.store)
+    first = surveys[0]
+    for key, places in homes.items():
+        if len(places) > 1:
+            first.findings.append(LinkFinding("first", f"{key} is linked in more than one store: {', '.join(places)}"))
+    return surveys
+
+
+def _print_survey(survey: LinkSurvey, *, prune: bool) -> None:
+    label = f"  [{TIER_WORDS[survey.store.tier]}]" if survey.store.tier != SINGLE else ""
+    print(f"\nstore:   {display_path(survey.store.path.expanduser())}{label}")
+    automatic = [f"link {identity} -> {folder}" for identity, folder in sorted(survey.to_link.items())]
+    if survey.rewrites:
+        automatic.append(f"rewrite repo: in {len(survey.rewrites)} plan(s) to the repository's identity")
+    groups = (
+        ("before anything else", [f for f in survey.findings if f.group == "first"]),
+        ("automatic — applied with --yes", [LinkFinding("automatic", text) for text in automatic]),
+        ("needs your decision", [f for f in survey.findings if f.group == "decision"]),
+    )
+    for title, findings in groups:
+        if findings:
+            print(f"  {title} ({len(findings)})")
+            for finding in findings:
+                print(f"    - {finding.text}")
+                for command in finding.commands:
+                    print(f"        {command}")
+    if survey.empty:
+        verb = "to remove" if prune else "left alone — --yes --prune-empty removes them"
+        print(f"  empty folders ({len(survey.empty)}, {verb})")
+        for path in survey.empty:
+            print(f"    - {path.relative_to(survey.store.path.expanduser()).as_posix()}")
+    if not (survey.findings or automatic or survey.empty):
+        print("  nothing to do")
+
+
+def _has_work(survey: LinkSurvey, *, prune: bool) -> bool:
+    return bool(survey.to_link or survey.rewrites or (prune and survey.empty))
+
+
+def _refuse_dirty_stores(surveys: list[LinkSurvey], *, prune: bool) -> None:
+    """Every store that would change must be clean, checked for all of them before any is touched."""
+    for survey in surveys:
+        root = survey.store.path.expanduser()
+        if _has_work(survey, prune=prune) and is_git_repo(root) and (dirty := git(["status", "--porcelain"], root)):
+            raise PlanError(
+                f"{display_path(root)} has uncommitted changes, so another session may be holding a file there:\n"
+                f"{dirty}\n  Nothing was changed. Run links fix --yes again once that session has committed."
+            )
+
+
+def _apply_survey(survey: LinkSurvey, *, prune: bool) -> None:
+    root = survey.store.path.expanduser()
+    if not _has_work(survey, prune=prune):
+        return
+    links = survey.links
+    for identity, folder in survey.to_link.items():
+        links = links.linked(identity, folder)
+    for path, identity in survey.rewrites.items():
+        path.write_text(with_repo_field(path.read_text(encoding="utf-8"), identity), encoding="utf-8")
+    if prune:
+        for path in survey.empty:
+            shutil.rmtree(path)
+    message = f"links: {len(survey.to_link)} folder(s) linked, repo: rewritten in {len(survey.rewrites)} plan(s)"
+    print(f"applied: {display_path(root)} — {save_links(links, message, sorted(survey.rewrites))}")
+
+
+def _links_fix(cfg: Config, *, apply: bool, prune: bool) -> int:
+    surveys = survey_links(cfg)
+    if apply:
+        _refuse_dirty_stores(surveys, prune=prune)
+    for survey in surveys:
+        _print_survey(survey, prune=prune and apply)
+    if not apply:
+        print("\ndry run: nothing was changed. Apply the automatic group:  plans.py links fix --yes")
+        return 0
+    for survey in surveys:
+        _apply_survey(survey, prune=prune)
+    return 0
+
+
+def _links_show(cfg: Config) -> int:
+    for store in cfg.stores():
+        links = read_links(store)
+        label = f"  [{TIER_WORDS[store.tier]}]" if store.tier != SINGLE else ""
+        print(f"store:   {display_path(links.path)}{label}")
+        folders = store_plan_folders(store)
+        for identity, folder in sorted(links.entries.items(), key=lambda item: (item[1], item[0])):
+            print(f"  {identity}  ->  {folder}  ({len(folders.get(folder, []))} plan(s))")
+        unlinked = sorted(set(folders) - set(links.entries.values()))
+        if unlinked:
+            print(f"  not linked yet ({len(unlinked)} folder(s) holding plans) — plans.py links fix")
+    return 0
+
+
+def _links_merge(cfg: Config, source: str, target: str) -> int:
+    """Fold one folder into another in the same store: plans, attachments and links."""
+    check_link_directory(source)
+    check_link_directory(target)
+    store = _store_holding(cfg, source)
+    if store is None:
+        raise PlanError(f"no store holds a folder {source!r}")
+    holder = _store_holding(cfg, target)
+    if holder is not None and holder.path != store.path:
+        raise PlanError(f"{target} is in the other store; moving between stores is: plans.py link --move-to private")
+    root = store.path.expanduser()
+    if is_git_repo(root) and (dirty := git(["status", "--porcelain"], root)):
+        raise PlanError(f"{display_path(root)} has uncommitted changes:\n{dirty}\n  Nothing was changed.")
+    src_dir, dst_dir = root / source, root / target
+    local_src, local_dst = root / ATTACHMENTS_DIR / source, root / ATTACHMENTS_DIR / target
+    children = sorted(src_dir.iterdir()) if src_dir.is_dir() else []
+    local_children = sorted(local_src.iterdir()) if local_src.is_dir() else []
+    clashes = [c.name for c in children if (dst_dir / c.name).exists()]
+    clashes += [f"{ATTACHMENTS_DIR}/{c.name}" for c in local_children if (local_dst / c.name).exists()]
+    if clashes:
+        raise PlanError(
+            f"both folders hold {', '.join(clashes)} — a merge of content, not a move. Resolve those by hand "
+            "(rename one with plans.py rename), then merge again. Nothing was changed."
+        )
+    tracked = (git(["ls-files", "--", source], root) or "").splitlines() if is_git_repo(root) else []
+    for child, landing in [(c, dst_dir) for c in children] + [(c, local_dst) for c in local_children]:
+        landing.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(child), str(landing / child.name))
+    for emptied in (src_dir, local_src):
+        if emptied.is_dir() and not any(emptied.iterdir()):
+            emptied.rmdir()
+    links = read_links(store)
+    entries = {identity: (target if folder == source else folder) for identity, folder in links.entries.items()}
+    links = replace(links, entries=entries)
+    moved = [dst_dir / c.name for c in children]
+    files = [f for path in moved for f in ([path] if path.is_file() else sorted(path.rglob("*"))) if f.is_file()]
+    removed = [root / line for line in tracked if line]
+    status = save_links(links, f"links: merge {source} into {target}", files + removed)
+    print(f"merged:  {source} -> {target}  ({len(children)} item(s); {status})")
+    return 0
+
+
+def _links_claim(cfg: Config, folder: str, value: str) -> int:
+    check_link_directory(folder)
+    identity = repo_value_identity(cfg, value)
+    if identity is None:
+        raise PlanError(f"{value!r} is not a repository identity (e.g. github.com/<owner>/<repo>) or a remote URL")
+    store = _store_holding(cfg, folder)
+    if store is None:
+        raise PlanError(f"no store holds a folder {folder!r}")
+    if cfg.split_by_sensitivity and store.tier == SHAREABLE and cfg.tier_of(folder) == SENSITIVE:
+        raise PlanError(f"{folder} is in the shareable store under a private root; move it first, then claim it")
+    status = save_links(read_links(store).linked(identity, folder), f"links: {identity} -> {folder}")
+    print(f"linked:  {identity} -> {folder}  ({TIER_WORDS[store.tier]} store; {status})")
+    return 0
+
+
+def cmd_links(args: argparse.Namespace, ws: Workspace) -> int:
+    """Every store's link table: shown, repaired (`fix`), or changed a folder at a time."""
+    cfg = ws.require_config()
+    if args.action == "fix":
+        return _links_fix(cfg, apply=args.yes, prune=args.prune_empty)
+    if args.action == "merge":
+        if len(args.names) != 1 or not args.into:
+            raise PlanError("usage: plans.py links merge <folder> --into <folder>")
+        return _links_merge(cfg, args.names[0], args.into)
+    if args.action == "claim":
+        if len(args.names) != 2:
+            raise PlanError("usage: plans.py links claim <folder> <identity>")
+        return _links_claim(cfg, *args.names)
+    return _links_show(cfg)
+
+
 def cmd_link(args: argparse.Namespace, ws: Workspace) -> int:
     """Which repository this clone is, and which store folder holds its plans — shown or changed."""
     cfg = ws.require_config()
@@ -6998,7 +7382,26 @@ def _all_problems(ws: Workspace, unrouted: list[str], *, strict: bool = False) -
         + layout_problems(ws, strict=strict)
         + org_problems(ws.config, ws.known_orgs)
         + routing
+        + link_problems(ws.config)
     )
+
+
+def link_problems(cfg: Config) -> list[str]:
+    """What `links fix` would stop on or ask about, summarised for `doctor` — which never repairs.
+
+    Every finding is a problem except the automatic group, which is summarised as one line: a store
+    that has not been moved onto links yet is the ordinary state before first adoption, and a row
+    per folder would bury the findings that actually need a person.
+    """
+    found: list[str] = []
+    for survey in survey_links(cfg):
+        found += [finding.text for finding in survey.findings if finding.group in ("first", "decision")]
+        if survey.to_link or survey.rewrites:
+            found.append(
+                f"{display_path(survey.store.path.expanduser())}: {len(survey.to_link)} folder(s) to link and "
+                f"{len(survey.rewrites)} repo: value(s) to rewrite — plans.py links fix, then --yes"
+            )
+    return found
 
 
 def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
@@ -7471,6 +7874,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--move-to", choices=("private",), help="move this repository's folder and links to the private store"
     )
     link.set_defaults(func=cmd_link)
+
+    links = add("links", "every store's link table: show, fix (migrate and repair), merge or claim folders")
+    links.add_argument("action", nargs="?", choices=("show", "fix", "merge", "claim"), default="show")
+    links.add_argument("names", nargs="*", metavar="NAME", help="merge: <folder>; claim: <folder> <identity>")
+    links.add_argument("--into", metavar="FOLDER", help="merge: the folder to keep")
+    links.add_argument("--yes", action="store_true", help="fix: apply the automatic repairs (default: dry run)")
+    links.add_argument("--prune-empty", action="store_true", help="fix --yes: also remove empty folders")
+    links.set_defaults(func=cmd_links)
 
     move = add("move", "move a plan between the repo and the store")
     move.add_argument("file", help="plan path or bare filename")

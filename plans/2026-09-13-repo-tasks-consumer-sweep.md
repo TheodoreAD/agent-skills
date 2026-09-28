@@ -103,7 +103,8 @@ keys the checker rejects, `session-bash-audit/scripts/audit.py` calling `.split`
 `None`.
 
 [DECISION: cover `skills/*/scripts` in the gate with the `Any`/Unknown rules relaxed for them, the
-way `tests` already has its own tier; fix the ~50 real findings; keep `references/snippets/` out.
+way `tests` already has its own tier; fix the real findings (done the same day, independently of the
+tier: see "The real type findings, fixed ahead of the tier"); keep `references/snippets/` out.
 Decided by the user 2026-09-29. Declaring `skills/` whole was rejected because the gate would stay
 red on ~2,000 findings whose fix is typing every JSON access. A one-off fix without the gate was
 rejected because nothing would stop new findings arriving.]
@@ -301,14 +302,33 @@ step 1 was a no-op. Commits `1fd4164` (dev group and seven tools), `6a2ea20` (co
   39s, including the bootstrap now pinned to v0.6.0, `quality.check` and `test.integration`.
 - **The Windows job tolerating the shipped `filterwarnings`: right.** Run `36485370024` passed. One
   caveat for the next reader: that job runs `uv run --no-project --python 3.13 --with pytest`, so it
-  reads `pytest.ini` but installs neither `pytest-socket` nor `pytest-timeout`, and it runs on 3.13
-  while Linux runs on 3.11.
+  reads `pytest.ini` but installs neither `pytest-socket` nor `pytest-timeout`, and it ran on 3.13
+  while Linux runs on 3.11. Moved to 3.14 the same day (`86d0b02`), so CI spans floor and newest.
+
+## The real type findings, fixed ahead of the tier (2026-09-29)
+
+Fixed without waiting for repo-tasks, so the tier is a pure declaration when it lands. Re-measured
+first under the pulled config: **82** findings outside the untyped-value family and unresolved
+imports, not ~50 — the earlier count left out 16 missing-annotation warnings and the snippets.
+
+- **Shipped scripts: 55, all fixed** (`6d86c80`, `4a723bb`). One was a real crash:
+  `session-bash-audit`'s `prompts.py` had iterated `load_calls`' `(calls, replayed)` pair as the
+  list since 2026-09-13, so the permission replay died on every run for sixteen days. The rest were
+  typing: mixed payload dicts read back, unannotated attributes, narrowings pyright could not
+  follow, and parameters claiming pre-checked JSON where a runtime guard defended against the wrong
+  shape.
+- **Snippets: 27, one real** (`d04fb64`). `python-conventions-taudelta`'s `async-fanout.py` combined
+  a semaphore and `contextlib.suppress` in one `async with`, which raises `TypeError` on every call.
+  The other 26 exist only because huey, httpx, pydantic and sqlalchemy are not installed here.
+
+`basedpyright skills` now reports only the untyped-value family and those snippet artifacts.
 
 ## What is left
 
 Nothing in the sweep itself. The two decisions above each wait on a repo-tasks change filed
-2026-09-29: `2026-09-29-consumer-pyright-tier-and-subtree-include.md` (then check
-`skills/*/scripts`, fix the ~50 real findings, drop `skills*` from `repo-tasks.toml`'s `unchecked`)
-and `2026-09-29-consumer-can-decline-the-security-caller.md` (then declare the opt-out, whose reason
-is the security DECISION above, in `repo-tasks.toml`). Retire this plan once both have landed here,
-because until then this file is the only home of the security decision's reasoning.
+2026-09-29: `2026-09-29-consumer-pyright-tier-and-subtree-include.md` (then declare
+`skills/*/scripts`, pull, and drop `skills*` from `repo-tasks.toml`'s `unchecked` — the findings are
+already fixed, see above) and `2026-09-29-consumer-can-decline-the-security-caller.md` (then declare
+the opt-out, whose reason is the security DECISION above, in `repo-tasks.toml`). Retire this plan
+once both have landed here, because until then this file is the only home of the security decision's
+reasoning.

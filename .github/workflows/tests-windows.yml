@@ -10,6 +10,12 @@ name: Tests (Windows)
 # Only pytest, deliberately: the quality gate's tools are pinned as Linux wheels in the dev group,
 # and `--no-project` keeps this leg from resolving any of them. The scripts under test are stdlib;
 # `typing-extensions` is the tests' own, for `override` on the 3.11 floor they develop at.
+#
+# The newest Python, deliberately, so that CI spans both ends: ci.yml runs the whole gate at the
+# 3.11 floor from `.python-version`, and this leg runs the suite on the release a consumer's ambient
+# `python3` increasingly is. The shipped scripts run on whatever interpreter the consumer has, so a
+# stdlib removal or new deprecation lands there first. Was 3.13 from 2026-09-05 with no stated
+# reason, which left 3.14 untested anywhere; moved 2026-09-29. Bump all three lines with each release.
 
 on:
   push:
@@ -33,12 +39,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.2.0
-      - run: uv run --no-project --python 3.13 --with pytest --with typing-extensions pytest
+      - run: uv run --no-project --python 3.14 --with pytest --with typing-extensions pytest
       # The one live measurement a runner can make of the sweep's Windows arms: the suite pins the
       # PowerShell and netstat parsers to documented output, and this runs the two commands for
       # real. Without a transcript the sweep degrades and says so; both sections must still answer
       # `available: true`, which is the whole assertion.
       - run: >-
-          uv run --no-project --python 3.13 python skills/session-harvest/scripts/harvest.py
+          uv run --no-project --python 3.14 python skills/session-harvest/scripts/harvest.py
           sweep --only processes --only sockets --json
-          | uv run --no-project --python 3.13 python tests/ci/assert_sweep_available.py
+          | uv run --no-project --python 3.14 python tests/ci/assert_sweep_available.py

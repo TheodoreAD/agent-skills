@@ -3775,9 +3775,16 @@ def harvest_runs(entries: Iterable[dict[str, Any]], until: str | None = None) ->
     Whether a run is the second harvest of a session is a fact about the transcript, not something
     the agent has to still be holding: the evidence for this whole subcommand is a session whose
     second harvest corrected the first's filed row only because it happened to remember filing it.
+
+    Quoted spans are blanked first, as `store_commits` does for the files a command names: a search
+    whose pattern mentions the subcommand is not a harvest. Confirmed 2026-09-28 — a session's first
+    harvest was announced as #2, because hours earlier it had run
+    `rg -n "harvest.py (boundary|transcript)|…" SKILL.md` while editing this skill.
     """
     return [
-        stamp for stamp, command in bash_calls(entries) if BOUNDARY_CALL_RE.search(command) and before(stamp, until)
+        stamp
+        for stamp, command in bash_calls(entries)
+        if BOUNDARY_CALL_RE.search(QUOTED_SPAN_RE.sub(" ", command)) and before(stamp, until)
     ]
 
 

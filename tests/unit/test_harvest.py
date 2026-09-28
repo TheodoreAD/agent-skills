@@ -2211,6 +2211,15 @@ def test_a_second_harvest_is_counted_from_the_transcript_not_remembered():
     assert harvest.harvest_runs(entries, until="2026-09-07T09:00:00Z") == ["2026-09-07T08:12:00.000Z"]
 
 
+def test_a_search_naming_the_subcommand_is_not_a_harvest():
+    """2026-09-28: a first harvest was announced as #2, from a grep over this skill's own docs."""
+    entries = [
+        bash_entry('rg -n "harvest.py (boundary|transcript)|--until" skills/session-harvest/SKILL.md'),
+        bash_entry("python3 skills/session-harvest/scripts/harvest.py boundary", "2026-09-28T00:02:25.000Z"),
+    ]
+    assert harvest.harvest_runs(entries) == ["2026-09-28T00:02:25.000Z"]
+
+
 def test_a_filed_plan_carries_the_measurements_a_second_harvest_must_re_derive(tmp_path, monkeypatch):
     """The row this rule exists for: `n=211 chain=36% head/tail=20%`, filed 2h40m before the session
     ended and wrong by every rate once it had. The prose lines around it are not the finding, so a

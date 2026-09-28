@@ -141,11 +141,19 @@ def test_a_dotfile_beside_a_standard_directory_is_still_a_finding(tmp_path):
 
 
 def test_the_cross_tool_instructions_file_is_portable(tmp_path):
-    """`~/AGENTS.md` is where every harness reads the always-loaded instructions; naming it is
-    naming a convention, not one machine's dotfile."""
-    row = scan_one(tmp_path, "A rule that applies everywhere belongs in `~/AGENTS.md` instead.")
+    """`~/.agents/AGENTS.md` is where `.agents/`-convention agents read the always-loaded
+    instructions; naming it is naming a convention, not one machine's dotfile."""
+    row = scan_one(tmp_path, "A rule that applies everywhere belongs in `~/.agents/AGENTS.md` instead.")
 
     assert row["bare"] == 0, f"still bare: {tokens(row)}"
+
+
+def test_the_retired_home_instructions_path_is_reported(tmp_path):
+    """`~/AGENTS.md` is read by no agent, so a skill sending its reader there is an assumption to
+    report, not a convention to exempt."""
+    row = scan_one(tmp_path, "A rule that applies everywhere belongs in `~/AGENTS.md` instead.")
+
+    assert tokens(row) == {"~/AGENTS.md"}
 
 
 def test_naming_the_harness_that_owns_a_location_declares_it(tmp_path):

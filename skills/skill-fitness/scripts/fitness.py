@@ -763,12 +763,13 @@ PORTABLE_HOME = (
     "~/.local/share",
     "~/.cache",
     "~/Documents",
-    # The cross-tool instructions file, read by every harness at that path; a convention, not one
-    # machine's dotfile.
-    "~/AGENTS.md",
+    # The cross-tool home instructions file, at the path agents following the `.agents/` convention
+    # read natively; a convention, not one machine's dotfile. `~/AGENTS.md` was dropped 2026-09-28:
+    # no agent reads it, so a skill naming it is pointing its reader at nothing.
+    "~/.agents/AGENTS.md",
 )
-# A path is followed by prose punctuation as often as not, and `~/AGENTS.md.` reported as a distinct
-# token from `~/AGENTS.md` is one finding printed twice.
+# A path is followed by prose punctuation as often as not, and `~/.agents/AGENTS.md.` reported as a
+# distinct token from `~/.agents/AGENTS.md` is one finding printed twice.
 HOME_PATH = re.compile(r"~/[\w./*-]*[\w*]")
 ABS_HOME = re.compile(r"/(?:home|Users)/[\w.-]+(?:/[\w./*-]*[\w*])?")
 # Three characters and up, so a `$S=…` shorthand a fenced block defines on its own first line is

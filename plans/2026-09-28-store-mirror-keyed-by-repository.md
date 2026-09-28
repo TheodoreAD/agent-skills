@@ -258,6 +258,19 @@ and 4's "cannot say" answer; step 3's table lookup belongs to `resolve()`), `ide
 with tests in `tests/unit/test_plan_store.py`. Nothing calls them yet, so routing is unchanged until
 step 2.
 
+Step 2 landed the same day: `resolve()` routes through `store_route()`, the first store write
+records and commits the link, `repo:` holds the identity, and attachments, archive sources,
+`absorbed_from` and the family listing follow the resolved folder. Verified on this machine before
+committing: with no links anywhere, `list --scope family --json` is byte-identical to the installed
+version's. One refinement over the design above: **a refusal stops store writes only and rides on an
+ok route**, rather than being a needs-decision verdict, because the verdict also blocked `list` and
+the plan says reads keep working. The `link` command (show, `--remote`, `--to`, `--new`,
+`--move-to private`) landed with it, since the messages name it.
+
+**Not pushed yet, deliberately.** Still owed before the push: the listed-twice message names
+`links fix`, which does not exist yet; every message links to `references/store-links.md`, which
+does not exist yet; and step 3's test that every command a message names parses.
+
 ### 3. The table's store and the path rule disagree
 
 [DECISION: **the stricter store wins silently; the looser one refuses; both is corruption.**

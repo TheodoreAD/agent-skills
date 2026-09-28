@@ -747,8 +747,14 @@ READ_ONLY_GIT = frozenset(
     {"blame", "cat-file", "check-ignore", "describe", "diff", "for-each-ref", "grep", "log", "ls-files"}
     | {"ls-remote", "merge-base", "rev-list", "rev-parse", "shortlog", "show", "status"}
 )
-# Subcommands that only read with one particular verb after them.
-READ_ONLY_GIT_VERBS = frozenset({("stash", "list"), ("worktree", "list")})
+# Subcommands that only read with one particular verb after them. The `remote` and `config` reads
+# joined 2026-09-28: a session that asked four clones under work roots for their `origin` — to
+# confirm two were the same repository — had all four enrolled, fetched and reported with their
+# owners' uncommitted work, as though it had touched them.
+READ_ONLY_GIT_VERBS = frozenset(
+    {("stash", "list"), ("worktree", "list"), ("remote",), ("remote", "-v"), ("remote", "get-url")}
+    | {("remote", "show"), ("config", "--get"), ("config", "--get-regexp"), ("config", "--list")}
+)
 CWD_RESET_MARKER = "Shell cwd was reset to "
 GIT_VALUED_OPTIONS = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
 FIND_ACTION_RE = re.compile(r"(?:^|\s)-(?:delete|exec|execdir|ok|okdir|fprint\w*|fls)\b")

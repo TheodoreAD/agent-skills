@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-28
 source_repo: github.com-personal/scaffoldapy
 source_session: 81492b4f-e6bc-4577-8d01-412b3ff4e7a9.jsonl
@@ -41,3 +41,11 @@ project declaring 3.11 resolves to 3.11.15, so the fix will now hold.
 2. Run the suite at 3.11 and read failures as the point. This is where a 3.12+ API in a skill script
    shows up, which ran unnoticed on 3.14. The separate below-floor finding the tier-rules plan
    measured on 09-18, unguarded `import tomllib` failing on 3.10, needs the version guard, not this.
+
+## Migrated to
+
+Nothing to migrate: this was machine state, not a design. Done 2026-09-28 from a session with no
+`UV_*` in its environment: `inv venv.recreate` put `.venv` on 3.11, `inv venv.check` confirmed it,
+and the whole suite passed there (1295 tests) with no 3.12+ API surfacing — the one known case,
+`typing.override` in the tests, had already moved to `typing_extensions`. The cause is owned by
+`power-user-linux-setup`, as the Context says.

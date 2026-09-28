@@ -128,6 +128,11 @@ than it did.
 
 ## The one item that can turn this repo's gate red, and it is a real defect
 
+**Already fixed, checked 2026-09-28:** both `tests/unit/test_harvest.py` and
+`tests/unit/test_package_health.py` import `override` from `typing_extensions`, which the dev group
+declares, and the venv is now on 3.11 with the suite and basedpyright green there. Step 3 below is
+done. The section is kept for the pattern it records.
+
 **`pyrightconfig.json` has no `pythonVersion`, so basedpyright validates against this repo's 3.14.5
 venv rather than the `>=3.11` it declares. Pulling the config moves it to the declared floor** — and
 `tests/unit/test_harvest.py:24` does `from typing import override`, which is 3.12+ (PEP 698) and
@@ -168,7 +173,7 @@ other perfectly and neither is looking at 3.11.]
 2. `inv configs.pull`, then read the diff rather than accepting it — particularly the derived
    `pythonVersion` and `anyio_mode`, which are computed per consumer and so are not expected to
    match another repo's copy byte for byte.
-3. Fix the `typing.override` import, per the section above. The gate will not pass until it is done.
+3. ~~Fix the `typing.override` import, per the section above.~~ Already done — see that section.
 4. Edit `hadolint-py` to `hadolint-py!=2.15.1.2` by hand — `ensure-deps` is additive and will not
    rewrite an entry already present.
 5. `inv configs.ensure-deps` for the two missing entries, `inv deps.lock`, then
@@ -218,9 +223,10 @@ exist here (`>=3.11`), so this is a check that passes rather than a blocker.]
   caller is in a Linux-only repo, so this is the first place the question arises.]
 - **The packaged-`tests/` decision.** `configs.pull` writes both halves of the config but cannot
   decide whether this repo wants `__init__.py` files under `tests/`. Stays deliberate.
-- **`venv.check` / `venv.recreate`.** Expect a mismatch on first run — 3.14.5 against a 3.11 floor,
-  which is uv doing what it always does. Pre-existing state made visible, not something the sweep
-  broke. Here it is entangled with item 3 rather than independent of it.
+- ~~**`venv.check` / `venv.recreate`.**~~ **Done 2026-09-28**, ahead of the sweep: the 3.14.5 venv
+  was the lingering `UV_PYTHON` recorded in
+  `2026-09-28-venv-drifted-to-3-14-under-the-lingering-uv-python.md` (landed), and
+  `inv venv.recreate` put it on 3.11. `venv.check` should now pass on the first run.
 
 ## What this predicts
 

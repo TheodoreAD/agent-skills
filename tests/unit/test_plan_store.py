@@ -4200,6 +4200,90 @@ def test_push_scans_the_outgoing_range_and_pushes_when_it_is_clean(ws, capsys):
     assert "pushed:    ok" in out
 
 
+def store_with_remote(ws, remote: Path) -> Path:
+    """The shareable store, installed, with one commit and `remote` as its only remote."""
+    write_config(ws, IGNORING_THE_WORD_CLIENT)
+    plans.main(["install", "--path", str(ws.personal)])
+    store = ws.store
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=store, check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=store, check=True)
+    commit_store_plan(store, "first")
+    return store
+
+
+def commit_store_plan(store: Path, topic: str) -> None:
+    plan = store / "_unscoped" / f"2026-01-01-{topic}.md"
+    plan.parent.mkdir(parents=True, exist_ok=True)
+    plan.write_text(f"---\nstatus: idea\n---\n\n# {topic}\n", encoding="utf-8")
+    subprocess.run(["git", "add", "--", str(plan)], cwd=store, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", f"add {topic}"], cwd=store, check=True)
+
+
+def git_out(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_push_names_each_outgoing_commit_and_sets_the_upstream_on_a_first_push(ws, capsys):
+    """A count alone left the global "name another session's commits before pushing" rule with
+    nothing to read on the one documented path for a store push. Observed 2026-09-28: a push
+    published a parallel session's commit, and the pusher learned whose it was only afterwards."""
+    remote = ws.home / "remote.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    store = store_with_remote(ws, remote)
+    capsys.readouterr()
+
+    assert plans.main(["push", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "  " + git_out(store, "log", "-1", "--format=%h add first") in out
+    assert git_out(store, "rev-parse", "--abbrev-ref", "@{upstream}") == "origin/" + git_out(
+        store, "rev-parse", "--abbrev-ref", "HEAD"
+    )
+
+    commit_store_plan(store, "second")
+    assert plans.main(["push", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "outgoing:  1 commit(s)" in out
+    assert "add second" in out
+    assert "add first" not in out
+
+
+def test_push_publishes_the_scanned_tip_not_a_commit_landing_after_the_scan(ws, capsys, monkeypatch):
+    """Every session commits into one store, and a bare `git push` publishes whatever HEAD is when
+    it runs — so a commit landing between the scan and the push went out unscanned. Found
+    2026-09-28 reading the code after a push failed in exactly that window."""
+    remote = ws.home / "remote.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    store = store_with_remote(ws, remote)
+    scanned_tip = git_out(store, "rev-parse", "HEAD")
+    real_scan = plans.scan_text
+
+    def scan_then_race(text, terms):
+        commit_store_plan(store, "racing")  # another session, mid-push
+        return real_scan(text, terms)
+
+    monkeypatch.setattr(plans, "scan_text", scan_then_race)
+    capsys.readouterr()
+
+    assert plans.main(["push", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    branch = git_out(store, "rev-parse", "--abbrev-ref", "HEAD")
+    assert git_out(remote, "rev-parse", branch) == scanned_tip
+    assert "1 commit(s) landed after the scan and stay local" in out
+
+
+def test_a_failed_push_prints_what_git_said(ws, capsys):
+    """`FAILED` alone left the cause of a real store push failure to guesswork, 2026-09-28."""
+    store = store_with_remote(ws, ws.home / "no-such-remote.git")
+    del store
+    capsys.readouterr()
+
+    assert plans.main(["push", "--path", str(ws.personal)]) == 1
+    out = capsys.readouterr().out
+    assert "FAILED:" in out
+    assert "no-such-remote.git" in out.split("FAILED:", 1)[1]
+
+
 # --------------------------------------------------------------------------------------------
 # migration
 

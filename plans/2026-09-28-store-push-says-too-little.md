@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-28
 source_repo: github.com-personal/ingesta
 source_session: 20a2d59c-46f5-4aba-af3d-967f7ac699d9.jsonl
@@ -81,6 +81,14 @@ the scan, and then runs a bare `git push`, which publishes whatever `HEAD` is at
 Nothing pins the scanned tip. Had the invoke-stubs push succeeded, `3b820f3` would have been
 published without being scanned. So this is a hole in the confidentiality gate, not only a reporting
 gap — the sharper of the three findings, and the one to fix first.
+
+## Done 2026-09-28
+
+All three parts of the recommended direction below are implemented in
+`skills/plan-conveyor/scripts/plans.py` (`_push_one`, `_run_push`, `push_command`,
+`outgoing_range`), with tests in `tests/unit/test_plan_store.py` and a paragraph in the SKILL.md
+push section. `push` now names foreign commits; it does not stop on them. What is left is the open
+question below, which is a decision rather than a fix.
 
 ## Open questions
 

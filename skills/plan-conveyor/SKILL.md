@@ -612,6 +612,14 @@ plan that named a client and was reworded afterwards leaves a clean tree behind 
 that is precisely what `--mode tree` cannot see. On a branch with no upstream the whole history is
 outgoing, so the first push scans `--all`.
 
+**It publishes the commit it scanned, not whatever `HEAD` has become.** The tip is read once and
+pushed by SHA, so a commit another session lands mid-push stays local for the next push, which scans
+it; the output says when that happened. Until 2026-09-28 a bare `git push` ran after the scan, so
+such a commit went out unscanned.
+
+**It lists every outgoing commit before pushing**, so a commit you did not make is on screen before
+it is published rather than found in `git log` afterwards. A failed push prints git's own error.
+
 On a hit it **refuses and publishes nothing**, naming the lines. A push cannot be taken back by a
 later edit: the content stays in the history, and a repo's history is as readable as its tip.
 

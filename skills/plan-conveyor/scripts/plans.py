@@ -6532,8 +6532,13 @@ def _push_one(store: Store, terms: list[str], args: argparse.Namespace) -> bool:
     if ahead is None:
         print("           nothing to push — the remote already has this branch's tip\n")
         return False
-    span, count = ahead
-    print(f"outgoing:  {count} commit(s) — scanning {span}")
+    span, count, tip = ahead
+    print(f"outgoing:  {count} commit(s) — scanning {span}, pinned at {tip[:12]}")
+    listed = (git(["log", "--format=%h %s", *span.split()], root) or "").splitlines()
+    for line in listed[:PUSH_LISTED_COMMITS]:
+        print(f"  {line}")
+    if len(listed) > PUSH_LISTED_COMMITS:
+        print(f"  ... {len(listed) - PUSH_LISTED_COMMITS} more")
 
     hits = list(scan_text(git(["log", *span.split(), "-p"], root) or "", terms))
     if hits:
@@ -6550,54 +6555,115 @@ def _push_one(store: Store, terms: list[str], args: argparse.Namespace) -> bool:
     if args.dry_run:
         print("dry run:   not pushing\n")
         return False
+    return _publish(root, tip)
+
+
+def _publish(root: Path, tip: str) -> bool:
+    """Push exactly `tip` and report it. True when it did not publish and should have."""
     try:
-        command = push_command(root)
+        command, track = push_command(root, tip)
     except PlanError as exc:
         print(f"REFUSED:   {exc}\n")
         return True
-    if git(command, root) is None:
-        print(f"FAILED:    git {' '.join(command)} did not succeed\n")
+    failure = _run_push(command, root)
+    if failure is not None:
+        print(f"FAILED:    git {' '.join(command)} did not succeed")
+        for line in failure.splitlines():
+            print(f"  {line}")
+        print()
         return True
-    print("pushed:    ok\n")
+    if track is not None and git(track, root) is None:
+        print(f"pushed:    ok, but setting the upstream failed — run: git -C {root} {' '.join(track)}\n")
+        return False
+    later = git(["rev-list", "--count", f"{tip}..HEAD"], root)
+    print("pushed:    ok")
+    if later and later != "0":
+        print(f"           {later} commit(s) landed after the scan and stay local for the next push")
+    print()
     return False
 
 
-def push_command(repo: Path) -> list[str]:
-    """`push`, or the `--set-upstream` form a branch that has never been pushed actually needs.
+# Enough to recognise another session's commits in an ordinary push, without a first push of a
+# whole store's history printing hundreds of lines.
+PUSH_LISTED_COMMITS = 20
 
-    A bare `git push` on a branch with no upstream fails rather than guessing, which is git being
-    careful and is also the one case a store reaches most often: the first push of a store is the
-    push this command most wants to gate. Resolved only when there is exactly one remote — with
-    several, which one publishes a store is a decision, and a store going to the wrong remote is
-    the failure this whole scan exists to prevent.
+
+def _run_push(command: list[str], repo: Path) -> str | None:
+    """None when the push succeeded, else what git said about why it did not.
+
+    Not `git()`, which folds every failure into None: a push failing is the one case here where
+    git's stderr is the whole answer. Confirmed 2026-09-28: a store push printed `FAILED` and
+    nothing else while a parallel session was committing into the same store, and the cause could
+    only be guessed at, because the line that would have said was dropped.
     """
-    if git(["rev-parse", "--abbrev-ref", "@{upstream}"], repo) is not None:
-        return ["push"]
-    remotes = [line for line in (git(["remote"], repo) or "").splitlines() if line.strip()]
+    try:
+        done = subprocess.run(
+            ["git", *command], cwd=repo, capture_output=True, text=True, check=False, timeout=PUSH_TIMEOUT
+        )
+    except subprocess.TimeoutExpired:
+        return f"timed out after {PUSH_TIMEOUT}s"
+    except OSError as exc:
+        return str(exc)
+    if done.returncode == 0:
+        return None
+    return done.stderr.strip() or done.stdout.strip() or f"exit {done.returncode}, and git printed nothing"
+
+
+PUSH_TIMEOUT = 120
+
+
+def push_command(repo: Path, tip: str) -> tuple[list[str], list[str] | None]:
+    """The push that publishes exactly `tip`, and the upstream command a first push also needs.
+
+    **The refspec names the scanned commit, never the branch.** A bare `git push` publishes whatever
+    `HEAD` is at the moment it runs, and every session on the machine commits into one store, so a
+    commit landing between the scan and the push went out unscanned. Found 2026-09-28 reading this
+    function after a push failed in exactly that window: had it succeeded, a parallel session's
+    commit would have been published without passing the gate. Pinned, that commit stays local and
+    the next push scans it.
+
+    A branch with no upstream is resolved only when there is exactly one remote — with several,
+    which one publishes a store is a decision, and a store going to the wrong remote is the failure
+    this whole scan exists to prevent. `--set-upstream` records nothing when the source is a SHA,
+    so the tracking is set as a second command after the push instead.
+    """
     branch = git(["rev-parse", "--abbrev-ref", "HEAD"], repo)
     if not branch or branch == "HEAD":
         raise PlanError("this store is on a detached HEAD — check out a branch before pushing")
+    if git(["rev-parse", "--abbrev-ref", "@{upstream}"], repo) is not None:
+        remote = git(["config", f"branch.{branch}.remote"], repo) or "origin"
+        merge = git(["config", f"branch.{branch}.merge"], repo) or f"refs/heads/{branch}"
+        return ["push", remote, f"{tip}:{merge}"], None
+    remotes = [line for line in (git(["remote"], repo) or "").splitlines() if line.strip()]
     if len(remotes) != 1:
         named = ", ".join(remotes) or "none"
         raise PlanError(
             f"{branch} has no upstream and this store has {len(remotes)} remotes ({named}), so which "
             f"one publishes it is your decision: git -C {repo} push --set-upstream <remote> {branch}"
         )
-    return ["push", "--set-upstream", remotes[0], branch]
+    push = ["push", remotes[0], f"{tip}:refs/heads/{branch}"]
+    return push, ["branch", f"--set-upstream-to={remotes[0]}/{branch}", branch]
 
 
-def outgoing_range(repo: Path) -> tuple[str, int] | None:
-    """What a push would publish, as a rev range and a count — or None when there is nothing.
+def outgoing_range(repo: Path) -> tuple[str, int, str] | None:
+    """What a push would publish — a rev range, a count and the pinned tip — or None for nothing.
+
+    The range ends at a SHA read once, not at `HEAD`, so the scan, the listing and the push all
+    describe the same commits however many other sessions commit meanwhile; see `push_command`.
 
     A branch with no upstream is the first push, and its whole history is outgoing. `--all` rather
-    than the current branch there, because the first push of a store publishes every ref it has and
-    scanning only one of them would report clean about a branch nobody looked at.
+    than the current branch there, because scanning only one ref would report clean about a branch
+    nobody looked at.
     """
+    tip = git(["rev-parse", "HEAD"], repo)
+    if not tip:
+        return None
     if git(["rev-parse", "--abbrev-ref", "@{upstream}"], repo) is None:
         count = git(["rev-list", "--count", "--all"], repo)
-        return ("--all", int(count)) if count and count != "0" else None
-    count = git(["rev-list", "--count", "@{upstream}..HEAD"], repo)
-    return ("@{upstream}..HEAD", int(count)) if count and count != "0" else None
+        return ("--all", int(count), tip) if count and count != "0" else None
+    span = f"@{{upstream}}..{tip}"
+    count = git(["rev-list", "--count", span], repo)
+    return (span, int(count), tip) if count and count != "0" else None
 
 
 def cmd_migrate(args: argparse.Namespace, ws: Workspace) -> int:

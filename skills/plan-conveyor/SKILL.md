@@ -318,6 +318,12 @@ one operation in this convention that can lose them.
 nearly always agree but are not the same: a root's name may be publishable while its plans are not,
 or the reverse. Leave it unset until they actually disagree.
 
+**`[tiers]` answers the same question for one clone** — `"<path under projects_root>" = "shareable"`
+or `"sensitive"`, longest prefix winning — for the clone its root's answer is wrong for: a public
+library cloned under a client root, a client repo cloned under your own. Set it only when a message
+names it, with `config set tiers.<path> <tier>`; declaring a private-root clone shareable is a
+statement that nothing private is ever written from it.
+
 **Moving a root between tiers moves no files.** `doctor` reports a mirrored root sitting in the
 wrong store and names where it should go; relocating it is a `git mv` in two histories and a
 decision about what gets published, so it is never done automatically.
@@ -402,6 +408,9 @@ own_accounts = ["your-account"] # unset = no repo's ownership is checked at all
 
 [repos] # an exact repo entry beats any root entry
 "github.com-acme/legacy-api" = { mode = "both", write = "store" }
+
+[tiers] # one clone's store half, overriding its root's; longest prefix wins
+"github.com-acme/vendored-lib" = "shareable"
 
 [orgs] # by remote owner; beats [roots], loses to [repos]
 "github.com/acme-corp" = "store"

@@ -96,9 +96,24 @@ In the refused direction there are two ways out:
   If the shareable store was already pushed with those plans in it, they are still in its history —
   removing them from the latest commit does not unpublish them, and purging history is a separate
   decision.
-- Or move the clone under a shareable root, if nothing private will ever be written from it.
+- `plans.py config set tiers.<clone path> shareable` declares that **this clone's** plans belong in
+  the shareable store, which is you confirming that nothing private is ever written from it — the
+  usual case being an open-source library cloned under a client root because the client uses it. It
+  changes the one clone and nothing else under that root.
 
 Reading the repository's plans keeps working throughout. Only writes into the store stop.
+
+**`[tiers]` works in both directions**, and it is the per-clone form of what `shareable_roots`
+decides per root. Keys are paths under `projects_root`, the longest matching prefix wins, and values
+are `shareable` or `sensitive` — anything else is refused when the config loads, since a misspelling
+that fell back to the root's answer could leave a clone you meant to keep private writing into the
+store with a remote. The reverse case is a client repository cloned under your own root for an
+experiment, declared `sensitive`. `where` says when a clone's tier came from `[tiers]`.
+
+**One declaration needs a second step.** A private root's clone declared shareable with no link yet
+would get a folder named after its clone path — and a folder's name is published with the store, so
+`push`'s scan would refuse every push from then on. `plans.py` stops before that happens and asks
+for a folder whose name you may publish: `plans.py link --new <public root>/<name>`.
 
 ## Listed twice
 

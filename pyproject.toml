@@ -20,6 +20,8 @@ dev = [
   "act-bin",
   "pytest-cov",
   "zizmor",
-  "hadolint-py",
+  "hadolint-py!=2.15.1.2",
   "typing-extensions>=4.4",
+  "pytest-socket",
+  "pytest-timeout",
 ]

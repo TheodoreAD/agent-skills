@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-26
+updated: 2026-09-29
 source_repo: github.com-personal/repo-tasks
 source_session: 86d02b45-c393-4ecd-96a7-75d16974465d.jsonl
 source_moment: 2026-09-26T14:07:42Z
@@ -46,6 +46,11 @@ Add a sweep row: for each touched repo that `plan-docs` classes as publishable, 
 session's commits and pushes, and the number of `scan` calls that preceded them. When it is zero,
 the row names the retroactive command (`plans.py scan --mode history --path <repo>`) for the harvest
 to run.
+
+That retroactive command is unscopable on a repo with old, already-owned hits:
+`2026-09-29-scan-has-no-outgoing-mode-for-a-repo-push.md` records it returning 55 pre-session hits
+and saying nothing about the session's commits, and proposes `scan --mode outgoing` or `--range`.
+This row should name whichever of those lands, not `--mode history`.
 
 Also, a push to a plans store by any means other than `plans.py push` is itself a finding.
 `audit.py` has a `store-write-by-git` row; check whether it covers `push` or only writes. It read 0

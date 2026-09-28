@@ -234,6 +234,13 @@ which path the calls used. Confirmed 2026-09-04 in this repo: three skills' `scr
 between install and checkout, all three were reported as possible stale execution, and every call in
 the session had gone to the checkout — the whole branch was moot.
 
+**The mirror case is stated by the subcommand itself: `scripts/` commits that are all unpushed.**
+The installer clones from the remote, so no install carries them, and a session that called the
+installed copy ran unchanged code; the line says `all unpushed, so no install carries them` and
+narrows the read-the-diff remedy to calls made to the checkout. Confirmed 2026-09-28: an
+invoke-stubs harvest was told to read the diff for two `plan-conveyor` commits its own row listed as
+unpushed.
+
 **The cheapest trigger for all of this is free and arrives unprompted: the available-skills listing
 changing mid-session.** A skill present that was not there before, or a description reworded, is
 direct evidence that the installer has run since the session began — which is exactly when the

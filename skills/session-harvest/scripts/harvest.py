@@ -1591,9 +1591,17 @@ def _with_move_check(
         f"{line} ({', '.join(sorted(parts))})" if parts else line for line, parts in moves
     ]
     counts = Counter(part for _, parts in moves for part in parts)
+    unpushed = [line.split()[0] for line in state.get("unpushed_commits") or [] if line.strip()]
+
+    def is_unpushed(header: str) -> bool:
+        sha = header.split(maxsplit=1)[0]
+        return any(sha.startswith(other) or other.startswith(sha) for other in unpushed)
+
+    held_back = Counter(part for line, parts in moves if is_unpushed(line) for part in parts)
     order = [*MOVE_CONSEQUENCE, *sorted(set(counts) - set(MOVE_CONSEQUENCE))]
     clauses = [
-        f"{part} moved after {baseline} ({counts[part]} commit(s)) — {MOVE_CONSEQUENCE.get(part, 'no run loads it')}"
+        f"{part} moved after {baseline} ({counts[part]} commit(s)) — "
+        + _move_remedy(part, counts[part], held_back[part])
         for part in order
         if counts[part]
     ]
@@ -1609,6 +1617,26 @@ def _with_move_check(
     if counts["SKILL.md"] and state.get("skill_md_identical"):
         _note_help_probe(state)
     return state
+
+
+def _move_remedy(part: str, moved: int, unpushed: int) -> str:
+    """What a part having moved means, narrowed when none of those commits can have reached the install.
+
+    **An unpushed commit is in no install, because the installer clones from the remote.** So when
+    every commit that moved `scripts/` is unpushed, a call to the installed copy ran unchanged code,
+    and only a call to the checkout's own copy can have run something that later moved. Confirmed
+    2026-09-28: an invoke-stubs harvest was told "a call made earlier in this session ran it as it
+    was then, so read the diff" for two `plan-conveyor` commits the same row listed as unpushed —
+    every call that session made went to the installed copy, untouched for hours. Which copy the
+    calls used is the reader's knowledge, not this check's, so both readings are stated.
+    """
+    remedy = MOVE_CONSEQUENCE.get(part, "no run loads it")
+    if part != "scripts/" or not unpushed or unpushed < moved:
+        return remedy
+    return (
+        "all unpushed, so no install carries them: a call to the installed copy ran unchanged code; "
+        "only a call to the checkout's own scripts/ ran something that later moved, so read the diff then"
+    )
 
 
 def _note_help_probe(state: dict[str, Any]) -> None:

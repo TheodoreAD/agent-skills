@@ -1028,6 +1028,38 @@ def test_a_skill_whose_scripts_moved_and_skill_md_did_not_is_still_named(tmp_pat
     assert "re-read" not in state["verdict"]
 
 
+@pytest.mark.parametrize(
+    ("unpushed", "narrowed"),
+    [
+        # Every scripts/ commit unpushed: no install carries them, so say which calls are unaffected.
+        ("a3e713b one\n92e8fca two\n", True),
+        # One of them already pushed: an install may carry it, so the general remedy stands.
+        ("a3e713b one\n", False),
+    ],
+)
+def test_scripts_moves_the_install_never_received_say_so(tmp_path, unpushed, narrowed):
+    """Confirmed 2026-09-28: an invoke-stubs harvest was told a call made earlier "ran it as it was
+    then, so read the diff" for two commits the same row listed as unpushed, while every call that
+    session made went to an installed copy untouched for hours. The installer clones the remote."""
+    checkout = tmp_path / "checkout"
+    installed_root = tmp_path / "installed"
+    make_skill(checkout, "demo", "same\n")
+    make_installed(installed_root, "demo", "same\n")
+    log = "\x1ea3e713b Me one\n\nskills/demo/scripts/plans.py\n\x1e92e8fca Me two\n\nskills/demo/scripts/plans.py\n"
+    runner = FakeRunner(
+        {
+            f"git -C {checkout} log --since=": (0, log, ""),
+            f"git -C {checkout} rev-parse --abbrev-ref @{{u}}": (0, "origin/main\n", ""),
+            f"git -C {checkout} log origin/main..HEAD": (0, unpushed, ""),
+        }
+    )
+
+    state = harvest.skill_state(runner, "demo", checkout, installed_root, since="2026-09-02T09:00:00Z")
+
+    assert ("all unpushed, so no install carries them" in state["verdict"]) is narrowed
+    assert ("a call made earlier in this session ran it as it was then" in state["verdict"]) is not narrowed
+
+
 def test_a_history_that_cannot_be_read_is_not_reported_as_nothing_moved(tmp_path):
     """A failed log read as an empty one says "nothing moved", the one wrong answer that prompts
     nobody — the same failure the store's git log check guards against."""

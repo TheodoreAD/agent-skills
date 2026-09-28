@@ -2190,6 +2190,38 @@ def test_a_linked_folder_is_listed_even_where_no_clone_sits_at_its_path(ws, caps
     assert "2026-09-01-orphaned.md" in capsys.readouterr().out
 
 
+def test_the_family_listing_names_a_repo_held_plan_once_however_many_clones_hold_it(ws, capsys):
+    """Two clones of a repo that keeps its own plans hold the same committed files; the listing
+    used to show each of them once per checkout."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
+    plan(ws.personal / "plans", "2026-09-01-shared.md", "status: idea\nupdated: 2026-09-01")
+    subprocess.run(["git", "add", "-A"], cwd=ws.personal, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "plan"], cwd=ws.personal, check=True)
+    wrapper = clone(ws.personal, ws.projects / "github.com-personal" / "review" / "agent-skills")
+    set_remote(wrapper, "https://github.com/theodoread/agent-skills")
+    # Pulled further in the wrapper: its copy is newer, and one plan exists only there.
+    plan(wrapper / "plans", "2026-09-01-shared.md", "status: in-progress\nupdated: 2026-09-05")
+    plan(wrapper / "plans", "2026-09-02-only-here.md", "status: idea\nupdated: 2026-09-02")
+
+    assert plans.main(["list", "--scope", "family", "--json", "--path", str(ws.personal)]) == 0
+    rows = [row for row in json.loads(capsys.readouterr().out) if row["where"] == "repo"]
+    assert sorted(Path(row["path"]).name for row in rows) == ["2026-09-01-shared.md", "2026-09-02-only-here.md"]
+    shared = next(row for row in rows if row["path"].endswith("shared.md"))
+    assert shared["status"] == "in-progress"
+    assert {row["repo"] for row in rows} == {"github.com-personal/agent-skills"}  # the main checkout names it
+
+
+def test_the_family_listing_keeps_two_repositories_apart_even_with_one_plan_name(ws, capsys):
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    other = make_repo(ws.projects / "github.com-personal" / "other")
+    for repo in (ws.personal, other):
+        plan(repo / "plans", "2026-09-01-same-name.md", "status: idea\nupdated: 2026-09-01")
+    assert plans.main(["list", "--scope", "family", "--json", "--path", str(ws.personal)]) == 0
+    rows = [row for row in json.loads(capsys.readouterr().out) if row["where"] == "repo"]
+    assert len(rows) == 2
+
+
 def test_several_remotes_and_no_origin_stop_with_the_choices_spelled_out(ws, capsys):
     write_config(ws, STORE_ROUTED)
     drop_remote(ws.personal)

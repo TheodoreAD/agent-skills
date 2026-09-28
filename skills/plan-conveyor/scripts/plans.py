@@ -2555,10 +2555,44 @@ def family_plans(cfg: Config, repos: list[str]) -> list[ScopedPlan]:
     for store in cfg.stores():
         for folder in sorted(set(read_links(store).entries.values())):
             read(folder, store.path / folder, "store")
+    found.extend(repo_held_plans(cfg, repos))
     for rel in repos:
-        read(rel, cfg.projects_root / rel / "plans", "repo")
         read(rel, cfg.store_for(rel).path / rel, "store")
     found.extend(ScopedPlan(UNSCOPED_DIR, plan) for plan in plans_in(cfg.unscoped, "unscoped"))
+    return found
+
+
+def repo_held_plans(cfg: Config, repos: list[str]) -> list[ScopedPlan]:
+    """Every repo's own `plans/`, one entry per plan per **repository** rather than per clone.
+
+    Two clones of one repository hold the same committed plans, so reading every clone listed each
+    plan once per checkout. Clones are grouped by the same identity the link table uses, and each
+    plan filename is listed once: the copy with the newest `updated:`, so a clone that has pulled
+    wins over one that has not, and on a tie the preferred clone's — the shallowest path, then the
+    first alphabetically, which puts a main checkout ahead of `<repo>-<purpose>/<repo>` wrappers.
+    A plan that exists in only one clone is still listed, since hiding uncommitted or unpulled work
+    would be the worse error. Only clones actually holding plans are asked for an identity, so the
+    git calls scale with plan-holding repos, not with the machine.
+    """
+    groups: dict[str, list[tuple[str, list[PlanFile]]]] = {}
+    for rel in repos:
+        held = plans_in(cfg.projects_root / rel / "plans", "repo")
+        if not held:
+            continue
+        clone = clone_identity(cfg.projects_root / rel)
+        key = identity_key(clone.own) if clone is not None and clone.own else f"{FILE_IDENTITY}{rel}"
+        groups.setdefault(key, []).append((rel, held))
+    found: list[ScopedPlan] = []
+    for clones in groups.values():
+        clones.sort(key=lambda entry: (entry[0].count("/"), entry[0]))
+        label = clones[0][0]
+        chosen: dict[str, PlanFile] = {}
+        for _, held in clones:
+            for plan in held:
+                current = chosen.get(plan.path.name)
+                if current is None or plan.updated > current.updated:
+                    chosen[plan.path.name] = plan
+        found.extend(ScopedPlan(label, plan) for plan in chosen.values())
     return found
 
 

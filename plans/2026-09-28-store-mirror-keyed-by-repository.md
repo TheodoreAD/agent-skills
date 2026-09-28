@@ -242,12 +242,21 @@ The rule:
 1. `origin` present: it is the identity, and no other remote is consulted. A fork checkout whose
    `origin` is the fork keys to the fork, matching the "fork and upstream are separate by default"
    example above.
-2. No `origin`: look up **every** remote's identity in the tables. If exactly one is linked, use it,
-   which is unambiguous and needs no question. If several are linked to different directories, stop
-   and name them.
-3. No `origin` and none of the remotes is linked yet: `needs-decision`, rather than picking one by
+2. No `origin` and **exactly one** hosted remote: that remote. There is nothing to choose between,
+   so asking would be a question with one answer. This refines the rule as first written, which
+   asked here too; the concern was picking one of several by spelling, and one is not several.
+3. No `origin` and several hosted remotes: look up **every** remote's identity in the tables. If
+   exactly one is linked, use it, which is unambiguous and needs no question. If several are linked
+   to different directories, stop and name them.
+4. No `origin`, several remotes, and none linked yet: `needs-decision`, rather than picking one by
    spelling. `plans.py link --remote <name>` answers it by linking that remote's identity. Nothing
-   per clone needs recording, because from then on step 2 finds the link.]
+   per clone needs recording, because from then on step 3 finds the link.]
+
+**Progress.** Step 1 of the recommended direction landed 2026-09-28: `clone_identity` (rules 1, 2
+and 4's "cannot say" answer; step 3's table lookup belongs to `resolve()`), `identity_key`, and the
+`Links` table with `read_links`/`write_links`, in `scripts/plans.py` under "repository identity",
+with tests in `tests/unit/test_plan_store.py`. Nothing calls them yet, so routing is unchanged until
+step 2.
 
 ### 3. The table's store and the path rule disagree
 

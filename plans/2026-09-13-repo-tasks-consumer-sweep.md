@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-26
+updated: 2026-09-28
 depends_on: [repo-tasks]
 ---
 
@@ -20,6 +20,12 @@ implementing, since it may have moved on since.
 `repo-tasks` session `bcf810d6-38c7-48d3-adfe-2ff30399d4c9` after `v0.5.0` was released. That filed
 plan said this one "may fold into this one". It is the same sweep one release later, so it lands
 here as the section "What v0.5.0 adds, measured 2026-09-27", and not as a second plan for one job.
+
+**Amended a third time 2026-09-28** by merging in `2026-09-28-sweep-to-repo-tasks-v0-6-0.md`, filed
+from `repo-tasks` session `44be2918-1669-4d16-9f77-56535cc6ddeb.jsonl` (moment 2026-09-28T11:15:00Z)
+after `v0.6.0` was released. Same sweep, one release later, so it lands as the section "What v0.6.0
+adds, measured 2026-09-28". The filed original is in the shareable store's history, removed by its
+absorption commit `e61e8ba`.
 
 ## Why this arrives now, three days after being recorded as a consumer
 
@@ -90,6 +96,35 @@ clean after. This repo had the largest findings of the five consumers.
 without declaring it? Declaring it makes the gate red until the backlog is fixed. The filing
 session's recommendation: measure first (`basedpyright skills` against this repo's venv), then
 decide whether to declare now or in a follow-up.]
+
+## What v0.6.0 adds, measured 2026-09-28
+
+`repo-tasks` `v0.6.0` was released 2026-09-28 (tag on `a2d9cf5`, CI/Security/Canary green), and this
+machine's global tool is already on it. What it carries for a consumer:
+
+- **Shipped configs:** `pyrightconfig.json` drops `allowedUntypedLibraries: ["invoke"]`.
+  `zizmor.yml` disables zizmor 1.30's `self-repository` audit, because actionlint and act both
+  reject its `uses: $/` fix.
+- **`deps.check-currency`:** an excluded latest reads as excluded, not BEHIND. uv and gh output is
+  forced plain wherever `repo-tasks` parses it.
+- **gitflow PR mode:** finished branches are deleted, and a stale base is refused. Does not apply
+  here — this repo uses no `gitflow.*`.
+
+`inv consumers.diff` from `repo-tasks`, 2026-09-28, reports this repo as **the widest drift in the
+family**:
+
+- **Config files behind: `ruff.toml`, `pyrightconfig.json`, `dprint.json`, `pytest.ini`, and now
+  `zizmor.yml`** — five, one more than the 2026-09-13 table.
+- **Dev group still missing `pytest-socket` and `pytest-timeout`.**
+- **`hadolint-py` still declared without the manifest's constraint, `!=2.15.1.2`.** That release's
+  macOS wheel is a corrupt zip, so a lock taking it breaks on macOS (step 4).
+- **Bootstrap still unpinned** (step 7).
+- **Still no caller for the shared `security-reusable.yml`**, so this repo runs no dependency audit
+  (see "What no diff can tell you").
+
+Nothing in v0.6.0 changes the sweep's order. Five configs at once is where a reflowed file or a
+tightened lint shows up, so step 2's "read the diff rather than accepting it" carries more weight
+than it did.
 
 ## The one item that can turn this repo's gate red, and it is a real defect
 

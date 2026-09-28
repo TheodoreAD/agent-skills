@@ -245,3 +245,19 @@ def test_rules_are_read_from_the_settings_file_the_harness_owns(tmp_path, monkey
     assert prompts._rule_match("ls -la", allow) == "Bash(ls:*)"
     assert prompts._rule_match("git push", ask) == "Bash(git push:*)"
     assert scope == ["/scratch", "/srv"], "additionalDirectories and Read grants are one scope list"
+
+
+def test_the_replay_runs_end_to_end_over_what_load_calls_returns(monkeypatch, capsys):
+    """`load_calls` returns `(calls, replayed)` since 2026-09-13, and `main` iterated the pair as if it
+    were the list, so the replay crashed on every run for sixteen days. Every other test here calls
+    the classifiers directly, which is why none of them noticed; a type check of `skills/` did."""
+    loaded = [call("cargo build"), call("ls")]
+    monkeypatch.setattr(prompts, "load_calls", lambda days, project: (loaded, 3))
+    monkeypatch.setattr(prompts, "load_rules", rules)
+    monkeypatch.setattr("sys.argv", ["prompts.py"])
+
+    prompts.main()
+
+    out = capsys.readouterr().out
+    assert "calls: 2   estimated prompting: 1 (50%)" in out
+    assert "3 more were copies a resumed transcript replayed" in out

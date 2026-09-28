@@ -213,7 +213,11 @@ def main() -> None:
     args = ap.parse_args()
 
     rules = load_rules()
-    calls = [c for c in load_calls(args.days, args.project) if not c.subagent]
+    # `load_calls` has returned `(calls, replayed)` since it learned to drop replayed copies,
+    # 2026-09-13, and iterating the pair crashed this replay on every run until 2026-09-29, when a
+    # type check of `skills/` found it.
+    loaded, replayed = load_calls(args.days, args.project)
+    calls = [c for c in loaded if not c.subagent]
     if args.since:
         calls = [c for c in calls if c.timestamp >= args.since]
     if not calls:
@@ -236,7 +240,8 @@ def main() -> None:
         if len(samples[found[0]]) < args.samples:
             samples[found[0]].append(c.cmd[:150].replace("\n", "\\n"))
 
-    print(f"calls: {len(calls)}   estimated prompting: {prompting} ({100 * prompting / len(calls):.0f}%)\n")
+    print(f"calls: {len(calls)}   estimated prompting: {prompting} ({100 * prompting / len(calls):.0f}%)")
+    print(f"  {replayed} more were copies a resumed transcript replayed from its parent, counted once\n")
     print("== per session (prompting/total) ==")
     for key, (p, n) in sorted(per_session.items(), key=lambda kv: -kv[1][1]):
         print(f"  {key:60s} {p:4d}/{n:4d}  {100 * p / n:3.0f}%")

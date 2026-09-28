@@ -1939,6 +1939,205 @@ def test_the_remote_is_read_from_the_repo_preferring_origin(ws):
     assert plans.remote_of(ws.personal).org == "github.com/TheodoreAD"
 
 
+# --------------------------------------------------------------------------------------------
+# repository identity: which repository a clone is, whatever path it was cloned to
+
+
+def add_remote(repo: Path, name: str, url: str) -> Path:
+    subprocess.run(["git", "remote", "add", name, url], cwd=repo, check=True)
+    return repo
+
+
+def drop_remote(repo: Path, name: str = "origin") -> Path:
+    subprocess.run(["git", "remote", "remove", name], cwd=repo, check=True)
+    return repo
+
+
+def clone(source: Path, where: Path) -> Path:
+    subprocess.run(["git", "clone", "-q", str(source), str(where)], check=True)
+    return where
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "git@github.com:acme-corp/billing.git",
+        "https://github.com/acme-corp/billing",
+        "ssh://git@github.com/acme-corp/billing.git",
+        # A clone typed from memory. GitHub serves it, so it has to find the same folder.
+        "https://github.com/Acme-Corp/Billing.git",
+    ],
+)
+def test_every_spelling_of_one_hosted_repository_is_one_identity(url):
+    identity = plans.remote_identity(plans.parse_remote(url))
+    assert plans.identity_key(identity) == plans.identity_key("github.com/acme-corp/billing")
+
+
+def test_an_identity_keeps_the_spelling_it_was_given():
+    """Readability was the user's call: case is ignored when comparing, never erased on write."""
+    remote = plans.parse_remote("git@github.com:TheodoreAD/agent-skills.git")
+    assert plans.remote_identity(remote) == "github.com/TheodoreAD/agent-skills"
+
+
+def test_a_file_identity_compares_exactly_because_a_path_is_case_sensitive():
+    assert plans.identity_key("file:///home/me/Repo") != plans.identity_key("file:///home/me/repo")
+
+
+def test_parallel_clones_of_one_repository_are_one_identity(ws):
+    """The bug this exists for: clones in per-purpose wrapper directories each got their own folder."""
+    set_remote(ws.personal, "git@github.com:acme-corp/billing.git")
+    commit(ws.personal, "notes.md", "x\n")
+    hotfix = clone(ws.personal, ws.projects / "github.com-acme" / "billing-hotfix" / "billing")
+    set_remote(hotfix, "https://github.com/acme-corp/billing")
+
+    assert plans.clone_identity(ws.personal).own == "github.com/acme-corp/billing"
+    assert plans.identity_key(plans.clone_identity(hotfix).own) == "github.com/acme-corp/billing"
+
+
+def test_a_worktree_is_the_identity_of_its_repository(ws):
+    commit(ws.personal, "notes.md", "x\n")
+    tree = worktree(ws.personal, "feat", ws.personal / ".claude" / "worktrees" / "wt")
+    assert plans.clone_identity(tree) == plans.clone_identity(ws.personal)
+
+
+def test_origin_wins_over_every_other_remote(ws):
+    """A fork checked out with origin pointing at the fork keys to the fork, not to its upstream."""
+    set_remote(ws.personal, "git@github.com:me/billing.git")
+    add_remote(ws.personal, "upstream", "git@github.com:acme-corp/billing.git")
+    assert plans.clone_identity(ws.personal).own == "github.com/me/billing"
+
+
+def test_without_origin_a_single_hosted_remote_is_unambiguous(ws):
+    drop_remote(ws.personal)
+    add_remote(ws.personal, "upstream", "git@github.com:acme-corp/billing.git")
+    assert plans.clone_identity(ws.personal).own == "github.com/acme-corp/billing"
+
+
+def test_without_origin_several_hosted_remotes_leave_it_to_the_table(ws):
+    """Picking one by its name would split the repository silently, so the clone does not answer."""
+    drop_remote(ws.personal)
+    add_remote(ws.personal, "fork", "git@github.com:me/billing.git")
+    add_remote(ws.personal, "upstream", "git@github.com:acme-corp/billing.git")
+    found = plans.clone_identity(ws.personal)
+    assert found.own is None
+    assert found.remotes == (("fork", "github.com/me/billing"), ("upstream", "github.com/acme-corp/billing"))
+
+
+def test_a_repository_with_no_remote_is_named_by_its_first_commit_in_every_clone(ws):
+    """A clone of a local clone has a local path as its origin, which names no host — so it falls to
+    the first commit, which both copies share and which no move or rename changes."""
+    drop_remote(ws.personal)
+    first = commit(ws.personal, "notes.md", "x\n")
+    commit(ws.personal, "more.md", "y\n")
+    copy = clone(ws.personal, ws.projects / "github.com-personal" / "agent-skills-experiment")
+
+    sha = subprocess.run(
+        ["git", "log", "--format=%H", "--", first.name], cwd=ws.personal, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    expected = f"local:{sha[:12]}"
+    assert plans.clone_identity(ws.personal).own == expected
+    assert plans.clone_identity(copy).own == expected
+
+
+def test_a_repository_with_no_commits_and_no_remote_falls_back_to_its_path(ws):
+    drop_remote(ws.personal)
+    assert plans.clone_identity(ws.personal).own == ws.personal.resolve().as_uri()
+
+
+def test_outside_a_repository_there_is_no_identity(tmp_path):
+    assert plans.clone_identity(tmp_path) is None
+
+
+# --------------------------------------------------------------------------------------------
+# the link table: which store folder holds each repository's plans
+
+
+def links_in(tmp_path: Path, entries: dict[str, str] | None = None):
+    store = plans.Store(plans.SHAREABLE, tmp_path / "plans", "test")
+    store.path.mkdir(parents=True, exist_ok=True)
+    return plans.Links(store, dict(entries or {}))
+
+
+def test_a_store_without_a_table_has_no_links(tmp_path):
+    assert plans.read_links(links_in(tmp_path).store).entries == {}
+
+
+def test_the_table_reads_back_what_was_written(tmp_path):
+    links = links_in(tmp_path, {"github.com/acme-corp/billing": "github.com-acme/billing", "local:a1b2c3d4e5f6": "x/y"})
+    plans.write_links(links)
+    assert plans.read_links(links.store).entries == links.entries
+
+
+def test_the_written_table_explains_itself_and_groups_aliases_by_folder(tmp_path):
+    links = links_in(
+        tmp_path,
+        {
+            "github.com/acme-corp/zeta": "github.com-acme/billing",
+            "github.com/acme-corp/api": "github.com-acme/api",
+            "github.com/acme-corp/billing": "github.com-acme/billing",
+        },
+    )
+    text = plans.render_links(links)
+    assert text.startswith("# Which folder in this store holds each repository's plans.")
+    rows = [line for line in text.splitlines() if not line.startswith("#")]
+    assert rows == [
+        '"github.com/acme-corp/api" = "github.com-acme/api"',
+        '"github.com/acme-corp/billing" = "github.com-acme/billing"',
+        '"github.com/acme-corp/zeta" = "github.com-acme/billing"',
+    ]
+
+
+def test_lookup_ignores_letter_case_and_says_when_it_did(tmp_path):
+    links = links_in(tmp_path, {"github.com/TheodoreAD/agent-skills": "github.com-personal/agent-skills"})
+    assert links.lookup("github.com/TheodoreAD/agent-skills").exact
+    match = links.lookup("github.com/theodoread/agent-skills")
+    assert (match.identity, match.directory, match.exact) == (
+        "github.com/TheodoreAD/agent-skills",
+        "github.com-personal/agent-skills",
+        False,
+    )
+    assert links.lookup("github.com/someone-else/agent-skills") is None
+
+
+def test_two_spellings_with_two_folders_stop_rather_than_pick(tmp_path):
+    links = links_in(tmp_path, {"github.com/Acme/api": "a/api", "github.com/acme/api": "b/api"})
+    with pytest.raises(plans.PlanError, match="two homes"):
+        links.lookup("github.com/ACME/api")
+    assert links.case_clashes() == [["github.com/Acme/api", "github.com/acme/api"]]
+
+
+def test_a_folder_may_carry_aliases_but_a_name_never_names_two_folders(tmp_path):
+    links = links_in(tmp_path, {"github.com/acme-corp/billing": "github.com-acme/billing"})
+    aliased = links.linked("github.com/acme-corp/billing-service", "github.com-acme/billing")
+    assert aliased.identities_of("github.com-acme/billing") == [
+        "github.com/acme-corp/billing",
+        "github.com/acme-corp/billing-service",
+    ]
+    assert aliased.linked("github.com/ACME-CORP/billing", "github.com-acme/billing") is aliased
+    with pytest.raises(plans.PlanError, match="already has a plans folder"):
+        aliased.linked("github.com/acme-corp/billing", "github.com-acme/billing-hotfix/billing")
+
+
+@pytest.mark.parametrize("folder", ["", "/abs/path", "../outside", "a/../b", "a//b", r"a\b", "_unscoped/x"])
+def test_a_link_must_name_a_plain_folder_inside_the_store(tmp_path, folder):
+    """One hand-edited line must not send a repository's plans out of the store, or into its own areas."""
+    with pytest.raises(plans.PlanError):
+        links_in(tmp_path).linked("github.com/acme-corp/billing", folder)
+    (tmp_path / "plans" / plans.LINKS_FILE).write_text(
+        f'"github.com/acme-corp/billing" = {json.dumps(folder)}\n', encoding="utf-8"
+    )
+    with pytest.raises(plans.PlanError, match=r"repos\.toml"):
+        plans.read_links(links_in(tmp_path).store)
+
+
+@pytest.mark.parametrize("body", ["not toml at all = = =\n", '"github.com/acme-corp/billing" = 3\n'])
+def test_a_broken_table_is_refused_with_its_path_named(tmp_path, body):
+    (tmp_path / "plans").mkdir()
+    (tmp_path / "plans" / plans.LINKS_FILE).write_text(body, encoding="utf-8")
+    with pytest.raises(plans.PlanError, match=r"repos\.toml"):
+        plans.read_links(links_in(tmp_path).store)
+
+
 def test_an_orgs_entry_beats_the_roots_entry_the_clone_happens_to_sit_under(ws):
     """The mistake this table exists for: one repo from somebody else's organisation filed under a
     root routed `repo`. The root is where it was cloned to; the remote is whose it is."""

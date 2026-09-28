@@ -1288,6 +1288,237 @@ def foreign_org_refusal(cfg: Config, remote: Remote | None, rel: str | None, sou
     )
 
 
+# --------------------------------------------------------------------------------------------
+# repository identity, and the link table that says which store folder holds a repository's plans
+
+# Which folder in a store holds a repository's plans is **recorded**, never derived from where one
+# clone of it happens to sit. Keying on the clone path gave every parallel clone of one repository
+# its own folder, each blind to the others' plans — measured 2026-09-28 on a machine with three
+# clones of one repository in per-purpose wrapper directories. The table is a file in the store's
+# own git rather than a config key, because it describes the store and has to travel with it to a
+# second machine; the config file is a statement about one machine's clones.
+LINKS_FILE = "repos.toml"
+LOCAL_IDENTITY = "local:"
+FILE_IDENTITY = "file://"
+# Enough of the root commit's sha to be unique among one person's repositories by a wide margin,
+# short enough to read in a message.
+ROOT_COMMIT_CHARS = 12
+
+
+def remote_identity(remote: Remote) -> str:
+    """`<host>/<owner>/<repo>`: one repository's name however it was cloned — ssh, scp-like or https.
+
+    Spelling kept as the remote gives it, because it is read by people in `repo:` and in the table.
+    Two identities are compared with `identity_key`, never with `==`.
+    """
+    return "/".join(part for part in (remote.host, remote.owner, remote.name) if part)
+
+
+def identity_key(identity: str) -> str:
+    """What two identities are compared by.
+
+    A hosted remote ignores letter case — GitHub serves `TheodoreAD/x` and `theodoread/x` as one
+    repository, and a clone typed from memory gets the second — so an exact comparison would split
+    one repository into two folders, the failure the link table exists to remove. A `file://` path
+    compares exactly, because a Linux path is case-sensitive. `local:` is lowercase hex either way.
+    Kept as the spelling rather than lowercased on write: the user chose readability, 2026-09-28.
+    """
+    return identity if identity.startswith(FILE_IDENTITY) else identity.casefold()
+
+
+def first_commit_identity(repo: Path) -> str | None:
+    """`local:<sha>` of the repository's first commit, or None when it has no commits yet.
+
+    The identity of a repository with no hosted remote. Every clone shares it, including a clone of
+    a clone whose origin is a local path, and a move or rename does not change it — a `file://` path
+    has neither property, which is the exact failure a path key had. Several root commits (merged
+    histories) resolve to the lexically smallest, so the answer does not depend on git's order.
+
+    Read from HEAD's history rather than `--all`: remote-tracking refs differ between clones, and
+    one fetched orphan branch would otherwise change the answer. The cost is an orphan branch being
+    *checked out*, which is rare enough in a repo with no remote to accept.
+    """
+    roots = git(["rev-list", "--max-parents=0", "HEAD"], repo)
+    if not roots:
+        return None
+    return LOCAL_IDENTITY + min(roots.split())[:ROOT_COMMIT_CHARS]
+
+
+@dataclass(frozen=True)
+class CloneIdentity:
+    """Every answer one checkout gives to "which repository am I", before any table is consulted.
+
+    Unresolved on purpose. Which of these is *the* identity depends on the link table when the clone
+    has several remotes and none called `origin`, and that lookup is the table's job, not this one's.
+    """
+
+    root: Path  # the checkout, or the main checkout when this is a linked worktree
+    origin: str | None  # `origin`'s identity, when it names a hosted repository
+    remotes: tuple[tuple[str, str], ...]  # every other hosted remote as (name, identity), sorted
+    first_commit: str | None  # `local:<sha>`, or None with no commits yet
+
+    @property
+    def fallback(self) -> str:
+        """The identity of a clone with no hosted remote: its first commit, else its own path."""
+        return self.first_commit or self.root.resolve().as_uri()
+
+    @property
+    def own(self) -> str | None:
+        """The identity this clone has without consulting any table, or None when only a table can say.
+
+        `origin` wins outright, so a fork checked out with `origin` pointing at the fork keys to the
+        fork. With no `origin`, a single hosted remote is unambiguous; several are not, and picking
+        one by its spelling is the silent split this code exists to prevent.
+        """
+        if self.origin:
+            return self.origin
+        if len(self.remotes) == 1:
+            return self.remotes[0][1]
+        return None if self.remotes else self.fallback
+
+
+def clone_identity(start: Path) -> CloneIdentity | None:
+    """What the checkout containing `start` says about which repository it is. None outside a repo."""
+    top = repo_root_of(start)
+    if top is None:
+        return None
+    root = linked_worktree_of(top) or top
+    hosted = {name: remote_identity(remote) for name, url in remote_urls(root).items() if (remote := parse_remote(url))}
+    origin = hosted.pop("origin", None)
+    return CloneIdentity(root, origin, tuple(sorted(hosted.items())), first_commit_identity(root))
+
+
+class LinkMatch(NamedTuple):
+    """One identity's entry in a link table."""
+
+    identity: str  # as spelled in the table
+    directory: str  # relative to the store
+    exact: bool  # False when only letter case differed, which a caller says out loud
+
+
+def check_link_directory(directory: str) -> str:
+    """A table value, refused unless it is a plain folder path inside the store.
+
+    Absolute paths and `..` would let one hand-edited line point a repository's plans outside the
+    store — into another store's tier, or into a working tree. An underscore-led first segment is
+    reserved for the store's own areas (`_unscoped`, `_attachments`).
+    """
+    parts = directory.split("/")
+    if not directory or directory.startswith("/") or "\\" in directory or any(p in ("", ".", "..") for p in parts):
+        raise PlanError(f"not a folder path inside the store: {directory!r} — write it relative, with / between parts")
+    if parts[0].startswith("_"):
+        reserved = f"{UNSCOPED_DIR}, {ATTACHMENTS_DIR}"
+        raise PlanError(f"{directory!r}: folders starting with _ are the store's own ({reserved})")
+    return directory
+
+
+@dataclass(frozen=True)
+class Links:
+    """One store's table of which folder holds each repository's plans.
+
+    An identity names exactly one folder; a folder may carry several identities — an alias for a
+    renamed remote, or a fork deliberately merged with its upstream. Treat `entries` as read-only:
+    `linked` returns a new table.
+    """
+
+    store: Store
+    entries: dict[str, str]  # identity as spelled -> folder relative to the store
+
+    @property
+    def path(self) -> Path:
+        return self.store.path / LINKS_FILE
+
+    def lookup(self, identity: str) -> LinkMatch | None:
+        """The entry for an identity: the exact spelling first, else one differing only in case."""
+        if identity in self.entries:
+            return LinkMatch(identity, self.entries[identity], exact=True)
+        key = identity_key(identity)
+        found = sorted((spelled, folder) for spelled, folder in self.entries.items() if identity_key(spelled) == key)
+        if not found:
+            return None
+        if len({folder for _, folder in found}) > 1:
+            listed = "\n".join(f"    {spelled}  ->  {folder}" for spelled, folder in found)
+            raise PlanError(
+                f"{self.path} lists {identity} more than once, spelled differently, with different folders:\n"
+                f"{listed}\n"
+                "  Letter case does not tell hosted repositories apart, so these read as one repository with\n"
+                "  two homes, and picking one could hide the other's plans. Nothing was written.\n"
+                "  Keep the right line and delete the other, or rename one if they really are two repositories."
+            )
+        spelled, folder = found[0]
+        return LinkMatch(spelled, folder, exact=False)
+
+    def identities_of(self, directory: str) -> list[str]:
+        """Every identity linked to one folder — the repository's name and its aliases."""
+        return sorted(spelled for spelled, folder in self.entries.items() if folder == directory)
+
+    def case_clashes(self) -> list[list[str]]:
+        """Groups of entries spelled differently that compare equal — for `doctor` to show, never to merge."""
+        groups: dict[str, list[str]] = {}
+        for spelled in self.entries:
+            groups.setdefault(identity_key(spelled), []).append(spelled)
+        return [sorted(group) for group in groups.values() if len(group) > 1]
+
+    def linked(self, identity: str, directory: str) -> Links:
+        """This table with one more link. Refuses to point a linked identity at a second folder."""
+        check_link_directory(directory)
+        existing = self.lookup(identity)
+        if existing is None:
+            return replace(self, entries={**self.entries, identity: directory})
+        if existing.directory != directory:
+            raise PlanError(
+                f"{identity} already has a plans folder: {existing.directory} (in {self.path}).\n"
+                f"  One repository keeps one folder, so it cannot also be linked to {directory}."
+            )
+        return self
+
+
+LINKS_HEADER = """\
+# Which folder in this store holds each repository's plans. Written by plans.py; read it freely.
+#
+# One line per repository name: "<identity>" = "<folder, relative to this store>". The identity is
+# the repository's remote as <host>/<owner>/<repo>, or local:<first commit> for one with no remote.
+# Several names may share a folder (a renamed remote, a fork merged with its upstream); one name
+# never names two folders. Letter case is ignored when comparing names from a remote.
+"""
+
+
+def read_links(store: Store) -> Links:
+    """The store's link table, empty when the store has none yet."""
+    path = store.path / LINKS_FILE
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return Links(store, {})
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise PlanError(f"{path} cannot be read ({exc}) — fix the line it names; nothing was written") from exc
+    entries: dict[str, str] = {}
+    for identity, folder in raw.items():
+        if not isinstance(folder, str):
+            raise PlanError(f'{path}: {identity} = {folder!r} — each line is "<identity>" = "<folder>"')
+        try:
+            entries[identity] = check_link_directory(folder)
+        except PlanError as exc:
+            raise PlanError(f"{path}: {identity}: {exc}") from exc
+    return Links(store, entries)
+
+
+def render_links(links: Links) -> str:
+    """The table as TOML: grouped by folder, so a repository's aliases sit together in a diff."""
+    ordered = sorted(links.entries.items(), key=lambda item: (item[1], identity_key(item[0]), item[0]))
+    lines = [f"{json.dumps(identity)} = {json.dumps(folder)}" for identity, folder in ordered]
+    return LINKS_HEADER + "".join(f"{line}\n" for line in lines)
+
+
+def write_links(links: Links) -> Path:
+    """Write the table, refusing anything that would not read back identically. Does not commit."""
+    text = render_links(links)
+    if tomllib.loads(text) != links.entries:
+        raise PlanError(f"refusing to write {links.path}: the rendered table does not read back as written")
+    links.path.write_text(text, encoding="utf-8")
+    return links.path
+
+
 def resolve(start: Path, cfg: Config) -> Routing:
     root = repo_root_of(start)
     if root is None:

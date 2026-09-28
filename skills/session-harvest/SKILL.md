@@ -1065,8 +1065,11 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   nothing is terminal, and the next session reading `list` sees live design work. Confirmed
   2026-09-05: two plans were answered by six commits in one evening, the landing session ended with
   no status bump on either, and the next harvest nearly proposed building what already existed. The
-  sweep lists this repo's open plans that name a source file this session wrote, three times or
-  more, and were last touched before the session began. **A prompt, never a gate** — measured
+  sweep lists this repo's open plans that name a source file this session wrote three times or more,
+  **or three or more such files at any count**, and were last touched before the session began,
+  ranked by how many they name. The second form is a design plan's shape — it lists what it will
+  change, once each — and was added 2026-09-28 after a plan the session had answered outright was
+  missed while an incidental `conftest.py` edit was listed. **A prompt, never a gate** — measured
   2026-09-08 across 8 repos and 167 open plans, 43% name a source file that moved after them, which
   is noise, and the subject proxy only brings it to 14%. What is left is structural: a session that
   edits a file makes every plan about that file look stale. `set-status` stays the only thing that

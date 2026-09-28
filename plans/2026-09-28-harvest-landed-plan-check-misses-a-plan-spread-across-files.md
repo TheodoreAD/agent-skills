@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-28
 source_repo: github.com-personal/scaffoldapy
 source_session: 81492b4f-e6bc-4577-8d01-412b3ff4e7a9.jsonl
@@ -34,3 +34,15 @@ Count distinct touched files named, not mentions of one file. A plan naming thre
 session wrote is a stronger landing signal than one naming a single file three times, and it is the
 shape of a design plan, which lists what it will change. Keep the per-file fold for central files.
 Add both plans as fixtures: this one must list, and the conftest one should rank below it or drop.
+
+## Migrated to
+
+- **The code:** `plans_this_session_may_have_landed` and `SPREAD_MIN_FILES` in
+  `skills/session-harvest/scripts/harvest.py`, the incident in the comment at the spread check.
+- **Usage docs:** the "Whether this session landed something" bullet in
+  `skills/session-harvest/SKILL.md`.
+- **Test:** `test_a_plan_naming_several_touched_files_once_each_is_offered_first` in
+  `tests/unit/test_harvest.py`, with both plans' shapes as fixtures.
+
+The per-file three-mention rule and the vocabulary fold are kept as they were; the conftest-style
+plan still lists, ranked below. Not migrated: the evidence section.

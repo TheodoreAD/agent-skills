@@ -2734,8 +2734,17 @@ def plans_this_session_may_have_landed(
         # Only a plan that predates this session can have been landed *by* it and left behind.
         if since and updated and updated > since[:10]:
             continue
+        # A design plan lists what it will change, once each, so several touched files named at all
+        # is the other shape of "this is the plan's subject". Confirmed 2026-09-28: a CI-matrix plan
+        # this session answered outright named three of its files, none three times, and was missed
+        # while a plan naming one incidental `conftest.py` three times was listed.
+        spread = sorted({name for name in names if name in text})
+        if len(spread) >= SPREAD_MIN_FILES and len(spread) > len(subjects):
+            subjects = spread
         if subjects:
             found.append({"plan": plan.name, "status": status, "updated": updated, "names": subjects})
+    # The plan naming the most of what this session touched is the likeliest to be the one it built.
+    found.sort(key=lambda row: (-len(row["names"]), row["plan"]))
     vocabulary = {
         name: count
         for name, count in subject_of.items()
@@ -2755,6 +2764,8 @@ def plans_this_session_may_have_landed(
 # design is the one that knows which plan it built. Decided by the user the same day.
 VOCABULARY_MIN_PLANS = 5
 VOCABULARY_MIN_SHARE = 0.15
+# Distinct touched files a plan must name, at any count, to be listed without a three-mention subject.
+SPREAD_MIN_FILES = 3
 
 
 def _plan_frontmatter(text: str) -> tuple[str, str]:

@@ -1432,6 +1432,29 @@ def _open_plan(repo: Path, name: str, body: str) -> None:
     (repo / "plans" / name).write_text(f"---\nstatus: idea\nupdated: 2026-09-01\n---\n\n{body}\n")
 
 
+def test_a_plan_naming_several_touched_files_once_each_is_offered_first(tmp_path):
+    """Confirmed 2026-09-28 on a scaffoldapy harvest: the CI-matrix plan the session had answered
+    outright named `ci.yml` twice and two other touched files once each, so the three-mention rule
+    missed it — while a plan naming an incidentally edited `conftest.py` three times was listed."""
+    repo = tmp_path / "repo"
+    (repo / "plans").mkdir(parents=True)
+    _open_plan(
+        repo,
+        "2026-08-30-application-tier-ci-matrix.md",
+        "edit ci.yml, then ci.yml again; `pyproject.toml.jinja` gains a floor; `copier.yml` asks",
+    )
+    _open_plan(repo, "2026-08-30-generated-test-layout.md", "conftest.py conftest.py conftest.py")
+    _open_plan(repo, "2026-08-30-two-files.md", "ci.yml and copier.yml, once each")
+    entries = [_edit(repo / name) for name in ("ci.yml", "copier.yml", "conftest.py", "pyproject.toml")]
+
+    found = harvest.plans_this_session_may_have_landed(entries, repo, "2026-09-05T09:00:00Z")
+
+    named = [row["plan"] for row in found["candidates"]]
+    assert named == ["2026-08-30-application-tier-ci-matrix.md", "2026-08-30-generated-test-layout.md"], (
+        "three distinct files at any count lists and ranks first; two files once each is still a citation"
+    )
+
+
 def test_rows_naming_only_the_repos_vocabulary_fold_into_a_count(tmp_path, capsys):
     """Measured 2026-09-26 on a replayed setup-repo session: 15 rows, 11 matching only `setup.toml`,
     which is the subject of 23% of that repo's open plans — its vocabulary, not a signal about one

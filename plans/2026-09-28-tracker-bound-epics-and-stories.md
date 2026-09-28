@@ -211,16 +211,147 @@ headings, paragraphs and Jira's own format. The axes, with what is known:
 The payload being tracker-neutral keeps this decision swappable, so it does not block the drafting
 format. It does decide who converts the body.]
 
-[NEEDS CLARIFICATION: **the user's earlier `jira-cli` and TOML system is the nearest prior art of
-all**, and it has not been read. Where does it live, and may it be read? If it sits in an employer
-or client repo, only its shape may be written into this plan, never its names.]
+### CLI and MCP alternatives, surveyed at source 2026-09-28
+
+Asked for by the user: are there alternatives worth having to `jira-cli`, and which other Jira MCP
+servers exist. Thirteen more clones under `$RESEARCH_HOME/repos/`; health figures from
+`package_health.py`. The Appfire page returned HTTP 429 and the `acli` FAQ 404, so neither was
+assessed properly.
+
+**Nothing displaces `jira-cli` as a CLI.** `go-jira` is dead (last release 2020), and its Windows
+keyring is a stub that errors. `acli` is Cloud only and closed, and its create has no `--priority`.
+`pycontribs/jira` has one active maintainer and is 426 days since a release. `atlassian-python-api`
+is healthy (5.0.5, 13 days ago, 29 contributors a year) but is a library with seven runtime
+dependencies and no keyring. Every other candidate keeps the token in a plaintext file, an
+"encrypted" file keyed from the machine id, or an environment variable.
+
+**The one real alternative is no CLI at all: a standard-library Python script calling Jira's REST
+API directly.** Estimated 250–350 lines of `urllib`, `json` and `base64`. REST v2 takes a
+wiki-markup string on both Cloud and Data Center, so one description format serves both. Create is
+`POST /rest/api/2/issue`, links `POST /rest/api/2/issueLink`, and a lossless read
+`GET /rest/api/2/issue/{key}`. Auth is `Basic email:token` on Cloud and `Bearer <PAT>` on Data
+Center. With Python `keyring` as the store, it takes the token from `keyring get` and needs neither
+`secret-tool` nor `ctypes`.
+
+[NEEDS CLARIFICATION: **a REST script makes this skill create the tickets, which the original
+request placed outside it** ("the actual management of tickets/issues would not be the
+responsibility of plan-conveyor"). The trade is real in both directions. For it: no binary to
+install on either platform, one description format, a raw read, and none of `jira-cli`'s PowerShell
+or release-cadence risk. Against it: every Jira API change becomes this skill's to track, and the
+boundary that kept ticket management out of this corpus is gone. The launcher keeps the boundary,
+since `jira-cli` still does the talking. Decide which, or keep the launcher now and the script as
+the fallback. The user, 2026-09-28: decide after the keyring proof has run.]
+
+**Three facts from the survey that constrain every option:**
+
+- **Search moved on Cloud.** `pycontribs/jira` warns that the old `search` API is deprecated on
+  Cloud, and `jira-cli` uses `/rest/api/3/search/jql` there and `/rest/api/2/search` on Data Center.
+  The identity-label duplicate check must use the new endpoint on Cloud. `go-jira` calls only the
+  old one.
+- **The epic parent is not one field.** Cloud takes `parent: {key}`. Data Center takes a
+  per-instance Epic Link custom field, and creating an epic there also needs an Epic Name. So it is
+  detected at runtime, which `mcp-atlassian` does by trying `parent` first.
+- **A real checklist exists only in Cloud's rich-text format.** Only `mcp-atlassian` was seen
+  turning `- [ ]` into a native task list. Through wiki markup — v2, which `jira-cli` and the REST
+  script both use — acceptance criteria can only be bullets. That bears on the acceptance-criteria
+  question above: the checklist is the drafting format, and a list of bullets is what a v2 transport
+  delivers.
+
+**Other MCP servers:** none reads a Linux or Windows keyring (only one reads the macOS Keychain), so
+the launcher is the auth answer whichever server is chosen.
+
+- **`mmatczuk/jira-mcp` (Go) matches the payload almost one-to-one.** It has four tools. Its
+  `jira_write` takes an `items[]` batch with a dry run, and a create takes priority, labels,
+  `parent_key` and `links`, with link names resolved to ids. It converts markdown to ADF on v3, and
+  can route wiki markup through v2. Its `jira_read` passes ADF through raw, and it validates
+  required fields before creating. Against it: Cloud only, basic auth from environment variables, 11
+  stars, one maintainer, although it released 12 days ago.
+- **`b1ff/atlassian-dc-mcp` (TypeScript)** is the Data Center option. It has about 16 tools with no
+  allowlist, and a wiki-markup description with a free-form `customFields` map. Its token is a mode
+  `0600` file outside macOS. It released 41 times last year, with 20 contributors.
+- **`aashari/mcp-server-atlassian-jira`** exposes five generic REST verbs, so its context cost is
+  minimal and its reads are raw. It is Cloud only and 299 days since a release.
+- **`atlassian-labs/mcp-compressor`** is not a server: it collapses any server to two tools
+  (`get_tool_schema`, `invoke_tool`), and could make the official OAuth server cheap in context. It
+  stores its OAuth tokens as JSON files.
+
+[DECISION: **the user's earlier `jira-cli` and TOML system cannot be read**, and the design proceeds
+without it. It was built inside a corporation with no access now, against a Data Center instance.
+The user now has a Jira Cloud account, and assumes the CLI abstracts the difference, since **only
+basic features are wanted**. Recorded 2026-09-28. The source supports that assumption as far as
+setup goes: `jira init` takes `--installation cloud|local` and
+`--auth-type basic|bearer|mtls|
+cf-access`. So Cloud is an email plus API token (`basic`), and Data
+Center a personal access token (`bearer`) (`internal/cmd/init/init.go:40-43`).]
+
+### Proving `jira-cli` auth from the keyring, read at source 2026-09-28
+
+The user's next step: prove keyring auth on Linux before choosing the transport. MCP is tried later
+and stays in this plan, and other Jira MCP servers are surveyed alongside CLI alternatives.
+
+- **`jira-cli` only ever reads the keyring.** Its two `keyring.Get("jira-cli", login)` calls are the
+  only keyring calls in the codebase (`api/client.go:40`, `internal/cmd/root/root.go:169`), so
+  storing the token is a separate step that this skill, or the machine setup, owns. [DECISION:
+  **Python `keyring` is the credential store, not `secret-tool`.** The user's preference,
+  2026-09-28. It is already on this machine (`[packages.python-keyring]` in
+  `power-user-linux-setup`'s `setup.toml`), and it is one tool on Linux and Windows alike, where
+  `secret-tool` is Linux-only.]
+
+- **On Linux, `go-keyring` finds what Python `keyring` writes — read at source, not yet run.**
+  `go-keyring` searches the login collection for `username=<login>` and `service=jira-cli`
+  (`keyring_unix.go:56-78`). Python `keyring`'s default scheme writes `username` and `service` plus
+  an `application` attribute (`keyring/backend.py:281-297`, `backends/SecretService.py:89`). A
+  Secret Service search matches items carrying at least the attributes asked for, so the extra one
+  should not matter. `keyring set jira-cli <login>` reads the token from a pipe when stdin is not a
+  terminal (`keyring/cli.py:186-194`). So `zenity --password | keyring set jira-cli <login>` stores
+  it through a GUI prompt, using the `zenity` already installed for `askpass-zenity`, and the token
+  never appears in a terminal, a shell history or an agent transcript.
+- **On Windows the two do not meet, twice over — read at source.** `go-keyring` reads a generic
+  credential named `jira-cli:<login>` and returns its bytes unchanged
+  (`keyring_windows.go:24,
+  125-127`). Python `keyring` writes the credential under the bare
+  service name, `jira-cli` (`backends/Windows.py:134-145`), and through `pywin32`, whose string
+  blobs are UTF-16 — which is why its own reader tries UTF-16 first (`backends/Windows.py:51-62`).
+  So `jira-cli` would not find the credential, and would read NULs between the characters if it did.
+
+[NEEDS CLARIFICATION: proposed by this session, not yet agreed — **solve auth once, outside every
+transport: Python `keyring` holds the token, and a launcher hands it to the tool's environment for
+that one process.** `keyring get jira-cli
+<login>` supplies `JIRA_API_TOKEN` to the `jira` child
+process only — never exported into a shell, never written to a file — which works identically on
+Linux and Windows and does not depend on any tool's own keyring support. The same launcher serves an
+MCP server that reads its token from the environment (`mcp-atlassian` does), so this is the "auth
+solved in one place" the user wanted from MCP, without choosing MCP for it. The launcher calls the
+`keyring` CLI rather than importing the library, because a skill script is standard library only. It
+follows from the two findings above; agree it or reject it.
+
+The launcher is **a script in the skill's `scripts/`** (say `jira_run.py issue view KEY --raw`), not
+an alias or a shell function. An alias only substitutes text and cannot fetch a secret. A zsh
+function is machine config the published skill cannot rely on, and PowerShell cannot scope a
+variable to one command, so the token would sit in the session's environment. The script is one
+implementation on both platforms with no shell quoting in between, and it can feed `jira` a body
+from a file, which sidesteps the multi-line-argument quoting that PowerShell makes hard. A shell
+function for a human typing `jira` can still live in `power-user-linux-setup`; the skill never
+depends on it.]
+
+- **The proof, in order:** create an API token in the Atlassian account; store it with
+  `zenity --password | keyring set jira-cli <login>`; run
+  `jira init --installation cloud --auth-type basic` with the site and the login email; then run a
+  read (`jira me`, a one-issue `jira issue list`) **with `JIRA_API_TOKEN` unset and no `.netrc`**.
+  Those are the two sources `jira-cli` checks before the keyring, so either one being present would
+  make a pass meaningless. Then run the same read through the launcher. On Linux both should pass;
+  on Windows only the launcher is expected to.
+
+  [UNVERIFIED: every claim in this section was read from source on 2026-09-28 and none has been run.
+  The Linux match depends on Secret Service's subset search and on both libraries using the same
+  collection.]
 
 ## Recommended direction
 
-1. **Read the user's earlier `jira-cli` system, then prove `jira-cli` auth through the OS keyring on
-   Linux**, before the transport is chosen. Backlog.md's `<!-- SECTION:*:BEGIN/END -->` markers are
-   the technique for letting a script rewrite a generated section without touching the prose around
-   it.
+1. **Prove `jira-cli` auth through the OS keyring on Linux against the user's Jira Cloud account**,
+   per the section above, before the transport is chosen. MCP servers are tried afterwards.
+   Backlog.md's `<!-- SECTION:*:BEGIN/END -->` markers are the technique for letting a script
+   rewrite a generated section without touching the prose around it.
 
 2. **The epic states goal, non-goals, exit criteria and requirements with stable ids, and this is
    gated.** Without them "what is missing" has nothing to be judged against, and they are the part

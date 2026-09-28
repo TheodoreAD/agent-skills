@@ -330,7 +330,7 @@ Nothing in the sweep itself. The two decisions above each waited on a repo-tasks
 
 - **The security opt-out is declared.** repo-tasks landed
   `2026-09-29-consumer-can-decline-the-security-caller.md` in `37cf195` (retired there in
-  `362f84e`), reported here by the absorbed
+  `362f84e`), reported here by the now-retired
   `2026-09-29-security-caller-opt-out-is-declarable-now.md`. `repo-tasks.toml` now carries
   `[security] caller = false` with the reason from the security DECISION above. Checked 2026-09-29:
   **no repo-tasks release carries it yet** — `v0.6.0` is the latest tag and predates `362f84e` — and

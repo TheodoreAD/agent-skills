@@ -1754,16 +1754,199 @@ def record_link(routing: Routing) -> str:
     if routing.linked or not (routing.store and routing.folder and routing.identity):
         return ""
     links = read_links(routing.store).linked(routing.identity, routing.folder)
+    message = f"links: {routing.identity} -> {routing.folder}"
+    return f"linked:  {routing.identity} -> {routing.folder}  ({save_links(links, message)})"
+
+
+def save_links(links: Links, message: str, extra: Sequence[Path] = ()) -> str:
+    """Write a table and commit it, with any plan files that moved alongside, as one store commit.
+
+    Returns how it went, for the caller's output line. A store that is not a git repository yet, or
+    a commit that fails, leaves the table written and says so rather than raising: the link is the
+    user's decision and must not be lost to a commit problem, which `doctor` reports separately.
+    """
     path = write_links(links)
-    root = routing.store.path.expanduser()
-    head = f"linked:  {routing.identity} -> {routing.folder}"
+    root = links.store.path.expanduser()
     if not is_git_repo(root):
-        return f"{head}  (written to {path}; the store is not a git repository)"
+        return f"written to {path}; the store is not a git repository"
     try:
-        commit_paths(root, [path], f"links: {routing.identity} -> {routing.folder}")
+        commit_paths(root, [path, *extra], message)
     except PlanError as exc:
-        return f"{head}  (written, NOT committed: {exc})"
-    return f"{head}  (committed in {display_path(root)})"
+        return f"written, NOT committed: {exc}"
+    return f"committed in {display_path(root)}"
+
+
+def _store_holding(cfg: Config, folder: str) -> Store | None:
+    """The store a folder already lives in: linked there first, else present on disk there."""
+    for store in cfg.stores():
+        if folder in read_links(store).entries.values():
+            return store
+    return next((store for store in cfg.stores() if (store.path.expanduser() / folder).is_dir()), None)
+
+
+def _own_identity(clone: CloneIdentity) -> str:
+    if clone.own is None:
+        names = ", ".join(name for name, _ in clone.remotes)
+        raise PlanError(
+            f'this clone has several remotes ({names}) and none called "origin", so it has no name of\n'
+            "  its own yet. Say which repository it is first:  plans.py link --remote <name>"
+        )
+    return clone.own
+
+
+def _refuse_a_looser_store(cfg: Config, store: Store, rel: str | None, what: str) -> None:
+    """The same rule `store_route` applies, at the moment a link would create the situation."""
+    if cfg.split_by_sensitivity and rel is not None and store.tier == SHAREABLE and cfg.tier_of(rel) == SENSITIVE:
+        raise PlanError(
+            f"refused: {what} is in the SHAREABLE store, but this clone sits under a private folder\n"
+            f"  ({rel.split('/')[0]}). Plans written from here could publish private work. Link it to a\n"
+            f"  folder in the private store instead. More: {LINKS_DOC}#shareable-and-private"
+        )
+
+
+def _link_remote(cfg: Config, clone: CloneIdentity, routing: Routing, name: str) -> int:
+    chosen = dict(clone.remotes).get(name) or (clone.origin if name == "origin" else None)
+    if chosen is None:
+        known = ", ".join(n for n, _ in clone.remotes) or "(none naming a hosted repository)"
+        raise PlanError(f"no remote {name!r} naming a hosted repository here; remotes: {known}")
+    for store in cfg.stores():
+        if (match := read_links(store).lookup(chosen)) is not None:
+            print(f"already linked: {match.identity} -> {match.directory}  ({TIER_WORDS[store.tier]} store)")
+            return 0
+    if routing.rel is None:
+        raise PlanError(f"{clone.root} is not under projects_root, so name a folder:  plans.py link --to <folder>")
+    store = cfg.store_for(routing.rel)
+    links = read_links(store)
+    if links.identities_of(routing.rel):
+        raise PlanError(
+            f"{routing.rel} is already another repository's folder ({', '.join(links.identities_of(routing.rel))}).\n"
+            "  If this clone is that repository:  plans.py link --to " + routing.rel + "\n"
+            "  If it is a different one:          plans.py link --new <another folder>"
+        )
+    status = save_links(links.linked(chosen, routing.rel), f"links: {chosen} -> {routing.rel}")
+    print(f"linked:  {chosen} -> {routing.rel}  ({TIER_WORDS[store.tier]} store; {status})")
+    return 0
+
+
+def _link_to(cfg: Config, clone: CloneIdentity, routing: Routing, folder: str) -> int:
+    identity = _own_identity(clone)
+    check_link_directory(folder)
+    store = _store_holding(cfg, folder)
+    if store is None:
+        raise PlanError(
+            f"no store holds a folder {folder!r} yet. To give this repository a new folder:\n"
+            f"  plans.py link --new {folder}"
+        )
+    _refuse_a_looser_store(cfg, store, routing.rel, folder)
+    links = read_links(store)
+    others = links.identities_of(folder)
+    updated = links.linked(identity, folder)
+    if updated is links:
+        print(f"already linked: {identity} -> {folder}  ({TIER_WORDS[store.tier]} store)")
+        return 0
+    status = save_links(updated, f"links: {identity} -> {folder}")
+    print(f"linked:  {identity} -> {folder}  ({TIER_WORDS[store.tier]} store; {status})")
+    if others:
+        print(f"aliases: {', '.join(others)} — kept, so plans already recording them stay linked")
+    return 0
+
+
+def _link_new(cfg: Config, clone: CloneIdentity, routing: Routing, folder: str) -> int:
+    identity = _own_identity(clone)
+    if routing.rel is None:
+        raise PlanError(f"{clone.root} is not under projects_root, so its store cannot be chosen from its path")
+    folder = check_link_directory(folder or routing.rel)
+    store = cfg.store_for(routing.rel)
+    if (holder := _store_holding(cfg, folder)) is not None:
+        owners = ", ".join(read_links(holder).identities_of(folder)) or "no repository"
+        raise PlanError(
+            f"{folder} already exists in the {TIER_WORDS[holder.tier]} store (linked to {owners}).\n"
+            f"  Name a different folder for this repository:  plans.py link --new {folder}-2"
+        )
+    status = save_links(read_links(store).linked(identity, folder), f"links: {identity} -> {folder}")
+    print(f"linked:  {identity} -> {folder}  ({TIER_WORDS[store.tier]} store; {status})")
+    return 0
+
+
+def _link_move_to_private(cfg: Config, routing: Routing) -> int:
+    """Move a repository's whole folder, its local attachments and its links to the private store."""
+    if not cfg.split_by_sensitivity:
+        raise PlanError("this machine keeps one store, so there is no private store to move to")
+    source = routing.store
+    folder = routing.folder
+    if not (routing.linked and source is not None and folder is not None and source.tier == SHAREABLE):
+        raise PlanError("this repository is not linked in the shareable store, so there is nothing to move")
+    target = cfg.sensitive_store
+    src_root, dst_root = source.path.expanduser(), target.path.expanduser()
+    src_dir, dst_dir = src_root / folder, dst_root / folder
+    if dst_dir.exists() and any(dst_dir.iterdir()):
+        raise PlanError(f"{dst_dir} already holds files; merge by hand, then link it with --to {folder}")
+
+    src_links, dst_links = read_links(source), read_links(target)
+    identities = src_links.identities_of(folder)
+    for identity in identities:
+        dst_links = dst_links.linked(identity, folder)
+    src_links = replace(src_links, entries={k: v for k, v in src_links.entries.items() if v != folder})
+
+    tracked = (git(["ls-files", "--", folder], src_root) or "").splitlines() if is_git_repo(src_root) else []
+    if src_dir.is_dir():
+        dst_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src_dir), str(dst_dir))
+    src_local, dst_local = src_root / ATTACHMENTS_DIR / folder, dst_root / ATTACHMENTS_DIR / folder
+    if src_local.is_dir():
+        dst_local.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src_local), str(dst_local))
+        exclude_attachments(target.path)
+
+    moved = sorted(path for path in dst_dir.rglob("*") if path.is_file()) if dst_dir.is_dir() else []
+    what = f"{folder} ({len(moved)} file(s)) from the shareable store"
+    print(f"moved:   {what} to the private store")
+    print(f"private: {save_links(dst_links, f'links: move {what}', moved)}")
+    removed = [src_root / line for line in tracked if line]
+    print(f"shareable: {save_links(src_links, f'links: move {what} to the private store', removed)}")
+    if git(["remote"], src_root):
+        print("warning: the shareable store has a remote. Its HISTORY still holds these plans; if it was")
+        print("         pushed while they were there, they are published, and removing them from the tip")
+        print("         does not unpublish them. That is a history rewrite, and a decision for the user.")
+    return 0
+
+
+def _show_link(cfg: Config, clone: CloneIdentity, routing: Routing) -> int:
+    print(f"clone:    {display_path(clone.root)}")
+    print(f"identity: {clone.own or '(undecided — several remotes, no origin)'}")
+    for name, identity in clone.remotes:
+        print(f"remote:   {name} -> {identity}")
+    if routing.folder is not None and routing.store is not None:
+        how = "linked" if routing.linked else "not linked yet; the first store write links it"
+        print(f"folder:   {routing.folder}  ({routing.tier_label} store, {how})")
+        others = [i for i in read_links(routing.store).identities_of(routing.folder) if i != routing.identity]
+        if others:
+            print(f"aliases:  {', '.join(others)}")
+    if routing.note:
+        print(f"note:     {routing.note}")
+    if routing.refusal:
+        print("store writes are stopped until this is decided:")
+        print(routing.refusal)
+        return NEEDS_DECISION
+    return 0
+
+
+def cmd_link(args: argparse.Namespace, ws: Workspace) -> int:
+    """Which repository this clone is, and which store folder holds its plans — shown or changed."""
+    cfg = ws.require_config()
+    routing = ws.routing
+    clone = clone_identity(routing.repo_root) if routing.repo_root else None
+    if clone is None:
+        raise PlanError(f"{args.path} is not inside a git repository")
+    if args.remote:
+        return _link_remote(cfg, clone, routing, args.remote)
+    if args.to:
+        return _link_to(cfg, clone, routing, args.to)
+    if args.new is not None:
+        return _link_new(cfg, clone, routing, args.new)
+    if args.move_to:
+        return _link_move_to_private(cfg, routing)
+    return _show_link(cfg, clone, routing)
 
 
 def resolve(start: Path, cfg: Config) -> Routing:
@@ -7270,6 +7453,24 @@ def build_parser() -> argparse.ArgumentParser:
     absorb.add_argument("--verbose", action="store_true", help="say so when there is nothing to absorb")
     absorb.add_argument("--json", action="store_true")
     absorb.set_defaults(func=cmd_absorb)
+
+    link = add("link", "which repository this clone is, and which store folder holds its plans")
+    change = link.add_mutually_exclusive_group()
+    change.add_argument("--remote", metavar="NAME", help="no origin: this clone is the repository that remote names")
+    change.add_argument(
+        "--to", metavar="FOLDER", help="use this existing store folder (a renamed remote, a first push)"
+    )
+    change.add_argument(
+        "--new",
+        nargs="?",
+        const="",
+        metavar="FOLDER",
+        help="a different repository: give it its own folder (default: the clone path)",
+    )
+    change.add_argument(
+        "--move-to", choices=("private",), help="move this repository's folder and links to the private store"
+    )
+    link.set_defaults(func=cmd_link)
 
     move = add("move", "move a plan between the repo and the store")
     move.add_argument("file", help="plan path or bare filename")

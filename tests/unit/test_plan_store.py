@@ -2289,6 +2289,97 @@ def test_the_first_store_write_commits_its_link_in_the_store(ws, capsys):
     assert "links: github.com/TheodoreAD/agent-skills -> github.com-personal/agent-skills" in log.stdout
 
 
+def git_stores(ws: Workspace) -> None:
+    """Both stores as git repositories with an identity, so link changes are really committed."""
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    for store in (ws.store, ws.sensitive):
+        for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+            subprocess.run(["git", "config", key, value], cwd=store, check=True)
+
+
+def test_link_shows_the_identity_and_whether_the_folder_is_recorded_yet(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")
+    assert plans.main(["link", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "identity: github.com/TheodoreAD/agent-skills" in out
+    assert "not linked yet; the first store write links it" in out
+
+
+def test_link_remote_answers_the_no_origin_question_once_for_every_later_write(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    drop_remote(ws.personal)
+    add_remote(ws.personal, "fork", "git@github.com:me/agent-skills.git")
+    add_remote(ws.personal, "upstream", "git@github.com:TheodoreAD/agent-skills.git")
+    assert plans.main(["link", "--remote", "upstream", "--path", str(ws.personal)]) == 0
+    assert plans.main(["new", "decided", "--path", str(ws.personal)]) == 0
+    assert list((ws.store / "github.com-personal" / "agent-skills").glob("*-decided.md"))
+
+
+def test_link_to_keeps_the_plans_of_a_repository_pushed_for_the_first_time(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    drop_remote(ws.personal)
+    commit(ws.personal, "notes.md", "x\n")
+    local = plans.clone_identity(ws.personal).own
+    link(ws, ws.store, local, "github.com-personal/agent-skills")
+    add_remote(ws.personal, "origin", "git@github.com:TheodoreAD/agent-skills.git")
+
+    target = "github.com-personal/agent-skills"
+    assert plans.main(["link", "--to", target, "--path", str(ws.personal)]) == 0
+    assert f"aliases: {local}" in capsys.readouterr().out
+    assert plans.main(["new", "after-push", "--path", str(ws.personal)]) == 0
+    entries = plans.read_links(plans.load_config().store).entries
+    assert entries == {local: target, "github.com/TheodoreAD/agent-skills": target}
+
+
+def test_link_new_gives_a_different_repository_its_own_folder(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.personal, "git@github.com:someone-else/agent-skills.git")
+    link(ws, ws.store, "github.com/TheodoreAD/agent-skills", "github.com-personal/agent-skills")
+    (ws.store / "github.com-personal" / "agent-skills").mkdir(parents=True)
+
+    assert plans.main(["link", "--new", "--path", str(ws.personal)]) == 1
+    assert "link --new github.com-personal/agent-skills-2" in capsys.readouterr().err
+    folder = "github.com-personal/agent-skills-fork"
+    assert plans.main(["link", "--new", folder, "--path", str(ws.personal)]) == 0
+    assert plans.main(["new", "separate", "--path", str(ws.personal)]) == 0
+    assert list((ws.store / folder).glob("*-separate.md"))
+
+
+def test_link_to_refuses_a_shareable_folder_from_a_private_clone(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.client, "git@github.com:someone/lib.git")
+    (ws.store / "github.com-personal" / "lib").mkdir(parents=True)
+    assert plans.main(["link", "--to", "github.com-personal/lib", "--path", str(ws.client)]) == 1
+    assert "refused" in capsys.readouterr().err
+    assert plans.read_links(plans.load_config().store).entries == {}
+
+
+def test_link_move_to_private_carries_the_plans_and_unblocks_the_private_clone(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    git_stores(ws)
+    set_remote(ws.client, "git@github.com:someone/lib.git")
+    folder = "github.com-personal/lib"
+    existing = plan(ws.store / folder, "2026-09-01-existing.md", "status: idea")
+    subprocess.run(["git", "add", "-A"], cwd=ws.store, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=ws.store, check=True)
+    link(ws, ws.store, "github.com/someone/lib", folder)
+    capsys.readouterr()
+
+    assert plans.main(["link", "--move-to", "private", "--path", str(ws.client)]) == 0
+    out = capsys.readouterr().out
+    assert "moved:   github.com-personal/lib (1 file(s)) from the shareable store to the private store" in out
+    assert not existing.exists()
+    assert (ws.sensitive / folder / existing.name).is_file()
+    assert plans.read_links(plans.load_config().store).entries == {}
+    assert plans.read_links(plans.load_config().sensitive_store).entries == {"github.com/someone/lib": folder}
+    shared = subprocess.run(["git", "status", "--porcelain"], cwd=ws.store, capture_output=True, text=True, check=True)
+    assert shared.stdout == ""  # the removal and the table are both committed
+
+    assert plans.main(["new", "now-private", "--path", str(ws.client)]) == 0
+    assert list((ws.sensitive / folder).glob("*-now-private.md"))
+
+
 def test_a_local_attachment_follows_the_link_not_the_clone_path(ws):
     write_config(ws, STORE_ROUTED)
     set_remote(ws.personal, "git@github.com:TheodoreAD/agent-skills.git")

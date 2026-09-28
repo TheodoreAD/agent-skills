@@ -41,8 +41,8 @@ colon-space reason either way.
 ## Migrated to
 
 - **The code:** `yaml_scalar` and `unquote_scalar` in `skills/plan-conveyor/scripts/plans.py`, with
-  the incident in `yaml_scalar`'s docstring. `set-status`, `new --status` and `migrate start --status`
-  all write through it.
+  the incident in `yaml_scalar`'s docstring. `set-status`, `new --status` and
+  `migrate start --status` all write through it.
 - **Tests:** `test_set_status_quotes_a_reason_a_yaml_plain_scalar_cannot_hold` and
   `test_yaml_scalar_leaves_an_ordinary_status_plain` in `tests/unit/test_plan_store.py`.
 

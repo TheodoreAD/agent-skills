@@ -277,8 +277,8 @@ guide itself to project-level consistency. **The commonly-cited "Knuth quote" on
 misattribution** — "programs are meant to be read by humans" is Abelson & Sussman (SICP preface),
 not Knuth; Knuth's real, distinct contribution to this lineage is Literate Programming. Comment
 philosophy ("why, not what") is already governed by this session's own global instructions
-(`~/AGENTS.md`'s "default to no comments... only when the WHY is non-obvious"), not re-litigated
-here — but worth noting the pushback exists: Hillel Wayne's
+(`~/.agents/AGENTS.md`'s "default to no comments... only when the WHY is non-obvious"), not
+re-litigated here — but worth noting the pushback exists: Hillel Wayne's
 ["The Myth of Self-Documenting Code"](https://buttondown.com/hillelwayne/archive/the-myth-of-self-documenting-code/)
 argues some information (negative information — "we tried X, it broke because Y" — optimization
 rationale, caller-facing gotchas) genuinely can't be inferred from clean code no matter how

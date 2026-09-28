@@ -2,7 +2,7 @@
 
 ## Prior art (web pass, 2026-08-24)
 
-Searched before writing anything, per `~/AGENTS.md`'s "About to author content, config, or a
+Searched before writing anything, per `~/.agents/AGENTS.md`'s "About to author content, config, or a
 workaround from scratch". **No existing skill or published style guide covers invoke task naming
 specifically** — `pyinvoke`'s own docs cover argument/flag naming (underscores in Python become
 dashes on the command line) but say nothing about what to call a task or a namespace. The rules here
@@ -71,19 +71,20 @@ executing this convention across two repos on 2026-08-24, not from theory:
   after the dependency bump — the test suite could not have caught it, since it asserts on the
   namespaces the repo does wire.
 
-## Why a skill rather than `~/AGENTS.md`
+## Why a skill rather than `~/.agents/AGENTS.md`
 
 The trigger is sharp and statable ("adding or renaming an invoke task"), which
 `contributing/global-agents-md.md`'s admission criteria name as the marker of a rule that can live
-in a skill rather than in always-loaded context. The content is also too long for `~/AGENTS.md`:
-three rules plus a verb vocabulary, two documented exceptions, a rename checklist and two wiring
-traps. And it needs to reach repos that do not exist yet — `inv ai.install-skills` deploys it to
-`~/.agents/skills/`, so a freshly generated project gets it without anything being copied in.
+in a skill rather than in always-loaded context. The content is also too long for
+`~/.agents/AGENTS.md`: three rules plus a verb vocabulary, two documented exceptions, a rename
+checklist and two wiring traps. And it needs to reach repos that do not exist yet —
+`inv ai.install-skills` deploys it to `~/.agents/skills/`, so a freshly generated project gets it
+without anything being copied in.
 
 The counter-argument, recorded honestly: a skill only fires if its description matches, whereas
-`~/AGENTS.md` is always loaded. `skills/skill-fitness/references/measurements.md` covers that risk
-for this family's skills generally — the description here deliberately uses request-side vocabulary
-("what to call", "rename", "tasks.py") rather than the internal jargon of the convention.
+`~/.agents/AGENTS.md` is always loaded. `skills/skill-fitness/references/measurements.md` covers
+that risk for this family's skills generally — the description here deliberately uses request-side
+vocabulary ("what to call", "rename", "tasks.py") rather than the internal jargon of the convention.
 
 That was not sufficient, and the gap was found by measurement rather than by reading. Confirmed
 2026-08-31 with `skill-fitness`' trigger harness: the request _"our automation scripts have grown

@@ -44,8 +44,8 @@ in **auto mode** (the machine default at the time). Rates are share of that mode
 Other counts in the window:
 
 - `2>&1 | tail/head/grep` (exit code masked): 662, of which 364 wrapped a quality/test gate
-  (`inv quality.*`, `pytest`, `basedpyright`). `~/AGENTS.md` already had the rule; the habit and the
-  rule never connected.
+  (`inv quality.*`, `pytest`, `basedpyright`). `~/.agents/AGENTS.md` already had the rule; the habit
+  and the rule never connected.
 - `rg/grep … | head` on a search meant to be complete: 201.
 - Standalone file views via `cat`/`sed -n`/`head` that `Read` would have done: 156.
 - Same command re-issued after a `| head/tail`-truncated first run: 51 — the direct waste.
@@ -64,7 +64,8 @@ Re-measure with `scripts/audit.py --days N`; the script's own tags are a superse
 ## Root causes (2026-08-24)
 
 Ranked by how much of the behaviour each explains. The first two are structural; wording changes in
-`~/AGENTS.md` cannot fix them, which is why the prior "strengthen the rule" iterations hadn't.
+`~/.agents/AGENTS.md` cannot fix them, which is why the prior "strengthen the rule" iterations
+hadn't.
 
 1. **Auto mode injects the opposite instruction.** Verbatim, in the system prompt of every auto-mode
    session:
@@ -74,17 +75,18 @@ Ranked by how much of the behaviour each explains. The first two are structural;
    > with sed, heredocs, or short scripts, rather than using the dedicated Read, Edit, or Write
    > tools. Fall back to a dedicated tool only when Bash genuinely cannot do the job.
 
-   It names the same four anti-patterns `~/AGENTS.md` names and reverses each. A live harness
-   directive in system-prompt position beats standing instruction-file prose. It also drags every
-   read and edit into Bash, where chaining then happens. Presumably it exists because the auto-mode
-   classifier reads shell commands (it never sees tool results) and wants intent in shell form.
+   It names the same four anti-patterns `~/.agents/AGENTS.md` names and reverses each. A live
+   harness directive in system-prompt position beats standing instruction-file prose. It also drags
+   every read and edit into Bash, where chaining then happens. Presumably it exists because the
+   auto-mode classifier reads shell commands (it never sees tool results) and wants intent in shell
+   form.
 
-2. **No felt friction, so the rule's stated reason evaporated.** `~/AGENTS.md` justified "several
-   simple calls" purely as allowlist prompt friction. In auto mode nothing prompted (29 denials in
-   3,956 calls), and `cat`, `sed -n`, `grep`, `rg`, `fd` were all in `allow`. "Friction cost, never
-   a prohibition" + no observed cost → chain freely. The costs that actually matter (lost output,
-   masked exit codes, ask-rule bypass, lost parallelism) weren't the rule's rationale, so the model
-   never weighed them.
+2. **No felt friction, so the rule's stated reason evaporated.** `~/.agents/AGENTS.md` justified
+   "several simple calls" purely as allowlist prompt friction. In auto mode nothing prompted (29
+   denials in 3,956 calls), and `cat`, `sed -n`, `grep`, `rg`, `fd` were all in `allow`. "Friction
+   cost, never a prohibition" + no observed cost → chain freely. The costs that actually matter
+   (lost output, masked exit codes, ask-rule bypass, lost parallelism) weren't the rule's rationale,
+   so the model never weighed them.
 
 3. **Chaining is the model's native efficiency instinct.** One round-trip for N facts, labelled with
    `echo ===`; and a chain _sequences_ dependent steps (`run > log; echo $?; tail log`). The harness
@@ -124,8 +126,8 @@ matches each subcommand independently (docs, and a live test recorded in
 global option**: `Bash(git push:*)` does not match `git -C /path push`, so the call matched no rule,
 fell through to the auto-mode classifier, and the classifier's documented default allows pushes to a
 working repo's remotes. 81 such calls in the window, all executed, none prompted. Same hole for
-`git -c k=v push`, `git --git-dir=… push`. `~/AGENTS.md` itself recommended `git -C <path>` for
-cross-repo work — the bypass was the documented preferred form.
+`git -c k=v push`, `git --git-dir=… push`. `~/.agents/AGENTS.md` itself recommended `git -C <path>`
+for cross-repo work — the bypass was the documented preferred form.
 
 Under `acceptEdits` the hole closes by itself: an unmatched non-read-only Bash command prompts. The
 read-only forms (`git -C x status`) prompt too. `tools.toml`'s `global_option_prefixes` rendered
@@ -146,7 +148,7 @@ Against this machine's allowlist philosophy (classify every installed CLI from r
 | Allowlisted read-only / quality commands | no prompt                                            | no prompt                                                             |
 | `git commit`/`push` checkpoint           | ask rule, deterministic; unmatched shapes prompt too | ask rule only if the prefix matches; `git -C` slips to the classifier |
 | In-scope edits, `mkdir`/`cp`/`rm`/`sed`  | auto-approved by path scope, prompt outside          | classifier                                                            |
-| Model behaviour                          | Read/Edit/Grep per `~/AGENTS.md`                     | harness reminder pushes everything into Bash                          |
+| Model behaviour                          | Read/Edit/Grep per `~/.agents/AGENTS.md`             | harness reminder pushes everything into Bash                          |
 | Failure mode                             | an occasional prompt                                 | silent allow, or a hard classifier deny with no prompt to override it |
 | Determinism                              | same command → same outcome                          | depends on transcript state, compaction, stated "boundaries"          |
 | Subagents                                | same rules, prompts surface                          | classifier at spawn, per action, and on return                        |
@@ -225,9 +227,9 @@ of these across a Claude Code upgrade.
   `Bash(sed --in-place*)` ask rules were removed for the same reason.
 - `git` gets `global_option_prefixes = ["-C *", "-c *"]` → allow rules for read-only verbs behind a
   global option; the mutating forms rely on "unmatched prompts" in `acceptEdits`.
-- `~/AGENTS.md`'s Bash cluster rewritten around the real costs (one call = one whole output and one
-  exit code; per-subcommand prefix matching; parallelism already free), with the closed list of
-  permitted chain shapes and the head/tail and own-repo-`cd` tells. Evidence in
+- `~/.agents/AGENTS.md`'s Bash cluster rewritten around the real costs (one call = one whole output
+  and one exit code; per-subcommand prefix matching; parallelism already free), with the closed list
+  of permitted chain shapes and the head/tail and own-repo-`cd` tells. Evidence in
   `contributing/global-agents-md.md`.
 - No nudge hook (below). No rules written against auto mode's reminder — the mode is the lever.
 
@@ -256,12 +258,12 @@ calls, six sessions, all Fable:
   The rest: `inv deploy.all` 9 (its own `--yes` confirm plus a Bash prompt), the documented
   cross-repo `cd X && PATH=… inv …` form 12, read-only `inv --list`/`deploy.status`/`configs.diff`
   8, a handful of `python3 script.py`, `gh api`, `curl`, `bash script.sh`.
-- Cause: two correct things interacting. `~/AGENTS.md` (rewritten 2026-08-24) mandates many small
-  single-concern commits, staged right before each and `git fetch`ed before every push; the
+- Cause: two correct things interacting. `~/.agents/AGENTS.md` (rewritten 2026-08-24) mandates many
+  small single-concern commits, staged right before each and `git fetch`ed before every push; the
   allowlist's honest `write` verdict for `add` rendered as `ask`, and
   `fetch`/`rm`/`restore`/`switch`/ `mv` weren't registered in `tools.toml` at all. Two to four
   prompts per commit, times the commit count the instructions drove up. Not a wording problem — no
-  sentence in `~/AGENTS.md` could have moved it.
+  sentence in `~/.agents/AGENTS.md` could have moved it.
 - Behaviour side (`--compare` against the auto-mode baseline): 11/30 expectations met. Opus/Sonnet
   unchanged, but every one of their sessions in the window predates the rewrite — nothing to
   conclude yet. Fable: chaining −6pp, head/tail −9pp, `echo EXIT=$?` +10pp (a habit that costs
@@ -317,9 +319,9 @@ Two things make the rate understate the risk:
   anything reporting an error.
 
 Fix is per-call, not a rule: match the executable (`pgrep -x chrome`, `ps -C chrome -o args=`)
-rather than the command line. Routed here rather than into `~/AGENTS.md` (2026-08-25, user's call) —
-the trigger is sharp and the miss is recoverable in one call, and that file is already at 33 rules /
-390 lines against its own ≤15 / ≤200 reference points.
+rather than the command line. Routed here rather than into `~/.agents/AGENTS.md` (2026-08-25, user's
+call) — the trigger is sharp and the miss is recoverable in one call, and that file is already at 33
+rules / 390 lines against its own ≤15 / ≤200 reference points.
 
 ## Shell backgrounding can be killed before the command runs (2026-08-26)
 
@@ -350,9 +352,9 @@ a background write or delete that silently did not happen is indistinguishable f
 
 Fix: the Bash tool's own `run_in_background`, which survives across turns and re-invokes on exit.
 When something must be backgrounded anyway, have it leave a marker the next call checks. Unlike
-`pgrep -f` above, this one **was** also routed to `~/AGENTS.md` (2026-08-26, user's call: "we don't
-like things that can fool us when writing or deleting files") — it extends the existing "Reading a
-command's result" rule rather than adding a 34th, since it is the same
+`pgrep -f` above, this one **was** also routed to `~/.agents/AGENTS.md` (2026-08-26, user's call:
+"we don't like things that can fool us when writing or deleting files") — it extends the existing
+"Reading a command's result" rule rather than adding a 34th, since it is the same
 surface-signal-isn't-the-real-signal shape that rule already covers.
 
 ## `rg -r` is `--replace`, not `--recursive` (2026-08-27)
@@ -362,9 +364,9 @@ string, so `rg -rn pat path` prints every match **with the matched text rewritte
 looks like an ordinary search result and is not what the file says — which is the whole cost: it
 fails silently and plausibly, unlike a flag error that errors.
 
-`~/AGENTS.md` has warned about exactly this since before the measurement ("don't carry `grep -r`'s
-flag across with the habit"), so this row measures adherence to an existing rule rather than
-proposing a new one. That turns out to be the interesting part.
+`~/.agents/AGENTS.md` has warned about exactly this since before the measurement ("don't carry
+`grep -r`'s flag across with the habit"), so this row measures adherence to an existing rule rather
+than proposing a new one. That turns out to be the interesting part.
 
 **First run, 3 days, 3875 Bash calls: 7 flagged.** Read individually rather than counted, per the
 row's own "why":
@@ -383,11 +385,11 @@ does not run past a pipe into an unrelated command, which means a quoted alterna
 the span to admit `|` would catch it and would newly false-positive on the common `rg … | xargs -r`,
 so the exclusion stays. The measured 7 is therefore a floor, not a count.]
 
-What this says about the rule rather than the tool: an always-loaded `~/AGENTS.md` rule naming this
-exact flag did not prevent three slips in three days, two of them in a session whose author had read
-the rule that morning. Worth carrying into the next mode comparison — it is one data point against
-"write the rule and the behaviour follows", and for detection over instruction where the failure is
-silent.
+What this says about the rule rather than the tool: an always-loaded `~/.agents/AGENTS.md` rule
+naming this exact flag did not prevent three slips in three days, two of them in a session whose
+author had read the rule that morning. Worth carrying into the next mode comparison — it is one data
+point against "write the rule and the behaviour follows", and for detection over instruction where
+the failure is silent.
 
 ## `git -C <own repo>` is the ban on `cd` wearing the recommended flag (2026-08-29)
 
@@ -406,12 +408,12 @@ Two days, 2,077 calls, all `claude-opus-5`:
 
 Per session it ranges from 0% to **18%** — the worst was not the session that got corrected (5%).
 
-**The interesting part is the ratio.** `~/AGENTS.md` bans `cd` into the session's own repo and
-agents comply: 14 occurrences in two days. The same instruction then recommends `git -C <path>` as
-the directory-scoping option for a _cross-repo_ step, and agents reach for it against their own repo
-six times as often as they ever ran the banned `cd`. The rule taught half the lesson: it named the
-shape to avoid and, in the next breath, handed over a flag that reproduces it without tripping the
-prohibition.
+**The interesting part is the ratio.** `~/.agents/AGENTS.md` bans `cd` into the session's own repo
+and agents comply: 14 occurrences in two days. The same instruction then recommends `git -C <path>`
+as the directory-scoping option for a _cross-repo_ step, and agents reach for it against their own
+repo six times as often as they ever ran the banned `cd`. The rule taught half the lesson: it named
+the shape to avoid and, in the next breath, handed over a flag that reproduces it without tripping
+the prohibition.
 
 That makes this a rule-wording finding rather than an allowlist or mode one — the fix belongs in the
 rule's own source, as a clause on the existing Bash rule rather than a new one. The cost is small
@@ -447,8 +449,8 @@ Both checks are procedures in `SKILL.md`, not chores for a human:
   list understates friction — `scripts/prompts.py` (the **Prompts** procedure) estimates it by
   replaying the rules instead. Two of its approximations are worth a probe: whether a redirect to a
   `"$CLAUDE_JOB_DIR/tmp/x.log"` target (variable, not literal) prompts — the script assumes it does,
-  and it is the exact form `~/AGENTS.md` recommends for capturing a gate's exit code — and whether
-  `git -C <other> fetch` now matches `Bash(git -C * fetch:*)` without a prompt.
+  and it is the exact form `~/.agents/AGENTS.md` recommends for capturing a gate's exit code — and
+  whether `git -C <other> fetch` now matches `Bash(git -C * fetch:*)` without a prompt.
 
 ## Authoring a rule does not make an agent follow it (2026-08-30, again 2026-09-01)
 
@@ -459,8 +461,9 @@ harvest asking the session how it went.
 `[DECISION:]` about `head`/`tail` piping discarding exit codes, naming
 `inv quality.precommit | tail
 -N` as the canonical instance. It then produced that shape more than
-any other pattern in its own run. It also used `rg -r` — whose danger `~/AGENTS.md` states verbatim
-— and `git stash` on a machine where a plan it had absorbed that same session says stash is unsafe.
+any other pattern in its own run. It also used `rg -r` — whose danger `~/.agents/AGENTS.md` states
+verbatim — and `git stash` on a machine where a plan it had absorbed that same session says stash is
+unsafe.
 
 | metric                             | that session | the one it had just measured | baseline 2026-08-21→24 |
 | ---------------------------------- | ------------ | ---------------------------- | ---------------------- |
@@ -522,8 +525,8 @@ over `Write`.
 
 **Quantified on the second 2026-09-01 session, by classifying all 103 of its heredoc calls:** 32 fed
 `git commit -F -`, 67 were `python3 - <<PY` editing files, 4 other. So a third of the metric's hits
-were the form `~/AGENTS.md` _requires_ (a message containing a backtick must not go through an
-inline `-m`), and the reported 30% overstates the real figure by about that much. The 67 are the
+were the form `~/.agents/AGENTS.md` _requires_ (a message containing a backtick must not go through
+an inline `-m`), and the reported 30% overstates the real figure by about that much. The 67 are the
 genuine finding the rate should have shown — bulk multi-site edits driven through a script rather
 than `Edit`.
 
@@ -536,11 +539,11 @@ error.]
 
 ## `rg`-over-`grep` holds; `fd`-over-`find` does not (2026-09-02)
 
-The `~/AGENTS.md` tool-preference clause — `rg` over `grep -r`, `fd` over `find` — was unmeasurable
-until now, and the reason is worth keeping: the `grep/find` row fires on all four tools, so a
-compliant `rg` and a non-compliant `grep -r` were indistinguishable in its rate. **An audit pattern
-that aggregates a compliant and a non-compliant form under one tag reports a number that answers
-neither question**, and it looked like coverage.
+The `~/.agents/AGENTS.md` tool-preference clause — `rg` over `grep -r`, `fd` over `find` — was
+unmeasurable until now, and the reason is worth keeping: the `grep/find` row fires on all four
+tools, so a compliant `rg` and a non-compliant `grep -r` were indistinguishable in its rate. **An
+audit pattern that aggregates a compliant and a non-compliant form under one tag reports a number
+that answers neither question**, and it looked like coverage.
 
 Two rows now split it, plus `find-exempt` so the judgement baked into `find-not-fd`'s regex stays
 visible rather than hidden inside it. Re-measured over **29,390 calls, 30 days to 2026-09-05**, on
@@ -672,7 +675,7 @@ out, 7 true in. A count that holds steady across a fix is not evidence the fix w
 [PITFALL: **blanking quotes also hides a real invocation inside `bash -c '…'`**, and 19 of the 24
 dropped calls above are that shape — mostly `docker run … bash -c '… find /root/.local/bin …'`.
 Accepted rather than worked around: those calls already carry the `bash-c` tag, which has its own
-cost, and `~/AGENTS.md` exempts `find` "running somewhere `fd` is not installed — inside a
+cost, and `~/.agents/AGENTS.md` exempts `find` "running somewhere `fd` is not installed — inside a
 container, say", so counting them as misses was itself wrong. Recovering them would mean the pattern
 layer re-implementing `split_chain`, which it deliberately does not use.]
 
@@ -1005,10 +1008,11 @@ from every stored baseline and would read as a regression on the first `--compar
 
 ## The parallel-session rules were never measured (2026-09-10)
 
-`~/AGENTS.md` credits four rules with every survival on the one evening this machine's concurrency
-was measured: commit by pathspec, undo by SHA, `plans.py commit`'s private index, and reading the
-ahead-range before pushing. None of the four was in `PATTERNS`, so "the rules are holding" was an
-assumption. Three became rows; the first corpus run, 14 days to 2026-09-10 over **26,319 calls**:
+`~/.agents/AGENTS.md` credits four rules with every survival on the one evening this machine's
+concurrency was measured: commit by pathspec, undo by SHA, `plans.py commit`'s private index, and
+reading the ahead-range before pushing. None of the four was in `PATTERNS`, so "the rules are
+holding" was an assumption. Three became rows; the first corpus run, 14 days to 2026-09-10 over
+**26,319 calls**:
 
 | row                  | hits | reading                                                              |
 | -------------------- | ---: | -------------------------------------------------------------------- |

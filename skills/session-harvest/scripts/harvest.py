@@ -2884,7 +2884,7 @@ def promised_paths(entries: Iterable[dict[str, Any]]) -> list[str]:
 
     A rule written into an always-loaded instructions file, or a `SKILL.md` command block, names a
     path — usually an installed copy, not the checkout the session was editing. Confirmed
-    2026-08-29: a session deployed a `~/AGENTS.md` rule pointing at
+    2026-08-29: a session deployed a `~/.agents/AGENTS.md` rule pointing at
     `~/.agents/skills/<name>/scripts/<file>` while the installed skill had no `scripts/` directory,
     so a machine-wide rule instructed every future session to run a file that did not exist. The
     checkout worked perfectly throughout, which is why nothing surfaced it.

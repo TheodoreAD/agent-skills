@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit recent Claude Code transcripts for Bash-tool habits that fight ~/AGENTS.md's Bash rules.
+"""Audit recent Claude Code transcripts for Bash-tool habits that fight ~/.agents/AGENTS.md's Bash rules.
 
 Reads every `~/.claude/projects/*/*.jsonl` (main sessions and their `subagents/` transcripts)
 modified in the last N days, pulls out each Bash tool call with its result, tags it against the
@@ -231,7 +231,7 @@ def _chain_tags(cmd: str) -> set[str]:
     if len(parts) < 2:
         return set()
     if len(parts) == 2 and parts[0].startswith("cd ") and "&&" in strip_heredoc(cmd):
-        return {"cd-and-cmd"}  # the one chain shape ~/AGENTS.md permits (cross-repo only)
+        return {"cd-and-cmd"}  # the one chain shape ~/.agents/AGENTS.md permits (cross-repo only)
     return {f"chain{min(len(parts), 5)}"}
 
 
@@ -301,7 +301,7 @@ Predicate = Callable[[str], bool]
 # ------------------------------------------------------------------------------------------------
 # Parallel-session safety, added 2026-09-10.
 #
-# `~/AGENTS.md` credits four rules with every survival on the one evening this machine's concurrency
+# `~/.agents/AGENTS.md` credits four rules with every survival on the one evening this machine's concurrency
 # was measured — commit by pathspec, undo by SHA, `plans.py commit`'s private index, and reading the
 # ahead-range before pushing. Not one of them was in this table, so "the rules are holding" was an
 # assumption rather than a reading. Three of the four are properties of a single command and become
@@ -370,7 +370,7 @@ DENOMINATORS: dict[str, tuple[str, Predicate]] = {"cut-message": ("message-carry
 def _cut_message(cmd: str) -> bool:
     """A `-m`/`--body` argument the shell would cut short, because the prose closed its own quote.
 
-    `~/AGENTS.md` forbids backticks and `$` in a commit message: both are live inside a double-quoted
+    `~/.agents/AGENTS.md` forbids backticks and `$` in a commit message: both are live inside a double-quoted
     argument and make the shell *run* something. The quote character is live in the same argument for
     a different reason — it **ends** it — and was not named, because the failure looks nothing like a
     quoting problem: the error quotes a fragment of your own prose back, so it reads as a path
@@ -857,7 +857,7 @@ SESSION_ROWS = [
     "bash-c",
 ]
 
-# What a re-measurement after the 2026-08-24 changes (acceptEdits default, rewritten ~/AGENTS.md
+# What a re-measurement after the 2026-08-24 changes (acceptEdits default, rewritten ~/.agents/AGENTS.md
 # Bash cluster) should show, per model, relative to the stored baseline. "down": lower share;
 # "zero": at or near 0%. Anything else is reported but not judged.
 EXPECTATIONS: dict[str, str] = {
@@ -929,7 +929,7 @@ def load_expectations(explicit: Path | None) -> tuple[dict[str, str], str]:
     """The expectations to score against, and where they came from.
 
     **`EXPECTATIONS` above is one author's rule set, not a fact about Bash.** Every entry is a
-    reading of one machine's `~/AGENTS.md`: `find-not-fd` is `down` because that file prefers `fd`,
+    reading of one machine's `~/.agents/AGENTS.md`: `find-not-fd` is `down` because that file prefers `fd`,
     `cd-own-repo` is `zero` because it bans the shape outright. A reader whose instructions say
     something else gets rows that are still true and a verdict that scores them against rules they
     never adopted — and cannot retune it, because editing an installed skill is what

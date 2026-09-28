@@ -1,6 +1,6 @@
 ---
 name: session-harvest
-description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation for anything worth keeping and routes each item to a plain file every agent can read: plan-specific content to plans/*.md (per the plan-conveyor skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/AGENTS.md. Never a harness's own memory store, for any reason — that vendor-locks the work. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent, a safe-to-compact verdict, and a next-session prompt. On-demand only — never installs hooks or runs automatically."
+description: "Use when invoked explicitly as /session-harvest, or when the user asks what's worth saving before compacting/ending a session, or says something like 'harvest this session', 'anything to remember here', 'anything dangling before I stop', or 'is it safe to compact'. Reviews the conversation for anything worth keeping and routes each item to a plain file every agent can read: plan-specific content to plans/*.md (per the plan-conveyor skill), repo-specific durable knowledge to that repo's AGENTS.md/docs/contributing, and cross-repo/personal preference to ~/.agents/AGENTS.md. Never a harness's own memory store, for any reason — that vendor-locks the work. Then sweeps live state the conversation can't show: processes the session left running, unpushed commits in every repo it touched, CI on what it pushed, and work it promised but never verified. Ends with a report ordered least- to most-urgent, a safe-to-compact verdict, and a next-session prompt. On-demand only — never installs hooks or runs automatically."
 compatibility: Python 3.11+ (stdlib only) and git. Reads Claude Code's transcript store; on another harness the transcript half is unavailable. Processes and sockets need ps and ss on Linux, PowerShell and netstat on Windows. gh and docker are used when present. Network access only for git fetch to each repo's own upstream (--no-fetch to skip) and gh for CI.
 ---
 
@@ -126,9 +126,9 @@ running in (ordinary edits and commits), that repo's `plans/` through `plan-conv
 store through `plan-conveyor` — new plans, including plans filed `--for` another repo, and
 corrections to plans this session wrote there. A plan somebody else filed for a different repo is
 read, cited and never edited. Outside it: a deployed instructions file, an installed skill copy, any
-other repo's working tree, and the sources of a generated `~/AGENTS.md` when they live in a repo the
-session is not in. A candidate for any of those is filed as a plan for the repo that owns it. Being
-_in_ the owning repo is what makes an edit ordinary work, so the skills repo and the
+other repo's working tree, and the sources of a generated `~/.agents/AGENTS.md` when they live in a
+repo the session is not in. A candidate for any of those is filed as a plan for the repo that owns
+it. Being _in_ the owning repo is what makes an edit ordinary work, so the skills repo and the
 instructions-fragment repo are not exceptions to this rule; they are the rule applied to a session
 that happens to be there. Stated by the user 2026-09-03: _"harvest should exclusively edit things in
 the repo where the session is happening and, via plan docs, to the plans in the current session's
@@ -355,61 +355,63 @@ For what survives the significance test:
   - `contributing/*.md` (or a skill's own `references/*.md`, if the knowledge is about a skill
     itself rather than the repo) — design rationale, prior art, implementation gotchas, also on
     demand.
-- **Cross-repo/personal preference (not tied to one project) → `~/AGENTS.md`, never memory either.**
-  Same logic as the repo-specific split above, one level up — version-controlled via its real
-  source. If `~/AGENTS.md` is generated (assembled from fragments, deployed by a dotfile manager,
-  symlinked out of a repo), the source is what changes, never the deployed file — that copy is
-  silently overwritten on the next run, so an edit there is lost and reaches no other machine. And
-  the source changes **only from a session in the repo that holds it**; from anywhere else the
-  candidate is filed for that repo with `plans.py new --for`, per the write set at the top of the
-  procedure. On this author's machine the source is a fragments directory in a separate setup repo,
-  whose own `README.md` says which fragment owns what. **Read the canonical source before drafting
-  an addition — the deployed copy loaded into a session's context can be structurally stale against
-  it.** Confirmed 2026-08-24: a session held a ~20 flat-section `~/AGENTS.md` while the source had
-  been restructured to 7 clustered ones, so an addition drafted against the section names in context
-  would have targeted headings that no longer existed. `grep -n '^## ' <source>` first. **A
-  candidate that's a _variant_ of a rule already there extends that rule's existing section — it
-  doesn't get a new one.** "Already covered → skip" (below) is for an exact duplicate; this is the
-  near-miss case, where the principle is written down but this particular shape of it isn't. Default
-  to appending a short paragraph to the section that already frames it, because that file is loaded
-  into every session in every repo, so a new heading costs context everywhere and a reader who sees
-  three instances under one principle generalizes better than one holding three unrelated rules.
-  Reach for a new section only when the trigger and the detection signal are both genuinely
-  different from anything already there. Resolved 2026-08-23: "don't characterize a multi-file diff
-  from one sampled file" was folded into "Verify what actually happened, not what output looks like"
-  — which already covered clean-stdout-vs-exit-code and test-suite-vs-throwaway-script, both the
-  same "the convenient surface signal isn't the real signal" shape.
-- **A skill that already owns the topic beats a new always-loaded rule.** `~/AGENTS.md` is not the
-  default home for every cross-repo finding. Whatever document states that file's admission criteria
-  is the gate (on this author's machine, `power-user-linux-setup/contributing/global-agents-md.md`'s
-  "Admitting a new rule"); where no such document exists, the tier test below still applies — a rule
-  whose miss is _silent and expensive_ belongs in the always-loaded file, while one with a sharp
-  trigger whose miss is _cheap and recoverable_ belongs in a skill. Check the file's current size
-  against its own reference points (`grep -c '^### '`, `wc -l`; ≤15 rules / ≤200 lines) before
-  proposing, and say the numbers out loud when asking — admission is a real cost once it is over
-  them, and the user should decide with that in view. Resolved 2026-08-25: `pgrep -f` matching the
-  harness's own `zsh -c … eval` wrapper (a false positive that reads as a real process) went to
-  `session-bash-audit` — which already invites newly noticed Bash anti-patterns and can _measure_
-  the rate — rather than becoming a 34th rule in a file already at 33 rules / 390 lines.
-  Counter-example, resolved 2026-08-28 the other way: a non-terminating CI-poll loop went to the
-  always-loaded file _despite_ it standing at 37 rules / 446 lines, because the tier test is decided
-  by the miss, not by the budget — this miss is silent by construction (a loop that cannot fail
-  emits nothing, so "still waiting" and "will never finish" look identical) and it had already made
-  a session report a result it could never observe. Size pressure argues for a skill; it does not
-  overrule "silent and expensive". Two levers keep the cost honest when the always-loaded file wins:
-  extend an existing section instead of adding a heading (rule count unchanged), and end the rule on
-  the command that replaces the habit rather than on the warning. Report the before/after line count
-  either way.
+- **Cross-repo/personal preference (not tied to one project) → `~/.agents/AGENTS.md`, never memory
+  either.** Same logic as the repo-specific split above, one level up — version-controlled via its
+  real source. A harness that reads its own path instead (Claude Code's `~/.claude/CLAUDE.md`) holds
+  a copy or symlink of that file, never a second home to write to. If `~/.agents/AGENTS.md` is
+  generated (assembled from fragments, deployed by a dotfile manager, symlinked out of a repo), the
+  source is what changes, never the deployed file — that copy is silently overwritten on the next
+  run, so an edit there is lost and reaches no other machine. And the source changes **only from a
+  session in the repo that holds it**; from anywhere else the candidate is filed for that repo with
+  `plans.py new --for`, per the write set at the top of the procedure. On this author's machine the
+  source is a fragments directory in a separate setup repo, whose own `README.md` says which
+  fragment owns what. **Read the canonical source before drafting an addition — the deployed copy
+  loaded into a session's context can be structurally stale against it.** Confirmed 2026-08-24: a
+  session held a ~20 flat-section `~/.agents/AGENTS.md` while the source had been restructured to 7
+  clustered ones, so an addition drafted against the section names in context would have targeted
+  headings that no longer existed. `grep -n '^## ' <source>` first. **A candidate that's a _variant_
+  of a rule already there extends that rule's existing section — it doesn't get a new one.**
+  "Already covered → skip" (below) is for an exact duplicate; this is the near-miss case, where the
+  principle is written down but this particular shape of it isn't. Default to appending a short
+  paragraph to the section that already frames it, because that file is loaded into every session in
+  every repo, so a new heading costs context everywhere and a reader who sees three instances under
+  one principle generalizes better than one holding three unrelated rules. Reach for a new section
+  only when the trigger and the detection signal are both genuinely different from anything already
+  there. Resolved 2026-08-23: "don't characterize a multi-file diff from one sampled file" was
+  folded into "Verify what actually happened, not what output looks like" — which already covered
+  clean-stdout-vs-exit-code and test-suite-vs-throwaway-script, both the same "the convenient
+  surface signal isn't the real signal" shape.
+- **A skill that already owns the topic beats a new always-loaded rule.** `~/.agents/AGENTS.md` is
+  not the default home for every cross-repo finding. Whatever document states that file's admission
+  criteria is the gate (on this author's machine,
+  `power-user-linux-setup/contributing/global-agents-md.md`'s "Admitting a new rule"); where no such
+  document exists, the tier test below still applies — a rule whose miss is _silent and expensive_
+  belongs in the always-loaded file, while one with a sharp trigger whose miss is _cheap and
+  recoverable_ belongs in a skill. Check the file's current size against its own reference points
+  (`grep -c '^### '`, `wc -l`; ≤15 rules / ≤200 lines) before proposing, and say the numbers out
+  loud when asking — admission is a real cost once it is over them, and the user should decide with
+  that in view. Resolved 2026-08-25: `pgrep -f` matching the harness's own `zsh -c … eval` wrapper
+  (a false positive that reads as a real process) went to `session-bash-audit` — which already
+  invites newly noticed Bash anti-patterns and can _measure_ the rate — rather than becoming a 34th
+  rule in a file already at 33 rules / 390 lines. Counter-example, resolved 2026-08-28 the other
+  way: a non-terminating CI-poll loop went to the always-loaded file _despite_ it standing at 37
+  rules / 446 lines, because the tier test is decided by the miss, not by the budget — this miss is
+  silent by construction (a loop that cannot fail emits nothing, so "still waiting" and "will never
+  finish" look identical) and it had already made a session report a result it could never observe.
+  Size pressure argues for a skill; it does not overrule "silent and expensive". Two levers keep the
+  cost honest when the always-loaded file wins: extend an existing section instead of adding a
+  heading (rule count unchanged), and end the rule on the command that replaces the habit rather
+  than on the warning. Report the before/after line count either way.
 - **Destination mid-restructure → the plan reshaping it, not the file.** When a candidate's correct
   home is currently the subject of an open `plans/*.md` that is reshaping it — especially one that
   defines its own criteria for what may be added — record the candidate _in that plan_, as a
   `[NEEDS CLARIFICATION: ...]` item stating its trigger, rather than appending to the file.
   Appending bypasses the criteria that plan exists to enforce, risks the addition being restructured
   away unread, and conflicts with whatever session is doing the restructuring. Applies to any
-  destination with an open plan owning its shape, not just `~/AGENTS.md`. Resolved 2026-08-23: two
-  cross-repo rules routed to `~/AGENTS.md` while the (since retired) leanness pass was actively
-  cutting it from 30 sections and adding admission rules of its own; both candidates were parked in
-  that plan instead of appended, and were decided at its close.
+  destination with an open plan owning its shape, not just `~/.agents/AGENTS.md`. Resolved
+  2026-08-23: two cross-repo rules routed to `~/.agents/AGENTS.md` while the (since retired)
+  leanness pass was actively cutting it from 30 sections and adding admission rules of its own; both
+  candidates were parked in that plan instead of appended, and were decided at its close.
 - **A candidate belonging to another repo is _filed_ there, not queued here.** As of 2026-08-29
   `plan-conveyor` has `plans.py new <topic> --for <repo>`, which writes the plan into that repo's
   store mirror outside every working tree: no commit crosses, and the session that next works in
@@ -435,10 +437,10 @@ For what survives the significance test:
     failing, which is a measurement question rather than a rewording one.
 
   Say which of the three it is, since each has a different fix, and attach whatever the session can
-  count. Confirmed 2026-08-30: one session produced all three — a `~/AGENTS.md` memory rule reasoned
-  around, a status gate bypassed by editing frontmatter instead of calling `set-status`, and a
-  `head`/`tail` prohibition violated in 28% of the session's own Bash calls. Each became a filed
-  plan against the repo owning the rule; none would have survived as a paragraph.
+  count. Confirmed 2026-08-30: one session produced all three — a `~/.agents/AGENTS.md` memory rule
+  reasoned around, a status gate bypassed by editing frontmatter instead of calling `set-status`,
+  and a `head`/`tail` prohibition violated in 28% of the session's own Bash calls. Each became a
+  filed plan against the repo owning the rule; none would have survived as a paragraph.
 
   **Check whether the misuse is already filed before filing it, and search the store as well as the
   repo.** On a machine running parallel sessions the likeliest explanation for a rule being broken
@@ -914,10 +916,10 @@ rather than leaving it unsaid: a stated small cost cannot be inflated, and an un
   instructions file, or a `SKILL.md` command block, names a path on this machine — usually an
   installed copy, not the checkout the session was editing. The sweep reports home-rooted paths
   written into files that do not exist; run one of the ones that do. Confirmed 2026-08-29: a session
-  deployed a `~/AGENTS.md` rule pointing at `~/.agents/skills/<name>/scripts/<file>` while the
-  installed skill still had no `scripts/` directory, so a machine-wide rule instructed every future
-  session to run a file that did not exist. The checkout worked perfectly throughout, which is why
-  nothing surfaced it.
+  deployed a `~/.agents/AGENTS.md` rule pointing at `~/.agents/skills/<name>/scripts/<file>` while
+  the installed skill still had no `scripts/` directory, so a machine-wide rule instructed every
+  future session to run a file that did not exist. The checkout worked perfectly throughout, which
+  is why nothing surfaced it.
 
   **Only `AGENTS.md`, `CLAUDE.md` and `SKILL.md` are read, because existence cannot tell an
   instruction from a description.** Confirmed 2026-09-04: a harvest of a session whose subject was
@@ -1138,8 +1140,8 @@ a preference:
   skill does not have yet; do not improvise one.
 
 [DECISION: the global rule wins over this skill's own instruction, and it is not close.
-`~/AGENTS.md` says writing to another repo is out entirely, "however much a skill's own instructions
-tell you to" — a clause that reads as though written about this exact step. The skill's
+`~/.agents/AGENTS.md` says writing to another repo is out entirely, "however much a skill's own
+instructions tell you to" — a clause that reads as though written about this exact step. The skill's
 justification for committing directly was that a deferred fix does not happen; that was true when it
 was written and is not now, because `plans.py new --for` did not exist then and `absorb` gives a
 filed skill fix a real trigger in the next session working there. The reasons are also asymmetric: a
@@ -1153,8 +1155,8 @@ under step 5's rules; installing and reloading the skill afterwards are `skill-a
 sequence, and the report names that as outstanding rather than performing it. Confirmed 2026-08-28:
 `Bash(git commit:*)` and `Bash(git push:*)` are both allowlisted on this machine, so no permission
 prompt guards the push — the discipline is entirely instruction-side, deliberately (see
-`~/AGENTS.md`, "Proposing an enforcement mechanism for agent behavior"). Do not read the absence of
-a prompt as permission.
+`~/.agents/AGENTS.md`, "Proposing an enforcement mechanism for agent behavior"). Do not read the
+absence of a prompt as permission.
 
 ### 7. On friction, ask — then self-update the skill
 

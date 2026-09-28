@@ -78,12 +78,13 @@ off plan/`AGENTS.md`-shaped content, and whatever's left still gets saved as mem
 harness's own procedure. Confirmed directly by the user 2026-08-23 (same day as the cross-repo
 routing filter above) that this framing had already been overtaken by events: an earlier session did
 a full restructuring pass and moved everything durable that used to live in memory into
-`AGENTS.md`/`~/AGENTS.md` instead, on purpose — not an accident to restore. Memory's own `MEMORY.md`
-index was found empty on disk afterward, which read at first like data loss; it wasn't. The
-corrected mental model: memory holds nothing durable at all now. Step 2's filters were always meant
-to catch everything durable _before_ it reached memory — this just makes explicit that what's left
-over should be rare and genuinely temporary (a deadline, a hold-off note), not a quieter version of
-the same "personal preference" content the cross-repo filter already redirects to `~/AGENTS.md`.
+`AGENTS.md`/`~/.agents/AGENTS.md` instead, on purpose — not an accident to restore. Memory's own
+`MEMORY.md` index was found empty on disk afterward, which read at first like data loss; it wasn't.
+The corrected mental model: memory holds nothing durable at all now. Step 2's filters were always
+meant to catch everything durable _before_ it reached memory — this just makes explicit that what's
+left over should be rare and genuinely temporary (a deadline, a hold-off note), not a quieter
+version of the same "personal preference" content the cross-repo filter already redirects to
+`~/.agents/AGENTS.md`.
 
 **Superseded 2026-08-29 — see the next section.** The "rare and temporary" framing left a door open,
 and it was walked through.
@@ -104,7 +105,7 @@ plans store and the repo's `plans/`, rejected both on the design grounds recorde
 `agent-skills` plan `2026-08-29-next-session-prompt.md` (a handoff is ordering and immediacy, and a
 plan file would give it a status field and a retirement it should never need — the reasoning is in
 the next section), and chose the memory directory because it is the one destination loaded
-automatically at session start. It then read the governing rule — `~/AGENTS.md` saying that
+automatically at session start. It then read the governing rule — `~/.agents/AGENTS.md` saying that
 directory "is a staging area only, never a durable store — it's siloed per project directory" — and
 reasoned: the objection is about durable _knowledge_ being siloed; this content is deliberately
 perishable and deliberately per-project; therefore a staging area is exactly right. It even wrote
@@ -114,8 +115,8 @@ Every step of that is defensible against the rule as written, and the outcome wa
 defect was that the rule explained a **mechanism** rather than stating a **prohibition** — and a
 mechanism can be argued around by anyone who accepts it. The corrections were made in two places:
 the ban is now absolute here, and `power-user-linux-setup` carries a filed plan
-(`2026-08-29-no-harness-memory-stores.md`) to restate the `~/AGENTS.md` section the same way and
-move it out of that file's "Claude Code specifics" block, since sitting there was part of why it
+(`2026-08-29-no-harness-memory-stores.md`) to restate the `~/.agents/AGENTS.md` section the same way
+and move it out of that file's "Claude Code specifics" block, since sitting there was part of why it
 read as a note about one vendor's feature rather than a general rule.
 
 The cheap sorting rule that replaces the reasoning: **configuration describes the harness; anything
@@ -211,20 +212,21 @@ to re-derive the answer.
 ## Why a mid-restructure destination routes to the plan, not the file
 
 The routing filters answer "which file owns this?" and silently assume that file is in a steady
-state. Confirmed as a gap 2026-08-23: two cross-repo rules routed cleanly to `~/AGENTS.md` by the
-filters, but `power-user-linux-setup`'s leanness-pass plan (since landed and retired; its admission
-criteria are now permanent in that repo's `contributing/global-agents-md.md`) was mid-flight against
-that exact file — cutting it from 30 sections on the finding that oversized instruction files
-degrade adherence _wholesale_, and adding admission criteria (state a trigger, don't duplicate,
-evidence to a tier-3 rationale doc) precisely to control what gets in. Appending two new sections
-would have been correctly routed and wrong anyway: it bypasses criteria written to stop that, adds
-to a file being measured as it shrinks, and lands in a tree another session is editing.
+state. Confirmed as a gap 2026-08-23: two cross-repo rules routed cleanly to `~/.agents/AGENTS.md`
+by the filters, but `power-user-linux-setup`'s leanness-pass plan (since landed and retired; its
+admission criteria are now permanent in that repo's `contributing/global-agents-md.md`) was
+mid-flight against that exact file — cutting it from 30 sections on the finding that oversized
+instruction files degrade adherence _wholesale_, and adding admission criteria (state a trigger,
+don't duplicate, evidence to a tier-3 rationale doc) precisely to control what gets in. Appending
+two new sections would have been correctly routed and wrong anyway: it bypasses criteria written to
+stop that, adds to a file being measured as it shrinks, and lands in a tree another session is
+editing.
 
-The resolution generalizes past `~/AGENTS.md`. Any destination can be under an open plan reshaping
-it, and in that window the plan — not the file — is what owns admissions. Recording the candidate as
-a `[NEEDS CLARIFICATION: ...]` with its trigger stated (the `plan-conveyor` tag vocabulary) keeps it
-in the same backlog grep as everything else that plan must decide, so it is judged in context rather
-than discovered later as an anomaly in the diff.
+The resolution generalizes past `~/.agents/AGENTS.md`. Any destination can be under an open plan
+reshaping it, and in that window the plan — not the file — is what owns admissions. Recording the
+candidate as a `[NEEDS CLARIFICATION: ...]` with its trigger stated (the `plan-conveyor` tag
+vocabulary) keeps it in the same backlog grep as everything else that plan must decide, so it is
+judged in context rather than discovered later as an anomaly in the diff.
 
 Worth noting what this does _not_ license: parking a candidate in a plan is not a way to avoid
 deciding. It applies only when a plan genuinely owns the destination's shape right now. Absent that,
@@ -245,15 +247,15 @@ doesn't propagate anywhere and gets overwritten on the next install run.
 
 ## Why the canonical source must be read before drafting (2026-08-24)
 
-The skill already said never to edit the deployed `~/AGENTS.md`, which handles the _write_ side. The
-missing half was the _read_ side: a session's context carries whatever `~/AGENTS.md` looked like
-when the session started, and that file is regenerated from the `config/agents-md/` fragments by
-`inv tools.install`. After the leanness pass restructured the source from 30 flat sections to 6
-clusters, a running session still held the old shape — so "extend the existing rule's section", the
-admission criterion this skill routes candidates through, would have been applied against section
-names that no longer existed. The failure would have been silent: an edit landing in a plausible but
-wrong place, or a new heading created for a rule that already had a home. One `grep -n '^## '`
-against the source avoids it.
+The skill already said never to edit the deployed `~/.agents/AGENTS.md`, which handles the _write_
+side. The missing half was the _read_ side: a session's context carries whatever
+`~/.agents/AGENTS.md` looked like when the session started, and that file is regenerated from the
+`config/agents-md/` fragments by `inv tools.install`. After the leanness pass restructured the
+source from 30 flat sections to 6 clusters, a running session still held the old shape — so "extend
+the existing rule's section", the admission criterion this skill routes candidates through, would
+have been applied against section names that no longer existed. The failure would have been silent:
+an edit landing in a plausible but wrong place, or a new heading created for a rule that already had
+a home. One `grep -n '^## '` against the source avoids it.
 
 ## Why the harvest sweeps live state, not just the conversation (2026-08-28)
 
@@ -734,9 +736,9 @@ allowlisted (`~/.claude/settings.json`), so neither ever prompts, in any permiss
 unasked commit happened during this session the natural hypothesis was that a complex command line
 (a `cd … && git commit -F - <<'MSG'` heredoc) had slipped past the classifier; checking showed
 otherwise — the chain splits per subcommand and `git commit -F -` matches the allow rule cleanly.
-There was no guard to evade. That is deliberate, per `~/AGENTS.md`'s "Proposing an enforcement
-mechanism for agent behavior", and it means the absence of a prompt carries no information about
-whether an action was wanted.
+There was no guard to evade. That is deliberate, per `~/.agents/AGENTS.md`'s "Proposing an
+enforcement mechanism for agent behavior", and it means the absence of a prompt carries no
+information about whether an action was wanted.
 
 ## What the step-5 checks owed a reader, and what measuring them cost the plans (2026-09-08)
 

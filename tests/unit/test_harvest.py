@@ -1783,7 +1783,7 @@ def test_a_cycle_in_the_parent_chain_terminates_instead_of_exhausting_memory(mon
 def test_paths_written_into_files_that_do_not_exist_are_reported(tmp_path, monkeypatch):
     """A rule written into an always-loaded instructions file names a path on this machine.
 
-    Confirmed 2026-08-29: a session deployed a `~/AGENTS.md` rule pointing at a script that did not
+    Confirmed 2026-08-29: a session deployed a `~/.agents/AGENTS.md` rule pointing at a script that did not
     exist in the installed skill, so a machine-wide rule instructed every future session to run a
     missing file. The checkout worked perfectly throughout, which is why nothing surfaced it.
     """

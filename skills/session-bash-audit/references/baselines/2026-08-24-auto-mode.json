@@ -1,7 +1,7 @@
 {
   "saved": "2026-08-24",
   "days": 4.0,
-  "note": "auto mode default; pre-rewrite ~/AGENTS.md Bash cluster; 2026-08-21..24",
+  "note": "auto mode default; pre-rewrite ~/.agents/AGENTS.md Bash cluster; 2026-08-21..24",
   "models": {
     "claude-fable-5": {
       "n": 549,

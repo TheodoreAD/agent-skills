@@ -737,9 +737,9 @@ only the store's — so the obvious move is to make `commit` the advice everywhe
 targeted an ordinary repo tree and 269 the store**, and the symptom appears **once, in the store**.
 Zero in fifteen hundred repo commits. The asymmetry is the store's alone because it is the one
 repository every session writes to, while two sessions rarely commit to the same repo within
-seconds. `~/AGENTS.md`'s "stage by path, never `git add -A`" already carries the general form of the
-concern for every repo, which is the right level for a hazard that is real in principle and
-unobserved in practice.
+seconds. `~/.agents/AGENTS.md`'s "stage by path, never `git add -A`" already carries the general
+form of the concern for every repo, which is the right level for a hazard that is real in principle
+and unobserved in practice.
 
 **What that measurement cannot see, stated so nobody reads it as stronger than it is:** it counts
 the _loud_ failure, where the sweep took everything staged and the follow-up `git commit` had

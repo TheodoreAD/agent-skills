@@ -65,8 +65,8 @@ inert." That is fleet machinery for a single-user machine.
 
 It is also hostile to the surrounding architecture: the `AGENTS.md` snippet `bd init` installs says
 "do not create MEMORY.md files" and "Do not use markdown TODO lists for task tracking". beads wants
-to own memory and tracking, which this family already assigns to `~/AGENTS.md`, each repo's own
-instructions and `plans/`.
+to own memory and tracking, which this family already assigns to `~/.agents/AGENTS.md`, each repo's
+own instructions and `plans/`.
 
 ## Cross-repo aggregation patterns
 

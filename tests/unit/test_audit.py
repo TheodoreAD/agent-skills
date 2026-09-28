@@ -247,7 +247,7 @@ def test_a_tool_name_inside_quotes_is_not_an_invocation(cmd, row):
     ],
 )
 def test_a_real_invocation_still_counts(cmd, expected):
-    """Anchoring must not cost the finding. `cd <path> && rg` is the one chain shape ~/AGENTS.md
+    """Anchoring must not cost the finding. `cd <path> && rg` is the one chain shape ~/.agents/AGENTS.md
     blesses and did occur in the corpus; it needs no special case, because `&&` is already one of
     the segment boundaries."""
     assert expected <= tags_of(cmd)
@@ -683,7 +683,7 @@ def test_every_judged_row_is_a_row_that_gets_computed():
 
 
 def test_a_reader_can_score_against_their_own_expectations(tmp_path, monkeypatch):
-    """The shipped set is one author's reading of one `~/AGENTS.md` — `find-not-fd` is `down`
+    """The shipped set is one author's reading of one `~/.agents/AGENTS.md` — `find-not-fd` is `down`
     because that file prefers `fd`. A reader whose instructions differ gets rows that are still true
     and a verdict scoring them against rules they never adopted, and cannot retune it without
     forking, because editing an installed skill is what `skill-authoring-taudelta` forbids."""
@@ -807,7 +807,7 @@ def test_save_baseline_in_session_mode_refuses_rather_than_being_skipped(monkeyp
 # --------------------------------------------------------------------------------------------
 # the parallel-session four
 #
-# `~/AGENTS.md` credits four rules with every survival on the one evening this machine's concurrency
+# `~/.agents/AGENTS.md` credits four rules with every survival on the one evening this machine's concurrency
 # was measured, and none of them was in the table until 2026-09-10 — so "the rules are holding" was
 # an assumption. Three became rows; the fourth is a sequencing question and deliberately did not.
 

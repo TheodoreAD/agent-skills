@@ -1,6 +1,6 @@
 ---
 name: session-bash-audit
-description: "Use when asked to audit, measure, or re-check how agent sessions are using the Bash tool — command chaining (&&, ;, |), cd into the session's own repo, head/tail truncation, sed -n/cat/heredoc instead of Read/Edit, git commit/push inside chains or behind git -C — or when deciding whether a permission prompt, an allowlist rule, a ~/AGENTS.md Bash rule, or the permission mode (acceptEdits vs auto) needs changing and wants evidence from real transcripts rather than a hunch. Runs a stdlib script over ~/.claude/projects/*.jsonl, prints per-model and per-session rates plus samples, and carries the dated research that explains why each pattern happens and where the fix belongs. Also the place to record a newly noticed Bash anti-pattern so the next audit measures it."
+description: "Use when asked to audit, measure, or re-check how agent sessions are using the Bash tool — command chaining (&&, ;, |), cd into the session's own repo, head/tail truncation, sed -n/cat/heredoc instead of Read/Edit, git commit/push inside chains or behind git -C — or when deciding whether a permission prompt, an allowlist rule, a ~/.agents/AGENTS.md Bash rule, or the permission mode (acceptEdits vs auto) needs changing and wants evidence from real transcripts rather than a hunch. Runs a stdlib script over ~/.claude/projects/*.jsonl, prints per-model and per-session rates plus samples, and carries the dated research that explains why each pattern happens and where the fix belongs. Also the place to record a newly noticed Bash anti-pattern so the next audit measures it."
 compatibility: Python 3.11+ (stdlib only). Reads Claude Code's transcript store and settings under ~/.claude; nothing to read on another harness. The patterns are POSIX-shell idioms, so a Git Bash or WSL session on Windows measures and a PowerShell one does not. No network access.
 ---
 
@@ -222,12 +222,12 @@ gone cleanly.]
 [PITFALL: **`heredoc` used to over-count for a commit-heavy session, and stopped on 2026-09-01.**
 `git commit -F -` with a heredoc body was the recommended way to write a multi-line message here, so
 it tagged on every commit and the column had to be read against the session's commit count.
-`~/AGENTS.md` inverted that rule: the message now goes inline in `-m`, written without backticks or
-`$`, because `-m` puts it in the approval prompt while `-F <file>` hides it behind a path. So a
-`heredoc` hit on a commit-heavy session is a finding again rather than an artefact — and a sample
-taken across the change measures adherence to whichever version that session held. **Stamp a sample
-with the `~/AGENTS.md` commit it was taken against**, or a rate that looks like drift may be a
-session correctly following an earlier rule.]
+`~/.agents/AGENTS.md` inverted that rule: the message now goes inline in `-m`, written without
+backticks or `$`, because `-m` puts it in the approval prompt while `-F <file>` hides it behind a
+path. So a `heredoc` hit on a commit-heavy session is a finding again rather than an artefact — and
+a sample taken across the change measures adherence to whichever version that session held. **Stamp
+a sample with the `~/.agents/AGENTS.md` commit it was taken against**, or a rate that looks like
+drift may be a session correctly following an earlier rule.]
 
 **Compare** — the "did it work" check, no manual table-reading:
 
@@ -241,10 +241,10 @@ git-in-chain should be _down_; own-repo `cd` and `git -C` mutations, and a bundl
 zero). Models with fewer than 50 calls in either run are shown as `?`, not judged.
 
 **Those expectations are one author's rule set, not a fact about Bash — score against your own
-instead.** Every entry is a reading of one machine's `~/AGENTS.md`: `find-not-fd` is `down` because
-that file prefers `fd`, `cd-own-repo` is `zero` because it bans the shape outright. Your rows stay
-true whatever your instructions say; only the verdict is borrowed. Write your own as JSON of
-`{"<row>": "down"|"zero"}` and pass `--expectations <path>`, or put it at
+instead.** Every entry is a reading of one machine's `~/.agents/AGENTS.md`: `find-not-fd` is `down`
+because that file prefers `fd`, `cd-own-repo` is `zero` because it bans the shape outright. Your
+rows stay true whatever your instructions say; only the verdict is borrowed. Write your own as JSON
+of `{"<row>": "down"|"zero"}` and pass `--expectations <path>`, or put it at
 `$XDG_CONFIG_HOME/session-bash-audit/expectations.json` (`~/.config/…` by default, `%APPDATA%\…` on
 Windows) and it is found with nothing passed:
 

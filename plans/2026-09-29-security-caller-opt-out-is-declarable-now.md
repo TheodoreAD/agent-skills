@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-29
 source_repo: github.com-personal/repo-tasks
 source_session: 0a32e30f-5e28-40f1-b57e-78968efbacdd.jsonl
@@ -44,3 +44,13 @@ place of `no caller for .github/workflows/security-reusable.yml`, and did not co
    on the pyright tier.
 3. That same run will show the shipped `ruff.toml` moving to the renamed skill path this repo had
    already hand-corrected (repo-tasks `9435863`), once a release carries it.
+
+## Migrated to
+
+- `repo-tasks.toml`, `[security]`: the declaration itself (step 1), with a comment summarising the
+  reason and pointing at the sweep plan's DECISION.
+- `plans/2026-09-13-repo-tasks-consumer-sweep.md`, "What is left": step 2, plus the verification
+  (consumers.diff reporting the caller as declined), the release check, and step 3's observation,
+  which the re-run confirmed as `config files behind: ruff.toml, pytest.ini`.
+- Not migrated: where repo-tasks documents the key (its `contributing/consumer-sweep.md`). That is
+  repo-tasks' to keep current, and the comment in `repo-tasks.toml` needs no pointer to it.

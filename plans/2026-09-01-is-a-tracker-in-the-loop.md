@@ -38,12 +38,38 @@ So what is left for (b) is genuinely only the inbox case: something arrives as a
 report, a request from someone who is not you) and has to become a plan. That is a much smaller
 question than the one this started as, and possibly one `plans.py new` already answers by hand.
 
-## Open questions
+## A fourth shape arrived, 2026-09-28
 
-[NEEDS CLARIFICATION: is the inbox case real on this machine, or hypothetical? Nothing in the corpus
-arrived from a tracker so far. If it stays hypothetical the honest answer is (a), recorded as a
-decision so the question stops being reopened — the convention already has a place for "considered
-and rejected".]
+The user asked for epics and stories to be drafted as plans and then created in a tracker (Jira
+named, the ticket format mattering more than the platform) through a CLI or MCP server. That is
+**(d): the tracker as a downstream destination of plans**, which none of (a)–(c) covered. It is
+designed in `2026-09-28-tracker-bound-epics-and-stories.md` as a new skill, pre-export only in its
+first version, with the plan staying the full record and no sync.
+
+[DECISION: **the inbox case is real.** Answered by the user 2026-09-28: existing epics and stories
+that never came from a plan must be pullable into drafts, to gap-check and extend them. Not in the
+first version of the drafting skill, but wanted, so this plan now owns that import rather than the
+question of whether a tracker is involved at all.]
+
+## Pulling existing epics and stories in
+
+A sketch, to be designed once the drafting format in the sibling plan is settled — the import has to
+produce exactly that format, so designing it first would fix the format by accident.
+
+- **One-way, per the boundary below.** The agent fetches the epic and its children through the same
+  CLI or MCP server the export uses, and a script turns that payload into drafts. Nothing here talks
+  to a tracker directly.
+- **An imported draft is tracker-authoritative from birth**, the reverse of an exported one. It
+  carries its key and a digest of what was fetched from the start, so the same drift comparison the
+  export writes can run on it.
+
+[NEEDS CLARIFICATION: **what "work on them" means once imported.** Adding new stories under an
+imported epic is an export of new items with a recorded parent key — already covered by the drafting
+skill. Editing an imported story and pushing the edit back is an **update to an existing ticket**,
+which is the first step onto the sync ground this plan's boundary rules out. Decide whether edits to
+imported items are written back at all, or stay local notes until someone applies them by hand.]
+
+## Open questions
 
 [NEEDS CLARIFICATION: if (b), what does the boundary look like? An issue that becomes a plan is a
 one-way import, not a sync — the moment it is two-way, the remote is authoritative for something and
@@ -59,8 +85,7 @@ was assessed at README depth, and the Planning Repo Pattern article was never re
 
 ## Recommended direction
 
-Leave it open until an issue-shaped thing actually arrives, then decide from that case rather than
-from the general question — which is what "more time on it" has already produced once, by letting
-two of the three options die on their own. If nothing arrives, close it as (a): a decision that a
-tracker is not involved is worth recording, and is cheaper than a fourth session re-deriving the
-same narrowing.
+The case this was waiting for arrived on 2026-09-28, and closing it as (a) is off the table. (c)
+stays dead. What remains is the import sketched above, designed after the drafting format in
+`2026-09-28-tracker-bound-epics-and-stories.md` settles, and bounded as a one-way import unless the
+open question above deliberately chooses otherwise.

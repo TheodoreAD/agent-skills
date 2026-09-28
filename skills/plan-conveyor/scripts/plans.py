@@ -2557,8 +2557,41 @@ def parse_frontmatter(text: str) -> dict[str, str]:
         if line.startswith((" ", "\t")) or ":" not in line:
             continue
         key, _, value = line.partition(":")
-        fields[key.strip()] = value.strip().strip('"').strip("'")
+        fields[key.strip()] = unquote_scalar(value.strip())
     return fields
+
+
+# A YAML plain scalar cannot open with one of these, and cannot contain `: ` or ` #` anywhere.
+YAML_INDICATORS = tuple("-?:,[]{}#&*!|>'\"%@`")
+
+
+def yaml_scalar(value: str) -> str:
+    """`value` as a frontmatter scalar: plain where YAML reads it back unchanged, single-quoted where not.
+
+    `blocked on <reason>` is free text by design, and a reason naming a config key or a syntax holds
+    a colon naturally. Written plain, `status: blocked on accepting uses: $/` parses as a nested
+    mapping. Confirmed 2026-09-28: a repo's CI `dprint check` failed on exactly that line, after
+    `set-status` had accepted it and printed the transition. Quoting keeps the reason as written;
+    single quotes because their only escape is a doubled `'`, which `unquote_scalar` reverses.
+    """
+    needs_quotes = (
+        not value or value != value.strip() or value.startswith(YAML_INDICATORS) or ":" in value or "#" in value
+    )
+    if not needs_quotes:
+        return value
+    return "'" + value.replace("'", "''") + "'"
+
+
+def unquote_scalar(value: str) -> str:
+    """The inverse of `yaml_scalar`, and lenient about everything else a hand-written file holds.
+
+    A properly single-quoted value has its doubled quotes collapsed. Anything else keeps the old
+    behaviour, stripping stray quote characters from both ends, so no file readable before reads
+    differently now.
+    """
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        return value[1:-1].replace("''", "'")
+    return value.strip('"').strip("'")
 
 
 def strip_frontmatter_key(text: str, key: str) -> str:
@@ -3978,7 +4011,7 @@ def write_plan(
     if path.exists():
         raise PlanError(f"{path} already exists — update it in place rather than opening a second file")
 
-    lines = ["---", f"status: {status}", f"updated: {today()}"]
+    lines = ["---", f"status: {yaml_scalar(status)}", f"updated: {today()}"]
     if repo:
         lines.append(f"repo: {repo}")
     # Inbound provenance, the mirror of `depends_on`. Emitted only when filing across repos, because
@@ -4421,7 +4454,7 @@ def cmd_set_status(args: argparse.Namespace, ws: Workspace) -> int:
     end = next(index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---")
     body = lines[1:end]
     kept = [line for line in body if not line.startswith(("status:", "updated:"))]
-    front = [f"status: {args.status}", f"updated: {today()}", *kept]
+    front = [f"status: {yaml_scalar(args.status)}", f"updated: {today()}", *kept]
     plan.path.write_text("\n".join(["---", *front, "---", *lines[end + 1 :], ""]), encoding="utf-8")
     if args.json:
         payload = {"path": str(plan.path), "from": plan.status, "to": args.status, "updated": today()}
@@ -6216,7 +6249,7 @@ def _migrate_start(args: argparse.Namespace, ws: Workspace) -> int:
     named = [_source_label(source, routing.repo_root) for source in sources]
     lines = [
         "---",
-        f"status: {args.status}",
+        f"status: {yaml_scalar(args.status)}",
         f"updated: {today()}",
         f"migrated_from: [{', '.join(named)}]",
         "---",

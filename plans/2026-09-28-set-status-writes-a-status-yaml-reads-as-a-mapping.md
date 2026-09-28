@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-28
 source_repo: github.com-personal/repo-tasks
 source_session: 44be2918-1669-4d16-9f77-56535cc6ddeb.jsonl
@@ -37,3 +37,16 @@ or `#`, or starting with an indicator character. Quoting keeps the reason as the
 Refusing keeps the frontmatter free of quoting that `list` then has to strip. Check what
 `plans.py`'s own frontmatter reader does with a quoted value before choosing, and add a test with a
 colon-space reason either way.
+
+## Migrated to
+
+- **The code:** `yaml_scalar` and `unquote_scalar` in `skills/plan-conveyor/scripts/plans.py`, with
+  the incident in `yaml_scalar`'s docstring. `set-status`, `new --status` and `migrate start --status`
+  all write through it.
+- **Tests:** `test_set_status_quotes_a_reason_a_yaml_plain_scalar_cannot_hold` and
+  `test_yaml_scalar_leaves_an_ordinary_status_plain` in `tests/unit/test_plan_store.py`.
+
+Quoting beat refusing: the reader already stripped quote characters, so a quoted value reads back
+unchanged, and refusing would have made the user reword a reason that was correct. Single quotes
+because their one escape, a doubled `'`, is trivially reversible. Not migrated: the evidence
+section, which is incident narrative the docstring summarises.

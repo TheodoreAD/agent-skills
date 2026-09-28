@@ -700,6 +700,32 @@ def test_set_status_bumps_updated_and_keeps_other_fields(ws):
     assert path.read_text(encoding="utf-8").count("## Context") == 1
 
 
+def test_set_status_quotes_a_reason_a_yaml_plain_scalar_cannot_hold(ws):
+    """A colon in `blocked on <reason>` written plain opens a nested mapping to any YAML parser.
+
+    Confirmed 2026-09-28: a repo's CI `dprint check` failed on the frontmatter `set-status` wrote for
+    `blocked on actionlint and act accepting uses: $/`, after the command had accepted it silently.
+    """
+    write_config(ws, 'default = "store"\n')
+    plans.main(["new", "waiting", "--path", str(ws.client)])
+    path = next((ws.sensitive / "client.com-bitbucket" / "team" / "api").glob("*-waiting.md"))
+    reason = "blocked on act accepting uses: $/, and the author's '#' note"
+    assert plans.main(["set-status", path.name, reason, "--path", str(ws.client)]) == 0
+
+    text = path.read_text(encoding="utf-8")
+    assert "status: 'blocked on act accepting uses: $/, and the author''s ''#'' note'\n" in text
+    assert plans.parse_frontmatter(text)["status"] == reason
+
+
+def test_yaml_scalar_leaves_an_ordinary_status_plain():
+    """Every status in the fixed vocabulary, and an ordinary reason, stays unquoted as before."""
+    for status in ["idea", "in-progress", "landed", "blocked on the store landing", "superseded by x.md"]:
+        assert plans.yaml_scalar(status) == status
+    for awkward in ["- leading dash", "key: value", "a # comment", " padded", ""]:
+        assert plans.yaml_scalar(awkward).startswith("'"), awkward
+        assert plans.unquote_scalar(plans.yaml_scalar(awkward)) == awkward
+
+
 def test_landed_gate_blocks_on_unverified(ws):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "unproven", "--path", str(ws.client)])

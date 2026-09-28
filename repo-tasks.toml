@@ -14,3 +14,12 @@
 # about 2,020 of them untyped-JSON noise. Filed for repo-tasks as
 # 2026-09-29-consumer-pyright-tier-and-subtree-include.md; drop this entry once it lands.
 unchecked = ["plans*", "skills*"]
+
+[security]
+# No caller for repo-tasks' security-reusable.yml, on purpose. Read by `inv consumers.diff`, run from
+# repo-tasks' own tree, which then reports the caller as declined rather than missing. The reasoning
+# is the security DECISION in plans/2026-09-13-repo-tasks-consumer-sweep.md: pyproject.toml has no
+# runtime dependencies and `package = false`, so every package the audit would read is dev tooling,
+# and a green Security check would imply coverage of what consumers run that it does not have.
+caller = false
+reason = "nothing in uv.lock ships to anyone who installs these skills"

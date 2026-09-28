@@ -314,10 +314,22 @@ clone's own folder would have chosen shareable)`
 This reverses the earlier lean ("the existing link wins, with a warning"), which would have allowed
 the leaking direction.]
 
-[NEEDS CLARIFICATION: the "declare this clone path shareable" way out needs a config key that does
-not exist yet. Today `[repos]` entries carry `mode`/`read`/`write` and the store is decided by
-`public_roots` alone. The candidate is `[repos] "<path>" = { tier = "shareable" }`, set through
-`config set` like every other key. Decide its name when building it.]
+[DECISION: **a `[tiers]` table, not a `tier` field on `[repos]` entries.** Built 2026-09-28:
+`"<path under projects_root>" = "shareable" | "sensitive"`, longest prefix winning, honoured by
+`Config.tier_of` and so by routing, the link commands, `links fix` and `doctor` alike. The candidate
+was rejected for two reasons. Which store half a clone uses is independent of whether it writes
+in-repo or to the store, so it gets its own axis rather than a field on the routing rule; and
+`config set tiers.<path> shareable` works with the existing key splitter, where `repos.<path>.tier`
+cannot, since a repo path is full of dots. It works in both directions — the reverse case being a
+client repo cloned under a personal root, declared `sensitive`. A misspelt value is refused at load,
+not defaulted.
+
+Building it surfaced one consequence the design had not named: **a private root's clone declared
+shareable with no link yet would get a folder named after its clone path in the shareable store**,
+publishing the root's name with the next push, after which `push`'s scan refuses every push. Routing
+now stops there with a message offering `link --new <public root>/<name>`, and `link --new` refuses
+such a folder too. The shareable refusal's second choice is now the pasteable
+`config set tiers.<rel> shareable`, replacing "move the clone", which was not a command.]
 
 ### Also keyed by path, found while answering these
 

@@ -584,6 +584,18 @@ class Config:
         return self.shareable_roots or self.public_root_names()
 
     @property
+    def has_a_tier_boundary(self) -> bool:
+        """Whether plans can actually cross from one store into another here.
+
+        Narrower than `split_by_sensitivity`, which is about the *device*: a contractor machine with
+        both tiers pointed at one directory still labels its stores two ways, but has one directory,
+        one link table and nothing to leak across. Every check that stops a write for crossing a
+        tier asks this instead — confirmed 2026-09-28, when the device check alone refused every
+        private repo's second write there, reading its own link back as a shareable one.
+        """
+        return len(self.stores()) > 1
+
+    @property
     def split_by_sensitivity(self) -> bool:
         """Whether this machine keeps two stores. False on a single-employer device.
 
@@ -1728,7 +1740,7 @@ def names_a_private_root(cfg: Config, store: Store, folder: str) -> bool:
     scan then refuses forever after. Caught here, where it can still be named differently.
     """
     publishable = {*cfg.public_root_names(), *cfg.shareable_root_names()}
-    return cfg.split_by_sensitivity and store.tier == SHAREABLE and folder.split("/", maxsplit=1)[0] not in publishable
+    return cfg.has_a_tier_boundary and store.tier == SHAREABLE and folder.split("/", maxsplit=1)[0] not in publishable
 
 
 def _private_name_message(cfg: Config, clone: CloneIdentity, rel: str) -> str:
@@ -1784,7 +1796,7 @@ def _linked_route(cfg: Config, clone: CloneIdentity, rel: str | None, links: Lin
     """
     note = "" if match.exact else f"matched {match.identity} (ignoring letter case)"
     route = StoreRoute(links.store, match.directory, match.identity, True, note)
-    if not cfg.split_by_sensitivity or rel is None:
+    if not cfg.has_a_tier_boundary or rel is None:
         return route
     path_tier = cfg.tier_of(rel)
     if links.store.tier == SHAREABLE and path_tier == SENSITIVE:
@@ -1875,7 +1887,7 @@ def _own_identity(clone: CloneIdentity) -> str:
 
 def _refuse_a_looser_store(cfg: Config, store: Store, rel: str | None, what: str) -> None:
     """The same rule `store_route` applies, at the moment a link would create the situation."""
-    if cfg.split_by_sensitivity and rel is not None and store.tier == SHAREABLE and cfg.tier_of(rel) == SENSITIVE:
+    if cfg.has_a_tier_boundary and rel is not None and store.tier == SHAREABLE and cfg.tier_of(rel) == SENSITIVE:
         raise PlanError(
             f"refused: {what} is in the SHAREABLE store, but this clone sits under a private folder\n"
             f"  ({rel.split('/')[0]}). Plans written from here could publish private work. Link it to a\n"
@@ -1954,7 +1966,7 @@ def _link_new(cfg: Config, clone: CloneIdentity, routing: Routing, folder: str) 
 
 def _link_move_to_private(cfg: Config, routing: Routing) -> int:
     """Move a repository's whole folder, its local attachments and its links to the private store."""
-    if not cfg.split_by_sensitivity:
+    if not cfg.has_a_tier_boundary:
         raise PlanError("this machine keeps one store, so there is no private store to move to")
     source = routing.store
     folder = routing.folder
@@ -2176,7 +2188,7 @@ def _survey_unlinked(cfg: Config, survey: LinkSurvey, folder: str, files: list[P
         )
         return
     identity = next(iter(identities.values()))
-    if cfg.split_by_sensitivity and survey.store.tier == SHAREABLE and cfg.tier_of(folder) == SENSITIVE:
+    if cfg.has_a_tier_boundary and survey.store.tier == SHAREABLE and cfg.tier_of(folder) == SENSITIVE:
         survey.findings.append(
             LinkFinding(
                 "first",
@@ -2376,7 +2388,7 @@ def _links_claim(cfg: Config, folder: str, value: str) -> int:
     store = _store_holding(cfg, folder)
     if store is None:
         raise PlanError(f"no store holds a folder {folder!r}")
-    if cfg.split_by_sensitivity and store.tier == SHAREABLE and cfg.tier_of(folder) == SENSITIVE:
+    if cfg.has_a_tier_boundary and store.tier == SHAREABLE and cfg.tier_of(folder) == SENSITIVE:
         raise PlanError(f"{folder} is in the shareable store under a private root; move it first, then claim it")
     status = save_links(read_links(store).linked(identity, folder), f"links: {identity} -> {folder}")
     print(f"linked:  {identity} -> {folder}  ({TIER_WORDS[store.tier]} store; {status})")

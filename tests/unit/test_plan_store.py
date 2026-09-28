@@ -2968,6 +2968,33 @@ def test_pointing_both_tiers_at_one_directory_degrades_to_a_single_store(ws, cap
     assert capsys.readouterr().out.count("store:  ") == 1
 
 
+def test_one_directory_for_both_tiers_keeps_writing_after_a_link_is_recorded(ws, capsys):
+    """With both halves in one directory there is one store and one table, so a link read back must
+    not be judged against a tier boundary that does not exist — or the second write of every private
+    repo is refused as a leak into the store it has been writing to all along."""
+    write_config(ws, tiered(f'sensitive_store = "{ws.store.as_posix()}"\n'))
+    assert plans.main(["new", "first", "--path", str(ws.client)]) == 0
+    assert plans.main(["new", "second", "--path", str(ws.client)]) == 0
+    assert len(list((ws.store / "client.com-bitbucket" / "team" / "api").glob("*.md"))) == 2
+    capsys.readouterr()
+    assert plans.main(["links", "fix", "--path", str(ws.personal)]) == 0
+    assert "nothing to do" in capsys.readouterr().out
+
+
+def test_a_work_device_links_and_ignores_tiers(ws, capsys, monkeypatch):
+    """One store, no split: links work exactly as elsewhere, and a [tiers] entry has nothing to pick."""
+    work_device(ws, monkeypatch, extra="")
+    with ws.config.open("a", encoding="utf-8") as config:
+        config.write('\n[tiers]\n"client.com-bitbucket/team/api" = "shareable"\n')
+    assert plans.main(["new", "first", "--path", str(ws.client)]) == 0
+    assert plans.main(["new", "second", "--path", str(ws.client)]) == 0
+    assert len(list((ws.store / "client.com-bitbucket" / "team" / "api").glob("*.md"))) == 2
+    assert plans.read_links(plans.load_config().store).entries == {"example.com/x/api": "client.com-bitbucket/team/api"}
+    capsys.readouterr()
+    assert plans.main(["link", "--move-to", "private", "--path", str(ws.client)]) == 1
+    assert "one store" in capsys.readouterr().err
+
+
 def test_a_remote_is_a_problem_on_the_sensitive_tier_and_expected_on_the_shareable_one(ws, capsys):
     write_config(ws, TIERED)
     plans.main(["install", "--path", str(ws.personal)])

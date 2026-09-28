@@ -275,7 +275,14 @@ needed a command to resolve it and the planned `link --dir --identity` would hav
 spelling of the same act. The dry run of `links fix` on this machine is all automatic: four folders
 to link, 15 `repo:` values to rewrite, five empty folders left behind by absorption.
 
-Owed: step 7 — push, re-install, then `links fix --yes` on this machine.
+Step 7 landed the same day: pushed, re-installed (the installed copy diffs clean against the
+checkout), and `links fix --yes --prune-empty` run with the installed script. It linked four
+folders, rewrote `repo:` in 17 plans (two more than the first dry run, because another session filed
+plans in between), removed five empty folders, and made one commit in the shareable store. A second
+dry run reports nothing to do in either store.
+
+What keeps this plan open is the two tags above: the `[repos]` key for declaring a clone path
+shareable, and checking which hosts really ignore letter case.
 
 ### 3. The table's store and the path rule disagree
 

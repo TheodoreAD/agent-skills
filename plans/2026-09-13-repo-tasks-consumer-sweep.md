@@ -92,10 +92,34 @@ clean after. This repo had the largest findings of the five consumers.
   in `inv ci.check-actions`, `inv repo-tasks.status --latest`, `docker.logout`/`helm.logout`, and
   `venv.sync --extra/--group`.
 
-[NEEDS CLARIFICATION: cover `skills/` in this sweep, or first measure its basedpyright backlog
-without declaring it? Declaring it makes the gate red until the backlog is fixed. The filing
-session's recommendation: measure first (`basedpyright skills` against this repo's venv), then
-decide whether to declare now or in a follow-up.]
+**Measured 2026-09-29**, `basedpyright --outputjson skills` under this repo's config on the 3.11
+venv: 34 files, **1,202 errors and 931 warnings**. About 2,020 are the `Any`/Unknown family
+(`reportAny` 1,126, `reportExplicitAny` 214, `reportUnknown*` ~680) — stdlib scripts reading JSON,
+where untyped is the nature of the data. 23 are unresolved imports, every one in
+`references/snippets/` (illustrative code importing sqlalchemy, duckdb, pydantic and the like).
+About 50 are real type findings, several plausible bugs: `session-bash-audit/scripts/prompts.py`
+reading fields off a `list[Call] | int`, `session-harvest/scripts/harvest.py` indexing with string
+keys the checker rejects, `session-bash-audit/scripts/audit.py` calling `.split` on a possible
+`None`.
+
+[DECISION: cover `skills/*/scripts` in the gate with the `Any`/Unknown rules relaxed for them, the
+way `tests` already has its own tier; fix the ~50 real findings; keep `references/snippets/` out.
+Decided by the user 2026-09-29. Declaring `skills/` whole was rejected because the gate would stay
+red on ~2,000 findings whose fix is typing every JSON access. A one-off fix without the gate was
+rejected because nothing would stop new findings arriving.]
+
+[DECISION: `skills/` waits for repo-tasks, and this sweep declares it unchecked. Decided by the user
+2026-09-29, after checking repo-tasks' `configs.py`: a pulled `pyrightconfig.json` is fully derived,
+so a consumer cannot add its own relaxed tier (a hand edit is overwritten by `configs.pull` and
+reported by `configs.diff`), and `[pyright] extra-include` appends top-level globs, so `skills*`
+would also take in the 21 example snippets whose imports cannot resolve here. Rejected: a
+`skills/*/scripts*` glob with a file-level `# pyright:` relaxation atop each script, which works
+today but which `configs.check-include` (first path segment only) would keep reporting as never
+checked. Rejected too: `skills*` with relaxation comments in every file, snippets included, which
+puts type-checker noise in code readers copy from. Filed for repo-tasks as
+`2026-09-29-consumer-pyright-tier-and-subtree-include.md`. Until it lands, `repo-tasks.toml` here
+declares `[pyright] unchecked = ["plans*", "skills*"]`, so `check-include` reports both trees as
+unchecked by declaration.]
 
 ## What v0.6.0 adds, measured 2026-09-28
 
@@ -218,9 +242,18 @@ exist here (`>=3.11`), so this is a check that passes rather than a blocker.]
   only because `security-reusable.yml` has never been edited since, so copying either existing
   caller verbatim is correct today, and the reporter is what notices when that stops being true.
 
-  [NEEDS CLARIFICATION: this repo has a Windows job (`tests-windows.yml`). Does the reusable
-  security workflow need anything said about it, or is it Linux-only by construction? Every existing
-  caller is in a Linux-only repo, so this is the first place the question arises.]
+  **The Windows question answers itself:** `security-reusable.yml` fixes `runs-on: ubuntu-latest`
+  and `uv audit --locked` reads a platform-independent `uv.lock`, so a Windows job needs nothing.
+
+  [DECISION: this repo does not add the caller. Decided by the user 2026-09-29. `pyproject.toml` has
+  `dependencies = []` and `package = false`, so nothing in `uv.lock` ships to anyone who installs
+  these skills; their scripts run on an ambient interpreter's stdlib, which the audit cannot see.
+  All 21 audited packages are dev tooling, so the audit would guard only this machine and CI, and a
+  green Security check would imply coverage of what consumers run that it does not have. Adding it
+  anyway for uniformity was the rejected alternative. Measured the same day: `uv audit --locked`
+  reports no known vulnerabilities in the 21. `inv consumers.diff` will keep listing the missing
+  caller; a plan filed for repo-tasks asks for a way to declare this opt-out so the report stops
+  repeating a settled question.]
 - **The packaged-`tests/` decision.** `configs.pull` writes both halves of the config but cannot
   decide whether this repo wants `__init__.py` files under `tests/`. Stays deliberate.
 - ~~**`venv.check` / `venv.recreate`.**~~ **Done 2026-09-28**, ahead of the sweep: the 3.14.5 venv

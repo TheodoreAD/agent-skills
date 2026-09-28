@@ -522,19 +522,65 @@ a PR), and guessing `store` files the plan somewhere the user never named and wi
 look. A one-question round trip on the first plan in a new repo is cheaper than either, and the
 answer is written to config, so it is asked exactly once per repo.
 
-### Why the store mirrors the clone path
+### Why a store folder is linked, and only named after the clone path
 
-`<store>/<repo's path under the projects root>`, at whatever depth the repo sits. The existing root
-directory names already encode host and organisation, so there is nothing to invent: no slug
-function, no origin-URL parsing, and no collision when two clients each have a repo called `api`.
-Depth matters — three of the eight measured roots hold repos at depth 2 (Bitbucket's project/repo
-hierarchy, a grouping directory), so any fixed `<root>/<repo>` rule is wrong for them. The path is
-computed from `git rev-parse --show-toplevel`, never from the working directory, so working in a
-subdirectory lands in the same place as working at the root.
+A store folder is still **named** `<store>/<repo's path under the projects root>`, at whatever depth
+the repo sits. The existing root directory names already encode host and organisation, so the name
+reads like `~/projects` and two clients' `api` repos never collide. Depth matters — three of the
+eight measured roots hold repos at depth 2 (Bitbucket's project/repo hierarchy, a grouping
+directory), so any fixed `<root>/<repo>` rule is wrong for them. The path is computed from
+`git rev-parse --show-toplevel`, never from the working directory, so working in a subdirectory
+lands in the same place as working at the root.
 
-A store-held plan additionally carries `repo:` frontmatter holding the **origin URL**, not the path:
-the path is already the file's own location, so repeating it would be a second copy of the same
-fact, while the origin URL is the identity that survives the clone being moved or renamed.
+**But since 2026-09-28 the name is only the default, and the answer is a recorded link.** Keying on
+the clone path assumed one clone per repository. Measured that day: one work root held three clones
+of one repository, each in a wrapper directory named for its purpose
+(`<root>/<repo>-<purpose>/<repo>`), and another held a main checkout and a `_tests/` copy — five
+folders for two repositories, each blind to its siblings' plans. The 2026-09-04 worktree fix could
+not reach them, because a clone has its own `.git`. So each store keeps a `repos.toml` mapping a
+repository's identity to its folder. Resolution reads the tables first and falls back to the clone
+path only for a repository with no link, which is exactly the old behaviour, so an unlinked machine
+routes as it always did. A repository's first store write records its link. The user set the
+direction: the link is configuration, recorded and unambiguous, never inferred from a path.
+
+The details, each chosen over a named alternative:
+
+- **Identity is the `origin` remote normalised to `<host>/<owner>/<repo>`**, falling back to the one
+  hosted remote when there is no `origin`, then `local:<first commit>`, then the clone's `file://`
+  path. The first commit, not a `file://` path, names a repository with no remote, because every
+  clone shares it and no move changes it — a path has neither property, and that is the exact
+  failure being removed. With several remotes and no `origin`, the clone does not answer and the
+  user is asked once (`link --remote`), since picking by spelling is a silent split.
+- **Letter case is kept as spelled and ignored when comparing** hosted identities; `file://`
+  compares exactly. Lowercasing everything was the first decision and was reversed the same day for
+  readability, and because it could not be uniform anyway (a Linux path is case-sensitive). Exact
+  comparison everywhere was rejected because GitHub serves any capitalisation, so a clone typed from
+  memory would split the repository again. Measured: 68 remote URLs, 63 identities, no case-only
+  collision.
+- **The table lives in the store, not in the config**, because it describes the store and has to
+  travel with it to a second machine, while the config is a statement about one machine's clones.
+  **One table per store**, so a private repository's name never enters the store with a remote.
+- **A repository linked in one store and cloned under a root of the other tier** gets opposite
+  answers by direction. Linked private, cloned under a shareable root: the private folder, silently,
+  since it is the stricter store. Linked shareable, cloned under a private root: store writes stop,
+  because a plan written there could carry private context into a pushed store. An earlier lean,
+  "the existing link wins with a warning", would have allowed the leaking direction.
+- **A refusal stops store writes only**, carried on an ok route rather than as a needs-decision
+  verdict. The first cut made it a verdict and that blocked `list` too, while a reader deciding what
+  to do about a message needs to see the plans it is about.
+- **Every stopping message has one shape** — what was found in the reader's terms, why it matters,
+  each choice as a pasteable command, and "Nothing was written" with a pointer into `store-links.md`
+  — required by the user because nobody will remember the mechanism months later. Tests hold every
+  named command to the real parser and every cited section to the doc.
+- **Moving an existing store onto links is one repeatable command, `links fix`**, not a one-off
+  script. It is a dry run by default, automatic only where the store's own records agree, and never
+  moves a folder by itself. That last rule is what keeps an older installed `plans.py`, which
+  ignores the table, writing to the same places during the rollout.
+
+A store-held plan carries `repo:` frontmatter holding that **identity**. Until 2026-09-28 it held
+the raw origin URL, which records how one clone was made rather than which repository it is: an ssh
+and an https clone of one repository wrote two different strings. `links fix` rewrites the old
+values.
 
 ### Why the stores stay visible in `$HOME`, and what mode they are created with
 

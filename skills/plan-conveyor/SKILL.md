@@ -24,24 +24,33 @@ case none of them solves cheaply — is
   names under `projects_root` (to derive the private terms `scan` gates on — names only, never
   contents), git history of the session repo and the stores, and, on Claude Code, the transcript
   path named by `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
-- **Runs**: `git` — read commands everywhere. It commits through three commands and no others:
-  `commit`, `rename --commit`, and `migrate finish --delete-sources`. Each commits in the repository
-  the named paths are already in, which is the store for a store-held plan and the session repo for
-  a repo-held one, and never in any other repository. `rename` also runs `git mv`. **`git push` runs
-  only through `push`, only against a plans store, and only once the scan of that push's own
-  outgoing commits comes back clean.** The history-purge sequence in "Never let a client's identity
-  reach a repo you publish" is printed for you to run; the script never runs it.
+- **Runs**: `git` — read commands everywhere. It commits through `commit`, `rename --commit` and
+  `migrate finish --delete-sources`, each in the repository the named paths are already in — the
+  store for a store-held plan, the session repo for a repo-held one, never any other repository. In
+  a store only, it also commits a store's `repos.toml` link table: on a repository's first write
+  into the store (`new`, `new --for`, `move --to store`, `graduate`), and through `link --remote`,
+  `link --to`, `link --new`, `link --move-to private`, `links fix --yes`, `links merge` and
+  `links claim`, which commit the plan files they move or rewrite with it. `rename` also runs
+  `git mv`. **`git push` runs only through `push`, only against a plans store, and only once the
+  scan of that push's own outgoing commits comes back clean.** The history-purge sequence in "Never
+  let a client's identity reach a repo you publish" is printed for you to run; the script never runs
+  it.
 - **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
   files in the session repo's `plans/` and in both stores — `new`, `migrate start`, `set-status`,
   `move`, `absorb --apply`, `graduate`, and the retirement you perform by hand. The store
   directories and their READMEs, created `0700`. Through `attach`: a copy of each file you name,
   either in a directory beside the plan or in the store's `_attachments/`, the plan's own
-  `## Attachments` rows, and one line in the store's `.git/info/exclude`. **Deletes files only
-  through `migrate finish --delete-sources`**, and only the ones it has just listed as deletable, in
-  the session's own repository, after its coverage gate has passed — never on its own initiative and
-  never without that flag. Never a file in any other repo's working tree: `new` refuses and names
-  `--for`, and `migrate` refuses a source outside this repository. `archive`, `list`, `tags`,
-  `refs`, `pending`, `migrate check`, `doctor`, `scan` and `where` write nothing.
+  `## Attachments` rows, and one line in the store's `.git/info/exclude`. Each store's `repos.toml`,
+  and — through `links fix --yes` — the `repo:` line of store-held plans. `link --move-to private`
+  and `links merge` move a store folder's files, and its local attachments, to another folder or the
+  other store. **Deletes files only through `migrate finish --delete-sources`**, and only the ones
+  it has just listed as deletable, in the session's own repository, after its coverage gate has
+  passed — never on its own initiative and never without that flag. The only other removals are of
+  directories left holding no file: the ones a move or merge empties, and those
+  `links fix --yes --prune-empty` lists. Never a file in any other repo's working tree: `new`
+  refuses and names `--for`, and `migrate` refuses a source outside this repository. `archive`,
+  `list`, `tags`, `refs`, `pending`, `migrate check`, `doctor`, `scan`, `where`, bare `link`,
+  `links` and `links fix` without `--yes` write nothing.
 - **Network**: only `push`, and only to publish a plans store to the remote that store already has.
   It never adds a remote, never pushes a repo, and refuses rather than publishing when the scan of
   its own outgoing commits finds a private name. Every other command is offline.
@@ -123,6 +132,8 @@ python3 <path> archive --search <words>     # a retired plan, back out of git hi
 python3 <path> scan                         # no private name reaches a repo you publish
 python3 <path> push                         # scan what the push would publish, then push the store
 python3 <path> orgs                         # whose repo each directory is, from its own remote
+python3 <path> link                         # which repository this clone is, and its store folder
+python3 <path> links fix                    # move a store onto links, or repair them; --yes applies
 python3 <path> install --explain            # set the machine up, one decision at a time
 ```
 
@@ -148,9 +159,26 @@ repo uses is **configuration, never a judgement call made per session**:
 | **store** | `<the store for its tier>/<path under projects root>` | a repo that can't hold its own plans   |
 | **both**  | reads both, writes one                                | a repo mid-switch, in either direction |
 
-The store mirrors each repo's path at whatever depth it sits, so a `<root>/<project>/<repo>` clone
-gets `<store>/<root>/<project>/<repo>` — no slug, no collision between two clients' `api`. The path
-is computed from the repo root, not from the working directory.
+**Which store folder holds a repository's plans is recorded, not derived from where a clone sits.**
+Each store keeps a `repos.toml` linking a repository's identity (its `origin` remote as
+`<host>/<owner>/<repo>`, or `local:<first commit>` with no remote) to a folder. Every clone of the
+repository — parallel checkouts in wrapper directories, a second copy for tests — reads and writes
+that one folder. A repository with no link yet uses its clone path,
+`<store>/<root>/<project>/<repo>` at whatever depth it sits, and its first store write records the
+link. So folders keep path-shaped names, and the name is only a name. `repo:` in a store-held plan
+records the identity.
+
+**When a store write stops with a message about links, follow the message.** Each one says what it
+found, why it matters, and the exact commands that resolve it, and ends with "Nothing was written"
+and a section of [`references/store-links.md`](references/store-links.md) with the background.
+Reading plans keeps working meanwhile. The four cases are: several remotes and no `origin`, a first
+push or renamed remote, a repository linked in both stores, and a clone under a private root
+reaching a folder in the shareable store. Put the choice to the user rather than picking one: each
+is a statement about which repository a clone is, or where its plans may be published.
+
+**A store written before links existed is moved onto them with `links fix`** — a dry run that sorts
+everything into automatic, needs-a-decision and left-alone, then `links fix --yes` for the automatic
+group. `doctor` reports what it would do. Nothing moves unless a command says so.
 
 **From a git worktree the mirror is the repository's, not that checkout's** — every worktree of a
 repo shares one mirror and one `absorb` queue, so a plan written on a feature branch is visible from

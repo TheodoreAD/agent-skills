@@ -1,5 +1,5 @@
 ---
-status: idea
+status: landed
 updated: 2026-09-28
 source_repo: github.com-personal/scaffoldapy
 source_session: 81492b4f-e6bc-4577-8d01-412b3ff4e7a9.jsonl
@@ -45,3 +45,15 @@ Match an install reference, not the name anywhere in the file. In `setup.toml` t
 `package`/`url`/`repo` value, or a git URL naming the repo, and never a `description`. Alternatively
 skip keys named `description` and TOML comments. Add this `setup.toml` shape as a fixture case that
 must not match.
+
+## Migrated to
+
+- **The code:** `_installs` and `PROSE_KEY_RE` in `skills/session-harvest/scripts/harvest.py`; the
+  incident is in `_installs`' docstring beside the comment-stripping one it extends.
+- **Test:** `test_a_package_description_naming_a_repo_does_not_make_a_consumer` in
+  `tests/unit/test_harvest.py`.
+
+Took the alternative rather than the first direction: drop `description`/`summary` lines, as
+comments already are. Matching only install keys would have needed a key list per manifest format;
+dropping prose keys is one rule for all of them. Not migrated: the evidence section, summarised in
+the docstring.

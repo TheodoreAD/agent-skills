@@ -2776,6 +2776,12 @@ def _installs(candidate: Path, name: str) -> bool:
     "installed by" three repos that merely mention the word. Confirmed 2026-09-08 by this check's
     own first real run. A consumer relationship is declared in configuration; a repo that only talks
     about something in a comment is not installing it.
+
+    **A prose value is commentary too, so a `description` or `summary` line is dropped the same
+    way.** Confirmed 2026-09-28: a setup manifest's `copier` entry described itself as driving the
+    scaffoldapy template, and a scaffoldapy harvest reported the setup repo as installing it, with
+    "a push here is a deploy there". The entry installs copier from PyPI; nothing installs
+    scaffoldapy.
     """
     manifests = [candidate / manifest for manifest in CONSUMER_MANIFESTS]
     manifests += [path for pattern in CONSUMER_MANIFEST_GLOBS for path in candidate.glob(pattern)]
@@ -2784,10 +2790,15 @@ def _installs(candidate: Path, name: str) -> bool:
             text = manifest.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        declared = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+        declared = "\n".join(line.split("#", 1)[0] for line in text.splitlines() if not PROSE_KEY_RE.match(line))
         if name in declared:
             return True
     return False
+
+
+# A manifest key whose value describes rather than declares — TOML `description = "…"`, JSON
+# `"description": "…"`, YAML `summary: …`.
+PROSE_KEY_RE = re.compile(r"""^\s*["']?(description|summary)["']?\s*[=:]""", re.IGNORECASE)
 
 
 def depends_on(repo: Path) -> list[dict[str, Any]]:

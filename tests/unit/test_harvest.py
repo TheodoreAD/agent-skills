@@ -1206,6 +1206,23 @@ def test_a_manifest_comment_does_not_make_a_consumer(tmp_path):
     assert harvest._installs(candidate, "plans")
 
 
+def test_a_package_description_naming_a_repo_does_not_make_a_consumer(tmp_path):
+    """Confirmed 2026-09-28: a setup manifest's `copier` entry said it "drives the scaffoldapy repo
+    template", and a scaffoldapy harvest reported that repo as installing scaffoldapy. It installs
+    copier from PyPI; a description is prose, like a comment."""
+    candidate = tmp_path / "a-repo"
+    candidate.mkdir()
+    (candidate / "setup.toml").write_text(
+        '[packages.copier]\nmethod = "uv-tool"\n'
+        'description = "Project scaffolding tool — drives the scaffoldapy repo template"\n'
+    )
+    (candidate / "package.json").write_text('{\n  "description": "wraps scaffoldapy"\n}\n')
+    assert not harvest._installs(candidate, "scaffoldapy")
+
+    (candidate / "setup.toml").write_text('[packages.scaffoldapy]\nurl = "git+https://x/scaffoldapy"\n')
+    assert harvest._installs(candidate, "scaffoldapy")
+
+
 # --------------------------------------------------------------------------------------------
 # the sweep's parsers
 # --------------------------------------------------------------------------------------------

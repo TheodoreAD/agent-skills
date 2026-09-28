@@ -249,7 +249,7 @@ SCOPES = ("auto", "repo", "family", "unscoped")
 
 # Tables `config set` understands. A key's table is whatever precedes its first dot, but only when
 # it is one of these — a [repos] key is a path full of dots and must not be split on every one.
-CONFIG_TABLES = ("roots", "repos", "orgs", "about", "private", "view", "attachments")
+CONFIG_TABLES = ("roots", "repos", "orgs", "tiers", "about", "private", "view", "attachments")
 
 # The gates SKILL.md states in prose, as data. Everything else is a free transition.
 #
@@ -359,6 +359,17 @@ public_roots = ["github.com-personal"]
 #
 # Keys are "<host>/<owner>" or a bare "<owner>"; values are the same repo | store | both as above.
 # "github.com/acme-corp" = "store"
+
+[tiers]
+# Which half of the store ONE clone's plans go in, when its root's answer is wrong for it. Keys are
+# paths under projects_root, longest prefix wins; values are "shareable" or "sensitive". A contractor
+# device only — a work device has one store.
+#
+# The usual case: an open-source library cloned under a client root because the client uses it,
+# whose plans already live in the shareable store. Declaring it shareable is you confirming that
+# nothing private is ever written from that clone. The reverse — a client repo cloned under your own
+# root for an experiment — is declared "sensitive". Set with: plans.py config set tiers.<path> <tier>
+# "github.com-acme/vendored-lib" = "shareable"
 
 [private]
 # Anything else that must never reach a published repo and is not a directory name: work email
@@ -522,6 +533,9 @@ class Config:
     about: dict[str, str]
     idea_limit: int
     commit_limit_kb: int
+    # A path under `projects_root` -> the tier its plans go in, overriding its root's. The longest
+    # matching prefix wins, like [roots].
+    tiers: dict[str, str] = field(default_factory=dict)
 
     @property
     def unscoped(self) -> Path:
@@ -602,7 +616,23 @@ class Config:
             return SINGLE
         if rel is None or rel == UNSCOPED_DIR:
             return SHAREABLE
+        if (declared := self.declared_tier(rel)) is not None:
+            return declared
         return SHAREABLE if rel.split("/")[0] in set(self.shareable_root_names()) else SENSITIVE
+
+    def declared_tier(self, rel: str) -> str | None:
+        """The `[tiers]` entry covering this path, longest prefix first, or None when none does.
+
+        The per-clone answer to a question `shareable_roots` can only answer per root: a public
+        library cloned under a client root because the client uses it, declared shareable so its
+        plans join the ones its other clones write; or a client repo cloned under your own root for
+        an experiment, declared sensitive so they never reach the store with a remote.
+        """
+        parts = rel.split("/")
+        for depth in range(len(parts), 0, -1):
+            if (tier := self.tiers.get("/".join(parts[:depth]))) is not None:
+                return tier
+        return None
 
     def store_of(self, tier: str) -> Store:
         """The store a tier lives in. On a work device there is one, whatever tier is asked for."""
@@ -836,7 +866,22 @@ def load_config() -> Config:
         commit_limit_kb=_int_field(
             _table(raw, "attachments"), "commit_limit_kb", DEFAULT_COMMIT_LIMIT_KB, "attachments"
         ),
+        tiers=_tiers(raw),
     )
+
+
+def _tiers(raw: dict[str, object]) -> dict[str, str]:
+    """`[tiers]`: path under `projects_root` -> "shareable" | "sensitive", refused otherwise.
+
+    Refused at load time rather than ignored, because a misspelt value that silently fell back to
+    the root's tier would leave a clone declared private writing into the store with a remote.
+    """
+    found: dict[str, str] = {}
+    for name, value in _table(raw, "tiers").items():
+        if value not in (SHAREABLE, SENSITIVE):
+            raise PlanError(f'tiers."{name}" = {value!r}: a tier is "{SHAREABLE}" or "{SENSITIVE}"')
+        found[name.strip("/")] = str(value)
+    return found
 
 
 def _int_field(raw: dict[str, object], key: str, fallback: int, table: str) -> int:
@@ -1670,8 +1715,35 @@ def _shareable_refusal_message(clone: CloneIdentity, rel: str, links: Links, mat
         "  work (a client, a ticket, why they need a change), and the shareable store would publish it.\n"
         "  Choose one:\n"
         "    plans.py link --move-to private   # ALL of this repository's plans move to the private store\n"
-        "    or move this clone under a shareable folder, if nothing private is ever written from it\n"
+        f"    plans.py config set tiers.{rel} shareable   # you confirm nothing private is written here\n"
         f"  Reading its plans still works. Nothing was written. More: {LINKS_DOC}#shareable-and-private"
+    )
+
+
+def names_a_private_root(cfg: Config, store: Store, folder: str) -> bool:
+    """Whether a folder in the shareable store would carry a private root's name into it.
+
+    Only a `[tiers]` declaration puts a private root's clone in the shareable store, and a folder
+    named by its clone path would publish that root's name with the next push — which `push`'s
+    scan then refuses forever after. Caught here, where it can still be named differently.
+    """
+    publishable = {*cfg.public_root_names(), *cfg.shareable_root_names()}
+    return cfg.split_by_sensitivity and store.tier == SHAREABLE and folder.split("/", maxsplit=1)[0] not in publishable
+
+
+def _private_name_message(cfg: Config, clone: CloneIdentity, rel: str) -> str:
+    public = next(iter(cfg.public_root_names()), "<a public root>")
+    suggested = f"{public}/{rel.rsplit('/', 1)[-1]}"
+    root = rel.partition("/")[0]
+    return (
+        "plans: this clone is declared shareable, but its plans folder would be named after a private one.\n"
+        f"  clone:    {display_path(clone.root)}   (declared shareable in [tiers])\n"
+        f"  folder:   {rel} — its first part, {root}, is a private root\n"
+        "  The shareable store may be pushed, and a folder's name is published with it, so the push\n"
+        "  scan would refuse every push from then on. Give this repository a folder whose name you\n"
+        "  may publish:\n"
+        f"    plans.py link --new {suggested}   # its own folder in the shareable store\n"
+        f"  Nothing was written. More: {LINKS_DOC}#shareable-and-private"
     )
 
 
@@ -1738,6 +1810,8 @@ def _unlinked_route(cfg: Config, clone: CloneIdentity, own: str, rel: str | None
     if rel is None:
         return StoreRoute(None, None, own, False)
     store = cfg.store_for(rel)
+    if names_a_private_root(cfg, store, rel):
+        return StoreRoute(store, rel, own, False, refusal=_private_name_message(cfg, clone, rel))
     links = next(table for table in tables if table.store.path == store.path)
     if links.identities_of(rel):
         return StoreRoute(store, rel, own, False, refusal=_folder_taken_message(clone, own, links, rel))
@@ -1862,6 +1936,11 @@ def _link_new(cfg: Config, clone: CloneIdentity, routing: Routing, folder: str) 
         raise PlanError(f"{clone.root} is not under projects_root, so its store cannot be chosen from its path")
     folder = check_link_directory(folder or routing.rel)
     store = cfg.store_for(routing.rel)
+    if names_a_private_root(cfg, store, folder):
+        raise PlanError(
+            f"{folder} would sit in the SHAREABLE store under {folder.partition('/')[0]}, a private root,\n"
+            "  and the next push would publish that name. Name a folder under a root you may publish."
+        )
     if (holder := _store_holding(cfg, folder)) is not None:
         owners = ", ".join(read_links(holder).identities_of(folder)) or "no repository"
         raise PlanError(
@@ -3594,7 +3673,9 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
     if cfg.split_by_sensitivity:
         tier = routing.store.tier if routing.store else cfg.tier_of(routing.rel)
         print("device:  contractor — the store splits by sensitivity")
-        print(f"tier:    {tier} — this repo's store-held plans live in the {tier} half")
+        declared = routing.rel is not None and cfg.declared_tier(routing.rel) is not None
+        how = f" (declared in [tiers] of {cfg.path.name})" if declared else ""
+        print(f"tier:    {tier} — this repo's store-held plans live in the {tier} half{how}")
         for store in cfg.stores():
             print(f"store:   {store.tier:<10} {store.path} (from {store.source})")
     else:
@@ -7299,7 +7380,9 @@ def misfiled_plans(cfg: Config) -> list[str]:
             # reporting it as misfiled would send the reader to undo the very decision that protects
             # it. Only plans outside every linked folder still count.
             holding = {plan.parent.relative_to(store.path).as_posix() for plan in path.rglob("*.md")}
-            if holding and holding <= linked:
+            # So is one a `[tiers]` entry sends to this store: declared, not misfiled.
+            declared = {folder for folder in holding if cfg.declared_tier(folder) == store.tier}
+            if holding and holding <= linked | declared:
                 continue
             if actual != store.tier:
                 found.append(

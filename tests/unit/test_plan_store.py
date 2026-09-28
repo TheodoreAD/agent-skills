@@ -22,6 +22,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -2267,6 +2268,65 @@ def test_a_shareable_link_refuses_a_write_from_a_private_clone_but_still_reads(w
     assert "2026-09-01-existing.md" in capsys.readouterr().out
 
 
+def test_declaring_a_private_clone_shareable_is_the_way_out_the_refusal_names(ws, capsys):
+    """The refusal's second choice, taken literally: the command it prints, then the write it stopped."""
+    write_config(ws, STORE_ROUTED)
+    set_remote(ws.client, "git@github.com:someone/lib.git")
+    link(ws, ws.store, "github.com/someone/lib", "github.com-personal/lib")
+    assert plans.main(["new", "blocked", "--path", str(ws.client)]) == plans.NEEDS_DECISION
+    offered = next(line for line in capsys.readouterr().err.splitlines() if "config set tiers." in line)
+    command = offered.split("plans.py ", 1)[1].split("#", 1)[0].split()
+
+    assert plans.main([*command, "--path", str(ws.client)]) == 0
+    assert plans.main(["new", "declared", "--path", str(ws.client)]) == 0
+    assert list((ws.store / "github.com-personal" / "lib").glob("*-declared.md"))
+    capsys.readouterr()
+    assert plans.main(["where", "--path", str(ws.client)]) == 0
+    assert "(declared in [tiers]" in capsys.readouterr().out
+
+
+def test_a_declared_tier_overrides_the_root_and_the_longest_prefix_wins(ws):
+    write_config(
+        ws,
+        STORE_ROUTED
+        + '[tiers]\n"github.com-personal" = "sensitive"\n"github.com-personal/agent-skills" = "shareable"\n',
+    )
+    other = make_repo(ws.projects / "github.com-personal" / "other")
+    assert route(other).store_dir == ws.sensitive / "github.com-personal" / "other"
+    assert route(ws.personal).store_dir == ws.store / "github.com-personal" / "agent-skills"
+
+
+def test_a_misspelt_tier_is_refused_rather_than_falling_back_to_the_root(ws, capsys):
+    write_config(ws, STORE_ROUTED)
+    misspelt = ["config", "set", "tiers.github.com-personal/agent-skills", "public"]
+    assert plans.main([*misspelt, "--path", str(ws.personal)]) == 1
+    assert "a tier is" in capsys.readouterr().err
+    assert plans.load_config().tiers == {}
+
+
+def test_an_unlinked_private_clone_declared_shareable_is_asked_for_a_publishable_folder(ws, capsys):
+    """Named by its clone path, its folder would put a private root's name into the pushed store."""
+    write_config(ws, STORE_ROUTED + '[tiers]\n"client.com-bitbucket/team/api" = "shareable"\n')
+    set_remote(ws.client, "git@github.com:someone/api.git")
+    assert plans.main(["new", "unnamed", "--path", str(ws.client)]) == plans.NEEDS_DECISION
+    err = capsys.readouterr().err
+    assert "client.com-bitbucket, is a private root" in err
+    assert "plans.py link --new github.com-personal/api" in err
+    assert not list(ws.store.rglob("*-unnamed.md"))
+
+    assert plans.main(["link", "--new", "client.com-bitbucket/api", "--path", str(ws.client)]) == 1
+    assert plans.main(["link", "--new", "github.com-personal/api", "--path", str(ws.client)]) == 0
+    assert plans.main(["new", "named", "--path", str(ws.client)]) == 0
+    assert list((ws.store / "github.com-personal" / "api").glob("*-named.md"))
+
+
+def test_doctor_does_not_call_a_declared_folder_misfiled(ws, capsys):
+    write_config(ws, STORE_ROUTED + '[tiers]\n"client.com-bitbucket/team/api" = "shareable"\n')
+    plan(ws.store / "client.com-bitbucket" / "team" / "api", "2026-09-01-p.md", "status: idea")
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "is a sensitive root" not in capsys.readouterr().out
+
+
 def test_a_private_link_wins_over_a_shareable_clone_path_and_says_so(ws, capsys):
     """The safe direction is silent in the verdict but visible on `where`."""
     write_config(ws, STORE_ROUTED)
@@ -2590,6 +2650,10 @@ def _sample_messages() -> list[str]:
         plans._known_before_message(clone, "github.com/acme/x", links, match),
         plans._folder_taken_message(clone, "github.com/acme/x-renamed", links, "github.com-acme/x"),
         plans._shareable_refusal_message(clone, "client.com-bitbucket/team/x", links, match),
+        # A stand-in rather than load_config(), which would read the real machine's config here.
+        plans._private_name_message(
+            SimpleNamespace(public_root_names=lambda: ("github.com-personal",)), clone, "client.com-bitbucket/team/x"
+        ),
     ]
 
 

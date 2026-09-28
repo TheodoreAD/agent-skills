@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: blocked on repo-tasks adding a consumer pyright tier and a security-caller opt-out
 updated: 2026-09-29
 depends_on: [repo-tasks]
 ---
@@ -257,9 +257,9 @@ exist here (`>=3.11`), so this is a check that passes rather than a blocker.]
 - **The packaged-`tests/` decision.** `configs.pull` writes both halves of the config but cannot
   decide whether this repo wants `__init__.py` files under `tests/`. Stays deliberate.
 - ~~**`venv.check` / `venv.recreate`.**~~ **Done 2026-09-28**, ahead of the sweep: the 3.14.5 venv
-  was the lingering `UV_PYTHON` recorded in
-  `2026-09-28-venv-drifted-to-3-14-under-the-lingering-uv-python.md` (landed), and
-  `inv venv.recreate` put it on 3.11. `venv.check` should now pass on the first run.
+  was the lingering `UV_PYTHON` recorded in the now-retired
+  `2026-09-28-venv-drifted-to-3-14-under-the-lingering-uv-python.md`, and `inv venv.recreate` put it
+  on 3.11. `venv.check` should now pass on the first run.
 
 ## What this predicts
 
@@ -297,6 +297,18 @@ step 1 was a no-op. Commits `1fd4164` (dev group and seven tools), `6a2ea20` (co
 - **`pytest-socket` and `pytest-timeout` inert: right.** 1,306 tests, same count before and after.
 - **`venv.check`: already passing**, since the venv was rebuilt on 3.11 the day before.
 
-[UNVERIFIED: the two CI predictions — CI stays green through the config pull, and the Windows job
-tolerates the shipped `pytest.ini`'s `filterwarnings` entries — need the first CI run after these
-commits are pushed. Nothing has been pushed yet. Score them here from that run.]
+- **CI green through the config pull: right.** Pushed as `72da65e`; CI run `36485370139` passed in
+  39s, including the bootstrap now pinned to v0.6.0, `quality.check` and `test.integration`.
+- **The Windows job tolerating the shipped `filterwarnings`: right.** Run `36485370024` passed. One
+  caveat for the next reader: that job runs `uv run --no-project --python 3.13 --with pytest`, so it
+  reads `pytest.ini` but installs neither `pytest-socket` nor `pytest-timeout`, and it runs on 3.13
+  while Linux runs on 3.11.
+
+## What is left
+
+Nothing in the sweep itself. The two decisions above each wait on a repo-tasks change filed
+2026-09-29: `2026-09-29-consumer-pyright-tier-and-subtree-include.md` (then check
+`skills/*/scripts`, fix the ~50 real findings, drop `skills*` from `repo-tasks.toml`'s `unchecked`)
+and `2026-09-29-consumer-can-decline-the-security-caller.md` (then declare the opt-out, whose reason
+is the security DECISION above, in `repo-tasks.toml`). Retire this plan once both have landed here,
+because until then this file is the only home of the security decision's reasoning.

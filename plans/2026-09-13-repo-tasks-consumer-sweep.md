@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-28
+status: in-progress
+updated: 2026-09-29
 depends_on: [repo-tasks]
 ---
 
@@ -280,5 +280,23 @@ cover every CI change here. That bump landed alone on 2026-09-28 (`8292395`, `se
 both workflows, its plan now retired), so this sweep and the security caller get their own green
 run; the pairing no longer holds anything back.
 
-[DEFERRED: record which way each prediction went, in this file, when the sweep runs. A prediction
-nobody scored is a guess.]
+## The sweep, run 2026-09-29 — how the predictions went
+
+Run locally against repo-tasks v0.6.0, already the latest release and the global tool's version, so
+step 1 was a no-op. Commits `1fd4164` (dev group and seven tools), `6a2ea20` (config pull),
+`26e8191` (`repo-tasks.toml`), `0a05d5a` (stamp). Scored so far:
+
+- **Both halves of `configs.diff` fired: right.** Five files, two missing entries, the `hadolint-py`
+  constraint. `ensure-deps` added exactly the two missing entries and printed `already present` for
+  the rest, so the installed tool had the extras-entry fix.
+- **The local gate going red on the type check when `pythonVersion` landed: wrong, and for a good
+  reason.** Step 3 was already done, so basedpyright stayed at 0/0/0 on 3.11. What did go red was
+  one the plan did not predict: the new `ruff.toml` bans `sys.path`, and
+  `tests/unit/test_prompts.py` inserted the `session-bash-audit` scripts directory. Fixed in the
+  pull commit by loading both scripts from their files, as the other script tests already do.
+- **`pytest-socket` and `pytest-timeout` inert: right.** 1,306 tests, same count before and after.
+- **`venv.check`: already passing**, since the venv was rebuilt on 3.11 the day before.
+
+[UNVERIFIED: the two CI predictions — CI stays green through the config pull, and the Windows job
+tolerates the shipped `pytest.ini`'s `filterwarnings` entries — need the first CI run after these
+commits are pushed. Nothing has been pushed yet. Score them here from that run.]

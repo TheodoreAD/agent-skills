@@ -18,7 +18,10 @@ def mutations(path: Path) -> list[str]:
             targets = list(node.targets)
         elif isinstance(node, ast.AugAssign | ast.AnnAssign):
             targets = [node.target]
-        found += [f"{node.lineno}: {ast.unparse(t)} = ..." for t in targets if isinstance(t, ast.Attribute)]
+        # The target's own line: the statement's line in every ordinary case (only a target
+        # parenthesised across lines differs, and then the target's line is the more precise one),
+        # and an `ast.expr` always carries one, where a bare `ast.AST` from `walk` may not.
+        found += [f"{t.lineno}: {ast.unparse(t)} = ..." for t in targets if isinstance(t, ast.Attribute)]
     return found
 
 

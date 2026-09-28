@@ -177,7 +177,7 @@ class Runner(Protocol):
 
 class LiveRunner:
     def __init__(self, timeout: float = 300.0) -> None:
-        self.timeout = timeout
+        self.timeout: float = timeout
 
     def __call__(self, argv: Sequence[str], cwd: Path | None = None) -> Ran:
         args = [str(a) for a in argv]

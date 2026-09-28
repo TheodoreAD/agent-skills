@@ -31,7 +31,9 @@ import signal
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from audit import Call, load_calls, short_project, split_chain
+# A standalone script importing its sibling by bare name, which resolves because Python puts the
+# script's own directory first on the path. There is no package to make it relative to.
+from audit import Call, load_calls, short_project, split_chain  # pyright: ignore[reportImplicitRelativeImport]
 
 SETTINGS = Path.home() / ".claude" / "settings.json"
 BUILTIN_RO = {"ls", "cat", "echo", "pwd", "head", "tail", "grep", "find", "wc", "which", "diff", "stat", "du", "cd"}

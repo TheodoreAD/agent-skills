@@ -62,7 +62,9 @@ INDETERMINATE = 3
 # writing; that finds one copy each and reports no conflict, which is the truth.
 DEFAULT_ROOTS = ("~/.agents/skills", ".agents/skills")
 
-Fetcher = Callable[[str], list[dict[str, object]]]
+# `Sequence[object]`: the registry's `skills` array is passed on without checking its elements, so
+# `owners_of` checks each one, and a fake returning a list of dicts still satisfies it.
+Fetcher = Callable[[str], Sequence[object]]
 
 
 @dataclass
@@ -94,7 +96,7 @@ class NameCheck:
         }
 
 
-def fetch_registry(name: str) -> list[dict[str, object]]:
+def fetch_registry(name: str) -> Sequence[object]:
     """Ask the public index who publishes this name. Raises on any failure, so callers can tell
     "nobody has it" from "nobody answered" — the whole point of the unknown state."""
     url = f"{REGISTRY}?q={urllib.parse.quote(name)}"

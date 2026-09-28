@@ -238,7 +238,7 @@ class LiveRunner:
     """
 
     def __init__(self, timeout: float = 90.0) -> None:
-        self.timeout = timeout
+        self.timeout: float = timeout
 
     def __call__(self, argv: Sequence[str], cwd: Path | None = None) -> Ran:
         args = [str(a) for a in argv]
@@ -1079,25 +1079,25 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     quiet = {"command", "notification"}
     real = [t for t in everything if t.kind not in quiet]
 
+    counts = {
+        "user": sum(1 for t in turns if t.kind == "user"),
+        "mid_turn": sum(1 for t in queued if t.kind == "mid-turn"),
+        "command_wrappers": sum(1 for t in turns if t.kind == "command"),
+        "notifications": sum(1 for t in everything if t.kind == "notification"),
+        "interrupts": sum(1 for t in everything if t.kind == "interrupt"),
+        "answers": len(found),
+        "answers_by_preamble": preamble_hits,
+        "queued_attachments": queued_attachments,
+    }
     payload = {
         "transcript": transcript.as_dict(),
         "turns": [{"kind": t.kind, "timestamp": t.timestamp, "text": t.text} for t in everything],
-        "counts": {
-            "user": sum(1 for t in turns if t.kind == "user"),
-            "mid_turn": sum(1 for t in queued if t.kind == "mid-turn"),
-            "command_wrappers": sum(1 for t in turns if t.kind == "command"),
-            "notifications": sum(1 for t in everything if t.kind == "notification"),
-            "interrupts": sum(1 for t in everything if t.kind == "interrupt"),
-            "answers": len(found),
-            "answers_by_preamble": preamble_hits,
-            "queued_attachments": queued_attachments,
-        },
+        "counts": counts,
     }
     if args.json:
         return payload
 
     print(f"# transcript: {transcript.path}  ({transcript.how})")
-    counts = payload["counts"]
     print(
         f"# {counts['user']} user turns, {counts['mid_turn']} sent mid-turn, "
         f"{counts['answers']} AskUserQuestion answers"
@@ -2597,7 +2597,11 @@ def superseded_candidates(entries: Sequence[dict[str, Any]], session_repo: Path 
                 continue
             # Which repo the plan itself is about: the checkout for `<repo>/plans/`, the directory
             # names above it for a store mirror.
-            home = {directory.parent.name} if directory != store else set(plan.relative_to(store).parts[:-1])
+            home = (
+                set(plan.relative_to(store).parts[:-1])
+                if store is not None and directory == store
+                else {directory.parent.name}
+            )
             named = [
                 name
                 for name in names
@@ -3688,21 +3692,22 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     # undercount here is the same failure the rule exists to prevent, one level up.
     claims, ci_claims = _green_claims(transcript.entries, args.until)
     total_bash = len(window)
+    excluded = len(every) - total_bash
+    sampled = masked[: args.samples]
     payload = {
         "transcript": transcript.as_dict(),
         "bash_calls": total_bash,
-        "bash_calls_excluded_by_until": len(every) - total_bash,
+        "bash_calls_excluded_by_until": excluded,
         "exit_masked": len(masked),
         "green_claims": claims,
         "green_ci_claims": ci_claims,
-        "masked_calls": masked[: args.samples],
+        "masked_calls": sampled,
     }
     if args.json:
         return payload
     print(f"# transcript: {transcript.path}")
     print(f"# {len(masked)} of {total_bash} Bash calls masked their exit code behind a filter")
     if args.until:
-        excluded = payload["bash_calls_excluded_by_until"]
         print(f"#   excluding {excluded} at or after {args.until} — the run's own sweep")
     print(f"# {len(claims)} message(s) told the user a gate or suite was green")
     for claim in claims:
@@ -3712,7 +3717,7 @@ def cmd_claims(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     print(f"# {len(ci_claims)} message(s) told the user CI was green — counted apart, see below")
     for claim in ci_claims:
         print(f"    {claim['timestamp']}  {claim['line']}")
-    for call in payload["masked_calls"]:
+    for call in sampled:
         print(f"    masked: {call['command'][:160]}")
     if masked and claims:
         # The same order as the body, which reached it a revision earlier: the split is the cheap,

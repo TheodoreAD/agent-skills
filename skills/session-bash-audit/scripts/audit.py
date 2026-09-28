@@ -29,6 +29,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
@@ -1100,7 +1101,7 @@ def dump_json(calls: list[Call], path: Path) -> None:
     print(f"\nwrote {path}")
 
 
-def _print_compare_header(baseline_path: Path, baseline: dict, source: str, days: float | None) -> None:
+def _print_compare_header(baseline_path: Path, baseline: dict[str, Any], source: str, days: float | None) -> None:
     """What the comparison is against, and the two ways a reader can mistake what it shows."""
     print(f"\n== vs baseline {baseline_path.name} ({baseline.get('saved')}, {baseline.get('note', '')}) ==")
     print(f"   expectations: {source}")
@@ -1240,7 +1241,8 @@ PROBES = [
 
 
 def print_probes() -> None:
-    print(__doc__.split("\n\n")[0])
+    # `__doc__` is None under `python -OO`, which strips docstrings.
+    print((__doc__ or "").split("\n\n")[0])
     print(
         "\nLive permission probes. Run each as its OWN Bash tool call (a subprocess would bypass the\n"
         "harness's permission check), in an acceptEdits session, with <scratch> = $CLAUDE_JOB_DIR/tmp\n"

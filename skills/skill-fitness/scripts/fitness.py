@@ -48,6 +48,7 @@ import tempfile
 import time
 import warnings
 from collections import Counter, defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -247,7 +248,9 @@ def load_skills(roots: list[Path]) -> list[Skill]:
                 has_references=(md.parent / "references").is_dir(),
                 has_evals=(md.parent / "evals").is_dir(),
             )
-    load_skills.stale = stale  # type: ignore[attr-defined]
+    # A side channel read back with `getattr(load_skills, "stale", [])`, so the many callers that want
+    # only the skills keep a plain list.
+    load_skills.stale = stale  # pyright: ignore[reportFunctionMemberAccess]
     return sorted(found.values(), key=lambda s: s.name)
 
 
@@ -277,7 +280,8 @@ def idf(skills: list[Skill]) -> dict[str, float]:
     for s in skills:
         df.update(s.terms())
     ubiquitous = {t for t, c in df.items() if n > 3 and c >= max(2, (n + 1) // 2)}
-    idf.ubiquitous = sorted(ubiquitous)  # type: ignore[attr-defined]
+    # Read back with `getattr(idf, "ubiquitous", [])`, the same side channel as `load_skills.stale`.
+    idf.ubiquitous = sorted(ubiquitous)  # pyright: ignore[reportFunctionMemberAccess]
     return {t: 1.0 + (n / (1 + c)) ** 0.5 for t, c in df.items() if t not in ubiquitous}
 
 
@@ -465,7 +469,7 @@ class Usage:
     available: bool = False
 
 
-def _blocks(path: Path):
+def _blocks(path: Path) -> Iterator[tuple[dict[str, Any], dict[str, Any]]]:
     with path.open(encoding="utf-8", errors="replace") as fh:
         for line in fh:
             try:

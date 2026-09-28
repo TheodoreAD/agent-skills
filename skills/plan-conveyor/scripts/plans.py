@@ -479,7 +479,7 @@ class NeedsDecision(Exception):
 
     def __init__(self, message: str, *, explained: bool = False) -> None:
         super().__init__(message)
-        self.explained = explained
+        self.explained: bool = explained
 
 
 # --------------------------------------------------------------------------------------------
@@ -3526,7 +3526,7 @@ class Workspace:
     """
 
     def __init__(self, path: Path) -> None:
-        self.path = path
+        self.path: Path = path
 
     @cached_property
     def config(self) -> Config:
@@ -4885,8 +4885,11 @@ def rename_plan(
         # `git mv` where git is holding the path, so the rename is staged rather than left as a
         # delete the index has not heard about; a plain rename everywhere else, which covers an
         # untracked plan written this session and the local attachments area git never sees.
-        tracked = repo is not None and head_blob(repo, source) is not None
-        if tracked and git(["mv", "--", str(source), str(destination)], repo) is not None:
+        if (
+            repo is not None
+            and head_blob(repo, source) is not None
+            and git(["mv", "--", str(source), str(destination)], repo) is not None
+        ):
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         source.rename(destination)
@@ -6707,7 +6710,7 @@ def cmd_refs(args: argparse.Namespace, ws: Workspace) -> int:
     unpushed = unpushed_summary(routing.repo_root) if routing.repo_root else None
     held = attachments_held(ws.config, routing, name)
     if args.json:
-        payload = {"file": name, "references": found, "unpushed": unpushed}
+        payload: dict[str, object] = {"file": name, "references": found, "unpushed": unpushed}
         payload["attachments"] = {where: [str(path) for path in paths] for where, paths in held.items()}
         print(json.dumps(payload, indent=2))
         return 0

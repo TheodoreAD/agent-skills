@@ -677,7 +677,7 @@ class Repository:
     description: str | None = None
 
 
-def repository(payload: dict[str, Any], *, now: datetime | None = None) -> Repository:
+def repository(payload: object, *, now: datetime | None = None) -> Repository:
     """The repo's own stats. `license_field` is reported and never trusted — see `license_files`.
 
     [PITFALL] `open_issues_count` counts **pull requests as well as issues**, and it stays non-zero
@@ -891,7 +891,7 @@ class ReleaseList:
     truncated: bool
 
 
-def github_release_dates(releases: list[dict[str, Any]]) -> tuple[dict[str, datetime], set[str]]:
+def github_release_dates(releases: list[object]) -> tuple[dict[str, datetime], set[str]]:
     """One date per published release, and the tags GitHub itself flags as pre-releases.
 
     Drafts are skipped: they are unpublished, and GitHub returns them only to a caller who can push.
@@ -1628,8 +1628,9 @@ def parse_apt_policy(text: str) -> AptPolicy | None:
         elif line.strip().endswith("/var/lib/dpkg/status") and current:
             continue
         elif (version := APT_VERSION_LINE_RE.match(line)) and not stripped.endswith(":"):
-            current = version.group(2)
-            versions.setdefault(current, [])
+            number: str = version.group(2)
+            current = number
+            versions.setdefault(number, [])
     if installed is None and candidate is None and not versions:
         return None
     return AptPolicy(installed, candidate, versions)

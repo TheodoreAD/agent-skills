@@ -108,8 +108,8 @@ class _StreamState:
     """
 
     def __init__(self) -> None:
-        self.pending = False
-        self.accumulated = ""
+        self.pending: bool = False
+        self.accumulated: str = ""
 
     def feed(self, line: str) -> str | _Undecided | None:
         if not line.strip():
@@ -184,7 +184,9 @@ def run_query(prompt: str, cwd: Path, timeout: int, model: str | None) -> str | 
             if line is None:
                 break
             verdict = state.feed(line.rstrip("\n"))
-            if verdict is not _UNDECIDED:
+            # `isinstance` rather than `is not _UNDECIDED`: the same test for a one-instance class,
+            # and the form the type checker narrows to `str | None`.
+            if not isinstance(verdict, _Undecided):
                 return verdict
     finally:
         if proc.poll() is None:

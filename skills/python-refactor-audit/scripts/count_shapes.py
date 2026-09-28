@@ -9,9 +9,13 @@ import argparse
 import ast
 import signal
 from pathlib import Path
+from typing import TypeGuard
+
+# Both predicates return a TypeGuard, since True implies the annotation exists: the callers then
+# `ast.unparse` it without the type checker reading it as possibly None.
 
 
-def anon_tuple(node: ast.expr | None) -> bool:
+def anon_tuple(node: ast.expr | None) -> TypeGuard[ast.expr]:
     """True for tuple[...] / list[tuple[...]] annotations with more than one distinct element type."""
     if node is None:
         return False
@@ -29,7 +33,7 @@ def anon_tuple(node: ast.expr | None) -> bool:
     return False
 
 
-def dict_annotation(node: ast.expr | None) -> bool:
+def dict_annotation(node: ast.expr | None) -> TypeGuard[ast.expr]:
     if node is None or not isinstance(node, ast.Subscript):
         return False
     return ast.unparse(node.value) in {"dict", "Dict", "Mapping", "MutableMapping"}

@@ -1,10 +1,12 @@
 # Agent instructions for agent-skills
 
-Cross-tool instructions for AI coding agents working in this repo. Universal conventions live in
-whichever home-level instructions file your agent loads — `~/.agents/AGENTS.md` where that
-convention is followed, `~/AGENTS.md` elsewhere — and nothing there is repeated here, only what is
-specific to this repo. `CLAUDE.md` is a plain symlink to this file, not a wrapper that imports it,
-so every harness reads byte-identical content.
+Cross-tool instructions for AI coding agents working in this repo. Universal conventions live in the
+home-level instructions file, `~/.agents/AGENTS.md` — read natively by agents following the
+`.agents/` convention, copied to each other agent's own path (`~/.claude/CLAUDE.md` for Claude Code)
+— and nothing there is repeated here, only what is specific to this repo. A skill that points its
+reader at the home file names `~/.agents/AGENTS.md`; `~/AGENTS.md` is read by no agent. `CLAUDE.md`
+is a plain symlink to this file, not a wrapper that imports it, so every harness reads
+byte-identical content.
 
 ## What this repo is
 

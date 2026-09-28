@@ -1,5 +1,5 @@
 ---
-status: blocked on repo-tasks adding a consumer pyright tier and a security-caller opt-out
+status: blocked on repo-tasks adding a consumer pyright tier
 updated: 2026-09-29
 depends_on: [repo-tasks]
 ---
@@ -325,10 +325,27 @@ imports, not ~50 — the earlier count left out 16 missing-annotation warnings a
 
 ## What is left
 
-Nothing in the sweep itself. The two decisions above each wait on a repo-tasks change filed
-2026-09-29: `2026-09-29-consumer-pyright-tier-and-subtree-include.md` (then declare
-`skills/*/scripts`, pull, and drop `skills*` from `repo-tasks.toml`'s `unchecked` — the findings are
-already fixed, see above) and `2026-09-29-consumer-can-decline-the-security-caller.md` (then declare
-the opt-out, whose reason is the security DECISION above, in `repo-tasks.toml`). Retire this plan
-once both have landed here, because until then this file is the only home of the security decision's
-reasoning.
+Nothing in the sweep itself. The two decisions above each waited on a repo-tasks change filed
+2026-09-29, and one wait is over:
+
+- **The security opt-out is declared.** repo-tasks landed
+  `2026-09-29-consumer-can-decline-the-security-caller.md` in `37cf195` (retired there in
+  `362f84e`), reported here by the absorbed
+  `2026-09-29-security-caller-opt-out-is-declarable-now.md`. `repo-tasks.toml` now carries
+  `[security] caller = false` with the reason from the security DECISION above. Checked 2026-09-29:
+  **no repo-tasks release carries it yet** — `v0.6.0` is the latest tag and predates `362f84e` — and
+  nothing here needs one. The key is read only by `consumers.diff`, which runs from repo-tasks' own
+  tree, and the installed `v0.6.0` reads `repo-tasks.toml` table by table with `.get`, so it ignores
+  a table it does not know. Re-run here after declaring it, from repo-tasks `4aec8a0`:
+  `consumers.diff --name agent-skills` printed
+  `declines the security caller: nothing in uv.lock ships to anyone who installs these skills`. It
+  also printed `config files behind: ruff.toml, pytest.ini`, which is repo-tasks `main` measured as
+  a tree rather than a tag (the renamed skill path in `ruff.toml` is `9435863`), so those two are
+  the next release's sweep, not drift to fix now.
+- **The pyright tier still waits** on `2026-09-29-consumer-pyright-tier-and-subtree-include.md`:
+  then declare `skills/*/scripts`, pull, and drop `skills*` from `repo-tasks.toml`'s `unchecked` —
+  the findings are already fixed, see above.
+
+Retire this plan once the tier has landed here. The security decision's reasoning also lives in
+`repo-tasks.toml`'s `[security]` comment now, but only in summary, so migrate the DECISION in full
+at retirement rather than treating that comment as its home.

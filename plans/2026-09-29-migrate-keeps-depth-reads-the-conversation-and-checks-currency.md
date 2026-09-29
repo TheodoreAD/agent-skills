@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-09-29
 ---
 
@@ -275,12 +275,19 @@ sentence summaries, but never compares the two.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: capture during the session (`plans.py note`), at the end (`migrate ledger`),
-or both? During is what BMAD does, and it is the only form that survives compaction. But it is
-another thing an agent has to remember to do mid-work, which is the same instruction-following this
-plan starts from, and it fails the same way. At the end is cheap and reliable to trigger but reads a
-possibly-compacted context. Recommended: both, with the transcript pre-fill closing the gap where a
-transcript exists.]
+[DECISION: **capture both during the session and at the end.** Decided by the user 2026-09-29.
+`plans.py note` appends as things happen, which is what BMAD does and the only form that survives
+compaction. `migrate ledger` at the end starts from those notes and fills the gaps, pre-filling the
+user's verbatim messages from the transcript where one exists. Rejected: end only, because it reads
+a context that may already be compacted. Rejected: during only, because it is another mid-work
+instruction an agent has to remember, the same kind of instruction-following this plan starts from.]
+
+[DECISION: **the ledger is kept as a committed attachment of the plan, not offered for deletion.**
+Decided by the user 2026-09-29. `finish` runs `attach --commit` for it rather than listing it with
+the sources it may delete. It is the only record of what the session argued out, including the
+user's messages verbatim, and the plan is by design a rearrangement of it, never a replacement.
+Rejected: treating it like any other source, which would delete the one file whose content has no
+other copy once the transcript expires.]
 
 [NEEDS CLARIFICATION: what did the failed attempts look like? A transcript, or the before and after
 files, from one Copilot and one Devin attempt would say which of the three failures dominates on
@@ -291,11 +298,6 @@ and placement first.]
 loose enough to allow restructuring? Measure it on real pairs before choosing a number: the
 `storage-consolidation` sources from `75b2bcd7-…`, plus any before and after from the user's
 attempts.]
-
-[NEEDS CLARIFICATION: where does the ledger live after `finish`? It is a source, so `finish` would
-offer to delete it once its content is carried. It is also the closest thing to a record of what the
-session argued out, so keeping it as a committed attachment (`attach --commit`) may be the better
-default.]
 
 ## Recommended direction
 

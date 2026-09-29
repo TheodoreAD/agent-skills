@@ -1,0 +1,69 @@
+{
+  "about": [
+    "Does a request to consolidate a session's work into a plan select plan-conveyor, whose `migrate`",
+    "subcommand exists for exactly that? Written 2026-09-29 after two findings: the user reported",
+    "consolidation losing depth and ignoring the conversation on three harnesses, and a sweep of every",
+    "Claude Code transcript on the author's machine found `migrate start` had never been run on real",
+    "work. So the first question is whether the request ever reaches the skill at all.",
+    "",
+    "The positives are phrased the way the request actually arrives: 'write up', 'put everything in a",
+    "plan', 'consolidate what we discussed', 'migrate this doc'. None names `migrate`, because a request",
+    "that names the command does not test the trigger.",
+    "",
+    "The pair to watch is session-harvest, which owns 'what is worth saving before I stop' and routes",
+    "each item to a plan, an AGENTS.md or the home file. The boundary: harvest decides WHERE each",
+    "thing goes; plan-conveyor is chosen once the destination is already one plan. Two harvest",
+    "positives mark that line from the other side.",
+    "",
+    "The negatives are the look-alikes that want no plan file at all: a summary in the chat, a README",
+    "section, a commit message.",
+    "",
+    "Measured 2026-09-29, run mode against the installed descriptions, 3 runs: 10/10, precision and",
+    "recall 1.0 for both skills. So the trigger is NOT why migrate went unused: a cold consolidation",
+    "request loads plan-conveyor every time. The gap is after loading, with the migrate section at",
+    "line 1,642 of 1,736, which is why the same change added it to the opening 'Start here' table.",
+    "What this suite cannot see is a request made late in a long session rather than cold."
+  ],
+  "cases": [
+    {
+      "prompt": "Write up everything we decided in this session, plus the two notes files we made, into one plan.",
+      "expect": "plan-conveyor"
+    },
+    {
+      "prompt": "Consolidate what we discussed today and DESIGN-notes.md into a single plan file without losing the detail.",
+      "expect": "plan-conveyor"
+    },
+    {
+      "prompt": "Migrate this NOTES.md and the reasoning from our conversation into plans/.",
+      "expect": "plan-conveyor"
+    },
+    {
+      "prompt": "Put all the decisions, pitfalls and risks from this conversation into the plan for this feature, and merge in the scratch doc.",
+      "expect": "plan-conveyor"
+    },
+    {
+      "prompt": "We have a draft plan, a research report and this whole discussion. Turn them into one plan and check which of it is still true in the code.",
+      "expect": "plan-conveyor"
+    },
+    {
+      "prompt": "Anything worth saving from this session before I compact?",
+      "expect": "session-harvest"
+    },
+    {
+      "prompt": "Harvest this session and tell me if anything is dangling before I stop.",
+      "expect": "session-harvest"
+    },
+    {
+      "prompt": "Summarise this conversation for me in a few bullet points.",
+      "expect": null
+    },
+    {
+      "prompt": "Add a README section describing the feature we just built.",
+      "expect": null
+    },
+    {
+      "prompt": "Write a commit message for the staged changes.",
+      "expect": null
+    }
+  ]
+}

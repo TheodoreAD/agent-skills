@@ -96,11 +96,20 @@ description more carefully.
   that a disclosure is true — it is a statement for a reader checking the skill by hand against its
   code, never a manifest anything enforces, and `skill-authoring-taudelta` says how to scrutinise
   one.
-- A skill directory may hold `references/`, `scripts/` and `evals/`, and nothing else. `evals/` was
-  added 2026-08-31 for trigger cases — JSON files of prompts with the skill each should select, run
-  by `skills/skill-fitness/scripts/trigger.py`. Write them for a **pair** the fitness analyzer
-  flagged rather than a fixed number per skill, and include should-not-trigger cases: a suite of
-  positives alone passes for a description that fires on everything.
+- A skill directory may hold `README.md`, `references/`, `scripts/` and `evals/`, and nothing else.
+  `evals/` was added 2026-08-31 for trigger cases — JSON files of prompts with the skill each should
+  select, run by `skills/skill-fitness/scripts/trigger.py`. Write them for a **pair** the fitness
+  analyzer flagged rather than a fixed number per skill, and include should-not-trigger cases: a
+  suite of positives alone passes for a description that fires on everything.
+- **`README.md` is the skill's page for a person deciding whether to adopt it, and is optional.**
+  Added 2026-09-30 because GitHub renders a directory's `README.md` and renders nothing for
+  `SKILL.md`, so a catalogue link opened onto a bare file listing. It ships with every install (the
+  `skills` CLI copies the whole directory) but no agent loads it, so it never carries instructions.
+  It says what the skill is for and why, and links `SKILL.md` for how. Every claim in it has to hold
+  against `SKILL.md` and the scripts, and any command output it shows is real output, trimmed. Its
+  opening line passes `repo-pitch`'s `check`. When a change alters what the README describes, update
+  it in the same commit. The reasoning and the template are in
+  `plans/2026-09-10-repo-presentation-and-pitch-skill.md`.
 - **This repo's own test data lives in `tests/fixtures/`, never inside a skill.** Everything under
   `skills/` is shipped to strangers by `skills add`, so a file put there is published whether or not
   anyone meant to publish it. The derivable gate's baseline sat in

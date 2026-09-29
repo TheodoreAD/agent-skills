@@ -84,6 +84,9 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    # The conversation ledgers live under the state directory, which would otherwise be the real one.
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
     monkeypatch.delenv("PLANS_HOME", raising=False)
     monkeypatch.delenv("PLANS_SENSITIVE_HOME", raising=False)
     # The real session's transcript lives in the real ~/.claude and would otherwise be found by the
@@ -4342,7 +4345,7 @@ def test_migrate_start_carries_every_source_in_verbatim(ws, capsys, monkeypatch)
     paragraph without ever knowing it existed."""
     repo = migrate_repo(ws, monkeypatch)
 
-    argv = ["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)]
+    argv = ["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)]
     assert plans.main(argv) == 0
     plan = next((repo / "plans").glob("*-storage.md"))
     text = plan.read_text(encoding="utf-8")
@@ -4356,7 +4359,7 @@ def test_migrate_check_ignores_the_carried_block_it_wrote(ws, capsys, monkeypatc
     """A check comparing the sources against a file that still holds them verbatim would pass by
     construction — the failure it exists to catch would be invisible while it was happening."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     capsys.readouterr()
 
@@ -4370,7 +4373,7 @@ def test_migrate_check_ignores_the_carried_block_it_wrote(ws, capsys, monkeypatc
 def test_migrate_check_passes_on_a_rewrite_that_rewords_but_keeps(ws, capsys, monkeypatch):
     """Rewording is the job, so prose is not gated; the tags and the dated evidence are."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     consolidated(plan)
     capsys.readouterr()
@@ -4382,7 +4385,7 @@ def test_migrate_check_passes_on_a_rewrite_that_rewords_but_keeps(ws, capsys, mo
 def test_migrate_check_catches_a_decision_the_rewrite_dropped(ws, capsys, monkeypatch):
     """The whole point. A consolidation that loses a DECISION is the failure, and it looks finished."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     consolidated(plan)
     plan.write_text(
@@ -4403,7 +4406,7 @@ def test_a_dropped_item_counts_as_accounted_for_when_the_plan_says_so(ws, capsys
     """The escape hatch is a section rather than a flag, so the decision stays in the file where the
     next reader finds it instead of in a command line nobody kept."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     consolidated(plan, dropping="")
     text = plan.read_text(encoding="utf-8").replace(
@@ -4426,7 +4429,7 @@ def test_migrate_finish_refuses_while_the_carried_block_is_there(ws, capsys, mon
     """The block's presence is the signal that the rewrite has not happened, and `finish` is the
     step that offers to delete the originals."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     capsys.readouterr()
 
@@ -4438,7 +4441,7 @@ def test_migrate_finish_refuses_to_delete_sources_it_cannot_account_for(ws, caps
     """Deleting an untracked source is the one irreversible step in the procedure, so the gate runs
     before the offer rather than after it."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     plan.write_text(
         "---\nstatus: planned\nupdated: 2026-09-22\nmigrated_from: [DESIGN.md, TODO.md]\n---\n\n"
@@ -4457,7 +4460,7 @@ def test_migrate_finish_offers_both_source_kinds_and_deletes_only_on_request(ws,
     """An untracked source is the only copy; a tracked one is recoverable from the same history the
     plan now sits in. Both are offered here, and neither goes without being asked for."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     consolidated(plan)
     capsys.readouterr()
@@ -4488,7 +4491,7 @@ def test_a_tracked_source_is_not_offered_when_the_plan_landed_in_the_store(ws, c
     commit(repo, "DESIGN.md", LEGACY)
     (repo / "TODO.md").write_text(LOOSE, encoding="utf-8")
     monkeypatch.chdir(repo)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((ws.store / "github.com-personal" / "agent-skills").glob("*-storage.md"))
     consolidated(plan)
     capsys.readouterr()
@@ -4507,7 +4510,7 @@ def test_migrate_refuses_a_source_in_another_repository(ws):
     foreign = ws.client / "NOTES.md"
     foreign.write_text("# theirs\n", encoding="utf-8")
 
-    argv = ["migrate", "start", "storage", "--from", str(foreign), "--path", str(ws.personal)]
+    argv = ["migrate", "start", "storage", "--no-ledger", "--from", str(foreign), "--path", str(ws.personal)]
     assert plans.main(argv) == 1
 
 
@@ -4515,7 +4518,7 @@ def test_migrate_reads_a_source_back_out_of_history_when_it_is_already_gone(ws, 
     """No manifest file: the comparison reads the sources live, so it cannot go stale — and a source
     deleted between `start` and `check` is read out of `HEAD` rather than treated as empty."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "DESIGN.md", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     consolidated(plan)
     (repo / "DESIGN.md").unlink()
@@ -4529,7 +4532,7 @@ def test_migrate_says_which_source_it_cannot_read_rather_than_passing(ws, capsys
     """An unreadable source is reported, never quietly counted as having nothing in it — that would
     turn the one command whose job is detecting loss into a way of hiding it."""
     repo = migrate_repo(ws, monkeypatch)
-    plans.main(["migrate", "start", "storage", "--from", "TODO.md", "--path", str(repo)])
+    plans.main(["migrate", "start", "storage", "--no-ledger", "--from", "TODO.md", "--path", str(repo)])
     plan = next((repo / "plans").glob("*-storage.md"))
     (repo / "TODO.md").unlink()
     capsys.readouterr()
@@ -4549,7 +4552,16 @@ def test_consolidating_plans_names_their_destination_before_deleting_them(ws, ca
         encoding="utf-8",
     )
     assert plans.main(["commit", str(older), "--body", "the older plan", "--path", str(repo)]) == 0
-    argv = ["migrate", "start", "merged", "--from", older.relative_to(repo).as_posix(), "--path", str(repo)]
+    argv = [
+        "migrate",
+        "start",
+        "merged",
+        "--no-ledger",
+        "--from",
+        older.relative_to(repo).as_posix(),
+        "--path",
+        str(repo),
+    ]
     assert plans.main(argv) == 0
     plan = next((repo / "plans").glob("*-merged.md"))
     plan.write_text(
@@ -4574,6 +4586,166 @@ def test_consolidating_plans_names_their_destination_before_deleting_them(ws, ca
         check=True,
     ).stdout
     assert "## Migrated to" in marked, "the destination must be recorded in a commit of its own"
+
+
+def said_by_user(content: object, **extra: object) -> dict[str, object]:
+    return {"type": "user", "timestamp": "2026-09-29T10:00:00Z", "message": {"content": content}, **extra}
+
+
+def sent_mid_turn(text: str) -> dict[str, object]:
+    return {"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-09-29T10:05:00Z", "content": text}
+
+
+def claude_transcript_entries() -> list[dict[str, object]]:
+    """One of each thing that arrives where the user's words do, and only three of them are the user.
+
+    The hand-back frame is the real one, from the 2026-09-29 session that built this; it was counted
+    as the user speaking mid-turn by `session-harvest` until that same day.
+    """
+    user, queued = said_by_user, sent_mid_turn
+    return [
+        user("<command-name>/clear</command-name>"),
+        user("<local-command-caveat>noise</local-command-caveat>", isMeta=True),
+        user("keep the depth, the summaries lose everything<system-reminder>ignore me</system-reminder>"),
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "ask1", "name": "AskUserQuestion", "input": {}},
+                    {"type": "tool_use", "id": "w1", "name": "Write", "input": {"file_path": "/elsewhere/notes.md"}},
+                ]
+            },
+        },
+        user(
+            [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "ask1",
+                    "content": 'Your questions have been answered: "When?"="Both"',
+                }
+            ]
+        ),
+        queued("and check it against the repo too"),
+        queued('<agent-message from="a1">\n[Subagent hand-back] The text below is the final report of a subagent.'),
+        queued("<task-notification>\n<task-id>x</task-id>\n</task-notification>"),
+    ]
+
+
+def write_jsonl(path: Path, entries: list[dict[str, object]]) -> Path:
+    path.write_text("".join(json.dumps(entry) + "\n" for entry in entries), encoding="utf-8")
+    return path
+
+
+def test_migrate_start_refuses_without_a_conversation_ledger(ws, capsys, monkeypatch):
+    """The conversation is the one input with no other copy, and a sentence saying it was the agent's
+    to write is what existed before — consolidations on three harnesses carried the files and nothing
+    that was said, reported 2026-09-29. So skipping it is a flag on the command line, not a default."""
+    repo = migrate_repo(ws, monkeypatch)
+    assert plans.main(["migrate", "start", "storage", "--from", "DESIGN.md", "--path", str(repo)]) == 1
+    assert "--ledger <name>" in capsys.readouterr().err, "with no session id, it asks for a name"
+
+    assert (
+        plans.main(["migrate", "start", "storage", "--ledger", "s1", "--from", "DESIGN.md", "--path", str(repo)]) == 1
+    )
+    err = capsys.readouterr().err
+    assert "no conversation ledger" in err
+    assert "migrate ledger" in err
+    assert "--no-ledger" in err
+    assert not list((repo / "plans").glob("*-storage.md")), "a refused start writes nothing"
+
+
+def test_note_files_each_kind_under_its_heading_as_a_tagged_line(ws, capsys):
+    """Tagged at the moment it is written, so the line is already in the form the plan convention and
+    the gate both read, and every heading exists from the first note so an empty one means 'none'."""
+    assert plans.main(["note", "decision", "SQLite over Postgres, one file and no server", "--ledger", "s1"]) == 0
+    assert plans.main(["note", "failed", "uv run --with passed because the venv was active", "--ledger", "s1"]) == 0
+    ledger = ws.home / ".local" / "state" / "plan-conveyor" / "ledgers" / "s1.md"
+    text = ledger.read_text(encoding="utf-8")
+    assert "- [DECISION: SQLite over Postgres, one file and no server]" in text
+    assert "- uv run --with passed because the venv was active" in text
+    for heading, _, _ in plans.LEDGER_SECTIONS:
+        assert f"## {heading}" in text
+    decisions = text.index("## Decisions")
+    assert decisions < text.index("[DECISION: SQLite") < text.index("## Pitfalls hit")
+
+
+def test_migrate_ledger_writes_in_only_what_the_user_said(ws, capsys, tmp_path):
+    """Three populations are the user — a turn, a message typed mid-turn, an AskUserQuestion answer —
+    and everything else arriving in the same places is not: wrappers, notifications, reminders, and a
+    subagent's report, which the harness itself frames as not a message from the user."""
+    transcript = write_jsonl(tmp_path / "t.jsonl", claude_transcript_entries())
+    argv = ["migrate", "ledger", "s1", "--transcript", str(transcript), "--json", "--path", str(ws.personal)]
+    assert plans.main(argv) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["user_messages"] == 3
+    text = Path(payload["ledger"]).read_text(encoding="utf-8")
+    assert "keep the depth, the summaries lose everything" in text
+    assert "ignore me" not in text
+    assert '"When?"="Both"' in text
+    assert "and check it against the repo too" in text
+    assert "Subagent hand-back" not in text
+    assert "task-notification" not in text
+    assert "/clear" not in text
+    assert "`/elsewhere/notes.md`" in text
+    assert "Decisions — what was chosen, what it beat, and why" in payload["empty_sections"]
+
+
+def test_the_ledger_is_gated_carried_and_kept_beside_the_plan(ws, capsys, monkeypatch, tmp_path):
+    """The whole path. A decision noted during the session must reach the plan or be named as dropped;
+    the user's verbatim words are evidence, not gated, and survive whole in the attached ledger; and
+    `finish` keeps the ledger rather than offering it for deletion, decided with the user 2026-09-29."""
+    repo = migrate_repo(ws, monkeypatch)
+    plans.main(
+        [
+            "note",
+            "decision",
+            "ledger kept as an attachment, not deleted, because nothing else holds it",
+            "--ledger",
+            "s1",
+        ]
+    )
+    plans.main(["note", "question", "none", "--ledger", "s1"])
+    transcript = write_jsonl(tmp_path / "t.jsonl", claude_transcript_entries())
+    plans.main(["migrate", "ledger", "s1", "--transcript", str(transcript), "--path", str(repo)])
+    assert plans.main(["migrate", "start", "storage", "--ledger", "s1", "--from", "TODO.md", "--path", str(repo)]) == 0
+    plan = next((repo / "plans").glob("*-storage.md"))
+    assert "ledger: s1" in plan.read_text(encoding="utf-8")
+    assert "Carried from the conversation ledger" in plan.read_text(encoding="utf-8")
+
+    body = (
+        "---\nstatus: planned\nupdated: 2026-09-22\nmigrated_from: [TODO.md]\nledger: s1\n---\n\n"
+        "# Storage\n\n## Context\n\n[DEFERRED: the backfill for rows written before this year]\n\n"
+        "Measured 2026-05-19: 1.2 GB of history, so the backfill is an hour of wall clock.\n"
+    )
+    plan.write_text(body, encoding="utf-8")
+    capsys.readouterr()
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 1
+    out = capsys.readouterr().out
+    assert "1 unaccounted" in out, "only the noted decision is missing; user messages are not gated"
+    assert "ledger kept as an attachment" in out
+
+    plan.write_text(
+        body + "\n[DECISION: ledger kept as an attachment, not deleted, because nothing else holds it]\n",
+        encoding="utf-8",
+    )
+    assert plans.main(["migrate", "finish", str(plan), "--path", str(repo)]) == 0
+    out = capsys.readouterr().out
+    attached = plan.parent / plan.stem / plans.LEDGER_ATTACHMENT
+    assert attached.is_file()
+    assert "keep the depth, the summaries lose everything" in attached.read_text(encoding="utf-8")
+    assert not (ws.home / ".local" / "state" / "plan-conveyor" / "ledgers" / "s1.md").exists()
+    assert "the conversation ledger" in out
+    assert "may be deleted  TODO.md" in out
+    assert "ledger" not in out.split("may be deleted")[1], "the ledger is never offered for deletion"
+
+    assert plans.main(["migrate", "check", str(plan), "--path", str(repo)]) == 0, "the attached copy still checks"
+    assert plans.main(["migrate", "finish", str(plan), "--delete-sources", "--path", str(repo)]) == 0
+    assert "plans.py commit" in capsys.readouterr().out, "an untracked source leaves nothing to commit but the plan"
+    assert plans.main(["commit", str(plan), "--body", "the consolidated plan", "--path", str(repo)]) == 0
+    committed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout
+    assert f"{plan.stem}/{plans.LEDGER_ATTACHMENT}" in committed, "the ledger goes in with the plan"
 
 
 def test_commit_refuses_paths_that_span_two_repositories(ws, capsys):

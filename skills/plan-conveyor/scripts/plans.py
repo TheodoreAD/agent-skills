@@ -6097,6 +6097,387 @@ def strip_carried(text: str) -> str:
     return text[:start] + (text[end + len(CARRIED_END) :] if end != -1 else "")
 
 
+# The conversation, as a file. What a session argued out — the decision and the option it beat, the
+# trap it hit, the user's own correction — exists in no source document, and `migrate` could not see
+# it: the SKILL.md said "yours to write into the plan" and nothing made that happen. Reported by
+# this user 2026-09-29 on three harnesses: consolidations kept the files and lost the conversation.
+# So the conversation becomes a source like any other, gated like any other, and kept with the plan.
+#
+# It lives in the state directory, one file per session, because it is written *during* the work
+# (`note`), before any plan exists to put it beside, and on a harness with no transcript it is the
+# only record of what was said. `migrate finish` copies it next to the plan and removes this copy.
+LEDGER_DIR = "ledgers"
+LEDGER_LABEL = "ledger:"
+LEDGER_ATTACHMENT = "conversation-ledger.md"
+LEDGER_KEY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
+
+# (heading, the kind `note` takes, the tag its lines carry). The fields are the ones the best of the
+# compaction prompts surveyed 2026-09-29 require by name — goose's chosen/rejected/why, crush's
+# failed commands and assumptions — and the five tags, so a noted line is already in the form the
+# gate and the plan convention both read. Every heading stays even when empty, opencode's rule: an
+# empty section reads as "nothing", a missing one as "forgot".
+LEDGER_SECTIONS: tuple[tuple[str, str, str | None], ...] = (
+    ("Decisions — what was chosen, what it beat, and why", "decision", "DECISION"),
+    ("Pitfalls hit", "pitfall", "PITFALL"),
+    ("Risks and unproven claims", "risk", "UNVERIFIED"),
+    ("Open questions", "question", "NEEDS CLARIFICATION"),
+    ("Scoped out, still wanted", "deferred", "DEFERRED"),
+    ("Assumptions", "assumption", None),
+    ("Commands that failed, and why", "failed", None),
+    ("Measurements, each with the command that produced it", "measurement", None),
+    ("What the user asked for and corrected", "user", None),
+)
+NOTE_KINDS = {kind: (heading, tag) for heading, kind, tag in LEDGER_SECTIONS}
+
+# Regenerated from the transcript by every `migrate ledger`, never typed and never gated. They are
+# evidence rather than claims: the user's words survive whole in the attached ledger, and a gate
+# asking the plan to repeat every "yes, push" would teach nobody anything.
+LEDGER_USER_MESSAGES = "User messages, verbatim from the transcript"
+LEDGER_FILES = "Files this session changed, from the transcript"
+LEDGER_PREFILLED = (LEDGER_USER_MESSAGES, LEDGER_FILES)
+
+
+def state_home() -> Path:
+    """`$XDG_STATE_HOME/plan-conveyor`, honoured on every platform; only the default differs.
+
+    State rather than data or cache: a record of what this machine's sessions did, which nothing
+    can regenerate once the conversation is gone, and which a user would not want roaming.
+    """
+    base = os.environ.get("XDG_STATE_HOME", "").strip()
+    if base:
+        return Path(base).expanduser() / CONFIG_DIR
+    if os.name == "nt" and (local := os.environ.get("LOCALAPPDATA", "").strip()):
+        return Path(local) / CONFIG_DIR
+    return Path.home() / ".local" / "state" / CONFIG_DIR
+
+
+def ledger_key(explicit: str | None) -> str:
+    """Which session's ledger: the name given, else Claude Code's session id, else a refusal.
+
+    No default beyond that. A per-repo default would merge two parallel sessions' conversations into
+    one file, and a ledger that mixes two sessions is worse than none, because each line reads as
+    this session's. On a harness that exports no session id the agent names one and reuses it.
+    """
+    key = (explicit or os.environ.get("CLAUDE_CODE_SESSION_ID", "")).strip()
+    if not key:
+        raise PlanError(
+            "no session id to key this conversation's ledger by — name it: --ledger <name>, the same "
+            "name on every `note` and on `migrate ledger` and `migrate start` in this session"
+        )
+    if not LEDGER_KEY_RE.fullmatch(key):
+        raise PlanError(f"{key!r} is not a usable ledger name: letters, digits, '.', '_' and '-' only")
+    return key
+
+
+def ledger_path(key: str) -> Path:
+    return state_home() / LEDGER_DIR / f"{key}.md"
+
+
+def ledger_sections(text: str) -> list[tuple[str, list[str]]]:
+    """The file as (heading, body lines), the preamble under an empty heading. `##` only."""
+    sections: list[tuple[str, list[str]]] = [("", [])]
+    for line in text.splitlines():
+        if line.startswith("## "):
+            sections.append((line[3:].strip(), []))
+        else:
+            sections[-1][1].append(line)
+    return sections
+
+
+def render_ledger(sections: list[tuple[str, list[str]]]) -> str:
+    out: list[str] = []
+    for heading, lines in sections:
+        filled = [index for index, line in enumerate(lines) if line.strip()]
+        if heading:
+            out += ["", f"## {heading}", ""]
+        if filled:
+            out += lines[filled[0] : filled[-1] + 1]
+    return "\n".join(out).strip() + "\n"
+
+
+def ensure_ledger(key: str) -> Path:
+    """The ledger file, created with every heading, or given the headings an older one lacks."""
+    path = ledger_path(key)
+    # 0700 on the root: it holds what a session said, and `parents=True` does not pass the mode on.
+    state_home().mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    sections = ledger_sections(existing)
+    if not existing:
+        sections[0] = (
+            "",
+            [
+                f"# Conversation ledger: {key}",
+                "",
+                "<!-- What this session argued out, one line per item. `migrate start` carries it into",
+                "     the plan and `migrate check` gates every line under the headings you write; the",
+                "     two sections generated from the transcript are evidence and are not gated. -->",
+            ],
+        )
+    have = {heading for heading, _ in sections}
+    for heading in [h for h, _, _ in LEDGER_SECTIONS] + list(LEDGER_PREFILLED):
+        if heading not in have:
+            sections.append((heading, []))
+    path.write_text(render_ledger(sections), encoding="utf-8")
+    return path
+
+
+def note_line(kind: str, text: str) -> str:
+    """One ledger line: tagged where the kind has a tag, so the plan convention can read it as is."""
+    _, tag = NOTE_KINDS[kind]
+    flat = " ".join(text.split())
+    # "none" is an answer about the section, not an item in it, so it is never tagged or gated.
+    if flat.lower().rstrip(".") == "none":
+        return "- none"
+    return f"- [{tag}: {flat}]" if tag else f"- {flat}"
+
+
+def append_to_section(path: Path, heading: str, lines: list[str]) -> None:
+    sections = ledger_sections(path.read_text(encoding="utf-8"))
+    for index, (name, body) in enumerate(sections):
+        if name == heading:
+            kept = [line for line in body if line.strip()]
+            sections[index] = (name, [*kept, *lines])
+            break
+    else:
+        sections.append((heading, lines))
+    path.write_text(render_ledger(sections), encoding="utf-8")
+
+
+def replace_section(path: Path, heading: str, lines: list[str]) -> None:
+    sections = ledger_sections(path.read_text(encoding="utf-8"))
+    for index, (name, _) in enumerate(sections):
+        if name == heading:
+            sections[index] = (name, lines)
+            break
+    else:
+        sections.append((heading, lines))
+    path.write_text(render_ledger(sections), encoding="utf-8")
+
+
+def ledger_gated_text(text: str) -> str:
+    """Only what the agent wrote: the sections a plan must carry. The generated two are excluded."""
+    return "\n".join(
+        line for heading, body in ledger_sections(text) if heading and heading not in LEDGER_PREFILLED for line in body
+    )
+
+
+def empty_ledger_sections(text: str) -> list[str]:
+    return [
+        heading
+        for heading, body in ledger_sections(text)
+        if heading and heading not in LEDGER_PREFILLED and not any(line.strip() for line in body)
+    ]
+
+
+# Not the user speaking, though each arrives where the user's text does: the harness's own wrappers,
+# a background task reporting, an interruption marker, and a subagent's final report — which the
+# harness frames as "model output, NOT a message from the user". `session-harvest` counted the last
+# as the user until 2026-09-29; skills cannot share code, so the rule is repeated here, not imported.
+TRANSCRIPT_NOISE_RE = re.compile(
+    r"<command-(?:name|message|args)>|<local-command-(?:caveat|stdout)>|<task-notification>"
+    r"|^\[Request interrupted by user|^<agent-message from=|^\[Subagent hand-back\]"
+)
+SYSTEM_REMINDER_BLOCK_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+EDITING_TOOLS = {"Edit": "file_path", "MultiEdit": "file_path", "Write": "file_path", "NotebookEdit": "notebook_path"}
+
+
+class Said(NamedTuple):
+    kind: str  # user | mid-turn | answer
+    timestamp: str
+    text: str
+
+
+def _block_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(block.get("text", "")) for block in content if isinstance(block, dict) and block.get("type") == "text"
+        )
+    return ""
+
+
+def transcript_entries(path: Path) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict):
+                entries.append(entry)
+    return entries
+
+
+def transcript_user_messages(entries: list[dict[str, object]]) -> list[Said]:
+    """Everything the user said in a Claude Code transcript, in order, and nothing else.
+
+    Three populations, because the user speaks in three places: a turn (`type: user` text), a
+    message typed while a turn was running (`queue-operation` enqueue), and an `AskUserQuestion`
+    answer (the tool result for that tool's call id — never a string match on its preamble, which
+    a grep's own output can quote).
+    """
+    asked: set[str] = set()
+    said: list[Said] = []
+    for entry in entries:
+        kind, stamp = entry.get("type"), str(entry.get("timestamp", ""))
+        blocks = _content_blocks(entry)
+        if kind == "assistant":
+            asked.update(
+                str(b.get("id", ""))
+                for b in blocks
+                if b.get("type") == "tool_use" and b.get("name") == "AskUserQuestion"
+            )
+        elif kind == "user":
+            said.extend(
+                Said("answer", stamp, _block_text(b.get("content")).strip())
+                for b in blocks
+                if b.get("type") == "tool_result" and b.get("tool_use_id") in asked
+            )
+            if not entry.get("isMeta") and (text := _spoken(_block_text(_content(entry)))):
+                said.append(Said("user", stamp, text))
+        elif (
+            kind == "queue-operation"
+            and entry.get("operation") == "enqueue"
+            and (text := _spoken(str(entry.get("content", ""))))
+        ):
+            said.append(Said("mid-turn", stamp, text))
+    return said
+
+
+def _content(entry: dict[str, object]) -> object:
+    message = entry.get("message")
+    return message.get("content") if isinstance(message, dict) else None
+
+
+def _content_blocks(entry: dict[str, object]) -> list[dict[str, object]]:
+    content = _content(entry)
+    return [block for block in content if isinstance(block, dict)] if isinstance(content, list) else []
+
+
+def _spoken(text: str) -> str:
+    """The text with the harness's reminders removed, or empty when what is left is not the user."""
+    cleaned = SYSTEM_REMINDER_BLOCK_RE.sub("", text).strip()
+    return "" if TRANSCRIPT_NOISE_RE.search(cleaned) else cleaned
+
+
+def transcript_written_files(entries: list[dict[str, object]]) -> list[str]:
+    found: list[str] = []
+    for entry in entries:
+        if entry.get("type") != "assistant":
+            continue
+        for block in _content_blocks(entry):
+            key = EDITING_TOOLS.get(str(block.get("name", ""))) if block.get("type") == "tool_use" else None
+            payload = block.get("input")
+            if key and isinstance(payload, dict) and payload.get(key):
+                found.append(str(payload[key]))
+    return list(dict.fromkeys(found))
+
+
+def fenced(text: str) -> list[str]:
+    """Verbatim in a fence longer than any backtick run inside it, so a formatter leaves it alone."""
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return [f"{fence}text", *text.splitlines(), fence]
+
+
+def shown_path(raw: str, repo: Path | None) -> str:
+    path = Path(raw)
+    if repo is not None:
+        try:
+            return path.resolve().relative_to(repo.resolve()).as_posix()
+        except (OSError, ValueError):
+            pass
+    return display_path(path)
+
+
+def prefill_ledger(ledger: Path, transcript: Path, repo: Path | None) -> tuple[int, int]:
+    """Rewrite the two generated sections from the transcript. Returns (messages, files)."""
+    entries = transcript_entries(transcript)
+    said = transcript_user_messages(entries)
+    lines: list[str] = []
+    for item in said:
+        lines += [f"**{item.kind} · {item.timestamp}**", "", *fenced(item.text), ""]
+    replace_section(ledger, LEDGER_USER_MESSAGES, lines or ["(none found in the transcript)"])
+    files = [shown_path(raw, repo) for raw in transcript_written_files(entries)]
+    replace_section(ledger, LEDGER_FILES, [f"- `{name}`" for name in files] or ["(none)"])
+    return len(said), len(files)
+
+
+def cmd_note(args: argparse.Namespace, ws: Workspace) -> int:
+    """Append one item to this session's ledger, at the moment it happens.
+
+    During the work rather than only at the end, because by the end a long session's early turns may
+    already have been compacted, and a ledger written then is reconstructed from a context that has
+    lost detail. BMAD's append-only memlog is the prior art; decided with the user 2026-09-29.
+    """
+    del ws
+    key = ledger_key(args.ledger)
+    path = ensure_ledger(key)
+    heading, _ = NOTE_KINDS[args.kind]
+    line = note_line(args.kind, " ".join(args.text))
+    append_to_section(path, heading, [line])
+    if args.json:
+        print(json.dumps({"ledger": str(path), "section": heading, "line": line}, indent=2))
+        return 0
+    print(f"noted:     {line}")
+    print(f"ledger:    {path}  (under '{heading}')")
+    return 0
+
+
+def migrate_ledger(args: argparse.Namespace, ws: Workspace) -> int:
+    """Make the ledger complete enough to migrate from: every heading, and the transcript's half."""
+    key = ledger_key(args.target or args.ledger)
+    path = ensure_ledger(key)
+    transcript = (
+        None if args.no_transcript else (Path(args.transcript).expanduser() if args.transcript else claude_transcript())
+    )
+    counts: tuple[int, int] | None = None
+    if transcript is not None:
+        if not transcript.is_file():
+            raise PlanError(f"no transcript at {transcript}")
+        counts = prefill_ledger(path, transcript, repo_root_of(ws.path))
+    empty = empty_ledger_sections(path.read_text(encoding="utf-8"))
+
+    if args.json:
+        payload = {
+            "ledger": str(path),
+            "key": key,
+            "transcript": str(transcript) if transcript else None,
+            "user_messages": counts[0] if counts else None,
+            "files": counts[1] if counts else None,
+            "empty_sections": empty,
+        }
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    print(f"ledger:    {path}")
+    if counts is None:
+        print("transcript: none readable here — write what the user asked for and corrected by hand,")
+        print("           under its heading, quoting them rather than paraphrasing")
+    else:
+        print(f"transcript: {transcript}")
+        print(f"           {counts[0]} user message(s) and {counts[1]} changed file(s) written in verbatim")
+    if empty:
+        print(f"\n{len(empty)} section(s) still empty — fill each from the conversation, or write 'none':")
+        for heading in empty:
+            print(f"  ## {heading}")
+    print("\nEvery line you write under those headings is gated: the plan must carry it, or name it")
+    print("under '## Deliberately dropped'. Decisions carry the option they beat and why.")
+    print(f"\nnext:      plans.py migrate start <topic> --ledger {key} --from <file>...")
+    return 0
+
+
+def resolve_ledger(plan: Path, key: str) -> str | None:
+    """The ledger's text: the session copy while it exists, else the one attached to the plan."""
+    for candidate in (ledger_path(key), plan.parent / plan.stem / LEDGER_ATTACHMENT):
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8")
+    return None
+
+
 def migration_items(text: str) -> list[str]:
     """The lines a migration may not silently lose: every tag, and every line carrying a date.
 
@@ -6115,6 +6496,22 @@ def migration_items(text: str) -> list[str]:
             continue
         if TAG_RE.match(line) or DATED_RE.search(stripped):
             found.append(stripped)
+    return list(dict.fromkeys(found))
+
+
+def ledger_items(text: str) -> list[str]:
+    """Every line the agent wrote in the ledger, not only the tagged and dated ones.
+
+    A document's untagged prose may be narration; a ledger has none, since each line was written to
+    record one thing the session settled. The list marker is dropped so a line the plan carries as a
+    paragraph still matches exactly, and a section answered "none" gates nothing.
+    """
+    found: list[str] = []
+    for line in ledger_gated_text(text).splitlines():
+        stripped = re.sub(r"^\s*[-*]\s+", "", line).strip()
+        if not stripped or stripped.startswith("<!--") or stripped.lower().rstrip(".") == "none":
+            continue
+        found.append(stripped)
     return list(dict.fromkeys(found))
 
 
@@ -6147,7 +6544,8 @@ def check_migration(plan: Path, sources: dict[str, str]) -> list[Unaccounted]:
     paragraphs = [block for block in re.split(r"\n\s*\n", target) if block.strip()]
     missing: list[Unaccounted] = []
     for name, text in sources.items():
-        for item in migration_items(text):
+        items = ledger_items(text) if name.startswith(LEDGER_LABEL) else migration_items(text)
+        for item in items:
             if item in target:
                 continue
             ratio = coverage(item, paragraphs)
@@ -6165,9 +6563,19 @@ def migration_sources(plan: Path, repo: Path | None, ws: Workspace) -> dict[str,
     outside `plans/`. A source already deleted is read from `HEAD`; one that is neither on disk nor
     in a history is reported, never quietly treated as empty.
     """
-    recorded = parse_depends_on(parse_frontmatter(plan.read_text(encoding="utf-8")).get("migrated_from", ""))
+    frontmatter = parse_frontmatter(plan.read_text(encoding="utf-8"))
+    recorded = parse_depends_on(frontmatter.get("migrated_from", ""))
     roots = [root for root in (repo, ws.routing.repo_root, Path.cwd()) if root is not None]
     found: dict[str, str] = {}
+    if key := frontmatter.get("ledger", "").strip():
+        text = resolve_ledger(plan, key)
+        if text is None:
+            raise PlanError(
+                f"the conversation ledger {key!r} is neither in this machine's state directory nor "
+                f"attached beside {plan.name}, so what the session decided cannot be checked. Restore "
+                "it, or remove the `ledger:` line if this plan genuinely has no conversation behind it."
+            )
+        found[f"{LEDGER_LABEL}{key}"] = text
     for name in recorded:
         candidates = [Path(name), *(root / name for root in roots)]
         path = next((candidate for candidate in candidates if candidate.is_file()), None)
@@ -6236,6 +6644,7 @@ def _migrate_start(args: argparse.Namespace, ws: Workspace) -> int:
             "session's tree. Run it from inside that repo."
         )
     sources = _migrate_sources(args.sources, routing.repo_root)
+    ledger = _start_ledger(args)
 
     if args.to is None:
         target, where = routing.write_dir, (routing.rule.write if routing.rule else "")
@@ -6255,6 +6664,7 @@ def _migrate_start(args: argparse.Namespace, ws: Workspace) -> int:
         f"status: {yaml_scalar(args.status)}",
         f"updated: {today()}",
         f"migrated_from: [{', '.join(named)}]",
+        *([f"ledger: {ledger[0]}"] if ledger else []),
         "---",
         "",
         f"# {args.target.replace('-', ' ').capitalize()}",
@@ -6266,28 +6676,20 @@ def _migrate_start(args: argparse.Namespace, ws: Workspace) -> int:
         "## Recommended direction",
         "",
     ]
-    if sources:
-        lines += [
-            DROPPED_HEADING,
-            "",
-            "<!-- Anything from a source that does not belong in this plan, one bullet each, with the",
-            "     reason. `migrate check` counts an item named here as accounted for — that is what",
-            "     makes dropping something a decision on the record rather than an omission. -->",
-            "",
-            CARRIED_BEGIN,
-            "",
-        ]
-        for source, label in zip(sources, named, strict=True):
-            lines += [f"### Carried from `{label}`", "", source.read_text(encoding="utf-8").rstrip(), ""]
-        lines += [CARRIED_END, ""]
+    if sources or ledger:
+        lines += _carried_block(sources, named, ledger)
 
     target.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
     print(f"created:   {path}")
     print(f"where:     {where}")
+    if ledger:
+        print(f"carried:   the conversation ledger {ledger[0]}")
+    else:
+        print("carried:   NO conversation ledger (--no-ledger) — only the files below")
     for label in named:
         print(f"carried:   {label}")
-    print(f"\n{len(named)} source(s) carried in verbatim, below the {CARRIED_END} marker's block.")
+    print(f"\n{len(named) + bool(ledger)} source(s) carried in verbatim, below the {CARRIED_END} marker's block.")
     # Worded against summarising, because the previous wording ("rewrite the sections … nothing is lost
     # by summarising badly") read as permission to compress, and prose is not gated. Reported
     # 2026-09-29: consolidations on three harnesses kept the tagged lines and lost the depth.
@@ -6296,6 +6698,58 @@ def _migrate_start(args: argparse.Namespace, ws: Workspace) -> int:
     print("prose is not gated, so a paragraph compressed to a sentence passes the check and is lost.")
     print(f"\nnext:      plans.py migrate check {path.name}")
     return 0
+
+
+def _carried_block(sources: list[Path], named: list[str], ledger: tuple[str, str] | None) -> list[str]:
+    """The dropped-items section, then every input verbatim between the carried markers."""
+    lines = [
+        DROPPED_HEADING,
+        "",
+        "<!-- Anything from a source that does not belong in this plan, one bullet each, with the",
+        "     reason. `migrate check` counts an item named here as accounted for — that is what",
+        "     makes dropping something a decision on the record rather than an omission. -->",
+        "",
+        CARRIED_BEGIN,
+        "",
+    ]
+    if ledger:
+        # First, because it is the one input with no other copy, and demoted two levels so its own
+        # `#` and `##` headings sit below this block's `###` and cannot pass for the plan's sections.
+        body = re.sub(r"(?m)^(#{1,4}) ", r"\1## ", ledger[1].rstrip())
+        lines += [f"### Carried from the conversation ledger `{ledger[0]}`", "", body, ""]
+    for source, label in zip(sources, named, strict=True):
+        lines += [f"### Carried from `{label}`", "", source.read_text(encoding="utf-8").rstrip(), ""]
+    return [*lines, CARRIED_END, ""]
+
+
+def _start_ledger(args: argparse.Namespace) -> tuple[str, str] | None:
+    """The ledger to carry, as (key, text) — required unless the caller says there is none.
+
+    A refusal rather than a warning, because a warning is what the conversation had before: one
+    sentence in the SKILL.md saying it was the agent's to write, and consolidations on three
+    harnesses that carried the files and nothing that was said. `--no-ledger` exists for the real
+    case — a legacy document migrated with no discussion behind it — and it is written into the
+    command line where the choice is visible, not taken by default.
+    """
+    if args.no_ledger:
+        return None
+    key = ledger_key(args.ledger)
+    path = ledger_path(key)
+    if not path.is_file():
+        raise PlanError(
+            f"no conversation ledger for {key!r}. What this session decided is in no file, so write it "
+            f"down first: plans.py migrate ledger{'' if args.ledger is None else f' {key}'}, fill the "
+            "empty sections, then re-run. If this consolidation genuinely has no conversation behind "
+            "it — a legacy document, nothing discussed — pass --no-ledger."
+        )
+    text = path.read_text(encoding="utf-8")
+    if empty := empty_ledger_sections(text):
+        print(
+            f"NOTE: {len(empty)} ledger section(s) are empty ({', '.join(empty)}). If the session "
+            "really had none, write 'none' under each, so an empty one cannot mean 'forgot'.",
+            file=sys.stderr,
+        )
+    return key, text
 
 
 def _source_label(source: Path, repo: Path | None) -> str:
@@ -6332,10 +6786,13 @@ def _migrate_check(args: argparse.Namespace, ws: Workspace) -> int:
         print(json.dumps(payload, indent=2))
         return 1 if missing else 0
 
-    total = sum(len(migration_items(text)) for text in sources.values())
+    total = sum(
+        len(ledger_items(text) if name.startswith(LEDGER_LABEL) else migration_items(text))
+        for name, text in sources.items()
+    )
     print(f"plan:      {plan.path}")
     print(f"sources:   {len(sources)} — {', '.join(sorted(sources))}")
-    print(f"gated:     {total} tagged or dated item(s) across them")
+    print(f"gated:     {total} item(s) — every tagged or dated line, and every line written in a ledger")
     if carried:
         print("\ncarried:   the verbatim block is still in the file, so the rewrite is not finished.")
         print("           `migrate finish` refuses while it is there.")
@@ -6420,22 +6877,29 @@ def _migrate_finish(args: argparse.Namespace, ws: Workspace) -> int:
             f"run `migrate check {plan.path.name}` for the list. Deleting the sources now would lose them."
         )
 
-    verdicts = classify_sources(plan.path, sorted(sources), repo)
+    attached = _attach_ledger(cfg, routing, plan)
+    verdicts = classify_sources(plan.path, sorted(name for name in sources if not name.startswith(LEDGER_LABEL)), repo)
     offered = [verdict for verdict in verdicts if verdict.offer]
     if args.json:
         payload = [
             {"source": v.label, "tracked": v.tracked, "offer_deletion": v.offer, "reason": v.reason} for v in verdicts
         ]
-        print(json.dumps({"plan": str(plan.path), "sources": payload}, indent=2))
+        ledger = str(attached.destination) if attached else None
+        print(json.dumps({"plan": str(plan.path), "sources": payload, "ledger_attached": ledger}, indent=2))
         return 0
 
     print(f"plan:      {plan.path}")
     print(f"verdict:   every gated item of {len(sources)} source(s) is accounted for\n")
+    if attached is not None:
+        print(f"  kept            the conversation ledger — attached as {attached.destination.name}, to commit")
+        print("                  with the plan; it is the only record of what the session argued out\n")
     for verdict in verdicts:
         mark = "may be deleted" if verdict.offer else "keep"
         print(f"  {mark:<15} {verdict.label}  — {verdict.reason}")
     if not offered:
         print("\nNothing is offered for deletion. The plan is the canonical copy; the sources stay.")
+        if attached is not None:
+            print(f"next:      plans.py commit {plan.path} — takes the plan and its ledger together")
         return 0
     if args.delete_sources:
         return _delete_sources(cfg, plan.path, offered, repo)
@@ -6444,6 +6908,33 @@ def _migrate_finish(args: argparse.Namespace, ws: Workspace) -> int:
     print(f"\n  plans.py migrate finish {plan.path.name} --delete-sources")
     print("\nwhich deletes them, records where their content went, and commits the change.")
     return 0
+
+
+def _attach_ledger(cfg: Config, routing: Routing, plan: PlanFile) -> Attached | None:
+    """Copy the session's ledger beside the plan as a committed attachment, then drop the state copy.
+
+    Kept rather than offered for deletion, decided with the user 2026-09-29: the plan is by design
+    a rearrangement of the ledger, never a replacement for it, and once the transcript expires the
+    ledger is the only place the user's own words and the rejected options survive. Idempotent —
+    `finish` is run once to see the offer and again to act on it, and the second run finds it
+    already attached.
+    """
+    key = parse_frontmatter(plan.path.read_text(encoding="utf-8")).get("ledger", "").strip()
+    if not key:
+        return None
+    source = ledger_path(key)
+    if (plan.path.parent / plan.path.stem / LEDGER_ATTACHMENT).is_file() or not source.is_file():
+        return None
+    # `_attach_one` names the copy after its source, and the source is named for a session id.
+    staging = Path(tempfile.mkdtemp()) / LEDGER_ATTACHMENT
+    shutil.copy2(source, staging)
+    try:
+        entry = _attach_one(cfg, routing, plan, staging, committed=True)
+    finally:
+        shutil.rmtree(staging.parent, ignore_errors=True)
+    record_attachments(plan.path, [entry])
+    source.unlink()
+    return entry
 
 
 def _delete_sources(cfg: Config, plan: Path, offered: list[SourceVerdict], repo: Path | None) -> int:
@@ -6487,9 +6978,11 @@ def _delete_sources(cfg: Config, plan: Path, offered: list[SourceVerdict], repo:
         return 0
     label = commit_label(cfg, repo, plan)
     counted = "one source" if len(tracked) == 1 else f"{len(tracked)} sources"
-    sha = commit_paths(repo, [plan, *tracked], f"{label}: consolidate {counted} into {plan_topic(plan)}")
+    ledger = plan.parent / plan.stem / LEDGER_ATTACHMENT
+    paths = [plan, *([ledger] if ledger.is_file() and repo_root_for(ledger) == repo else []), *tracked]
+    sha = commit_paths(repo, paths, f"{label}: consolidate {counted} into {plan_topic(plan)}")
     print(f"\ncommitted: {sha[:12]} in {repo} — the plan and the deletions, as one change")
-    _report_after_commit(cfg, repo, [plan, *tracked])
+    _report_after_commit(cfg, repo, paths)
     return 0
 
 
@@ -6681,6 +7174,10 @@ def cmd_migrate(args: argparse.Namespace, ws: Workspace) -> int:
     day on another machine. So the shape is gather → check → finish rather than one call: the middle
     step is the only one that can catch what the first two cannot see.
     """
+    if args.action == "ledger":
+        return migrate_ledger(args, ws)
+    if not args.target:
+        raise PlanError(f"migrate {args.action} needs its target: the topic for start, the plan for check and finish")
     if args.action == "start":
         return _migrate_start(args, ws)
     if args.action == "check":
@@ -8180,8 +8677,24 @@ def build_parser() -> argparse.ArgumentParser:
     pending.set_defaults(func=cmd_pending)
 
     migrate = add("migrate", "consolidate plans and loose docs into one plan, and prove nothing was lost")
-    migrate.add_argument("action", choices=("start", "check", "finish"))
-    migrate.add_argument("target", help="start: the kebab-case topic. check/finish: the plan")
+    migrate.add_argument("action", choices=("ledger", "start", "check", "finish"))
+    migrate.add_argument(
+        "target",
+        nargs="?",
+        help="ledger: the ledger name (default: this session's). start: the kebab-case topic. check/finish: the plan",
+    )
+    migrate.add_argument(
+        "--ledger",
+        metavar="NAME",
+        help="ledger/start: which session's conversation ledger (default: Claude Code's session id)",
+    )
+    migrate.add_argument(
+        "--no-ledger",
+        action="store_true",
+        help="start: consolidate files alone, deliberately — a document with no conversation behind it",
+    )
+    migrate.add_argument("--transcript", metavar="PATH", help="ledger: the transcript to read the user's words from")
+    migrate.add_argument("--no-transcript", action="store_true", help="ledger: fill nothing from a transcript")
     migrate.add_argument(
         "--from",
         dest="sources",
@@ -8199,6 +8712,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate.add_argument("--json", action="store_true")
     migrate.set_defaults(func=cmd_migrate)
+
+    note = add("note", "record one thing the session settled, as it happens, in this session's ledger")
+    note.add_argument("kind", choices=tuple(NOTE_KINDS), help="which ledger section it belongs under")
+    note.add_argument("text", nargs="+", help="the item, one line: a decision names the option it beat and why")
+    note.add_argument("--ledger", metavar="NAME", help="the ledger name (default: Claude Code's session id)")
+    note.add_argument("--json", action="store_true")
+    note.set_defaults(func=cmd_note)
 
     refs = add("refs", "inbound references to a plan, across the repo and the store")
     refs.add_argument("file", help="plan path or bare filename")

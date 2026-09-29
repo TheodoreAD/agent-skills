@@ -169,14 +169,28 @@ when X ships, and no tool surveyed asks.
 
 ### 4. Getting the command reached, on every harness
 
-- **The trigger.** Measure whether the skill's `description` fires on the phrasings the user
-  actually uses. `skill-fitness`'s `trigger.py` takes eval cases; the evals should include "write up
-  everything we decided into a plan", "consolidate these notes and what we discussed", "migrate this
-  doc into plans/", and should-not-trigger cases.
-- **The placement.** The migrate section starts at line 1,642 of a 1,736-line SKILL.md (measured
-  2026-09-29), below retirement, archive and several pitfalls. On an agent that reads the top and
-  stops, it is never reached. A pointer in the opening "Start here" table is the smallest fix;
-  splitting migrate into `references/migrate.md` with a hard pointer is the next one.
+- **The trigger is not the problem — measured.**
+  `skills/plan-conveyor/evals/consolidation-reachability.json`, run 2026-09-29 against the installed
+  descriptions at 3 runs: **10/10**. Five consolidation phrasings loaded plan-conveyor every time,
+  two harvest phrasings loaded session-harvest, and three look-alikes loaded nothing. So on Claude
+  Code a cold request reaches the skill. That refutes the first half of item 5's hypothesis. What
+  the suite cannot see is a request made late in a long session.
+- **The placement is what is left, and it is done.** The migrate section starts at line 1,642 of a
+  1,736-line SKILL.md, below retirement, archive and several pitfalls, so an agent that loads the
+  skill and acts on its top never reaches it. Landed 2026-09-29: a row in the opening "Start here"
+  table ("write up a session, its notes and docs, as one plan → `migrate start` — never a summary").
+  Splitting migrate into `references/migrate.md` is the next step if that proves not enough.
+- **A stopgap for the conversation, landed with it.** The migrate section now tells the agent to
+  write the conversation into `<topic>-conversation.md` as **tagged and dated lines**, so today's
+  gate already checks it, and to pass it with `--from`, then keep it with `attach --commit`. That
+  gives the ledger's function with today's code. `start`'s printed instruction no longer says
+  "nothing is lost by summarising badly", which read as permission to compress.
+
+[UNVERIFIED: whether the "Start here" row and the stopgap change what an agent actually does. The
+trigger suite measures which skill loads, not what happens after. The real test is the next
+consolidation on each harness: does it run `migrate start`, and does it write the conversation
+file?]
+
 - **Other harnesses: they do load the skill.** See the next section. So the script-based design
   reaches Copilot and the Devin CLI, not only Claude Code.
 
@@ -303,8 +317,9 @@ attempts.]
 
 Order by what the evidence says is failing first:
 
-1. **Reachability (section 4).** Add trigger evals and move migrate into the "Start here" table.
-   Cheapest, and without it nothing below is ever run.
+1. **Done 2026-09-29: reachability (section 4)**, with the trigger measured sound and the placement
+   fixed. Add trigger evals and move migrate into the "Start here" table. Cheapest, and without it
+   nothing below is ever run.
 2. **The ledger (section 1)**, including its template and the transcript pre-fill of user messages.
    This is the whole of the "ignores the conversation" failure, and its headings are portable even
    to a cloud harness that has neither a transcript nor the script.

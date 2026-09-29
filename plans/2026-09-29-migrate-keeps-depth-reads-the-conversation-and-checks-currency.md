@@ -105,6 +105,42 @@ conversation" is what exists now, and it is what fails. A file with required hea
 gate can read, and it makes "the session decided X" a line with the same standing as a line in a
 source document.]
 
+**Built 2026-09-30, as designed, with these specifics:**
+
+- **Storage.** The ledger is `$XDG_STATE_HOME/plan-conveyor/ledgers/<key>.md`, created `0700`, one
+  file per session. The key is `--ledger <name>`, else Claude Code's session id, else a refusal that
+  asks for a name. There is no per-repo default, because two parallel sessions would then merge into
+  one ledger and each line would read as the reader's own session.
+- **Tagging.** `note` writes decisions, pitfalls, risks, open questions and deferrals as the
+  matching tagged line, so a noted item is already in the plan convention's form. `none` is written
+  plain and gates nothing.
+- **What `migrate ledger` reads.** It excludes the harness's own text: slash-command wrappers, task
+  notifications, interruptions, system reminders and subagent hand-backs. `AskUserQuestion` answers
+  are matched by tool-call id rather than by preamble text. The user's words go into fences longer
+  than any backtick run inside them, so `dprint` leaves them verbatim once attached.
+- **`migrate start` refuses without a ledger**, naming `migrate ledger` and `--no-ledger` in the
+  error. It carries the ledger first in the carried block, with its headings demoted two levels.
+- **`migrate check` gates every line the agent wrote**, but not the two generated sections.
+  `migrate finish` copies the ledger beside the plan as `conversation-ledger.md` and never lists it
+  for deletion. It then removes the state copy, and check still works afterwards because it falls
+  back to the attached copy.
+
+[PITFALL: **a resumed session has a new session id and a new transcript, and `migrate ledger` reads
+only the current one.** Found on first real use, 2026-09-30, on the session that built it. That
+session had been resumed partway through, so the new transcript held 5 of the user's messages and
+the rest were in the earlier one, including the whole original brief. The new transcript does
+mention the earlier session's id, so following the chain may be possible, but the shape of that
+reference has not been read yet. Until then the SKILL.md tells the agent to copy what the user said
+before the resume into the ledger by hand.]
+
+[DEFERRED: **follow a resumed session back to its earlier transcripts** in `migrate ledger`,
+concatenating their user messages in order. Needs the resume link's actual shape read from a real
+transcript first, and a test fixture built from it.]
+
+[DEFERRED: **a Copilot transcript reader** for `~/.copilot/session-state/<id>/events.jsonl`. No
+Copilot transcript exists on this machine to build or test against, so the Copilot and Devin CLIs
+use `--ledger <name>` and hand-written user messages for now.]
+
 ### 2. Move, don't rewrite: the default operation changes
 
 - `start` stops writing the three-section skeleton over the sources. The target's sections come from
@@ -320,11 +356,9 @@ Order by what the evidence says is failing first:
 1. **Done 2026-09-29: reachability (section 4)**, with the trigger measured sound and the placement
    fixed. Add trigger evals and move migrate into the "Start here" table. Cheapest, and without it
    nothing below is ever run.
-2. **The ledger (section 1)**, including its template and the transcript pre-fill of user messages.
-   This is the whole of the "ignores the conversation" failure, and its headings are portable even
-   to a cloud harness that has neither a transcript nor the script.
+2. **Done 2026-09-30: the ledger (section 1)**: `note`, `migrate ledger` with the Claude Code
+   transcript pre-fill, and `start`, `check` and `finish` carrying, gating and keeping it. Open: the
+   resumed-session gap and a Copilot reader, both deferred in section 1.
 3. **Move-don't-rewrite and the paragraph gate (section 2)**, with the ratio measured first.
 4. **The currency pass (section 3)**, as a worklist with a `## Currency` section that `finish` gates
    on, and `verified_at: <sha>` recorded so a later re-check is a diff.
-
-The transcript cross-check in section 1 waits on the hand-back fix in `harvest.py turns`.

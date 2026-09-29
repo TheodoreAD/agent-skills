@@ -1,6 +1,6 @@
 ---
-status: idea
-updated: 2026-09-29
+status: landed
+updated: 2026-09-30
 source_repo: github.com-personal/ingesta
 source_session: e15f97a5-8323-4308-8b25-c2648bc833a4.jsonl
 source_moment: 2026-09-28T20:44:31.855Z
@@ -51,3 +51,26 @@ Recognise the hand-back by its framing (`<agent-message from=` / `[Subagent hand
 it as its own counted group beside the task notifications and slash-command wrappers — "none of them
 an instruction" — rather than as a mid-turn user message. A test with one real mid-turn message and
 one hand-back in the same fixture is what keeps the two apart.
+
+## Verification
+
+Fixed in `b1b722a`, pushed, and `session-harvest` re-installed globally. Then `turns` was re-run
+with the **installed** copy against both original transcripts:
+
+- ingesta `e15f97a5-…`: `0 sent mid-turn`, `4 subagent hand-backs` (was 4 mid-turn).
+- power-user-linux-setup `8905608a-…`: `0 sent mid-turn`, `2 subagent hand-backs` (was 2 mid-turn).
+
+The session that fixed it (agent-skills `19f92e04-…`) reproduced the bug on itself first. After the
+fix it reads 1 real mid-turn message and 2 hand-backs. The hand-back bodies are no longer printed
+unless `--all` is passed, which also removes the 4 KB-per-report cost the second sample recorded.
+
+## Migrated to
+
+- `skills/session-harvest/scripts/harvest.py`, `HANDBACK_RE` and its comment: the rule, the
+  evidence, and why the match is anchored.
+- `skills/session-harvest/SKILL.md`, the paragraph on the three populations: hand-backs named among
+  the harness's noise, with the date and count.
+- `tests/unit/test_harvest.py`, `test_a_subagent_hand_back_is_not_the_user_speaking_mid_turn`: the
+  fixture uses the real frame from this session's transcript.
+- Not migrated: the transcript paths and timestamps, which are provenance for a fixed bug rather
+  than anything a reader of the code needs.

@@ -1,7 +1,7 @@
 ---
 name: plan-conveyor
 description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, consolidating a session's plans and loose notes into one plan without loss, migrating a legacy PLAN.md/DESIGN.md onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME); an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
-compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard; any other harness exports PLAN_CONVEYOR_SESSION_REPO instead. No network access.
+compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard and keys the conversation ledger, and whose transcript fills the user's words in; any other harness exports PLAN_CONVEYOR_SESSION_REPO and passes --ledger instead. No network access.
 ---
 
 # Structured, stateful plan files
@@ -23,7 +23,9 @@ case none of them solves cheaply — is
   `~/.config/plan-conveyor/config.toml`, else `%APPDATA%\plan-conveyor\` on Windows), the directory
   names under `projects_root` (to derive the private terms `scan` gates on — names only, never
   contents), git history of the session repo and the stores, and, on Claude Code, the transcript
-  path named by `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
+  path named by `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard. `migrate ledger` also
+  reads that transcript's **contents**, or the one `--transcript` names: the user's messages and the
+  paths of files the session edited, nothing else.
 - **Runs**: `git` — read commands everywhere. It commits through `commit`, `rename --commit` and
   `migrate finish --delete-sources`, each in the repository the named paths are already in — the
   store for a store-held plan, the session repo for a repo-held one, never any other repository. In
@@ -43,14 +45,17 @@ case none of them solves cheaply — is
   `## Attachments` rows, and one line in the store's `.git/info/exclude`. Each store's `repos.toml`,
   and — through `links fix --yes` — the `repo:` line of store-held plans. `link --move-to private`
   and `links merge` move a store folder's files, and its local attachments, to another folder or the
-  other store. **Deletes files only through `migrate finish --delete-sources`**, and only the ones
-  it has just listed as deletable, in the session's own repository, after its coverage gate has
-  passed — never on its own initiative and never without that flag. The only other removals are of
-  directories left holding no file: the ones a move or merge empties, and those
-  `links fix --yes --prune-empty` lists. Never a file in any other repo's working tree: `new`
-  refuses and names `--for`, and `migrate` refuses a source outside this repository. `archive`,
-  `list`, `tags`, `refs`, `pending`, `migrate check`, `doctor`, `scan`, `where`, bare `link`,
-  `links` and `links fix` without `--yes` write nothing.
+  other store. A conversation ledger per session under `$XDG_STATE_HOME/plan-conveyor/ledgers/`
+  (default `~/.local/state/…`, `%LOCALAPPDATA%\plan-conveyor\` on Windows), created `0700`, through
+  `note` and `migrate ledger`; `migrate finish` copies it beside the plan as a committed attachment
+  and then removes that state copy, which is the one file it deletes outside a repository. **Deletes
+  files only through `migrate finish --delete-sources`**, and only the ones it has just listed as
+  deletable, in the session's own repository, after its coverage gate has passed — never on its own
+  initiative and never without that flag. The only other removals are of directories left holding no
+  file: the ones a move or merge empties, and those `links fix --yes --prune-empty` lists. Never a
+  file in any other repo's working tree: `new` refuses and names `--for`, and `migrate` refuses a
+  source outside this repository. `archive`, `list`, `tags`, `refs`, `pending`, `migrate check`,
+  `doctor`, `scan`, `where`, bare `link`, `links` and `links fix` without `--yes` write nothing.
 - **Network**: only `push`, and only to publish a plans store to the remote that store already has.
   It never adds a remote, never pushes a repo, and refuses rather than publishing when the scan of
   its own outgoing commits finds a private name. Every other command is offline.
@@ -93,13 +98,14 @@ had been resolved first — but that was sequencing, not process.]
 **Start here. These answer most sessions**, and nothing below is needed until the lifecycle reaches
 it:
 
-| the question                                            | the command                                                                                         |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **first call of a session, in any repo**                | `absorb` — silent unless something is owed                                                          |
-| what is open? what should I work on?                    | `list` — see "Asking what is open"                                                                  |
-| where does a new plan go, and write it                  | `new <topic>`, or `new … --for <repo>`                                                              |
-| **write up a session, its notes and docs, as one plan** | `migrate start <topic> --from <file>…` — **never a summary**; see "Consolidating a session's plans" |
-| is this machine set up, and how?                        | `doctor`                                                                                            |
+| the question                                            | the command                                                                                                                |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **first call of a session, in any repo**                | `absorb` — silent unless something is owed                                                                                 |
+| what is open? what should I work on?                    | `list` — see "Asking what is open"                                                                                         |
+| where does a new plan go, and write it                  | `new <topic>`, or `new … --for <repo>`                                                                                     |
+| **write up a session, its notes and docs, as one plan** | `migrate ledger`, then `migrate start <topic> --from <file>…` — **never a summary**; see "Consolidating a session's plans" |
+| record a decision, pitfall or question as it happens    | `note <kind> "<one line>"` — the session's ledger, which `migrate` carries and gates                                       |
+| is this machine set up, and how?                        | `doctor`                                                                                                                   |
 
 <details>
 <summary>The rest, by the moment you need them</summary>
@@ -1648,10 +1654,13 @@ agent summarises — and a summary is lossy in a way nothing detects, because th
 finished either way. Reported by this user 2026-09-22 after hitting it twice in one day.
 
 ```shell
-python3 <path> migrate start <topic> --from <file>...   # the plan, with every source carried in verbatim
-# …rewrite it, then delete the carried block
-python3 <path> migrate check <plan>                     # what of each source is still unaccounted for
-python3 <path> migrate finish <plan>                    # the gate, then which sources may be deleted
+python3 <path> note <kind> "<one line>"                 # during the work: decision, pitfall, risk, question, …
+python3 <path> migrate ledger                           # at the end: every heading, and the user's words verbatim
+# …fill every empty section of the ledger it names
+python3 <path> migrate start <topic> --from <file>...   # the plan, with the ledger and every source carried in
+# …move the content into the sections, then delete the carried block
+python3 <path> migrate check <plan>                     # what of the ledger and each source is still unaccounted for
+python3 <path> migrate finish <plan>                    # the gate, the ledger attached, then which sources may go
 ```
 
 **`start` carries every source into the new plan verbatim**, under a delimited block, and writes
@@ -1660,34 +1669,46 @@ block_ and delete it. That is deliberately a different act from recalling what t
 editing content that is in front of you can drop a paragraph on purpose, and recalling content you
 read earlier can lose one without anyone knowing it existed.
 
-**Write the conversation down as a file first, and pass it with `--from` like any other source.**
-`migrate` cannot see the conversation, and what the session argued out is the one input with no
-other copy. Before `start`, write `<topic>-conversation.md` in the repo (untracked) with one line
-per item, **as a tagged line so the gate checks it**:
+**The conversation is a source too, and `start` refuses without it.** What the session argued out is
+the one input with no other copy, so it goes into a **ledger**, one file per session, and the ledger
+is carried, gated and kept like the documents are. Reported by this user 2026-09-29 on three
+harnesses: consolidations that kept the files and lost both the depth and the conversation.
 
-- every decision as `[DECISION: chose X over Y because Z]`, the rejected option and the reason
-  included;
-- every trap hit as `[PITFALL: …]`, every open question as `[NEEDS CLARIFICATION: …]`, and every
-  risk or unproven claim as `[UNVERIFIED: …]`;
-- every scoped-out item as `[DEFERRED: …]`;
-- the user's own instructions and corrections **quoted verbatim**, each with its date, so the gate
-  checks it as a dated line.
+- **`note <kind> "<text>"` as things happen**, not only at the end. A long session's early turns may
+  already be compacted by then. The kinds are `decision`, `pitfall`, `risk`, `question`, `deferred`,
+  `assumption`, `failed`, `measurement` and `user`, and the first five are written as the matching
+  tagged line. A decision names the option it beat and why.
+- **`migrate ledger` before `start`.** It gives the ledger every heading and, on Claude Code,
+  rewrites two sections from the transcript: every user message verbatim, and the files the session
+  changed. Then it names each section still empty. Fill every one from the conversation, or write
+  `none`. **An empty section reads as "forgot".**
+- **Every line you write in the ledger is gated**: the plan carries it, or `## Deliberately dropped`
+  names it. The two generated sections are evidence and are not gated; they survive whole because
+  `finish` attaches the ledger beside the plan as `conversation-ledger.md` and never offers it for
+  deletion.
+- The ledger is keyed by Claude Code's session id. **On any other harness, pick a name and pass
+  `--ledger <name>` to every `note`, `migrate ledger` and `migrate start`**, and write the user's
+  words under "What the user asked for and corrected" yourself, quoted rather than paraphrased.
+- `--no-ledger` on `start` is for a consolidation with genuinely no conversation behind it — a
+  legacy document migrated cold. It is written on the command line so the choice is visible.
 
-At `finish`, do not let it be deleted. Keep it with the plan with `attach <plan> <file> --commit`.
-This file is the whole mechanism for the conversation, and skipping it is how a plan ends up
-carrying the files and nothing that was said. Reported by this user 2026-09-29 on three harnesses:
-consolidations that lost almost all the depth of the source files and ignored the conversation.
+[PITFALL: **a resumed session has a new session id and a new transcript**, and `migrate ledger`
+reads only the current one, so everything said before the resume is missing from the generated
+section. Measured 2026-09-30 on the session that built this: 5 of the session's user messages found,
+the rest in the pre-resume transcript. Until the ledger follows a resume, copy what the user said
+before it into "What the user asked for and corrected" by hand.]
 
 **Move paragraphs, do not compress them.** The gate does not check prose yet, so you are the check:
 a source paragraph lands in the plan at the same depth, edited only where two sources overlap or
 where the code shows a claim is no longer true. Five paragraphs becoming one sentence is the failure
 this command exists to stop, even when every tagged line survives it.
 
-**`check` gates on the two things whose loss is expensive and silent**: every `[TAG: …]` line, and
-every line carrying a `YYYY-MM-DD` date. Prose is deliberately not gated — rewording is the job, and
-a verbatim-coverage test would forbid it. It reads the sources live from disk (or out of `HEAD` if
-one is already deleted), so the comparison can never go stale, and it ignores the carried block: a
-check run against a file that still holds its sources verbatim would pass by construction.
+**`check` gates on the things whose loss is expensive and silent**: every `[TAG: …]` line, every
+line carrying a `YYYY-MM-DD` date, and every line written in the ledger. A document's prose is not
+gated — rewording is the job, and a verbatim-coverage test would forbid it. It reads the sources
+live from disk (or out of `HEAD` if one is already deleted), so the comparison can never go stale,
+and it ignores the carried block: a check run against a file that still holds its sources verbatim
+would pass by construction.
 
 **Dropping something is a decision on the record, not an omission.** Put it under
 `## Deliberately dropped` with the reason and `check` counts it as accounted for — the same shape as

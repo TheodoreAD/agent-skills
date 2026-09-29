@@ -445,10 +445,26 @@ awesome-list entry.** Those venues' rules bind the text, not the repo it came fr
 obvious thing to quote when a launch comes round, and quoting it would be exactly the generated text
 those venues ban.]
 
-[DEFERRED: **READMEs for the other prominent skills**, once the user has read the two pilots and
-said what to change. `session-harvest` is the first candidate, being the most installed at 40 per
-the 2026-09-09 count. `skill-fitness` is the second, since it is the skill whose value is hardest to
-see from its name.]
+**`session-harvest` and `skill-fitness` got pages the same day**, at the user's request after
+reading the first two. `session-harvest` was chosen as the most installed at 40 per the 2026-09-09
+count, `skill-fitness` because its value is the hardest to see from its name. Both pitch lines
+needed rewording to pass: one blocked on a leading article, one warned as a feature list.
+
+[DECISION: **the session-harvest example is a labelled report shape, not captured output.** Its real
+output is a sweep of this machine's repos, processes and listeners, which is the wrong thing to
+publish and would read as noise to a stranger anyway. The page says it is an abridged example, and
+its two alarming findings (four CI-poll loops 36 hours old, an `http.server` on `0.0.0.0` serving a
+repo's `.env`) are real incidents the skill documents. The `AGENTS.md` rule is about command output,
+and a harvest report is the agent's prose.]
+
+`skill-fitness`'s example is real `report` output, and it is the strongest hook of the four pages:
+at a 200k-token window the harness's own listing entries (16,740 characters on this machine) exceed
+the whole 8,000-character budget, so every skill in this repo would reach that model name-only. That
+figure is a measurement of this machine on 2026-09-30 and moves with every installed skill.
+
+[DEFERRED: **pages for the remaining skills.** No request yet. The `-taudelta` convention skills are
+the likeliest next, since a colleague adopting one needs to know it is a set of rulings rather than
+a neutral reference.]
 
 [DEFERRED: **a "start here" block in the repo README naming the two or three skills worth reading
 first**, linking their pages. The catalogue table lists fifteen skills in alphabetical order with

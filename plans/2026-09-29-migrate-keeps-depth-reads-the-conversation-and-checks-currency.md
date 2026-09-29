@@ -55,10 +55,11 @@ into one", 2026-09-29.
    this machine: `plans.py migrate start` has **never been run on real work**. The only transcript
    that invoked it is the session that built it (`75b2bcd7-…`, its `storage-consolidation` test
    case); the other hit is this session loading the skill. So the user's failed attempts did not go
-   through `migrate` at all. On Copilot and Devin that is expected, since there is no evidence yet
-   that either loads this skill. On Claude Code it means the request's wording ("write this up",
-   "put everything in a plan", "consolidate") does not route to the section, or the section comes
-   too late in a long SKILL.md to be acted on.
+   through `migrate` at all. Copilot and the Devin CLI do load this skill from `~/.agents/skills/`
+   (see "Which harnesses this reaches"), so the cause is the same on all three: the request's
+   wording ("write this up", "put everything in a plan", "consolidate") does not route to the
+   section, or the section comes too late in a long SKILL.md to be acted on. Their transcripts were
+   not searched; a Copilot `events.jsonl` sweep would confirm it for Copilot.
 
 Item 5 means the fix is not only in `plans.py`. A better gate on a command nobody runs changes
 nothing.
@@ -67,25 +68,37 @@ nothing.
 
 ### 1. The conversation becomes a source file, written first
 
-The agent is the only thing that can see its own context on every harness. Claude Code has a
-transcript `session-harvest` can read, but Copilot and Devin may not (see
-`plans/2026-09-07-session-harvest-across-harnesses.md`, whose first open question is exactly that).
-So the portable design does not parse transcripts. It makes the agent write its context down
-**before** anything else, into a file that then goes through the same gate as every other source.
+The agent is the only thing that can see its own context on every harness, and a local transcript
+exists on only some of them (see "Which harnesses this reaches" below). So the portable design does
+not depend on parsing transcripts. It makes the agent write its context down, into a file that then
+goes through the same gate as every other source.
 
-- New `migrate ledger <topic>`, run first. It writes a ledger skeleton with fixed headings: user
-  statements of intent or constraint (quoted verbatim, with the turn they came from), decisions
-  (each with the alternatives rejected and why), pitfalls hit, risks raised, open questions,
-  measurements (each with the command that produced it), and the files the session created or
-  changed.
-- The agent fills it from its context, and `migrate start` takes it as a source like any other
-  (`--from <ledger> <file>…`). From there, every bullet in it is gated, not only tagged lines.
-- Where a transcript **is** readable (Claude Code today), `migrate check --transcript <id>` adds a
-  second gate: every user message in the session is either reflected in the ledger or named under
-  `## Deliberately dropped`. The user's own words are the one content with the highest authority and
-  no other copy. `harvest.py turns` already extracts them and already separates harness-injected
-  text from typed text (with the hand-back bug in
-  `plans/2026-09-29-harvest-turns-counts-subagent-handbacks-as-user-messages.md` to fix first).
+- New `migrate ledger <topic>`, run first. It writes a ledger skeleton with fixed headings, taken
+  from the fields the best prior art requires (goose, crush, Roo-Code; see "Prior art"): **every
+  user message, verbatim**; decisions, each as chosen / rejected / why; errors and their fixes;
+  commands that failed; pitfalls and gotchas; assumptions; risks; open questions; measurements, each
+  with the command that produced it; and the files the session created or changed. Every heading
+  stays even when empty (opencode's rule), so an empty one reads as "nothing" rather than as
+  "forgot".
+- **The script pre-fills what it can read mechanically, and the agent fills the rest.** Where a
+  transcript is readable, `migrate ledger --transcript <path>` writes the user messages in verbatim
+  from it, the way codex puts real user messages back after compaction rather than trusting the
+  summariser to keep them. It also lists the files the session edited, the way cline appends a
+  `## Files` section from tracked edits when the model leaves it out. The agent writes decisions,
+  alternatives and pitfalls, which only it can judge. `harvest.py turns` already extracts Claude
+  Code user messages; a Copilot reader for `~/.copilot/session-state/<id>/events.jsonl` would be
+  new. The hand-back bug in
+  `plans/2026-09-29-harvest-turns-counts-subagent-handbacks-as-user-messages.md` has to be fixed
+  first, or subagent reports get filed as user statements.
+- `migrate start` takes the ledger as a source like any other (`--from <ledger> <file>…`). From
+  there, every bullet in it is gated, not only tagged lines.
+- **Capture as it happens, not only at the end.** By the end of a long session the early turns may
+  already have been compacted, so a ledger written at migration time is reconstructed from a context
+  that has already lost detail. BMAD's answer is an append-only `.memlog.md`, one line per decision,
+  constraint, assumption, open question or piece of user direction, written through
+  `memlog.py append --type …` at the moment each happens; the spec is re-derived from it and never
+  hand-patched. The equivalent here is `plans.py note <type> "<text>"` appending to the session's
+  ledger during the work, so that `migrate ledger` at the end starts from those notes.
 
 [DECISION: the ledger is a file, not a prompt. A prompt telling the agent to "include the
 conversation" is what exists now, and it is what fails. A file with required headings is a thing the
@@ -140,6 +153,20 @@ the check runs once, at the moment someone is already rewriting the plan and has
 judge each hit, and a false positive costs one "still true" line. The same measurement is the reason
 it must not become a standing check.]
 
+**`finish` records the commit it verified against**, as `verified_at: <sha>` in the frontmatter,
+taken from BMAD's `bmad-project-context`. That skill writes "Verified <date> against <sha>" into its
+document, and on refresh runs `git log --diff-filter=DR --name-only` since that SHA against every
+line, putting each proposed removal in a ledger the user approves
+(`skills/bmad-project-context/SKILL.md:89`). With the SHA recorded, a later re-check is a diff since
+a known point rather than a re-read from nothing, and it answers the stale-claims plan's first open
+question for migrated plans at least: the trigger is commits since `verified_at` touching a path the
+plan names.
+
+**Two checks nobody in the prior art does, and this plan would.** Named symbols (a function, a flag,
+a task name) are checked against the repo; BMAD and cline check paths only. And a rejected
+alternative's reason gets a currency line too: "rejected because X was not available" goes stale
+when X ships, and no tool surveyed asks.
+
 ### 4. Getting the command reached, on every harness
 
 - **The trigger.** Measure whether the skill's `description` fires on the phrasings the user
@@ -150,18 +177,110 @@ it must not become a standing check.]
   2026-09-29), below retirement, archive and several pitfalls. On an agent that reads the top and
   stops, it is never reached. A pointer in the opening "Start here" table is the smallest fix;
   splitting migrate into `references/migrate.md` with a hard pointer is the next one.
-- **Other harnesses.** Whether Copilot and Devin load `.agents/skills/` at all, and whether they can
-  run the script, is not known here. If they do not, the instruction that reaches them is the home
-  `AGENTS.md`, which is `power-user-linux-setup`'s to write; that would be a filed plan, not an edit
-  from here.
+- **Other harnesses: they do load the skill.** See the next section. So the script-based design
+  reaches Copilot and the Devin CLI, not only Claude Code.
+
+### Which harnesses this reaches (researched 2026-09-29)
+
+Each harness answers four questions: whether it reads skills from the repo's `.agents/skills/`,
+whether it reads skills from `~/.agents/skills/`, whether it reads the instructions file
+`~/.agents/AGENTS.md`, and whether it keeps a local transcript.
+
+- **Copilot CLI** (clone):
+  - repo skills: yes.
+  - home skills: yes (`github/docs`
+    `content/copilot/reference/copilot-cli-reference/cli-command-reference.md:1146,1150`).
+  - `~/.agents/AGENTS.md`: **no**. It reads only `AGENTS.md` in the git root and cwd, plus
+    `~/.copilot/`.
+  - transcript: `~/.copilot/session-state/<id>/events.jsonl`.
+- **Copilot in VS Code** (clone):
+  - repo skills: yes.
+  - home skills: yes (`vscode` `promptFileLocations.ts:172-179`).
+  - `~/.agents/AGENTS.md`: **no**.
+  - transcript: `events.jsonl` as above for Agent Host sessions, or `chatSessions/<id>.jsonl` in
+    workspace storage for Local-agent sessions.
+- **Copilot cloud agent** (clone):
+  - repo skills: yes.
+  - home skills: no; it runs on a hosted runner.
+  - `~/.agents/AGENTS.md`: no; there is no home directory.
+  - transcript: none locally.
+- **Devin CLI** (fetched docs page, closed source):
+  - repo skills: yes.
+  - home skills: yes.
+  - `~/.agents/AGENTS.md`: **no**. It reads `~/.config/devin/AGENTS.md` and `~/.claude/CLAUDE.md`.
+  - transcript: undocumented. Third parties report `~/.local/share/devin/cli/transcripts/`.
+- **Devin cloud** (fetched docs page):
+  - repo skills: yes.
+  - home skills: no.
+  - `~/.agents/AGENTS.md`: no.
+  - transcript: none locally.
+
+Script execution from a skill is documented for Copilot and inferred for Devin. The script-based
+design therefore reaches every local surface. The ledger's headings are the part that reaches every
+surface, cloud included, because they need no transcript and no script. Copilot's `events.jsonl`
+makes a Copilot transcript reader a real option, not a hypothetical one.
+
+None of the four reads `~/.agents/AGENTS.md` natively. On this machine that is already covered, as
+checked 2026-09-29:
+
+- `~/.copilot/copilot-instructions.md` is a byte-identical copy, the same size and time as the
+  original.
+- The Devin CLI reads `~/.claude/CLAUDE.md`, which is also a copy.
+- `~/.config/devin/AGENTS.md` does not exist and is not needed.
+
+The cloud agents see only what is in the repo, so a rule meant to reach them has to be in the repo's
+own `AGENTS.md` or in a skill.
+
+### Prior art (researched 2026-09-29, all from clones in `$RESEARCH_HOME`)
+
+What each tool requires when it turns a conversation into a persistent document, quoted from its
+prompt or code:
+
+- **Compaction prompts, least to most depth.**
+  - aider: "_Briefly_ summarize", no code blocks.
+  - codex: four bullets and "Be concise" (`codex-rs/prompts/templates/compact/prompt.md`). It
+    re-inserts real user messages verbatim, up to 20k tokens (`core/src/compact.rs:55,662-704`).
+  - cline: "Be concise". Its code keeps the latest typed user turn verbatim and appends `## Files`
+    from tracked edits (`compaction-shared.ts:362-375,659-667`).
+  - opencode: fixed sections, "keep every section, even when empty", and a merge rule for updating
+    an earlier summary: "anything you do not carry into the new summary is lost … where they
+    conflict, the conversation wins" (`packages/core/src/session/compaction.ts:16-55`).
+  - Roo-Code: an analysis pass first, then nine sections including "All user messages" and verbatim
+    quotes "to ensure there's no drift" (`src/shared/support-prompt.ts:54-157`).
+  - goose: a required JSON schema with `problem_solving` ("what was chosen, what was rejected, and
+    why") and `user_messages`, plus "quote liberally", "omit a field rather than inventing"
+    (`crates/goose-context-management/src/prompts/compaction.md`).
+  - crush: the only one that asks for alternatives, gotchas, failed commands and assumptions by
+    name, and the only one that says "Length: No limit. Err on the side of too much detail"
+    (`internal/agent/templates/summary.md`).
+- **Capture conventions.**
+  - BMAD's append-only memlog is the strongest (above).
+  - spec-kit records each clarification as `Q: … → A: …` under a dated session heading, and requires
+    Decision / Rationale / Alternatives considered.
+  - superpowers' `writing-plans` has a Proportion self-check, since "a plan several times longer
+    than the spec … is a transcript".
+  - beads compacts closed issues lossily, but snapshots the original first so `bd restore` can undo
+    it, and records the commit hash.
+- **Currency.**
+  - BMAD's provenance SHA plus a `git log` diff (above) is the only real check found.
+  - claude-mem skips a file's stored observations when the file is newer than them, a coarse
+    per-file check.
+  - spec-kit's `analyze` checks drift between spec, plan and tasks, never against code.
+
+**What nobody does**, which is where this plan is new rather than borrowed: measuring depth
+(counting decisions, alternatives and user messages in the source against what the output kept),
+checking named symbols against the code, re-checking a rejected alternative's reason, and comparing
+a summary against the transcript it came from. episodic-memory keeps full transcripts beside 2–4
+sentence summaries, but never compares the two.
 
 ## Open questions
 
-[NEEDS CLARIFICATION: do Copilot and Devin load skills from `.agents/skills/`, and can they run
-`plans.py`? If neither, sections 1–3 help only Claude Code, and the portable part is the ledger
-headings, which would then have to live as a rule in the home `AGENTS.md` rather than in a script.
-Answer by checking each harness's own docs or source, per the research-library rule, before
-designing further.]
+[NEEDS CLARIFICATION: capture during the session (`plans.py note`), at the end (`migrate ledger`),
+or both? During is what BMAD does, and it is the only form that survives compaction. But it is
+another thing an agent has to remember to do mid-work, which is the same instruction-following this
+plan starts from, and it fails the same way. At the end is cheap and reliable to trigger but reads a
+possibly-compacted context. Recommended: both, with the transcript pre-fill closing the gap where a
+transcript exists.]
 
 [NEEDS CLARIFICATION: what did the failed attempts look like? A transcript, or the before and after
 files, from one Copilot and one Devin attempt would say which of the three failures dominates on
@@ -178,23 +297,17 @@ offer to delete it once its content is carried. It is also the closest thing to 
 session argued out, so keeping it as a committed attachment (`attach --commit`) may be the better
 default.]
 
-[NEEDS CLARIFICATION: prior art. The global rule for a new convention is a real web and GitHub
-prior-art pass before finalising: how other agent-memory and handoff tools (Devin's own session
-notes, Copilot's memory, Cline's memory bank, `claude-mem`-style tools) capture conversation context
-into files, and whether any of them already gate depth. Not done yet; this plan is search-free
-design from the code.]
-
 ## Recommended direction
 
 Order by what the evidence says is failing first:
 
 1. **Reachability (section 4).** Add trigger evals and move migrate into the "Start here" table.
    Cheapest, and without it nothing below is ever run.
-2. **The ledger (section 1)**, including its template. This is the whole of the "ignores the
-   conversation" failure, and its headings are portable even to a harness that cannot run the
-   script.
+2. **The ledger (section 1)**, including its template and the transcript pre-fill of user messages.
+   This is the whole of the "ignores the conversation" failure, and its headings are portable even
+   to a cloud harness that has neither a transcript nor the script.
 3. **Move-don't-rewrite and the paragraph gate (section 2)**, with the ratio measured first.
 4. **The currency pass (section 3)**, as a worklist with a `## Currency` section that `finish` gates
-   on.
+   on, and `verified_at: <sha>` recorded so a later re-check is a diff.
 
 The transcript cross-check in section 1 waits on the hand-back fix in `harvest.py turns`.

@@ -38,9 +38,11 @@ BLOCK_SCALARS = frozenset({">", "|", ">-", "|-", ">+", "|+"})
 
 # Everything a skill directory is allowed to contain. `references/` is read on demand, `scripts/`
 # holds anything the skill runs, and `evals/` holds trigger cases for the skill — added 2026-08-31
-# with the first suite, and recorded in AGENTS.md. A fifth entry means either a typo or a layout
-# decision that should be made deliberately, in AGENTS.md, before it ships.
-ALLOWED_ENTRIES = {"SKILL.md", "references", "scripts", "evals"}
+# with the first suite, and recorded in AGENTS.md. `README.md` is the human-facing page, added
+# 2026-09-30: GitHub renders it when someone opens the skill's directory from the catalogue, where
+# `SKILL.md` renders nothing. It is optional, and no agent loads it. Any further entry means either
+# a typo or a layout decision that should be made deliberately, in AGENTS.md, before it ships.
+ALLOWED_ENTRIES = {"SKILL.md", "README.md", "references", "scripts", "evals"}
 
 # Every frontmatter key a skill may declare: exactly the specification's six. Re-read from
 # agentskills.io/specification on 2026-09-05, which corrected the 2026-09-04 gate that allowed only
@@ -201,18 +203,23 @@ def test_remote_install_commands_are_global(skill: Path):
     A *local path* source is the exception rather than the flaw: `skills add ../my-skills` installs
     a working tree as-is and is the documented way to iterate while drafting. So the rule is about
     remote sources, which is what dissolved the objection that deferred this check.
+
+    A skill's `README.md` is read too: it is the page a stranger copies the install line from.
     """
-    for line in _fenced_lines((skill / "SKILL.md").read_text(encoding="utf-8")):
-        m = SKILLS_ADD.search(line)
-        if not m:
+    for page in (skill / "SKILL.md", skill / "README.md"):
+        if not page.is_file():
             continue
-        source = m.group(1)
-        if "/" not in source or source.startswith((".", "/", "~")):
-            continue  # a local path: the drafting form, deliberately scope-by-cwd
-        assert "--global" in line or " -g" in line, (
-            f"{skill.name}/SKILL.md installs a remote source without --global: {line.strip()!r}. "
-            "Without it the scope depends on the reader's cwd, silently."
-        )
+        for line in _fenced_lines(page.read_text(encoding="utf-8")):
+            m = SKILLS_ADD.search(line)
+            if not m:
+                continue
+            source = m.group(1)
+            if "/" not in source or source.startswith((".", "/", "~")):
+                continue  # a local path: the drafting form, deliberately scope-by-cwd
+            assert "--global" in line or " -g" in line, (
+                f"{skill.name}/{page.name} installs a remote source without --global: {line.strip()!r}. "
+                "Without it the scope depends on the reader's cwd, silently."
+            )
 
 
 @each_skill

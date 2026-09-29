@@ -6288,8 +6288,12 @@ def _migrate_start(args: argparse.Namespace, ws: Workspace) -> int:
     for label in named:
         print(f"carried:   {label}")
     print(f"\n{len(named)} source(s) carried in verbatim, below the {CARRIED_END} marker's block.")
-    print("Rewrite the sections above out of that block, then delete the block. Nothing is lost by")
-    print("summarising badly, because nothing is being summarised from memory.")
+    # Worded against summarising, because the previous wording ("rewrite the sections … nothing is lost
+    # by summarising badly") read as permission to compress, and prose is not gated. Reported
+    # 2026-09-29: consolidations on three harnesses kept the tagged lines and lost the depth.
+    print("Move each paragraph into the section it belongs in, at the same depth, then delete the")
+    print("block. Edit only where two sources overlap or the code shows a claim is no longer true —")
+    print("prose is not gated, so a paragraph compressed to a sentence passes the check and is lost.")
     print(f"\nnext:      plans.py migrate check {path.name}")
     return 0
 

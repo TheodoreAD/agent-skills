@@ -90,15 +90,16 @@ promotion.** The frontmatter is well-formed, `list` renders the new status, and 
 whether the gate passed or was never consulted. In all four cases it would have passed — the tags
 had been resolved first — but that was sequencing, not process.]
 
-**Start here. These three answer most sessions**, and nothing below is needed until the lifecycle
-reaches it:
+**Start here. These answer most sessions**, and nothing below is needed until the lifecycle reaches
+it:
 
-| the question                             | the command                                |
-| ---------------------------------------- | ------------------------------------------ |
-| **first call of a session, in any repo** | `absorb` — silent unless something is owed |
-| what is open? what should I work on?     | `list` — see "Asking what is open"         |
-| where does a new plan go, and write it   | `new <topic>`, or `new … --for <repo>`     |
-| is this machine set up, and how?         | `doctor`                                   |
+| the question                                            | the command                                                                                         |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **first call of a session, in any repo**                | `absorb` — silent unless something is owed                                                          |
+| what is open? what should I work on?                    | `list` — see "Asking what is open"                                                                  |
+| where does a new plan go, and write it                  | `new <topic>`, or `new … --for <repo>`                                                              |
+| **write up a session, its notes and docs, as one plan** | `migrate start <topic> --from <file>…` — **never a summary**; see "Consolidating a session's plans" |
+| is this machine set up, and how?                        | `doctor`                                                                                            |
 
 <details>
 <summary>The rest, by the moment you need them</summary>
@@ -1654,14 +1655,33 @@ python3 <path> migrate finish <plan>                    # the gate, then which s
 ```
 
 **`start` carries every source into the new plan verbatim**, under a delimited block, and writes
-`migrated_from:` into the frontmatter. Then you rewrite the standard sections _out of that block_
-and delete it. That is deliberately a different act from recalling what the sources said: editing
-content that is in front of you can drop a paragraph on purpose, and recalling content you read
-earlier can lose one without anyone knowing it existed.
+`migrated_from:` into the frontmatter. Then you move its content into the sections _out of that
+block_ and delete it. That is deliberately a different act from recalling what the sources said:
+editing content that is in front of you can drop a paragraph on purpose, and recalling content you
+read earlier can lose one without anyone knowing it existed.
 
-**Anything the session itself decided — reasoning that is in the conversation and in no file — is
-yours to write into the plan.** `migrate` cannot see it and never claims to; what it guarantees is
-that nothing which _was_ in a file went missing.
+**Write the conversation down as a file first, and pass it with `--from` like any other source.**
+`migrate` cannot see the conversation, and what the session argued out is the one input with no
+other copy. Before `start`, write `<topic>-conversation.md` in the repo (untracked) with one line
+per item, **as a tagged line so the gate checks it**:
+
+- every decision as `[DECISION: chose X over Y because Z]`, the rejected option and the reason
+  included;
+- every trap hit as `[PITFALL: …]`, every open question as `[NEEDS CLARIFICATION: …]`, and every
+  risk or unproven claim as `[UNVERIFIED: …]`;
+- every scoped-out item as `[DEFERRED: …]`;
+- the user's own instructions and corrections **quoted verbatim**, each with its date, so the gate
+  checks it as a dated line.
+
+At `finish`, do not let it be deleted. Keep it with the plan with `attach <plan> <file> --commit`.
+This file is the whole mechanism for the conversation, and skipping it is how a plan ends up
+carrying the files and nothing that was said. Reported by this user 2026-09-29 on three harnesses:
+consolidations that lost almost all the depth of the source files and ignored the conversation.
+
+**Move paragraphs, do not compress them.** The gate does not check prose yet, so you are the check:
+a source paragraph lands in the plan at the same depth, edited only where two sources overlap or
+where the code shows a claim is no longer true. Five paragraphs becoming one sentence is the failure
+this command exists to stop, even when every tagged line survives it.
 
 **`check` gates on the two things whose loss is expensive and silent**: every `[TAG: …]` line, and
 every line carrying a `YYYY-MM-DD` date. Prose is deliberately not gated — rewording is the job, and

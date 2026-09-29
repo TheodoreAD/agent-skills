@@ -86,10 +86,10 @@ goes through the same gate as every other source.
   summariser to keep them. It also lists the files the session edited, the way cline appends a
   `## Files` section from tracked edits when the model leaves it out. The agent writes decisions,
   alternatives and pitfalls, which only it can judge. `harvest.py turns` already extracts Claude
-  Code user messages; a Copilot reader for `~/.copilot/session-state/<id>/events.jsonl` would be
-  new. The hand-back bug in
-  `plans/2026-09-29-harvest-turns-counts-subagent-handbacks-as-user-messages.md` has to be fixed
-  first, or subagent reports get filed as user statements.
+  Code user messages, but skills cannot depend on each other, so `plans.py` carries its own reader.
+  That reader has to exclude subagent hand-backs from the start: they arrive as queued messages like
+  a user's mid-turn text, and `harvest.py` counted them as the user until `b1b722a` (plan now
+  retired). A Copilot reader for `~/.copilot/session-state/<id>/events.jsonl` would be new.
 - `migrate start` takes the ledger as a source like any other (`--from <ledger> <file>…`). From
   there, every bullet in it is gated, not only tagged lines.
 - **Capture as it happens, not only at the end.** By the end of a long session the early turns may

@@ -535,8 +535,10 @@ reading the output.
 **The brief arrives in three ways, and a run that finds two has not been told so.** A user turn is
 one; an `AskUserQuestion` answer is the second; the third is a message the user sends **while a turn
 is still running**, which the harness records as a `queue-operation` rather than as a user turn.
-`turns` prints all three, labelled, with the harness's own noise (task notifications, interruption
-markers, slash-command wrappers) counted separately so "six user turns" cannot mean three. Confirmed
+`turns` prints all three, labelled, with the harness's own noise (task notifications, subagent
+hand-backs, interruption markers, slash-command wrappers) counted separately so "six user turns"
+cannot mean three. A subagent's report arrives in the mid-turn population and is not the user: it
+was counted as one until 2026-09-29, 6 of 6 "mid-turn" entries across two filed sessions. Confirmed
 2026-09-02: a session's richest instruction — new scope, roughly its last third, two plans and six
 commits — was sent mid-turn and appeared in none of the six turns the extraction reported. **The
 miss is invisible exactly where it costs most**, because a mid-turn message is what a user sends

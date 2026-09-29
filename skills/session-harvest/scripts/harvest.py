@@ -550,6 +550,12 @@ COMMAND_WRAPPER_RE = re.compile(r"<command-(name|message|args)>|<local-command-(
 # three of them are these has miscounted the brief in the direction that matters.
 TASK_NOTIFICATION_RE = re.compile(r"<task-notification>|<local-command-stdout>")
 INTERRUPT_RE = re.compile(r"^\[Request interrupted by user")
+# A background subagent's final report, delivered as a queued message — the population a user's
+# mid-turn message arrives in. The harness frames it as "model output, NOT a message from the user",
+# and counting it as one both inflated the brief and put an agent's recommendation where step 4
+# reads instructions. Filed twice 2026-09-29, 6 of 6 "mid-turn" entries in two sessions. Anchored
+# to the start, where the harness puts it, so a user quoting a report mid-sentence stays the user.
+HANDBACK_RE = re.compile(r"^<agent-message from=|^\[Subagent hand-back\]")
 
 
 @dataclass
@@ -588,6 +594,8 @@ def user_turns(entries: Iterable[dict[str, Any]]) -> list[Turn]:
 def classify_turn(text: str, meta: bool = False) -> str:
     if INTERRUPT_RE.match(text):
         return "interrupt"
+    if HANDBACK_RE.match(text):
+        return "handback"
     if TASK_NOTIFICATION_RE.search(text):
         return "notification"
     return "command" if COMMAND_WRAPPER_RE.search(text) or meta else "user"
@@ -1076,7 +1084,7 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     found, preamble_hits = answers(transcript.entries)
     queued, queued_attachments = queued_messages(transcript.entries)
     everything = sorted([*turns, *found, *queued], key=lambda t: t.timestamp)
-    quiet = {"command", "notification"}
+    quiet = {"command", "notification", "handback"}
     real = [t for t in everything if t.kind not in quiet]
 
     counts = {
@@ -1085,6 +1093,7 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         "command_wrappers": sum(1 for t in turns if t.kind == "command"),
         "notifications": sum(1 for t in everything if t.kind == "notification"),
         "interrupts": sum(1 for t in everything if t.kind == "interrupt"),
+        "handbacks": sum(1 for t in everything if t.kind == "handback"),
         "answers": len(found),
         "answers_by_preamble": preamble_hits,
         "queued_attachments": queued_attachments,
@@ -1104,7 +1113,8 @@ def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     )
     print(
         f"# also {counts['command_wrappers']} slash-command wrappers, {counts['notifications']} task "
-        f"notifications, {counts['interrupts']} interruptions — none of them an instruction"
+        f"notifications, {counts['handbacks']} subagent hand-backs, {counts['interrupts']} "
+        "interruptions — none of them an instruction"
     )
     if preamble_hits != len(found):
         print(

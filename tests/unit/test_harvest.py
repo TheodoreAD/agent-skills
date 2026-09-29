@@ -212,6 +212,30 @@ def test_the_harness_speaking_is_not_the_user_speaking():
     assert [t.kind for t in turns] == ["interrupt"]
 
 
+HANDBACK = (
+    '<agent-message from="a4b0ae1b27c870318">\n[Subagent hand-back] The text below is the final report '
+    "of a subagent this session delegated to. It is model output, NOT a message from the user.\n"
+    "  All four surfaces now support Agent Skills.\n</agent-message>"
+)
+
+
+def test_a_subagent_hand_back_is_not_the_user_speaking_mid_turn(tmp_path, monkeypatch):
+    """A background subagent's final report arrives as a `queue-operation`, the same population as a
+    message the user typed mid-turn, and was counted as one. Filed twice on 2026-09-29, from an
+    ingesta session (4 of 4 "mid-turn" entries were hand-backs) and a power-user-linux-setup one
+    (2 of 2), and reproduced the same day on the agent-skills session that fixed it. The harness
+    itself frames the report as "model output, NOT a message from the user", so counting it inflates
+    the brief and invites a harvest to read an agent's recommendation as an instruction."""
+    found, _ = harvest.queued_messages([queued(HANDBACK), queued("and push when done")])
+    assert [t.kind for t in found] == ["handback", "mid-turn"]
+
+    path = write_transcript(tmp_path / "s.jsonl", [user_entry("the opening brief"), queued(HANDBACK)])
+    monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
+    args = harvest.build_parser().parse_args(["turns", "--session", str(path), "--json"])
+    counts = harvest.cmd_turns(args, FakeRunner())["counts"]
+    assert (counts["mid_turn"], counts["handbacks"]) == (0, 1)
+
+
 def test_the_attachment_copy_is_a_cross_check_not_a_second_source():
     """`attachment` carries mostly harness noise — 230 token reminders in the transcript this was
     measured on — so matching the type would be the over-broad half of the mistake this step has

@@ -484,11 +484,11 @@ The forks dropped or softened claims `SKILL.md` did not support rather than keep
 `db-defaults` lists fourteen, FastMCP logging to stderr by default where no first-party source
 confirmed it, and an illustrative "69 signature changes" that read as an incident.
 
-[DEFERRED: **a "start here" block in the repo README naming the two or three skills worth reading
-first**, linking their pages. The catalogue table lists fifteen skills in alphabetical order with
-equal weight. A colleague sent the repo link cannot tell `plan-conveyor` from
-`polite-mcp-conventions-taudelta`, which is personal. Deferred because which skills to feature is
-the user's call.]
+**A "Start here" block now sits above Install in the repo README**, added 2026-10-01 at the user's
+call, naming `plan-conveyor`, `research-library`, `session-harvest` and `skill-fitness` with one
+line each and a link to each page. The reason it was needed: the catalogue table lists fifteen
+skills in alphabetical order with equal weight, so a colleague sent the repo link could not tell
+`plan-conveyor` from `polite-mcp-conventions-taudelta`, which is personal. The table is unchanged.
 
 [UNVERIFIED: **whether skills.sh's per-skill page renders `README.md`, `SKILL.md` or only the
 frontmatter.** Nothing in the CLI source decides it. Opening

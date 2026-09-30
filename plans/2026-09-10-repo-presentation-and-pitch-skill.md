@@ -462,9 +462,27 @@ at a 200k-token window the harness's own listing entries (16,740 characters on t
 the whole 8,000-character budget, so every skill in this repo would reach that model name-only. That
 figure is a measurement of this machine on 2026-09-30 and moves with every installed skill.
 
-[DEFERRED: **pages for the remaining skills.** No request yet. The `-taudelta` convention skills are
-the likeliest next, since a colleague adopting one needs to know it is a set of rulings rather than
-a neutral reference.]
+**The remaining eleven got pages the same day**, at the user's request, which puts one on every
+skill in the repo. They were drafted by four parallel forks of the session that wrote the first
+four, each carrying the template and voice rules above, and every page was then read in full and its
+dated figures checked against `SKILL.md` and `references/` before commit. Three conventions settled
+in that pass:
+
+- **Every `-taudelta` page says near the top that it is one author's rulings**, and that the reader
+  who would rule differently should fork it. That is the mark's own meaning in prose, for a reader
+  who has never heard of the suffix.
+- **A convention skill has no command output, so its example is a before/after or a
+  request-and-answer drawn from `SKILL.md`.** Where a skill has a script whose output is offline and
+  names nothing private, the page shows it: `count_shapes.py` on one of this repo's own scripts,
+  `names.py audit --offline`, `pitch.py check` on an invented pitch, and `audit.py` on the drafting
+  session only, because its corpus views print project slugs.
+- **`polite-mcp-conventions-taudelta` says in bold that it is personal** and pitches itself as a
+  worked example of three patterns to copy, not as something a stranger installs as it is.
+
+The forks dropped or softened claims `SKILL.md` did not support rather than keeping them: a
+"marketing adjectives are flagged" claim that a real `pitch.py` run disproved, "fifteen needs" where
+`db-defaults` lists fourteen, FastMCP logging to stderr by default where no first-party source
+confirmed it, and an illustrative "69 signature changes" that read as an incident.
 
 [DEFERRED: **a "start here" block in the repo README naming the two or three skills worth reading
 first**, linking their pages. The catalogue table lists fifteen skills in alphabetical order with

@@ -10,6 +10,20 @@ Agent Skills for procedural knowledge, MCP for tools. No Claude Code plugin mani
 marketplace, no `.claude-plugin/` — a skill in this repo works the same in Codex, Cursor, Copilot,
 Gemini CLI, Zed and the rest.
 
+## Start here
+
+Every skill has its own page, written for a person deciding whether to adopt it. If you read four,
+read these:
+
+- [`plan-conveyor`](skills/plan-conveyor/): design plans kept as plain files in the repo, with a
+  status and a lifecycle, so the next session (and the next agent) picks up where this one stopped.
+- [`research-library`](skills/research-library/): cloned source kept outside your repos, so your
+  agent reads the code instead of a web summary, and judges a dependency before you add it.
+- [`session-harvest`](skills/session-harvest/): the review to run before compacting or closing a
+  session, which files what matters and finds what was left running.
+- [`skill-fitness`](skills/skill-fitness/): whether your installed skills actually fire, measured
+  rather than guessed.
+
 ## Install
 
 ```shell

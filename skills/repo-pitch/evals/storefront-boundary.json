@@ -27,7 +27,7 @@
     },
 
     { "prompt": "resize this screenshot to 800px so I can attach it to a bug report", "expect": null },
-    { "prompt": "write the release notes for v2.1", "expect": null },
+    { "prompt": "write the release notes for v2.1", "expect": "release-herald" },
     { "prompt": "what is the capital of France?", "expect": null },
     { "prompt": "run the test suite and tell me what fails", "expect": null },
 

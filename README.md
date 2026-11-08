@@ -37,6 +37,7 @@ read the file directly.
 | [`python-conventions-taudelta`](skills/python-conventions-taudelta/)                 | Writing or reviewing Python and wanting one settled answer per design question — data modeling, dates/times, settings, guard clauses, restructuring, exceptions, async, HTTP                                                                                                 | Opinionated but general |
 | [`python-refactor-audit`](skills/python-refactor-audit/)                             | Restructuring a Python module that grew and nobody has reviewed as a whole — the commit-by-commit loop, which tests may change, a second oracle when the suite can't see the change, and when not to do it at all                                                            | Opinionated but general |
 | [`python-testing-conventions-taudelta`](skills/python-testing-conventions-taudelta/) | Writing or restructuring Python tests — fixture scope, when to parametrize, DAMP vs DRY, and whether a dependency should be doubled or run for real                                                                                                                          | Opinionated but general |
+| [`release-herald`](skills/release-herald/)                                           | Drafting your own repository's release notes from every PR and commit since the last release — what users must change first, then highlights, then everything — and optionally creating the GitHub release as a draft, on github.com or Enterprise Server                    | Opinionated but general |
 | [`repo-pitch`](skills/repo-pitch/)                                                   | Writing or fixing the one-line description a repo shows — the GitHub About box, the README's opening sentence, a package summary — or making them one string again once they have drifted apart                                                                              | Opinionated but general |
 | [`research-library`](skills/research-library/)                                       | Reaching for reference material — before fetching from the web, when cloning a vendor repo, when refreshing the shared `$RESEARCH_HOME` library, or when judging whether a named package or tool (PyPI, npm, crates.io, apt, GitHub releases) is fit to depend on or install | Opinionated but general |
 | [`session-bash-audit`](skills/session-bash-audit/)                                   | Measuring how agent sessions actually use the Bash tool from real transcripts, and routing each finding to the mechanism that owns it                                                                                                                                        | Opinionated but general |
@@ -56,8 +57,10 @@ inside `$RESEARCH_HOME`; `plan-conveyor` writes plan files in your repo and in i
 commits only to the store; `session-bash-audit` reads Claude Code's own transcripts and writes only
 a baseline you ask for; `session-harvest`'s script writes nothing and its sweep reads transcripts,
 processes, listening sockets, container images and both stores; `skill-fitness` writes nothing but a
-baseline you name. `plan-conveyor` also describes pushing the shareable half of its store to a
-remote you configure — behind a content scan, and never the half holding employer or client work.
+baseline you name; `release-herald` writes only its own config, cache and drafts under the XDG
+directories, and creates a GitHub release — a draft unless told otherwise — only when asked.
+`plan-conveyor` also describes pushing the shareable half of its store to a remote you configure —
+behind a content scan, and never the half holding employer or client work.
 
 **Python 3.11 or newer** is the one requirement every script shares, run by your own `python3` with
 nothing to install. Below it a script exits with a sentence saying so rather than a traceback.

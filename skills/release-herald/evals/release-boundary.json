@@ -1,0 +1,26 @@
+{
+  "cases": [
+    { "prompt": "write the release notes for v2.1", "expect": "release-herald" },
+    { "prompt": "draft the GitHub release for the tag I just pushed", "expect": "release-herald" },
+    {
+      "prompt": "what changed since the last release that our users need to update in their config?",
+      "expect": "release-herald"
+    },
+    { "prompt": "create the v3.0.0 release on our GHES instance as a draft", "expect": "release-herald" },
+    { "prompt": "give me a changelog entry with links to every PR since 1.4.0", "expect": "release-herald" },
+    {
+      "prompt": "the PR descriptions in this release are a mess — is there enough to write release notes from?",
+      "expect": "release-herald"
+    },
+
+    { "prompt": "is httpx still maintained? how often does it release?", "expect": "research-library" },
+    {
+      "prompt": "this tool only ships GitHub release binaries — is it worth installing?",
+      "expect": "research-library"
+    },
+    { "prompt": "write the one-line description for this repo's About box", "expect": "repo-pitch" },
+
+    { "prompt": "bump the version and tag the release", "expect": null },
+    { "prompt": "why did the release workflow fail on main?", "expect": null }
+  ]
+}

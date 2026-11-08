@@ -23,6 +23,7 @@ import random
 import re
 import signal
 import subprocess
+import sys
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
@@ -56,19 +57,42 @@ def state_dir(skill: str = "session-bash-audit") -> Path:
     so using it *removes* a setting rather than adding one. Ten lines duplicated per skill rather
     than imported, because skills install individually and one cannot import another.
 
-    `$XDG_STATE_HOME` wins on every platform, including Windows: a user who sets it means it. Only
-    the *default* is per-platform, and on Windows it is `%LOCALAPPDATA%` — state is a record of what
-    happened on this machine, so it is the half that must not roam. Copying three lines here is the
-    same trade as the duplication above; `platformdirs` is the right library and cannot be taken,
-    because these scripts run under a bare `python3` with nothing installed.
+    **The Linux layout on every OS**, Windows included, since 2026-11-08: one backup and restore
+    procedure across machines beat the platform's own convention (`%LOCALAPPDATA%`, the default
+    here until then). A Windows machine that already has state at that old location keeps using it,
+    with a notice naming the move — see `_legacy_windows_dir`.
     """
     base = os.environ.get("XDG_STATE_HOME")
     if base:
         return Path(base).expanduser() / skill
-    if WINDOWS:
-        local = os.environ.get("LOCALAPPDATA")
-        return (Path(local) if local else Path.home() / "AppData" / "Local") / skill
-    return Path.home() / ".local" / "state" / skill
+    current = Path.home() / ".local" / "state" / skill
+    return _legacy_windows_dir("LOCALAPPDATA", ("AppData", "Local"), skill, current)
+
+
+_LEGACY_NOTED: set[Path] = set()
+
+
+def _legacy_windows_dir(var: str, fallback: tuple[str, ...], skill: str, current: Path) -> Path:
+    """`current`, unless this is Windows, `current` is absent, and the pre-2026-11-08 default exists.
+
+    Until 2026-11-08 the Windows defaults were `%APPDATA%` and `%LOCALAPPDATA%`. Moving them to the
+    Linux layout strands anything already written there, so the old location is looked at first and
+    used while it is the only one — reading past it would answer with nothing, which reads as a
+    machine where nothing was ever saved. The notice names the move rather than performing it.
+    """
+    if not WINDOWS or current.exists():
+        return current
+    root = os.environ.get(var)
+    legacy = (Path(root) if root else Path.home().joinpath(*fallback)) / skill
+    if not legacy.exists():
+        return current
+    if legacy not in _LEGACY_NOTED:
+        _LEGACY_NOTED.add(legacy)
+        print(
+            f"note: using {legacy}, this skill's pre-2026-11-08 Windows location; move it to {current}",
+            file=sys.stderr,
+        )
+    return legacy
 
 
 # The delimiter word is captured, because dropping a heredoc body means finding where it ends. The
@@ -909,18 +933,15 @@ EXPECTATIONS: dict[str, str] = {
 def config_dir(skill: str = "session-bash-audit") -> Path:
     """Where this skill looks for expectations the reader wrote — `$XDG_CONFIG_HOME/<skill>/`.
 
-    Config, not state, and the pair is deliberate: `state_dir` above keeps what happened on this
-    machine and must not roam, while a set of expectations is a decision about how you want to work
-    and should follow you to the next machine. That is why the Windows default here is `%APPDATA%`
-    and there `%LOCALAPPDATA%`.
+    Config, not state: a set of expectations is a decision about how you want to work, where
+    `state_dir` above keeps what happened on this machine. Same Linux layout on every OS, with the
+    same fallback to the pre-2026-11-08 Windows default (`%APPDATA%`) while it is the only copy.
     """
     base = os.environ.get("XDG_CONFIG_HOME")
     if base:
         return Path(base).expanduser() / skill
-    if WINDOWS:
-        roaming = os.environ.get("APPDATA")
-        return (Path(roaming) if roaming else Path.home() / "AppData" / "Roaming") / skill
-    return Path.home() / ".config" / skill
+    current = Path.home() / ".config" / skill
+    return _legacy_windows_dir("APPDATA", ("AppData", "Roaming"), skill, current)
 
 
 VERDICT_KINDS = ("down", "zero")

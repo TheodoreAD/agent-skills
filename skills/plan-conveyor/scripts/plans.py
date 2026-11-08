@@ -4,8 +4,7 @@
 `plan-conveyor` assumes a plan can be committed to the repo it describes. That holds for repos you own
 and fails for employer and client repos, which is what the store is for: each repo's path mirrored
 under `$PLANS_HOME`, outside every working tree. Which of the two a given repo uses is configuration,
-never a guess — `~/.config/plan-conveyor/config.toml` (`%APPDATA%/plan-conveyor/config.toml` on Windows),
-written by `plans.py config init`.
+never a guess — `~/.config/plan-conveyor/config.toml` on every OS, written by `plans.py config init`.
 
 On a contractor device the store is two git repositories, split by how sensitive their contents are;
 on a work device it is one, treated as sensitive (`device` in the config). The shareable tier
@@ -710,12 +709,13 @@ def setting(name: str) -> tuple[str, str]:
 
 
 def config_path() -> Path:
-    """Explicit variable, then `$XDG_CONFIG_HOME`, then the platform default.
+    """Explicit variable, then `$XDG_CONFIG_HOME`, then `~/.config` — on every OS.
 
-    `$XDG_CONFIG_HOME` is honoured on every platform — a user who sets it means it, and only the
-    default below is per-platform. On Windows that default is `%APPDATA%`, the roaming half: this
-    file is configuration a human edits and would want on their other machine, unlike a baseline or
-    a cache. `~/.config` on Windows would be a directory nothing else on the machine looks in.
+    **The Linux layout on Windows too**, since 2026-11-08: one backup and restore procedure across
+    machines beat the platform's own convention. Until then the Windows default was `%APPDATA%`, so
+    a config already there is used while it is the only copy, with a notice naming the move — see
+    `_legacy_windows_base`. Reading past it would lay down a skeleton over an absent path, the same
+    silent loss of `[private] extra` the rename paragraph below guards against.
 
     **The directory is named after the skill, so the 2026-09-27 rename off `plan-docs` moved it**,
     and a config still at the old directory or named by the old variable is refused, never ignored.
@@ -739,11 +739,9 @@ def config_path() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
     if xdg:
         base = Path(xdg).expanduser()
-    elif WINDOWS:
-        roaming = os.environ.get("APPDATA")
-        base = Path(roaming) if roaming else Path.home() / "AppData" / "Roaming"
     else:
         base = Path.home() / ".config"
+        base = _legacy_windows_base("APPDATA", ("AppData", "Roaming"), base, Path(CONFIG_DIR) / "config.toml")
     current = base / CONFIG_DIR / "config.toml"
     legacy = base / LEGACY_CONFIG_DIR / "config.toml"
     if not current.exists() and legacy.exists():
@@ -751,6 +749,31 @@ def config_path() -> Path:
             f"the config is at {legacy}, this skill's pre-rename path, no longer read — move it to {current}"
         )
     return current
+
+
+_LEGACY_NOTED: set[Path] = set()
+
+
+def _legacy_windows_base(var: str, fallback: tuple[str, ...], base: Path, inner: Path) -> Path:
+    """`base`, unless this is Windows, `base / inner` is absent, and the pre-2026-11-08 one exists.
+
+    Until 2026-11-08 the Windows defaults were `%APPDATA%` (config) and `%LOCALAPPDATA%` (state).
+    Looking there first while the Linux-layout path is still empty keeps a machine that wrote under
+    the old rule working; the notice names the move rather than performing it.
+    """
+    if not WINDOWS or (base / inner).exists():
+        return base
+    root = os.environ.get(var, "").strip()
+    legacy = Path(root) if root else Path.home().joinpath(*fallback)
+    if not (legacy / inner).exists():
+        return base
+    if legacy not in _LEGACY_NOTED:
+        _LEGACY_NOTED.add(legacy)
+        print(
+            f"note: using {legacy / inner}, this skill's pre-2026-11-08 Windows location; move it to {base / inner}",
+            file=sys.stderr,
+        )
+    return legacy
 
 
 def _rule_from_mode(mode: object, write: object, key: str) -> Rule:
@@ -6138,17 +6161,17 @@ LEDGER_PREFILLED = (LEDGER_USER_MESSAGES, LEDGER_FILES)
 
 
 def state_home() -> Path:
-    """`$XDG_STATE_HOME/plan-conveyor`, honoured on every platform; only the default differs.
+    """`$XDG_STATE_HOME/plan-conveyor`, else `~/.local/state/plan-conveyor` — on every OS.
 
     State rather than data or cache: a record of what this machine's sessions did, which nothing
-    can regenerate once the conversation is gone, and which a user would not want roaming.
+    can regenerate once the conversation is gone. The pre-2026-11-08 Windows default,
+    `%LOCALAPPDATA%`, is used while it is the only copy — see `_legacy_windows_base`.
     """
     base = os.environ.get("XDG_STATE_HOME", "").strip()
     if base:
         return Path(base).expanduser() / CONFIG_DIR
-    if os.name == "nt" and (local := os.environ.get("LOCALAPPDATA", "").strip()):
-        return Path(local) / CONFIG_DIR
-    return Path.home() / ".local" / "state" / CONFIG_DIR
+    default = Path.home() / ".local" / "state"
+    return _legacy_windows_base("LOCALAPPDATA", ("AppData", "Local"), default, Path(CONFIG_DIR)) / CONFIG_DIR
 
 
 def ledger_key(explicit: str | None) -> str:

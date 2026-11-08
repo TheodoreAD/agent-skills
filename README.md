@@ -62,16 +62,19 @@ remote you configure — behind a content scan, and never the half holding emplo
 **Python 3.11 or newer** is the one requirement every script shares, run by your own `python3` with
 nothing to install. Below it a script exits with a sentence saying so rather than a traceback.
 
-**Platform.** Everything here was written on a POSIX machine. The scripts are stdlib-only Python,
-resolve their locations from `$XDG_*` first and fall back to `%APPDATA%` / `%LOCALAPPDATA%` on
-Windows, and the unit suite runs on a Windows CI leg as well as a Linux one — so what the tests
-cover is measured on both, and what they cannot cover is declared. Two skills assume more than a
-path. `session-bash-audit` measures POSIX-shell idioms (`&&`, `;`, `|`, `cd`, `sed -n`), so it
-describes a Git Bash or WSL session and says nothing useful about a PowerShell one;
-`session-harvest`'s sweep reads processes and sockets through `ps`/`ss` on Linux and PowerShell's
-`Win32_Process`/`netstat` on Windows, where the parsers are tested against documented output and
-have never seen a live machine. Both say so in their own bodies. A `0700` mode set at creation is
-accepted and ignored on Windows, so no skill here treats one as protection.
+**Platform.** Everything here was written on a POSIX machine. The scripts are stdlib-only Python and
+resolve their locations from `$XDG_*` first, then the **same Linux layout on every OS** —
+`~/.config/<skill>/`, `~/.local/state/<skill>/`, `~/.cache/<skill>/`, Windows included — so one
+backup covers every machine. A script that used `%APPDATA%` / `%LOCALAPPDATA%` before 2026-11-08
+still reads a copy left there while the new location is empty, and says so. The unit suite runs on a
+Windows CI leg as well as a Linux one — so what the tests cover is measured on both, and what they
+cannot cover is declared. Two skills assume more than a path. `session-bash-audit` measures
+POSIX-shell idioms (`&&`, `;`, `|`, `cd`, `sed -n`), so it describes a Git Bash or WSL session and
+says nothing useful about a PowerShell one; `session-harvest`'s sweep reads processes and sockets
+through `ps`/`ss` on Linux and PowerShell's `Win32_Process`/`netstat` on Windows, where the parsers
+are tested against documented output and have never seen a live machine. Both say so in their own
+bodies. A `0700` mode set at creation is accepted and ignored on Windows, so no skill here treats
+one as protection.
 
 ## Layout
 

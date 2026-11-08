@@ -463,24 +463,30 @@ only ever help one machine and are invisible everywhere else — right up until 
 directory happens to match. Asking (`--checkout <path>`, an error naming the flag) is the honest
 failure.
 
-Six destinations, each with one meaning, keyed by the **skill's own `name`**:
+Six destinations, each with one meaning, keyed by the **skill's own `name`**, **with the same layout
+on every OS** — `~` is `Path.home()`, which is `%USERPROFILE%` on Windows:
 
-| destination                                   | what belongs there                                   | Windows default                      |
-| --------------------------------------------- | ---------------------------------------------------- | ------------------------------------ |
-| `$HOME/<name>`                                | the user's own material: browsable, often a git repo | `%USERPROFILE%\<name>`               |
-| `$XDG_CONFIG_HOME` → `~/.config/<skill>/`     | configuration a human edits                          | `%APPDATA%\<skill>\`                 |
-| `$XDG_STATE_HOME` → `~/.local/state/<skill>/` | history, stats, baselines, last-run records          | `%LOCALAPPDATA%\<skill>\`            |
-| `$XDG_DATA_HOME` → `~/.local/share/<skill>/`  | data the tool needs and cannot regenerate            | `%LOCALAPPDATA%\<skill>\`            |
-| `$XDG_CACHE_HOME` → `~/.cache/<skill>/`       | regenerable, safe to delete at any moment            | `%LOCALAPPDATA%\<skill>\Cache\`      |
-| `tempfile.mkdtemp()`                          | transient work — never a fixed `/tmp/<name>`         | the same call — never a literal path |
+| destination                                   | what belongs there                                   |
+| --------------------------------------------- | ---------------------------------------------------- |
+| `$HOME/<name>`                                | the user's own material: browsable, often a git repo |
+| `$XDG_CONFIG_HOME` → `~/.config/<skill>/`     | configuration a human edits                          |
+| `$XDG_STATE_HOME` → `~/.local/state/<skill>/` | history, stats, baselines, last-run records          |
+| `$XDG_DATA_HOME` → `~/.local/share/<skill>/`  | data the tool needs and cannot regenerate            |
+| `$XDG_CACHE_HOME` → `~/.cache/<skill>/`       | regenerable, safe to delete at any moment            |
+| `tempfile.mkdtemp()`                          | transient work — never a fixed `/tmp/<name>`         |
 
-**The variable is honoured everywhere; only the default is per-platform.** A reader who exports
-`$XDG_STATE_HOME` on Windows means it, so the environment lookup comes first and the
-`os.name == "nt"` arm decides only what to do when nothing is set. Roaming is the axis that splits
-the two Windows bases: config is the half a user would want on their other machine, state and cache
-are records of _this_ one. Three lines per script, duplicated — `platformdirs` is the right library
-and cannot be taken, because these scripts run under a bare `python3` with nothing installed and a
-`--global` skill install runs no install step at all.
+**One layout everywhere, not the platform's own convention.** Decided by the user 2026-11-08: backup
+and restore is one procedure across machines only when every skill's config and state sit in the
+same place on all of them, and that beat Windows' roaming/local split, which was this table's
+Windows column until then. Three lines per script, duplicated — `platformdirs` would reintroduce the
+per-platform split and cannot be taken anyway, because these scripts run under a bare `python3` with
+nothing installed and a `--global` skill install runs no install step at all.
+
+**A script that shipped before 2026-11-08 looks at the old Windows location first while the new one
+is empty** — `%APPDATA%\<skill>\` for config, `%LOCALAPPDATA%\<skill>\` for state — uses it while it
+holds the only copy, and prints a one-line notice naming the move. Reading past it would answer with
+nothing, which reads as a machine where nothing was ever saved. A skill written after that date has
+no old location and needs no fallback.
 
 The axis is **the user's material or the tool's bookkeeping**. Material a human opens, greps and
 version-controls belongs in a visible `$HOME` directory — XDG's base directories are for what an

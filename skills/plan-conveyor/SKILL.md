@@ -20,12 +20,13 @@ case none of them solves cheaply — is
 
 - **Reads**: the session repo's `plans/`, both plans stores (`$PLANS_HOME`, default `~/plans`, and
   its sensitive sibling), its own config (`$PLAN_CONVEYOR_CONFIG`, else
-  `~/.config/plan-conveyor/config.toml`, else `%APPDATA%\plan-conveyor\` on Windows), the directory
-  names under `projects_root` (to derive the private terms `scan` gates on — names only, never
-  contents), git history of the session repo and the stores, and, on Claude Code, the transcript
-  path named by `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard. `migrate ledger` also
-  reads that transcript's **contents**, or the one `--transcript` names: the user's messages and the
-  paths of files the session edited, nothing else.
+  `~/.config/plan-conveyor/config.toml` on every OS — on Windows, the pre-2026-11-08
+  `%APPDATA%\plan-conveyor\` while the new path is absent, with a notice naming the move), the
+  directory names under `projects_root` (to derive the private terms `scan` gates on — names only,
+  never contents), git history of the session repo and the stores, and, on Claude Code, the
+  transcript path named by `$CLAUDE_CODE_SESSION_ID` to anchor the cross-repo guard.
+  `migrate ledger` also reads that transcript's **contents**, or the one `--transcript` names: the
+  user's messages and the paths of files the session edited, nothing else.
 - **Runs**: `git` — read commands everywhere. It commits through `commit`, `rename --commit` and
   `migrate finish --delete-sources`, each in the repository the named paths are already in — the
   store for a store-held plan, the session repo for a repo-held one, never any other repository. In
@@ -46,16 +47,17 @@ case none of them solves cheaply — is
   and — through `links fix --yes` — the `repo:` line of store-held plans. `link --move-to private`
   and `links merge` move a store folder's files, and its local attachments, to another folder or the
   other store. A conversation ledger per session under `$XDG_STATE_HOME/plan-conveyor/ledgers/`
-  (default `~/.local/state/…`, `%LOCALAPPDATA%\plan-conveyor\` on Windows), created `0700`, through
-  `note` and `migrate ledger`; `migrate finish` copies it beside the plan as a committed attachment
-  and then removes that state copy, which is the one file it deletes outside a repository. **Deletes
-  files only through `migrate finish --delete-sources`**, and only the ones it has just listed as
-  deletable, in the session's own repository, after its coverage gate has passed — never on its own
-  initiative and never without that flag. The only other removals are of directories left holding no
-  file: the ones a move or merge empties, and those `links fix --yes --prune-empty` lists. Never a
-  file in any other repo's working tree: `new` refuses and names `--for`, and `migrate` refuses a
-  source outside this repository. `archive`, `list`, `tags`, `refs`, `pending`, `migrate check`,
-  `doctor`, `scan`, `where`, bare `link`, `links` and `links fix` without `--yes` write nothing.
+  (default `~/.local/state/…` on every OS; the pre-2026-11-08 `%LOCALAPPDATA%\plan-conveyor\` is
+  used while it is the only copy), created `0700`, through `note` and `migrate ledger`;
+  `migrate finish` copies it beside the plan as a committed attachment and then removes that state
+  copy, which is the one file it deletes outside a repository. **Deletes files only through
+  `migrate finish --delete-sources`**, and only the ones it has just listed as deletable, in the
+  session's own repository, after its coverage gate has passed — never on its own initiative and
+  never without that flag. The only other removals are of directories left holding no file: the ones
+  a move or merge empties, and those `links fix --yes --prune-empty` lists. Never a file in any
+  other repo's working tree: `new` refuses and names `--for`, and `migrate` refuses a source outside
+  this repository. `archive`, `list`, `tags`, `refs`, `pending`, `migrate check`, `doctor`, `scan`,
+  `where`, bare `link`, `links` and `links fix` without `--yes` write nothing.
 - **Network**: only `push`, and only to publish a plans store to the remote that store already has.
   It never adds a remote, never pushes a repo, and refuses rather than publishing when the scan of
   its own outgoing commits finds a private name. Every other command is offline.

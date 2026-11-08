@@ -1152,8 +1152,9 @@ def plan_conveyor_config() -> dict[str, Any]:
     the environment variables and `~/.config/plan-conveyor/config.toml` — never by one importing the
     other, which would hard-code the install hub and break whenever one is installed without the
     other. Resolution copies `plans.py`'s lines: `$PLAN_CONVEYOR_CONFIG`, then `$XDG_CONFIG_HOME`,
-    then the platform default. An absent or unreadable file is an empty mapping, so every default
-    below still applies.
+    then `~/.config` on every OS — and on Windows, the pre-2026-11-08 `%APPDATA%` location while it
+    is the only copy, as `plans.py` does. An absent or unreadable file is an empty mapping, so every
+    default below still applies.
 
     The pre-rename `plan-docs` directory and variable are not read, here or there, since
     2026-09-28. `plans.py` refuses when it finds them, naming the move; this reader writes nothing,
@@ -1165,13 +1166,15 @@ def plan_conveyor_config() -> dict[str, Any]:
     else:
         xdg = os.environ.get("XDG_CONFIG_HOME")
         if xdg:
-            base = Path(xdg).expanduser()
-        elif WINDOWS:
-            roaming = os.environ.get("APPDATA")
-            base = Path(roaming) if roaming else Path.home() / "AppData" / "Roaming"
+            path = Path(xdg).expanduser() / "plan-conveyor" / "config.toml"
         else:
-            base = Path.home() / ".config"
-        path = base / "plan-conveyor" / "config.toml"
+            path = Path.home() / ".config" / "plan-conveyor" / "config.toml"
+            if WINDOWS and not path.exists():
+                roaming = os.environ.get("APPDATA")
+                old_base = Path(roaming) if roaming else Path.home() / "AppData" / "Roaming"
+                legacy = old_base / "plan-conveyor" / "config.toml"
+                if legacy.exists():
+                    path = legacy
     try:
         return tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):

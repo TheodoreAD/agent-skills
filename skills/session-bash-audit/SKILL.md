@@ -90,17 +90,16 @@ habit instead, from output loss, which holds everywhere.
 
 - **Reads**: `~/.claude/projects/*.jsonl` and `~/.claude/settings.json`, Claude Code's own files,
   read-only; and, if it is there, your own expectations at
-  `$XDG_CONFIG_HOME/session-bash-audit/expectations.json` (`%APPDATA%\…` on Windows) or wherever
+  `$XDG_CONFIG_HOME/session-bash-audit/expectations.json` (`~/.config/…` on every OS) or wherever
   `--expectations <path>` names.
 - **Runs**: three read-only `git` commands against its own directory, and only while writing a
   baseline — `ls-files`, `rev-parse HEAD` and `status --porcelain` on `audit.py` itself, to record
   which version of the instrument produced that measurement. Nothing else: `prompts.py` replays the
   permission rules in-process, and the Probe procedure prints commands for you to run and read.
 - **Writes**: a baseline, only when asked with `--save-baseline`, under
-  `$XDG_STATE_HOME/session-bash-audit/` (`%LOCALAPPDATA%\session-bash-audit\` on Windows), and it
-  **refuses rather than overwrite** one already there — `--force` is how you destroy it on purpose;
-  a dump wherever `--json <path>` says. Never a transcript, never a setting, never its own installed
-  directory.
+  `$XDG_STATE_HOME/session-bash-audit/` (`~/.local/state/…` on every OS), and it **refuses rather
+  than overwrite** one already there — `--force` is how you destroy it on purpose; a dump wherever
+  `--json <path>` says. Never a transcript, never a setting, never its own installed directory.
 - **Network**: none.
 
 ## Four procedures — the skill runs them, the user only reads results
@@ -245,8 +244,8 @@ instead.** Every entry is a reading of one machine's `~/.agents/AGENTS.md`: `fin
 because that file prefers `fd`, `cd-own-repo` is `zero` because it bans the shape outright. Your
 rows stay true whatever your instructions say; only the verdict is borrowed. Write your own as JSON
 of `{"<row>": "down"|"zero"}` and pass `--expectations <path>`, or put it at
-`$XDG_CONFIG_HOME/session-bash-audit/expectations.json` (`~/.config/…` by default, `%APPDATA%\…` on
-Windows) and it is found with nothing passed:
+`$XDG_CONFIG_HOME/session-bash-audit/expectations.json` (`~/.config/…` by default, on every OS) and
+it is found with nothing passed:
 
 ```json
 { "chain": "down", "head/tail": "down", "cd-own-repo": "zero" }
@@ -278,8 +277,11 @@ fix goes". After a rule or mode change, save a new baseline for the next compari
 `--save-baseline --note "<mode in force>"` — and keep the old file; the deltas are the point.
 
 **A baseline you save goes to `$XDG_STATE_HOME/session-bash-audit/`** (`~/.local/state/…` by
-default, `%LOCALAPPDATA%\session-bash-audit\` on Windows), which is what a bare `--save-baseline`
-now writes. Until 2026-09-03 this line named `$S/references/baselines/…` instead — **inside the
+default, on every OS), which is what a bare `--save-baseline` now writes. **On Windows, a machine
+that saved baselines or expectations before 2026-11-08 has them under `%LOCALAPPDATA%\…` and
+`%APPDATA%\…`**, the old defaults; the script looks there first while the new path is empty, uses
+what it finds and prints a notice naming the move, so check that notice before concluding there is
+no baseline. Until 2026-09-03 this line named `$S/references/baselines/…` instead — **inside the
 installed skill**, which is the artefact a re-install replaces and which this corpus elsewhere calls
 drift to edit. The one piece of genuinely per-machine state the skill asks you to keep was being
 kept in the one place designed to be overwritten. Pass an explicit path if you want it somewhere

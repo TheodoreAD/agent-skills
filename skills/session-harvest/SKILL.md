@@ -104,15 +104,18 @@ two it used.
 **`skills-state` compares the install against a checkout, and finds the checkout itself.** In order:
 `--checkout <path>`, `$SESSION_HARVEST_CHECKOUT`, the repo above the script it is running from, and
 then the one git checkout under `plan-conveyor`' configured `projects_root` (default `~/projects`,
-walked three levels deep, symlinks never followed) that holds `skills/session-harvest/SKILL.md`. So
-the installed copy answers step 0 on any machine that has the source somewhere, whatever the repo
-layout; a fork counts, and two candidates make it ask rather than pick. It also prints the command
-step 6 files a skill fix with, checkout path included, so no skill body has to name where any author
-keeps repos. **With no checkout on the machine it exits 1 saying so** — the reader's normal case, an
-installed copy with no source repo — and the right report line is that the comparison was
-unavailable, not that nothing had moved. Until 2026-09-05 the install-side copy could never answer
-this without `--checkout`, confirmed by a harvest that ran the block above verbatim and got the
-error on its first step-0 command.
+walked three levels deep, symlinks never followed) that holds `skills/session-harvest/SKILL.md`.
+That config is read at `~/.config/plan-conveyor/config.toml` on every OS; on Windows, a config
+written before 2026-11-08 sits at `%APPDATA%\plan-conveyor\` instead and is read there while the new
+path is absent — look there before concluding none is configured. So the installed copy answers step
+0 on any machine that has the source somewhere, whatever the repo layout; a fork counts, and two
+candidates make it ask rather than pick. It also prints the command step 6 files a skill fix with,
+checkout path included, so no skill body has to name where any author keeps repos. **With no
+checkout on the machine it exits 1 saying so** — the reader's normal case, an installed copy with no
+source repo — and the right report line is that the comparison was unavailable, not that nothing had
+moved. Until 2026-09-05 the install-side copy could never answer this without `--checkout`,
+confirmed by a harvest that ran the block above verbatim and got the error on its first step-0
+command.
 
 Every subcommand is read-only and takes `--json`. Two things are deliberately **not** in it: the
 gate re-run (that is the repo's own command, and hard-coding one would be wrong in every repo that

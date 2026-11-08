@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-18
+updated: 2026-09-30
 ---
 
 # Making these repos legible to a stranger, and pitching them without writing slop
@@ -230,10 +230,13 @@ registry, because the directory supplies the context a standalone repo cannot. R
 same gradient within one product: extension descriptions say "Raycast" 20.3%, command descriptions
 1.9%. Zed, whose registry index has no description field at all, sits at 38.9%.
 
-[DECISION: **a per-skill `README.md` is not available here** — this repo's layout gate allows only
-`references/`, `scripts/` and `evals/` inside a skill directory. The two compatible surfaces for
-pitching one skill are the README catalogue row and the free skills.sh page at
-`https://skills.sh/theodoread/agent-skills/<skill-id>`.]
+[DECISION: **a per-skill `README.md` is the third surface for pitching one skill, beside the
+catalogue row and the free skills.sh page at
+`https://skills.sh/theodoread/agent-skills/<skill-id>`.** Reversed 2026-09-30. This line said until
+then that the page was unavailable, because the layout gate allowed only `references/`, `scripts/`
+and `evals/`. That was a rule of this repo, not a constraint, and the user asked for per-skill pages
+to show the prominent skills to colleagues. The reasoning, the evidence and the template are in
+"Per-skill READMEs" below.]
 
 Prior art worth reading and not adopting: `thatrebeccarae/claude-marketing` (56 skills, includes a
 scored `github-readme` audit) — its frontmatter uses non-spec keys that this repo's
@@ -366,6 +369,131 @@ occasional deep article on the own domain, cross-posted with canonical a few day
 a genuinely major version, once or twice a year → Reddit only where the account already has history.
 Everything above the HN line is repeatable; HN and Product Hunt are the two channels with a written
 cooldown.
+
+## Per-skill READMEs, decided and piloted 2026-09-30
+
+The ask, in the user's words: _"no images, just text, but good text that explains what the skills do
+well and is attractive. i need to show some of the more prominent skills, like plan-conveyor or
+research-library, to my friends and co-workers and they need to understand the value of adopting
+those skills."_
+
+**The gap is concrete.** The catalogue links each skill to `skills/<name>/`. GitHub renders a
+directory's `README.md` below its file listing and renders nothing for `SKILL.md`, so a colleague
+following that link saw four entries and no prose. Opening `SKILL.md` does not help either: it is
+written for an agent, and `plan-conveyor`'s runs to 1,757 lines of rules and measured failures.
+
+[DECISION: **`skills/<name>/README.md`, admitted by the layout gate and optional.** It beat a
+`docs/skills/<name>.md` page because the catalogue's existing links already land on the directory,
+so the page appears exactly where a reader arrives, with no link to change. It also travels with the
+skill when the directory is copied or vendored. The cost is that it ships with every install and
+duplicates some of what `SKILL.md` says, which is why `AGENTS.md` keeps it to what and why, with
+mechanics linked.]
+
+Evidence, all read from clones in the research library:
+
+- **Per-skill READMEs are rare in the skill corpora**, and one repo is the exception.
+  `anthropics/skills` has 0 of 20, `phuryn/pm-skills` 0 of 69, `thatrebeccarae/claude-marketing` 0
+  of 56, `JimLiu/baoyu-skills` 0 of 22, `openai/codex` 0 of 16, `github/awesome-copilot` 1 of 441
+  and `anthropics/claude-plugins-official` 2 of 31. `softaworks/agent-toolkit` has one for every
+  skill.
+- **The `skills` CLI ships it.** `vercel-labs/skills` `src/installer.ts:458-463` excludes only
+  `metadata.json`, `.git`, `__pycache__` and `__pypackages__` when copying a skill directory. A
+  README is a few KB on the installer's disk that no agent loads.
+- **No guidance against it** was found in the current `anthropics/skills` clone, including
+  `skill-creator`. The Agent Skills spec's client guide mentions `README.md` only at the skills
+  root, where a client ignores it as not being a skill directory.
+
+[PITFALL: **the one corpus that does this at scale is the model of what not to write.**
+`softaworks/agent-toolkit`'s `session-handoff/README.md` promises to "seamlessly continue work with
+zero ambiguity", has sections of bold-headed feature bullets, and ends in a "Benefits" list. Those
+are the inline-header lists and vocabulary §7 lists as tells. The page answers what the skill does
+and never why a reader should believe it. So the template below leads with the problem, shows real
+output, and states numbers that came from something happening.]
+
+**The template the two pilots follow**, at 800 to 1,000 words each counting code blocks, which is a
+few minutes' reading:
+
+1. Title, then one line that passes `pitch.py check`. The research-library draft was **blocked** on
+   its leading article at 84 characters and shipped at 76 after two rewrites, which is the checker
+   earning its place.
+2. The problem, in two or three short paragraphs, in the reader's terms rather than the skill's.
+3. What the skill gives its user, as plain bullets written as sentences, not bold-headed fragments.
+4. What it looks like: **real command output, trimmed**. `plans.py list` over this repo and
+   `package_health.py pypi httpx` both ran on 2026-09-30 for this.
+5. Why not the obvious alternative the reader already has.
+6. One or two of the measured failures the skill's rules came from, because that is what separates
+   it from a prompt someone wrote in an afternoon.
+7. Install, with the `--global` line, then example requests in plain words.
+8. What it touches, in two sentences, linking the disclosure heading in `SKILL.md`.
+9. Read more: `SKILL.md` and the `references/` files.
+
+**Voice checks, and one of them caught a false claim.** No §7 tell vocabulary, and em dashes only
+inside verbatim tool output, where an `rg` over both files found them and nowhere else. Every claim
+is checked against `SKILL.md`. The plan-conveyor draft said a plan holding `[DEFERRED:]` work
+"refuses to be retired". `SKILL.md` says that rule is still prose in the retirement procedure and
+not a gate, while the real gate is `[NEEDS CLARIFICATION:]` and `[UNVERIFIED:]` blocking `landed`.
+It was corrected before commit. A page written to persuade drifts toward the stronger claim, and
+only a check against the source catches that.
+
+[DECISION: **this text is agent-drafted, which the human-writes rule above does not forbid.** That
+rule covers community venues, where generated text breaks the venue's own written rules. A README
+shown to colleagues is none of those, and the user asked for a draft. The user is expected to edit
+it into their own voice.]
+
+[PITFALL: **the same paragraphs must not be pasted into a Show HN post, a dev.to article or an
+awesome-list entry.** Those venues' rules bind the text, not the repo it came from. A README is the
+obvious thing to quote when a launch comes round, and quoting it would be exactly the generated text
+those venues ban.]
+
+**`session-harvest` and `skill-fitness` got pages the same day**, at the user's request after
+reading the first two. `session-harvest` was chosen as the most installed at 40 per the 2026-09-09
+count, `skill-fitness` because its value is the hardest to see from its name. Both pitch lines
+needed rewording to pass: one blocked on a leading article, one warned as a feature list.
+
+[DECISION: **the session-harvest example is a labelled report shape, not captured output.** Its real
+output is a sweep of this machine's repos, processes and listeners, which is the wrong thing to
+publish and would read as noise to a stranger anyway. The page says it is an abridged example, and
+its two alarming findings (four CI-poll loops 36 hours old, an `http.server` on `0.0.0.0` serving a
+repo's `.env`) are real incidents the skill documents. The `AGENTS.md` rule is about command output,
+and a harvest report is the agent's prose.]
+
+`skill-fitness`'s example is real `report` output, and it is the strongest hook of the four pages:
+at a 200k-token window the harness's own listing entries (16,740 characters on this machine) exceed
+the whole 8,000-character budget, so every skill in this repo would reach that model name-only. That
+figure is a measurement of this machine on 2026-09-30 and moves with every installed skill.
+
+**The remaining eleven got pages the same day**, at the user's request, which puts one on every
+skill in the repo. They were drafted by four parallel forks of the session that wrote the first
+four, each carrying the template and voice rules above, and every page was then read in full and its
+dated figures checked against `SKILL.md` and `references/` before commit. Three conventions settled
+in that pass:
+
+- **Every `-taudelta` page says near the top that it is one author's rulings**, and that the reader
+  who would rule differently should fork it. That is the mark's own meaning in prose, for a reader
+  who has never heard of the suffix.
+- **A convention skill has no command output, so its example is a before/after or a
+  request-and-answer drawn from `SKILL.md`.** Where a skill has a script whose output is offline and
+  names nothing private, the page shows it: `count_shapes.py` on one of this repo's own scripts,
+  `names.py audit --offline`, `pitch.py check` on an invented pitch, and `audit.py` on the drafting
+  session only, because its corpus views print project slugs.
+- **`polite-mcp-conventions-taudelta` says in bold that it is personal** and pitches itself as a
+  worked example of three patterns to copy, not as something a stranger installs as it is.
+
+The forks dropped or softened claims `SKILL.md` did not support rather than keeping them: a
+"marketing adjectives are flagged" claim that a real `pitch.py` run disproved, "fifteen needs" where
+`db-defaults` lists fourteen, FastMCP logging to stderr by default where no first-party source
+confirmed it, and an illustrative "69 signature changes" that read as an incident.
+
+**A "Start here" block now sits above Install in the repo README**, added 2026-10-01 at the user's
+call, naming `plan-conveyor`, `research-library`, `session-harvest` and `skill-fitness` with one
+line each and a link to each page. The reason it was needed: the catalogue table lists fifteen
+skills in alphabetical order with equal weight, so a colleague sent the repo link could not tell
+`plan-conveyor` from `polite-mcp-conventions-taudelta`, which is personal. The table is unchanged.
+
+[UNVERIFIED: **whether skills.sh's per-skill page renders `README.md`, `SKILL.md` or only the
+frontmatter.** Nothing in the CLI source decides it. Opening
+`https://skills.sh/theodoread/agent-skills/plan-conveyor` after the next index settles it, and
+decides whether the README also becomes the public catalogue page.]
 
 ## Open questions
 

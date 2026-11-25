@@ -213,11 +213,15 @@ anyone can then install them:
 npx skills add <owner>/<repo> --global
 ```
 
-A skill that documents a repo's _own_ interface belongs committed in that repo under
-`.agents/skills/`, where it needs no install step for anyone working there — every agent reads that
-directory except Claude Code, which needs a relative `.claude/skills -> ../.agents/skills` link
-committed beside it. A cross-project convention skill belongs in a dedicated skills repo. Both
-install with the same command.
+A skill that documents a repo's _own_ interface is authored in that repo under `skills/<name>/`, the
+same layout as a skills repo, and installed per clone with
+`npx skills add ./skills --agent universal claude-code --skill '*' --yes` (repo-tasks'
+`dev-env.setup` runs it as `agents.install-skills`). The install targets — `.agents/skills/`,
+`.claude/skills/` and `skills-lock.json` — are gitignored, so nothing installed is ever committed,
+no symlink is committed (a Windows checkout without Developer Mode turns one into a text file), and
+a developer can try another skill in the project with a plain `skills add` without changing anything
+git tracks. A cross-project convention skill belongs in a dedicated skills repo instead. Both are
+installed by the same CLI.
 
 ## The name is a primary key, and nothing warns you
 

@@ -72,7 +72,7 @@ import tempfile
 import time
 import tomllib
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from functools import cached_property
@@ -5141,6 +5141,52 @@ def record_attachments(plan: Path, entries: list[Attached]) -> None:
     plan.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
+# The row `attachment_row` writes for a local attachment, read back for the name and the directory.
+LOCAL_ROW_RE = re.compile(r"^- `(?P<name>[^`]+)` — local only, .*, in (?P<dir>\S.*?)\s*$", re.MULTILINE)
+
+
+class MissingAttachment(NamedTuple):
+    plan: Path
+    name: str
+    recorded: str  # the directory the row names, as written on the machine that attached it
+
+
+def missing_local_attachments(cfg: Config, plans: Iterable[Path]) -> list[MissingAttachment]:
+    """Local attachments a plan names that are not on this machine.
+
+    `_attachments/` is kept out of git on purpose, so a plan synced from another machine can name a
+    file that exists only there. Not a problem to fix here — the file is safe where it was attached —
+    but a plan citing evidence a reader cannot open should say so rather than dangle silently.
+    """
+    found: list[MissingAttachment] = []
+    for plan in plans:
+        try:
+            text = plan.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        found.extend(
+            MissingAttachment(plan, row["name"], row["dir"])
+            for row in LOCAL_ROW_RE.finditer(text)
+            if not _attachment_present(cfg, plan, row["name"], row["dir"])
+        )
+    return found
+
+
+def _attachment_present(cfg: Config, plan: Path, name: str, recorded: str) -> bool:
+    """At the directory the row names, or anywhere in a store's attachments area under the plan's stem.
+
+    The second look covers a store kept at a different path on this machine, which leaves the row's
+    `~/plans/...` pointing at nothing while the file is where this machine's store keeps it.
+    """
+    if (Path(recorded).expanduser() / name).is_file():
+        return True
+    for store in cfg.stores():
+        area = store.path.expanduser() / ATTACHMENTS_DIR
+        if area.is_dir() and any((directory / name).is_file() for directory in area.rglob(plan.stem)):
+            return True
+    return False
+
+
 def store_plan_files(store: Store) -> list[Path]:
     """Plan files held in a store — never a file attached to one, which is counted separately."""
     if not store.path.is_dir():
@@ -7737,6 +7783,17 @@ class JoinPreview(NamedTuple):
     both_differ: list[str]
     untracked_clashes: list[str]
     outgoing: int
+    # Paths that differ only in letter case across both sides together. Two files on Linux, one on a
+    # case-insensitive filesystem — Windows and macOS by default — where the checkout keeps one and
+    # reports the other as modified, so a plan silently goes missing on that machine.
+    case_clashes: list[list[str]]
+
+
+def case_clashes(paths: Iterable[str]) -> list[list[str]]:
+    groups: dict[str, set[str]] = {}
+    for path in paths:
+        groups.setdefault(path.casefold(), set()).add(path)
+    return sorted(sorted(group) for group in groups.values() if len(group) > 1)
 
 
 def _tree(root: Path, rev: str) -> dict[str, str]:
@@ -7766,6 +7823,7 @@ def preview_join(root: Path, url: str, branch: str | None) -> JoinPreview:
         both_differ=sorted(path for path in here if path in remote and here[path] != remote[path]),
         untracked_clashes=sorted(path for path in untracked if path in remote),
         outgoing=int(count or "0"),
+        case_clashes=case_clashes({*here, *remote}),
     )
 
 
@@ -7788,7 +7846,15 @@ def _print_join_preview(root: Path, url: str, branch: str | None, preview: JoinP
     for path in preview.untracked_clashes:
         regenerable = path in (STORE_README_FILE, GITATTRIBUTES_FILE)
         print(f"  untracked {path}: {'removed, the remote copy replaces it' if regenerable else 'BLOCKS the join'}")
+    for group in preview.case_clashes:
+        print(f"  case     {' / '.join(group)}: one file on Windows or macOS — rename one first")
     print(f"publishes: {preview.outgoing} local commit(s) on the next sync, after the private-name scan")
+
+
+DEVICE_JOIN_NOTES = {
+    CONTRACTOR: "this is the shareable store; the sensitive one never joins anything",
+    WORK: "this machine's one store, which may only join a destination in sanctioned_remotes",
+}
 
 
 def _predicted(path: str) -> str:
@@ -7806,6 +7872,9 @@ def cmd_join(args: argparse.Namespace, ws: Workspace) -> int:
     cfg = ws.config
     store = cfg.store
     root = store.path.expanduser()
+    # First, before anything else is read: which store may go where depends on the kind of machine,
+    # and the next machine to join may not be a personal one.
+    print(f"device:    {cfg.device} — {DEVICE_JOIN_NOTES[cfg.device]}")
     if store.tier == SINGLE and not remote_is_sanctioned(args.url, cfg.sanctioned_remotes):
         raise PlanError(
             f"{args.url} is not covered by sanctioned_remotes, and this work device's store may only "
@@ -8981,6 +9050,10 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
                 for name, members in sorted(roots.items())
             ],
             "holding_plans": [held._asdict() for held in holding],
+            "attachments_not_here": [
+                {"plan": str(gone.plan), "name": gone.name, "recorded": gone.recorded}
+                for gone in missing_local_attachments(cfg, [entry.plan.path for entry in entries])
+            ],
             "statuses": dict(Counter(entry.plan.group for entry in entries)),
             "problems": _all_problems(ws, unrouted, strict=args.strict),
         }
@@ -9045,6 +9118,8 @@ def _print_doctor(
     if tags:
         print("  " + "  ".join(f"{tags[name]} {name}" for name in TAG_NAMES if tags[name]))
 
+    _print_attachments_not_here(cfg, entries)
+
     problems = _all_problems(ws, unrouted, strict=strict)
     print(f"\nproblems ({len(problems)})")
     for problem in problems:
@@ -9056,6 +9131,18 @@ def _print_doctor(
     if any(name not in public for name in roots):
         print("\nRoot and repo names above that are not under a public root are not yours to disclose —")
         print("this is for setting the machine up, never for pasting into a repo you publish.")
+
+
+def _print_attachments_not_here(cfg: Config, entries: list[ScopedPlan]) -> None:
+    """Its own section rather than a problem: on a second machine this is the expected state, and a
+    permanent entry in a problems list is how a problems list stops being read."""
+    missing = missing_local_attachments(cfg, [entry.plan.path for entry in entries])
+    if not missing:
+        return
+    print(f"\nlocal attachments not on this machine ({len(missing)})")
+    for gone in missing:
+        print(f"  {gone.plan.name}: {gone.name} — attached elsewhere, in {gone.recorded}")
+    print("  _attachments/ never syncs; the file is safe on the machine that attached it.")
 
 
 def _print_stores(cfg: Config) -> None:

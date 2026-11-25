@@ -381,6 +381,39 @@ def test_join_dry_run_lists_both_sides_and_changes_nothing(machines, capsys):
     assert git(here, "symbolic-ref", "--short", "HEAD") == "main"
 
 
+def test_join_names_the_device_first_and_flags_paths_differing_only_in_letter_case(machines, capsys):
+    """Two files on Linux are one on Windows and macOS by default, where the checkout keeps one and a
+    plan silently goes missing. And which store may go where depends on the kind of machine."""
+    here = local_store(machines)
+    commit(here, "_unscoped/2026-01-01-Seed.md", plan("Seed, capitalised here"))
+    machines.configure()
+    capsys.readouterr()
+
+    assert machines.run("join", str(machines.remote), "--dry-run") == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[0].startswith("device:    contractor")
+    assert "case     _unscoped/2026-01-01-Seed.md / _unscoped/2026-01-01-seed.md" in out
+
+
+def test_doctor_names_a_local_attachment_that_stayed_on_another_machine(machines, capsys):
+    """`_attachments/` never syncs, so a plan from another machine can cite a file that is not here."""
+    here = machines.clone_here()
+    machines.configure()
+    stem = "2026-01-08-evidence"
+    row = f"- `dump.log` — local only, 3 MB, sha256 abc, attached 2026-01-08, in ~/plans/_attachments/_unscoped/{stem}"
+    commit(here, f"_unscoped/{stem}.md", plan("Evidence", f"## Attachments\n\n{row}\n"))
+    capsys.readouterr()
+
+    machines.run("doctor")
+    out = capsys.readouterr().out
+    assert "local attachments not on this machine (1)" in out
+    assert f"{stem}.md: dump.log" in out
+
+    write(here, f"_attachments/_unscoped/{stem}/dump.log", "the file, present\n")
+    machines.run("doctor")
+    assert "not on this machine" not in capsys.readouterr().out
+
+
 def test_join_adopts_a_store_that_already_holds_plans_without_losing_one(machines, capsys):
     here = local_store(machines)
     machines.configure()

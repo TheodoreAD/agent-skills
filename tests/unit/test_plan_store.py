@@ -3295,6 +3295,28 @@ def test_doctor_reports_a_root_filed_in_the_wrong_tier(ws, capsys):
     assert str(ws.sensitive / "client.com-bitbucket") in out  # where it should go
 
 
+def test_doctor_accepts_a_folder_another_machine_linked_under_its_own_root_name(ws, capsys):
+    """Two machines need not share directory names: a store joined from a machine whose projects
+    root is laid out differently holds folders named after roots this machine does not have.
+
+    Found 2026-11-25 joining a Windows store (`personal/`) to a Linux one (`github.com-personal/`):
+    doctor called the linked folder misfiled because a plan's companion subfolder sat outside the
+    exact linked path, and asked for a routing rule for every repo cloned only on the other machine.
+    """
+    write_config(ws, TIERED)
+    (ws.store / plans.LINKS_FILE).parent.mkdir(parents=True, exist_ok=True)
+    (ws.store / plans.LINKS_FILE).write_text('"github.com/me/tool" = "desktop-root/tool"\n', encoding="utf-8")
+    plan(ws.store / "desktop-root" / "tool", "2026-01-01-design.md", "status: idea\nupdated: 2026-01-01")
+    plan(ws.store / "desktop-root" / "tool" / "2026-01-01-design", "notes.md", "status: idea\nupdated: 2026-01-01")
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+
+    out = capsys.readouterr().out
+    assert "desktop-root/tool" in out, "the linked folder is still listed as holding plans"
+    assert "is in the shareable store but desktop-root" not in out
+    assert "desktop-root/tool holds plans but no rule routes it" not in out
+
+
 # --------------------------------------------------------------------------------------------
 # retired plans
 #

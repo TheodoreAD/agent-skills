@@ -8814,6 +8814,11 @@ def tier_prefix(cfg: Config, store: Store) -> str:
     return f"{store.tier} " if cfg.split_by_sensitivity else ""
 
 
+def _under_any(folder: str, parents: set[str]) -> bool:
+    """Whether `folder` is one of `parents` or lies beneath one, compared by whole path segments."""
+    return any(folder == parent or folder.startswith(f"{parent}/") for parent in parents)
+
+
 def misfiled_plans(cfg: Config) -> list[str]:
     """Mirrored roots sitting in the wrong tier — the failure a boundary change leaves behind.
 
@@ -8839,7 +8844,12 @@ def misfiled_plans(cfg: Config) -> list[str]:
             holding = {plan.parent.relative_to(store.path).as_posix() for plan in path.rglob("*.md")}
             # So is one a `[tiers]` entry sends to this store: declared, not misfiled.
             declared = {folder for folder in holding if cfg.declared_tier(folder) == store.tier}
-            if holding and holding <= linked | declared:
+            # A folder *inside* one of those counts too: a plan's companion subfolder sits below
+            # the linked path. Matching it exactly called a store joined from a machine with
+            # different root names misfiled, 2026-11-25 — the other machine's root is unknown here,
+            # so it reads as sensitive, and only the subfolder kept the exemption from applying.
+            covered = linked | declared
+            if holding and all(_under_any(folder, covered) for folder in holding):
                 continue
             if actual != store.tier:
                 found.append(
@@ -9017,8 +9027,17 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
         (RepoPlanCount(rel, counts[rel]) for rel in counts if rel != UNSCOPED_DIR and counts[rel]),
         key=lambda held: -held.plans,
     )
+    # A routing rule answers where *this machine's* clone files its plans, so a linked store folder
+    # with no clone at that path needs none: it was filed by another machine, under that machine's
+    # root names, which this config has no reason to know. Asked for anyway until 2026-11-25, once
+    # per repo cloned only on the other side of a joined store.
+    linked = {folder for store in cfg.stores() for folder in read_links(store).entries.values()}
+    local = set(ws.repos)
     unrouted = [
-        held.repo for held in holding if match_rule(cfg, held.repo, ws.remotes.get(held.repo)).source == "no rule"
+        held.repo
+        for held in holding
+        if (held.repo in local or held.repo not in linked)
+        and match_rule(cfg, held.repo, ws.remotes.get(held.repo)).source == "no rule"
     ]
 
     if args.json:

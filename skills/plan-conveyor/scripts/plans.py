@@ -7387,6 +7387,7 @@ class Pulled:
     detail: str = ""
     resolved: tuple[str, ...] = ()
     unresolved: tuple[str, ...] = ()
+    commit: str = ""  # the merge commit made, when one was
 
     @property
     def blocks_push(self) -> bool:
@@ -7450,7 +7451,7 @@ def _finish_merge(root: Path, output: str) -> Pulled:
     if not done.ok:
         run_git(["merge", "--abort"], root)
         return Pulled("failed", f"could not commit the merge: {done.output}")
-    return Pulled("merged", "", tuple(resolved))
+    return Pulled("merged", "", tuple(resolved), commit=git(["rev-parse", "HEAD"], root) or "")
 
 
 def unmerged_paths(root: Path) -> dict[str, set[int]]:
@@ -7632,6 +7633,9 @@ def print_pulled(pulled: Pulled, *, quiet: bool = False) -> None:
     if quiet and pulled.state in ("no-remote", "up-to-date", "remote-empty"):
         return
     print(f"pulled:    {words.get(pulled.state, pulled.state)}")
+    if pulled.commit:
+        # The receipt line `session-harvest`'s `filed` attributes a store commit by.
+        print(f"committed: {pulled.commit[:12]}  merge of the remote's commits")
     for line in pulled.resolved:
         print(f"  resolved   {line}")
     for path in pulled.unresolved:
@@ -8750,8 +8754,12 @@ def _install_store(cfg: Config, store: Store) -> None:
         return
     untracked = [store.path / name for name in generated if not git(["ls-files", "--", name], store.path)]
     if untracked:
-        sha = commit_paths(store.path, untracked, "store: the files install writes, README and line endings")
-        print(f"committed:   {sha[:12]}  {', '.join(path.name for path in untracked)}")
+        message = "store: the files install writes, README and line endings"
+        sha = commit_paths(store.path, untracked, message)
+        # `committed: <sha>` with one space, on its own line: the receipt `session-harvest`'s `filed`
+        # attributes a store commit by, the same line `commit` and `save_links` print. Aligned with
+        # the other install lines it read as nobody's commit, 2026-11-25.
+        print(f"committed: {sha[:12]}  {message}")
 
 
 def remote_problems(cfg: Config) -> list[str]:

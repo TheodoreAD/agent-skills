@@ -1847,7 +1847,11 @@ def test_install_pins_the_stores_line_endings_and_commits_what_it_wrote(ws, caps
         monkeypatch.setenv(key, value)
     monkeypatch.setenv("GIT_CONFIG_KEY_1", "user.email")
     monkeypatch.setenv("GIT_CONFIG_VALUE_1", "test@example.com")
+    capsys.readouterr()
     assert plans.main(["install", "--path", str(ws.personal)]) == 0
+    # One space after the colon, on its own line: session-harvest's `filed` attributes a store
+    # commit by that receipt, and an install line aligned with its neighbours read as nobody's.
+    assert len(re.findall(r"^committed: [0-9a-f]{12}  ", capsys.readouterr().out, re.MULTILINE)) == 2
     for store in (ws.store, ws.sensitive):
         assert "* text=auto eol=lf" in (store / ".gitattributes").read_text(encoding="utf-8")
         tracked = subprocess.run(["git", "ls-files"], cwd=store, capture_output=True, text=True, check=True).stdout

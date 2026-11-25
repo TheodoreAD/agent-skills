@@ -9,6 +9,7 @@ plain git, the way another machine's session would. Nothing touches a network or
 # pyright: reportAny=false
 
 import importlib.util
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -166,6 +167,8 @@ def test_sync_brings_the_other_machines_plans_in_and_publishes_this_ones(machine
     assert machines.run("sync") == 0
     out = capsys.readouterr().out
     assert "merged the remote's commits" in out
+    # The receipt session-harvest's `filed` attributes a store commit by: one space, own line.
+    assert re.search(rf"^committed: {git(here, 'rev-parse', '--short=12', 'HEAD')}  ", out, re.MULTILINE)
     assert "pushed:    ok" in out
     assert (here / "_unscoped" / "2026-01-02-there.md").exists()
     git(machines.there, "pull", "-q")

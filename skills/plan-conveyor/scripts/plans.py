@@ -661,6 +661,8 @@ class Config:
     # ticket prefix, its domain, its codenames. Per client, decided by the user 2026-11-25, so a
     # scan inside one client's root can allow its own terms while refusing them everywhere else.
     client_terms: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Where each client's own store lives, one directory per contractor root.
+    client_stores_dir: Path = field(default_factory=lambda: Path.home() / "plans-clients")
 
     @property
     def classified(self) -> bool:
@@ -841,8 +843,41 @@ class Config:
         return self.store if tier == SHAREABLE else self.sensitive_store
 
     def store_for(self, rel: str | None) -> Store:
-        """The store a repo's mirrored plans live in."""
+        """The store a repo's mirrored plans live in: its client's own store under a contractor root."""
+        if rel is not None and (root := rel.split("/")[0]) in self.client_roots():
+            return self.client_store(root)
         return self.store_of(self.tier_of(rel))
+
+    def client_roots(self) -> tuple[str, ...]:
+        """Roots classified as a client's, each a compartment with a store of its own.
+
+        Only where the store splits: a client root on any other machine shape is a contradiction
+        `activities` validation already refuses.
+        """
+        if not self.split_by_sensitivity:
+            return ()
+        named = {*self.activity, *self.ownership}
+        return tuple(sorted(root for root in named if self.activity_of(root) == CONTRACTOR))
+
+    def client_store(self, root: str) -> Store:
+        """One client's store: its own git repository, local-only unless its remote is sanctioned.
+
+        One store per client rather than all of them in the sensitive tier, so the isolation the
+        user asked for 2026-11-25 is physical: a session in one client's root has no store path
+        that reaches another client's plans, and a remote sanctioned for one reaches no other.
+        """
+        return Store(SENSITIVE, self.client_stores_dir / root, f"client store for {root}")
+
+    def compartment_of(self, store: Store) -> str | None:
+        """The client root a store belongs to, or None for the shareable and sensitive stores."""
+        path = store.path.expanduser()
+        return next((root for root in self.client_roots() if self.client_store(root).path.expanduser() == path), None)
+
+    def guarded_stores(self) -> list[Store]:
+        """Every store whose remote must be sanctioned: the sensitive one, or the only one, plus each client's."""
+        if not self.guards_remotes:
+            return []
+        return [self.guarded_store, *(self.client_store(root) for root in self.client_roots())]
 
     @staticmethod
     def attachments_dir(store: Store, folder: str | None, stem: str) -> Path:
@@ -868,7 +903,7 @@ class Config:
         found = [self.store]
         if self.sensitive_store.path.expanduser() != self.store.path.expanduser():
             found.append(self.sensitive_store)
-        return found
+        return found + [self.client_store(root) for root in self.client_roots()]
 
 
 CONFIG_DIR = "plan-conveyor"
@@ -1135,6 +1170,8 @@ def load_config() -> Config:
             name.strip("/"): _strings(value, f"private_terms.{name}")
             for name, value in _table(raw, "private_terms").items()
         },
+        # Beside the store by default, like the sensitive tier, so moving the store moves them too.
+        client_stores_dir=_path_field(raw, "client_stores", store.path.parent / f"{store.path.name}-clients"),
         path=path,
         exists=path.is_file(),
         device=device,
@@ -1828,6 +1865,22 @@ class LinkMatch(NamedTuple):
     exact: bool  # False when only letter case differed, which a caller says out loud
 
 
+def identity_folder(identity: str) -> str:
+    """The store folder a repository gets when it is linked on a classified machine: its own name.
+
+    `<host>/<owner>/<repo>` for a remote, `local/<first commit>` for a repository with none. Named
+    after the repository rather than after where one machine's clone sits, so a store shared by
+    machines with different directory names carries no machine's layout — the user's requirement
+    of 2026-11-25 that two machines never be forced to share directory names.
+    """
+    if identity.startswith(LOCAL_IDENTITY):
+        return f"local/{identity.removeprefix(LOCAL_IDENTITY)[:ROOT_COMMIT_CHARS]}"
+    if identity.startswith(FILE_IDENTITY):
+        # A path on one machine is neither portable nor safe as a folder name; a digest of it is both.
+        return f"local/{hashlib.sha256(identity.encode()).hexdigest()[:ROOT_COMMIT_CHARS]}"
+    return "/".join(part for part in identity.split("/") if part not in ("", ".", ".."))
+
+
 def check_link_directory(directory: str) -> str:
     """A table value, refused unless it is a plain folder path inside the store.
 
@@ -2123,6 +2176,33 @@ def store_route(cfg: Config, clone: CloneIdentity, rel: str | None) -> StoreRout
     return _unlinked_route(cfg, clone, clone.own, rel, tables)
 
 
+def _cross_compartment_refusal(
+    cfg: Config, clone: CloneIdentity, rel: str, links: Links, match: LinkMatch
+) -> str | None:
+    """Refuse a write that would cross from one client's compartment into another's.
+
+    A repository linked in client A's store, written from a clone under client B's root — or a
+    client's clone linked into another client's store — would carry one client's work into the
+    other's history. The flow rule says a contractor root is insulated from every other root, so
+    this stops rather than notes. Reading still works; only the write is refused.
+    """
+    store_client = cfg.compartment_of(links.store)
+    root = rel.split("/", maxsplit=1)[0]
+    clone_client = root if root in cfg.client_roots() else None
+    if store_client is None or store_client == clone_client:
+        return None
+    return (
+        "plans: refused, because this would cross from one client's compartment into another's.\n"
+        f"  clone:        {display_path(clone.root)}   (under {root})\n"
+        f"  repository:   {match.identity}\n"
+        f"  plans folder: {display_path(links.store.path / match.directory)}   ({store_client}'s store)\n"
+        "  Each client's root is insulated from every other, so its plans may not be written from a\n"
+        "  clone outside it. Plan from a clone under that client's root, or, if this clone really is\n"
+        "  that repository and belongs elsewhere, ask the user which compartment it is in.\n"
+        "  Reading its plans still works. Nothing was written."
+    )
+
+
 def _linked_route(cfg: Config, clone: CloneIdentity, rel: str | None, links: Links, match: LinkMatch) -> StoreRoute:
     """A repository the table knows: its folder, unless that store is looser than this clone's own.
 
@@ -2135,6 +2215,8 @@ def _linked_route(cfg: Config, clone: CloneIdentity, rel: str | None, links: Lin
     route = StoreRoute(links.store, match.directory, match.identity, True, note)
     if not cfg.has_a_tier_boundary or rel is None:
         return route
+    if (refusal := _cross_compartment_refusal(cfg, clone, rel, links, match)) is not None:
+        return route._replace(refusal=refusal)
     path_tier = cfg.tier_of(rel)
     if links.store.tier == SHAREABLE and path_tier == SENSITIVE:
         return route._replace(refusal=_shareable_refusal_message(clone, rel, links, match))
@@ -2159,12 +2241,19 @@ def _unlinked_route(cfg: Config, clone: CloneIdentity, own: str, rel: str | None
     if rel is None:
         return StoreRoute(None, None, own, False)
     store = cfg.store_for(rel)
-    if names_a_private_root(cfg, store, rel):
+    # A classified machine names a new repository's folder after the repository itself, so the
+    # store carries no machine's directory names (phase 4 of the classification plan). That folder
+    # names the remote, never a private root, so the clone-path naming check below does not apply.
+    # Never where the clone-path folder already exists, unlinked: its plans would drop out of sight
+    # behind a new empty folder. `links rename` moves such a folder deliberately instead.
+    legacy = (store.path.expanduser() / rel).is_dir()
+    folder = identity_folder(own) if cfg.classified and not legacy else rel
+    if folder == rel and names_a_private_root(cfg, store, rel):
         return StoreRoute(store, rel, own, False, refusal=_private_name_message(cfg, clone, rel))
     links = next(table for table in tables if table.store.path == store.path)
-    if links.identities_of(rel):
-        return StoreRoute(store, rel, own, False, refusal=_folder_taken_message(clone, own, links, rel))
-    return StoreRoute(store, rel, own, False)
+    if links.identities_of(folder):
+        return StoreRoute(store, folder, own, False, refusal=_folder_taken_message(clone, own, links, folder))
+    return StoreRoute(store, folder, own, False)
 
 
 def record_link(routing: Routing) -> str:
@@ -2732,11 +2821,135 @@ def _links_claim(cfg: Config, folder: str, value: str) -> int:
     return 0
 
 
+class FolderMove(NamedTuple):
+    """One linked folder `links rename` would move: where it is, where it goes, and whose it is."""
+
+    source: Store
+    folder: str
+    target: Store
+    target_folder: str
+    identities: tuple[str, ...]
+    conflict: str  # empty when the move can go ahead
+
+
+def _primary_identity(identities: list[str]) -> str:
+    """The name a folder is renamed after: a remote's, before a `local:` or `file://` one."""
+    hosted = [name for name in identities if not name.startswith((LOCAL_IDENTITY, FILE_IDENTITY))]
+    return (hosted or identities)[0]
+
+
+def planned_moves(cfg: Config) -> list[FolderMove]:
+    """Every linked folder still named after a machine's directories, or outside its client's store.
+
+    Phase 4 of the classification plan. Only on a classified machine — elsewhere a clone-path name
+    is still the convention, and renaming would be churn nobody asked for. A clone-path folder's
+    first segment is the root it was filed from, which is how a client's folder still sitting in the
+    shared sensitive store is recognised; a folder already named by identity carries no root and
+    stays in the store it is in.
+    """
+    if not cfg.classified:
+        return []
+    clients = set(cfg.client_roots())
+    moves: list[FolderMove] = []
+    for store in cfg.stores():
+        links = read_links(store)
+        for folder in sorted(set(links.entries.values())):
+            identities = links.identities_of(folder)
+            target_folder = identity_folder(_primary_identity(identities))
+            root = folder.split("/")[0]
+            moving_out = cfg.compartment_of(store) is None and root in clients
+            target = cfg.client_store(root) if moving_out else store
+            if target.path == store.path and target_folder == folder:
+                continue
+            taken = read_links(target).identities_of(target_folder)
+            exists = (target.path.expanduser() / target_folder).exists()
+            conflict = ""
+            if taken and set(taken) != set(identities):
+                conflict = f"{target_folder} is already linked to {', '.join(taken)}"
+            elif exists and target_folder != folder:
+                conflict = f"{target_folder} already exists in {display_path(target.path)}"
+            moves.append(FolderMove(store, folder, target, target_folder, tuple(identities), conflict))
+    return moves
+
+
+def _links_rename(cfg: Config, *, apply: bool) -> int:
+    moves = planned_moves(cfg)
+    if not moves:
+        print("nothing to rename: every linked folder is named by its repository and in its compartment's store")
+        return 0
+    for move in moves:
+        held = len(plans_in(move.source.path.expanduser() / move.folder, "store"))
+        where = "" if move.target.path == move.source.path else f"  into {display_path(move.target.path)}"
+        print(f"{'skip' if move.conflict else 'move'}  {display_path(move.source.path)}/{move.folder}")
+        print(f"      -> {move.target_folder}{where}   ({held} plan(s))")
+        if move.conflict:
+            print(f"      left alone: {move.conflict}")
+    ready = [move for move in moves if not move.conflict]
+    if not apply:
+        print(f"\ndry run: {len(ready)} folder(s) would move. Nothing was written. plans.py links rename --yes")
+        return 0
+    for move in ready:
+        _apply_move(cfg, move)
+    print(f"\nmoved {len(ready)} folder(s). Run plans.py sync to publish the shareable store's moves.")
+    return 1 if len(ready) < len(moves) else 0
+
+
+def _tracked(repo: Path, rel: str) -> bool:
+    return bool(git(["ls-files", "--", rel], repo))
+
+
+def _apply_move(cfg: Config, move: FolderMove) -> None:
+    """Move one folder and its links, committing each store it touched — attachments ride along.
+
+    A physical move rather than `git mv`, so plans nobody committed yet move too. Each store's
+    commit carries exactly its side: the source loses the folder and the links, the target gains
+    them. Attachments are outside git, keyed by folder, and moved to the new key.
+    """
+    source_root, target_root = move.source.path.expanduser(), move.target.path.expanduser()
+    src, dst = source_root / move.folder, target_root / move.target_folder
+    tracked = _tracked(source_root, move.folder)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(src), str(dst))
+    old_attachments = source_root / ATTACHMENTS_DIR / move.folder
+    if old_attachments.is_dir():
+        new_attachments = target_root / ATTACHMENTS_DIR / move.target_folder
+        new_attachments.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(old_attachments), str(new_attachments))
+    for parent in src.parents:  # tidy the empty clone-path directories left behind
+        if parent == source_root or any(parent.iterdir()):
+            break
+        parent.rmdir()
+
+    message = f"links: {', '.join(move.identities)} -> {move.target_folder}, named by repository"
+    source_links = read_links(move.source)
+    remaining = {name: folder for name, folder in source_links.entries.items() if folder != move.folder}
+    if move.target.path == move.source.path:
+        entries = {**remaining, **dict.fromkeys(move.identities, move.target_folder)}
+        print(save_links(replace(source_links, entries=entries), message, [src, dst] if tracked else [dst]))
+        return
+    print(
+        save_links(
+            replace(source_links, entries=remaining),
+            f"{message}, moved to its client's store",
+            [src] if tracked else [],
+        )
+    )
+    if not is_git_repo(target_root):
+        _install_store(cfg, move.target)
+    target_links = read_links(move.target)
+    entries = {**target_links.entries, **dict.fromkeys(move.identities, move.target_folder)}
+    print(
+        save_links(replace(target_links, entries=entries), f"{message}, moved from the shared sensitive store", [dst])
+    )
+
+
 def cmd_links(args: argparse.Namespace, ws: Workspace) -> int:
     """Every store's link table: shown, repaired (`fix`), or changed a folder at a time."""
     cfg = ws.require_config()
     if args.action == "fix":
         return _links_fix(cfg, apply=args.yes, prune=args.prune_empty)
+    if args.action == "rename":
+        return _links_rename(cfg, apply=args.yes)
     if args.action == "merge":
         if len(args.names) != 1 or not args.into:
             raise PlanError("usage: plans.py links merge <folder> --into <folder>")
@@ -9310,20 +9523,30 @@ def remote_problems(cfg: Config) -> list[str]:
     The shareable tier is deliberately outside this: it is meant to have a remote, and what may go
     on it is a content question `scan` answers.
     """
-    if not cfg.guards_remotes:
-        return []
-    guarded = cfg.guarded_store
-    if not is_git_repo(guarded.path):
-        return []
-    if cfg.split_by_sensitivity and guarded.path.expanduser() == cfg.store.path.expanduser():
-        return []
+    found: list[str] = []
+    for guarded in cfg.guarded_stores():
+        if not is_git_repo(guarded.path):
+            continue
+        if cfg.split_by_sensitivity and guarded.path.expanduser() == cfg.store.path.expanduser():
+            continue
+        found += _unsanctioned_remote(cfg, guarded)
+    return found
+
+
+def _unsanctioned_remote(cfg: Config, guarded: Store) -> list[str]:
     unsanctioned = sorted(
         url for url in remote_urls(guarded.path).values() if not remote_is_sanctioned(url, cfg.sanctioned_remotes)
     )
     if not unsanctioned:
         return []
-    holding = "several clients' internal architecture" if cfg.split_by_sensitivity else "an employer's internal work"
-    where = f"the {tier_prefix(cfg, guarded)}store {guarded.path}"
+    client = cfg.compartment_of(guarded)
+    if client is not None:
+        holding = f"{client}'s internal work"
+    elif cfg.split_by_sensitivity:
+        holding = "several clients' internal architecture"
+    else:
+        holding = "an employer's internal work"
+    where = f"{client}'s store {guarded.path}" if client else f"the {tier_prefix(cfg, guarded)}store {guarded.path}"
     if cfg.sanctioned_remotes:
         return [
             f"{where} has remote(s) {unsanctioned} that no sanctioned_remotes entry covers "
@@ -9563,6 +9786,11 @@ def link_problems(cfg: Config) -> list[str]:
     per folder would bury the findings that actually need a person.
     """
     found: list[str] = []
+    if moves := planned_moves(cfg):
+        found.append(
+            f"{len(moves)} linked folder(s) are named after a machine's directories, or sit outside their "
+            "client's store — plans.py links rename (a dry run), then --yes"
+        )
     for survey in survey_links(cfg):
         found += [finding.text for finding in survey.findings if finding.group in ("first", "decision")]
         if survey.to_link or survey.rewrites:
@@ -9765,7 +9993,7 @@ def _print_stores(cfg: Config) -> None:
     nobody has looked at read identically, since both are simply absent from the problems list.
     """
     for store in cfg.stores():
-        guarded = cfg.guards_remotes and store.path == cfg.guarded_store.path
+        guarded = any(store.path == candidate.path for candidate in cfg.guarded_stores())
         if not store.path.is_dir():
             state = "missing"
         elif not is_git_repo(store.path):
@@ -10125,10 +10353,12 @@ def build_parser() -> argparse.ArgumentParser:
     link.set_defaults(func=cmd_link)
 
     links = add("links", "every store's link table: show, fix (migrate and repair), merge or claim folders")
-    links.add_argument("action", nargs="?", choices=("show", "fix", "merge", "claim"), default="show")
+    links.add_argument("action", nargs="?", choices=("show", "fix", "rename", "merge", "claim"), default="show")
     links.add_argument("names", nargs="*", metavar="NAME", help="merge: <folder>; claim: <folder> <identity>")
     links.add_argument("--into", metavar="FOLDER", help="merge: the folder to keep")
-    links.add_argument("--yes", action="store_true", help="fix: apply the automatic repairs (default: dry run)")
+    links.add_argument(
+        "--yes", action="store_true", help="fix, rename: apply what the dry run listed (default: dry run)"
+    )
     links.add_argument("--prune-empty", action="store_true", help="fix --yes: also remove empty folders")
     links.set_defaults(func=cmd_links)
 

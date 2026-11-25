@@ -3456,6 +3456,74 @@ def test_a_secret_is_found_and_redacted_on_any_machine(ws, capsys):
     assert "rotate it" in out
 
 
+def test_a_new_client_repo_gets_its_own_store_and_a_folder_named_by_its_repository(ws, capsys):
+    """Phase 4: each client is its own store, and a folder is named after the repository rather than
+    after one machine's directories, so machines never have to agree on directory names."""
+    write_config(ws, CLASSIFIED)
+    assert plans.main(["install", "--quiet", "--path", str(ws.personal)]) == 0
+    client_store = ws.home / "plans-clients" / "client.com-bitbucket"
+    assert (client_store / ".git").is_dir()
+
+    assert plans.main(["new", "first", "--path", str(ws.client)]) == 0
+    written = list((client_store / "example.com" / "x" / "api").glob("*-first.md"))
+    assert written, capsys.readouterr().out
+    assert not ws.sensitive.joinpath("client.com-bitbucket").exists()
+
+
+def test_a_write_from_one_clients_root_into_anothers_store_is_refused(ws):
+    """The same repository cloned under two clients' roots must not carry one's work into the other."""
+    write_config(ws, TWO_CLIENTS)
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    other = make_repo(ws.projects / "otterco-gitlab" / "api")
+    subprocess.run(["git", "remote", "set-url", "origin", "git@example.com:x/api.git"], cwd=other, check=True)
+    client_store = ws.home / "plans-clients" / "client.com-bitbucket"
+    (client_store / plans.LINKS_FILE).write_text('"example.com/x/api" = "example.com/x/api"\n', encoding="utf-8")
+
+    assert "would cross from one client's compartment into another's" in route(other).refusal
+    assert not route(ws.client).refusal
+
+
+def test_links_rename_moves_legacy_folders_into_identity_names_and_client_stores(ws, capsys):
+    """A store written before phase 4: folders named after clone paths, a client's folder in the
+    shared sensitive store. The dry run changes nothing; --yes moves plans, links and attachments."""
+    write_config(ws, CLASSIFIED)
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    (ws.sensitive / plans.LINKS_FILE).write_text(
+        '"example.com/x/api" = "client.com-bitbucket/team/api"\n', encoding="utf-8"
+    )
+    plan(
+        ws.sensitive / "client.com-bitbucket" / "team" / "api",
+        "2026-01-01-client.md",
+        "status: idea\nupdated: 2026-01-01",
+    )
+    attachment = ws.sensitive / "_attachments" / "client.com-bitbucket" / "team" / "api" / "2026-01-01-client"
+    attachment.mkdir(parents=True)
+    (attachment / "trace.log").write_text("evidence", encoding="utf-8")
+    (ws.store / plans.LINKS_FILE).write_text(
+        '"example.com/x/agent-skills" = "github.com-personal/agent-skills"\n', encoding="utf-8"
+    )
+    plan(ws.store / "github.com-personal" / "agent-skills", "2026-01-01-mine.md", "status: idea\nupdated: 2026-01-01")
+    capsys.readouterr()
+
+    assert plans.main(["links", "rename", "--path", str(ws.personal)]) == 0
+    assert "2 folder(s) would move" in capsys.readouterr().out
+    assert (ws.sensitive / "client.com-bitbucket" / "team" / "api" / "2026-01-01-client.md").is_file()
+
+    assert plans.main(["links", "rename", "--yes", "--path", str(ws.personal)]) == 0
+    client_store = ws.home / "plans-clients" / "client.com-bitbucket"
+    assert (client_store / "example.com" / "x" / "api" / "2026-01-01-client.md").is_file()
+    assert (client_store / "_attachments" / "example.com" / "x" / "api" / "2026-01-01-client" / "trace.log").is_file()
+    assert not (ws.sensitive / "client.com-bitbucket").exists()
+    assert (ws.store / "example.com" / "x" / "agent-skills" / "2026-01-01-mine.md").is_file()
+    assert plans.read_links(plans.load_config().client_store("client.com-bitbucket")).entries == {
+        "example.com/x/api": "example.com/x/api"
+    }
+    assert plans.read_links(plans.load_config().sensitive_store).entries == {}
+    capsys.readouterr()
+    assert plans.main(["links", "rename", "--path", str(ws.personal)]) == 0
+    assert "nothing to rename" in capsys.readouterr().out
+
+
 def test_corporate_must_be_the_only_activity(ws):
     write_config(ws, 'activities = ["corporate", "public"]\n')
     with pytest.raises(plans.PlanError, match="corporate is exclusive"):

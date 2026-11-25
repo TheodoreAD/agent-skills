@@ -187,10 +187,24 @@ repo uses is **configuration, never a judgement call made per session**:
 Each store keeps a `repos.toml` linking a repository's identity (its `origin` remote as
 `<host>/<owner>/<repo>`, or `local:<first commit>` with no remote) to a folder. Every clone of the
 repository — parallel checkouts in wrapper directories, a second copy for tests — reads and writes
-that one folder. A repository with no link yet uses its clone path,
-`<store>/<root>/<project>/<repo>` at whatever depth it sits, and its first store write records the
-link. So folders keep path-shaped names, and the name is only a name. `repo:` in a store-held plan
-records the identity.
+that one folder. **On a classified machine a repository with no link yet gets a folder named after
+the repository itself**, `<store>/<host>/<owner>/<repo>` (`local/<first commit>` without a remote),
+so a store shared by several machines carries none of their directory names; elsewhere it uses its
+clone path, `<store>/<root>/<project>/<repo>`. Its first store write records the link, and the name
+is only a name. `repo:` in a store-held plan records the identity.
+
+**On a machine with client work, each client's root has a store of its own**, a separate git
+repository under `~/plans-clients/<root>` (`client_stores` moves the directory), guarded like the
+sensitive store: a remote only where `sanctioned_remotes` covers it. A clone under one client's root
+is refused a write into another client's store, so the insulation is physical rather than a naming
+convention.
+
+**A store laid out before that is moved with `links rename`** — a dry run listing every linked
+folder that is still named after a clone path or still holds a client's plans in the shared
+sensitive store, then `links rename --yes`, which moves the folders, their links and their
+attachments and commits each store it touched. `doctor` says when there is anything to rename. On a
+store several machines sync, run it on one machine and `sync`; the others read the moved folders
+through `repos.toml` as soon as they pull.
 
 **When a store write stops with a message about links, follow the message.** Each one says what it
 found, why it matters, and the exact commands that resolve it, and ends with "Nothing was written"
@@ -240,11 +254,11 @@ cautiously** — kept out of both — until the user says what it is, and `docto
 
 The three machine shapes that follow from `activities`:
 
-| `device`                   | the machine holds                                    | the store                                            |
-| -------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
-| **`contractor`** (default) | several parties' work plus your own repos            | **two** repositories, split by sensitivity           |
-| **`personal`**             | only your own work, public and private               | **one**, which may have a remote; nothing guarded    |
-| **`work`**                 | one organisation — an employer-issued or corp device | **one**, with no tier, pushing only where sanctioned |
+| `device`                   | the machine holds                                    | the store                                              |
+| -------------------------- | ---------------------------------------------------- | ------------------------------------------------------ |
+| **`contractor`** (default) | several parties' work plus your own repos            | **two**, split by sensitivity, plus **one per client** |
+| **`personal`**             | only your own work, public and private               | **one**, which may have a remote; nothing guarded      |
+| **`work`**                 | one organisation — an employer-issued or corp device | **one**, with no tier, pushing only where sanctioned   |
 
 **A personal machine has nothing to keep apart**, so there is no sensitive store and no
 `sanctioned_remotes` question: a private repo's plans sit beside public ones in the store you sync

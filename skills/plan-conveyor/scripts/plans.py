@@ -59,6 +59,7 @@ if sys.version_info[:2] < (3, 11):  # noqa: UP036 — runs exactly where require
     sys.exit(f"plans.py needs Python 3.11 or newer; this is {sys.version.split()[0]} ({sys.executable})")
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -68,6 +69,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import time
 import tomllib
 from collections import Counter
 from collections.abc import Iterator, Sequence
@@ -120,6 +122,17 @@ SHAREABLE, SENSITIVE, SINGLE = "shareable", "sensitive", "single"
 CONTRACTOR, WORK = "contractor", "work"
 DEVICES = (CONTRACTOR, WORK)
 TIERS = (SHAREABLE, SENSITIVE, SINGLE)
+
+# Whether this machine syncs its stores with their git remotes — one key, read on every command, and
+# a remote's presence implies nothing. Decided with the user 2026-11-25: the default is `off`, so a
+# new user needs no remote at all, and `install --explain` asks.
+#
+#   off     no command touches the network; `sync` and `push` say the machine is local-only.
+#   manual  `sync` fetches, merges and pushes when asked; `absorb` warns when the last fetch is old.
+#   auto    every store commit `commit` makes is synced straight after, and `absorb` fetches and
+#           merges first, so a plan filed on another machine is seen at session start.
+SYNC_OFF, SYNC_MANUAL, SYNC_AUTO = "off", "manual", "auto"
+SYNC_MODES = (SYNC_OFF, SYNC_MANUAL, SYNC_AUTO)
 
 # Terms shorter than this are dropped from the confidentiality scan: a three-letter directory name
 # matches half the English language and the resulting noise is what makes a gate get ignored.
@@ -342,6 +355,16 @@ public_roots = ["github.com-personal"]
 # the boundary. Nothing here can check whether the destination repo is private; that is your step.
 # sanctioned_remotes = ["github.corp.example/your-account"]
 
+# Whether this machine syncs its stores with their git remotes, for working on several machines. A
+# store with no remote is a complete setup, so the default is "off" and nothing touches the network.
+#   off     nothing syncs; `plans.py sync` and `push` say this machine is local-only.
+#   manual  `plans.py sync` fetches, merges and pushes when asked; `absorb` warns when the store has
+#           not been fetched for a day.
+#   auto    every store commit made with `plans.py commit` is synced straight after, and `absorb`
+#           fetches and merges first, so a plan filed on another machine is seen at session start.
+# A store joins a remote once per machine, on a URL you confirm: `plans.py join <url> --dry-run`.
+# sync = "auto"
+
 [roots]
 # "github.com-personal" = "repo"
 
@@ -548,6 +571,7 @@ class Config:
     # A path under `projects_root` -> the tier its plans go in, overriding its root's. The longest
     # matching prefix wins, like [roots].
     tiers: dict[str, str] = field(default_factory=dict)
+    sync: str = SYNC_OFF
 
     @property
     def unscoped(self) -> Path:
@@ -915,7 +939,16 @@ def load_config() -> Config:
             _table(raw, "attachments"), "commit_limit_kb", DEFAULT_COMMIT_LIMIT_KB, "attachments"
         ),
         tiers=_tiers(raw),
+        sync=_sync_field(raw),
     )
+
+
+def _sync_field(raw: dict[str, object]) -> str:
+    """`sync`: off, manual or auto, refused otherwise — a misspelt mode must not read as `off`."""
+    value = raw.get("sync", SYNC_OFF)
+    if value not in SYNC_MODES:
+        raise PlanError(f"sync must be one of {', '.join(SYNC_MODES)}, got {value!r}")
+    return str(value)
 
 
 def _tiers(raw: dict[str, object]) -> dict[str, str]:
@@ -4593,6 +4626,9 @@ def cmd_absorb(args: argparse.Namespace, ws: Workspace) -> int:
     thinking about plans — which is exactly where the backlog accumulates.
     """
     routing = ws.require_routable()
+    # First, so a plan filed on another machine is in the store before anything reads it. Without
+    # it, "nothing waiting" and "never fetched" print the same nothing.
+    refresh_stores(ws)
     pending = absorbable(routing)
     pairs = consolidation_pairs(routing, pending) if pending else {}
     stalled, aged = retirements_owed(routing)
@@ -5796,6 +5832,7 @@ def cmd_commit(args: argparse.Namespace, ws: Workspace) -> int:
         print("      removal, under the message you wrote. If that message announced an addition,")
         print("      the addition is in that repo and this diff is a pure deletion.")
     _report_after_commit(cfg, repo, named)
+    auto_sync_after_commit(ws, repo, args)
     return 0
 
 
@@ -7045,32 +7082,49 @@ def cmd_push(args: argparse.Namespace, ws: Workspace) -> int:
     that named a client and was reworded afterwards leaves a clean tree behind a dirty history —
     which is the exact case `--mode tree` cannot see and the README calls out.
     """
-    cfg = ws.config
-    routing = ws.require_routable()
-    terms = ws.private_terms
-    stores = [store for store in cfg.stores() if store.path.expanduser().is_dir()]
-    targets = [store for store in stores if git(["remote"], store.path.expanduser())]
-    del routing
-
-    if not stores:
-        raise PlanError("no plans store exists on this machine yet — run: plans.py install")
+    if (refusal := local_only(ws.config)) is not None:
+        print(refusal)
+        return 0
+    targets, terms = _remote_stores(ws)
     if not targets:
         print("nothing to push: no store on this machine has a remote.")
         print("  That is the documented state for the sensitive tier, which is local by design.")
         return 0
+    return 1 if sum(_push_one(store, terms, args) for store in targets) else 0
 
-    if not terms:
+
+def local_only(cfg: Config) -> str | None:
+    """The message for a machine set to `sync = "off"`, or None when it may reach a remote."""
+    if cfg.sync != SYNC_OFF:
+        return None
+    return (
+        f'nothing sent: this machine is set to sync = "off" in {cfg.path}, so no command reaches a remote.\n'
+        '  To work on several machines: plans.py join <url> --dry-run, then config set sync "manual" or "auto".'
+    )
+
+
+def _remote_stores(ws: Workspace) -> tuple[list[Store], list[str]]:
+    """The stores that have a remote, and the private terms a push of any of them is scanned for."""
+    cfg = ws.config
+    ws.require_routable()
+    stores = [store for store in cfg.stores() if store.path.expanduser().is_dir()]
+    if not stores:
+        raise PlanError("no plans store exists on this machine yet — run: plans.py install")
+    targets = [store for store in stores if git(["remote"], store.path.expanduser())]
+    terms = ws.private_terms
+    if targets and not terms:
         raise PlanError(
             "no private terms could be derived, so the scan would pass vacuously. Set "
             f"public_roots (and [private] extra) in {cfg.path} before pushing a store."
         )
-    return 1 if sum(_push_one(store, terms, args) for store in targets) else 0
+    return targets, terms
 
 
-def _push_one(store: Store, terms: list[str], args: argparse.Namespace) -> bool:
+def _push_one(store: Store, terms: list[str], args: argparse.Namespace, *, header: bool = True) -> bool:
     """Scan and push one store. True when it did not publish and should have."""
     root = store.path.expanduser()
-    print(f"store:     {root}  [{store.tier}]")
+    if header:
+        print(f"store:     {root}  [{store.tier}]")
     ahead = outgoing_range(root)
     if ahead is None:
         print("           nothing to push — the remote already has this branch's tip\n")
@@ -7083,7 +7137,10 @@ def _push_one(store: Store, terms: list[str], args: argparse.Namespace) -> bool:
     if len(listed) > PUSH_LISTED_COMMITS:
         print(f"  ... {len(listed) - PUSH_LISTED_COMMITS} more")
 
-    hits = list(scan_text(git(["log", *span.split(), "-p"], root) or "", terms))
+    # `--cc`: plain `-p` prints no diff at all for a merge commit, so text a conflict resolution
+    # introduced would be published unscanned. The combined diff shows exactly the hunks that differ
+    # from every parent, which is what the merge itself added.
+    hits = list(scan_text(git(["log", *span.split(), "-p", "--cc"], root) or "", terms))
     if hits:
         for hit in hits[: args.samples]:
             print(f"  {span}:{hit.line}: [{hit.term}] {hit.text[:150]}")
@@ -7207,6 +7264,622 @@ def outgoing_range(repo: Path) -> tuple[str, int, str] | None:
     span = f"@{{upstream}}..{tip}"
     count = git(["rev-list", "--count", span], repo)
     return (span, int(count), tip) if count and count != "0" else None
+
+
+# --------------------------------------------------------------------------------------------
+# syncing a store across machines
+#
+# Plain git against whatever remote the store has — no host API, so any git remote works: GitHub,
+# another host, a bare repository on a NAS. The design, the decisions and what was measured are in
+# agent-skills' plans/2026-11-25-store-sync-across-machines.md while it is live, and in this
+# skill's SKILL.md under "Several machines" once it has landed.
+
+FETCH_TIMEOUT = 30
+STALE_FETCH_HOURS = 24
+# The suffix a plan gets when two machines filed the same date and topic with different contents.
+LOCAL_COPY_SUFFIX = "local"
+
+
+class GitRun(NamedTuple):
+    """A git command's outcome with everything it printed, for the commands whose error is the answer."""
+
+    ok: bool
+    output: str
+
+
+def run_git(args: list[str], repo: Path, timeout: int = PUSH_TIMEOUT) -> GitRun:
+    try:
+        done = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return GitRun(ok=False, output=f"timed out after {timeout}s")
+    except OSError as exc:
+        return GitRun(ok=False, output=str(exc))
+    return GitRun(ok=done.returncode == 0, output=(done.stdout + done.stderr).strip())
+
+
+def git_show(repo: Path, spec: str) -> str | None:
+    """A blob's exact text — `git()` strips its output, and a plan's trailing newline is content."""
+    try:
+        done = subprocess.run(["git", "show", spec], cwd=repo, capture_output=True, check=False, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.decode("utf-8", errors="replace") if done.returncode == 0 else None
+
+
+class Upstream(NamedTuple):
+    remote: str
+    branch: str
+
+    @property
+    def ref(self) -> str:
+        return f"refs/remotes/{self.remote}/{self.branch}"
+
+
+def store_upstream(root: Path) -> Upstream | None:
+    """The remote branch this store syncs with: its tracking branch, else its one remote's same name."""
+    local = git(["symbolic-ref", "--short", "HEAD"], root)
+    if not local:
+        return None
+    remote = git(["config", f"branch.{local}.remote"], root)
+    merge = git(["config", f"branch.{local}.merge"], root)
+    if remote and merge:
+        return Upstream(remote, merge.removeprefix("refs/heads/"))
+    remotes = sorted(remote_urls(root))
+    return Upstream(remotes[0], local) if len(remotes) == 1 else None
+
+
+@dataclass(frozen=True)
+class Pulled:
+    """What bringing a remote's commits into a store did.
+
+    `state` is one of: no-remote, remote-empty, up-to-date, fast-forward, merged, skipped (another
+    session has staged work, so nothing was merged), conflict (merge aborted, nothing changed) or
+    failed.
+    """
+
+    state: str
+    detail: str = ""
+    resolved: tuple[str, ...] = ()
+    unresolved: tuple[str, ...] = ()
+
+    @property
+    def blocks_push(self) -> bool:
+        return self.state in ("skipped", "conflict", "failed")
+
+
+def pull_store(root: Path) -> Pulled:
+    """Fetch the store's remote and merge it in, resolving the conflicts that are known to be safe."""
+    upstream = store_upstream(root)
+    if upstream is None:
+        return Pulled("no-remote")
+    fetched = run_git(["fetch", "--quiet", upstream.remote], root, FETCH_TIMEOUT)
+    if not fetched.ok:
+        return Pulled("failed", f"could not fetch {upstream.remote}: {fetched.output}")
+    return merge_upstream(root, upstream.ref, unrelated=False)
+
+
+def merge_in_progress(root: Path) -> bool:
+    return git(["rev-parse", "--verify", "--quiet", "MERGE_HEAD"], root) is not None
+
+
+def merge_upstream(root: Path, ref: str, *, unrelated: bool) -> Pulled:
+    """Merge `ref` into the store's branch, never leaving the shared working tree mid-merge.
+
+    Merge rather than rebase: every session on the machine commits into this one store, and a rebase
+    rewrites commits another session may be about to push. `--no-commit`, so the known conflicts and
+    the link table are settled before the merge commit exists; anything else aborts the merge,
+    because a store left mid-merge blocks every other session working in it.
+    """
+    if git(["rev-parse", "--verify", "--quiet", ref], root) is None:
+        return Pulled("remote-empty", "the remote has no commits on this branch yet; the first push creates it")
+    head = git(["rev-parse", "--verify", "--quiet", "HEAD"], root)
+    if head and git(["merge-base", "--is-ancestor", ref, "HEAD"], root) is not None:
+        return Pulled("up-to-date")
+    # `git merge` refuses outright when the index differs from HEAD, so another session's staged
+    # work is a reason to wait, not a failure — that session's own commit will clear it.
+    if head and git(["diff", "--cached", "--quiet"], root) is None:
+        return Pulled("skipped", "another session has staged work in this store; nothing was merged — sync again later")
+    extra = ["--allow-unrelated-histories"] if unrelated else []
+    merged = run_git(["merge", "--no-edit", "--no-commit", *extra, ref], root)
+    if not merge_in_progress(root):
+        return Pulled("fast-forward") if merged.ok else Pulled("failed", merged.output)
+    return _finish_merge(root, merged.output)
+
+
+def _finish_merge(root: Path, output: str) -> Pulled:
+    resolved: list[str] = []
+    unresolved: list[str] = []
+    for path, stages in sorted(unmerged_paths(root).items()):
+        how = resolve_conflict(root, path, stages)
+        if how:
+            resolved.append(f"{path}: {how}")
+        else:
+            unresolved.append(path)
+    if not unresolved:
+        resolved += reconcile_links(root)
+    if unresolved:
+        run_git(["merge", "--abort"], root)
+        return Pulled("conflict", output, tuple(resolved), tuple(unresolved))
+    done = run_git(["commit", "--no-edit", "--quiet"], root)
+    if not done.ok:
+        run_git(["merge", "--abort"], root)
+        return Pulled("failed", f"could not commit the merge: {done.output}")
+    return Pulled("merged", "", tuple(resolved))
+
+
+def unmerged_paths(root: Path) -> dict[str, set[int]]:
+    """Each conflicted path and which of its three stages exist: 1 base, 2 this machine, 3 the remote."""
+    found: dict[str, set[int]] = {}
+    for line in (git(["ls-files", "--unmerged"], root) or "").splitlines():
+        meta, _, path = line.partition("\t")
+        found.setdefault(path, set()).add(int(meta.split()[2]))
+    return found
+
+
+def resolve_conflict(root: Path, path: str, stages: set[int]) -> str:
+    """Settle one conflicted path, saying how — or "" when it is not one of the known-safe cases.
+
+    The cases are the ones the store-sync plan listed after reading the store's tracked files: the
+    link table, the two generated files, an edit against a deletion, two filings of one name, and
+    two edits of one plan whose `updated:` line differs. Each keeps every side's content; none picks
+    a winner between two pieces of writing.
+    """
+    if path == LINKS_FILE:
+        return "merged by repository identity"  # written by `reconcile_links` once the rest is settled
+    if path in (STORE_README_FILE, GITATTRIBUTES_FILE):
+        return _take_side(root, path, 3 if 3 in stages else 2, "generated by install; kept the remote's copy")
+    if stages == {1, 2}:
+        return _take_side(root, path, 2, "edited here and deleted on the remote; kept the edit")
+    if stages == {1, 3}:
+        return _take_side(root, path, 3, "deleted here and edited on the remote; kept the edit")
+    if not path.endswith(".md"):
+        return ""
+    if stages == {2, 3}:
+        return _keep_both(root, path)
+    if stages == {1, 2, 3}:
+        return _merge_dates(root, path)
+    return ""
+
+
+def _take_side(root: Path, path: str, stage: int, how: str) -> str:
+    text = git_show(root, f":{stage}:{path}")
+    if text is None:
+        return ""
+    target = root / path
+    target.write_text(text, encoding="utf-8", newline="\n")
+    return how if git(["add", "--", path], root) is not None else ""
+
+
+def _keep_both(root: Path, path: str) -> str:
+    """Two machines filed one date and topic: the remote's keeps the name, this machine's is renamed."""
+    ours, theirs = git_show(root, f":2:{path}"), git_show(root, f":3:{path}")
+    if ours is None or theirs is None:
+        return ""
+    target = root / path
+    sibling = _free_sibling(target)
+    target.write_text(theirs, encoding="utf-8", newline="\n")
+    sibling.write_text(ours, encoding="utf-8", newline="\n")
+    rel = sibling.relative_to(root).as_posix()
+    if git(["add", "--", path, rel], root) is None:
+        return ""
+    return f"filed on both machines with different contents; the remote's kept the name, this one is {sibling.name}"
+
+
+def _free_sibling(path: Path) -> Path:
+    candidate = path.with_name(f"{path.stem}-{LOCAL_COPY_SUFFIX}{path.suffix}")
+    number = 2
+    while candidate.exists():
+        candidate = path.with_name(f"{path.stem}-{LOCAL_COPY_SUFFIX}-{number}{path.suffix}")
+        number += 1
+    return candidate
+
+
+UPDATED_LINE_RE = re.compile(r"(?m)^updated:.*$")
+
+
+def _merge_dates(root: Path, path: str) -> str:
+    """Two edits of one plan: set `updated:` to the later date on all three sides, then merge the rest.
+
+    Every edit rewrites that line, so without this two machines editing different sections of one
+    plan always conflict on it. Whatever still conflicts after it is real, and stays unresolved.
+    """
+    texts = [git_show(root, f":{stage}:{path}") for stage in (1, 2, 3)]
+    base, ours, theirs = texts
+    if base is None or ours is None or theirs is None:
+        return ""
+    dates = [parse_frontmatter(text).get("updated", "") for text in (ours, theirs)]
+    latest = max(dates)
+    if not latest:
+        return ""
+    dated = [UPDATED_LINE_RE.sub(f"updated: {latest}", text, count=1) for text in (ours, base, theirs)]
+    merged = merge_file(root, dated)
+    if merged is None:
+        return ""
+    (root / path).write_text(merged, encoding="utf-8", newline="\n")
+    if git(["add", "--", path], root) is None:
+        return ""
+    return f"edited on both machines; merged, with updated: set to the later date, {latest}"
+
+
+def merge_file(root: Path, texts: list[str]) -> str | None:
+    """`git merge-file` over (ours, base, theirs): the merged text, or None if anything conflicts.
+
+    Its own call rather than `run_git`, because the merged text is stdout alone — stderr carries
+    warnings, and `run_git` joins the two and strips the trailing newline a plan ends with.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        files = [Path(tmp) / name for name in ("ours", "base", "theirs")]
+        for file, text in zip(files, texts, strict=True):
+            file.write_text(text, encoding="utf-8", newline="\n")
+        try:
+            done = subprocess.run(
+                ["git", "merge-file", "-p", *(str(file) for file in files)],
+                cwd=root,
+                capture_output=True,
+                check=False,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return done.stdout.decode("utf-8") if done.returncode == 0 else None
+
+
+def reconcile_links(root: Path) -> list[str]:
+    """Rewrite the link table as the union of both sides, compared by repository identity.
+
+    Run on every merge, conflicted or not. Git's line merge cannot see that two spellings differing
+    only in letter case are one repository, so a clean merge can still leave one identity naming two
+    folders. Here the remote's folder wins, and this machine's plans in the other folder move into it.
+    """
+    ours, theirs = git_show(root, f"HEAD:{LINKS_FILE}"), git_show(root, f"MERGE_HEAD:{LINKS_FILE}")
+    if ours is None or theirs is None:
+        return []
+    try:
+        ours_entries = {str(k): str(v) for k, v in tomllib.loads(ours).items()}
+        entries = {str(k): str(v) for k, v in tomllib.loads(theirs).items()}
+    except tomllib.TOMLDecodeError:
+        return []
+    moves: list[tuple[str, str]] = []
+    for spelled, folder in ours_entries.items():
+        key = identity_key(spelled)
+        match = next((other for other in entries.items() if identity_key(other[0]) == key), None)
+        if match is None:
+            entries[spelled] = folder
+        elif match[1] != folder:
+            moves.append((folder, match[1]))
+    table = Links(Store(SHAREABLE, root, "merge"), entries)
+    write_links(table)
+    git(["add", "--", LINKS_FILE], root)
+    notes = [f"{LINKS_FILE}: one repository linked to two folders; kept {target}" for _, target in moves]
+    for source, target in moves:
+        notes += _move_folder(root, source, target, entries)
+    return notes
+
+
+def _move_folder(root: Path, source: str, target: str, entries: dict[str, str]) -> list[str]:
+    """Move this machine's plans from `source` into the folder the remote links the repository to."""
+    if source in entries.values():
+        return [f"{source}: still linked to another repository, so nothing was moved — plans.py links fix"]
+    notes: list[str] = []
+    for rel in (git(["ls-files", "--", source], root) or "").splitlines():
+        destination = root / target / Path(rel).relative_to(source)
+        if destination.exists():
+            destination = _free_sibling(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        moved = run_git(["mv", "--", rel, destination.relative_to(root).as_posix()], root)
+        notes.append(f"{rel}: moved to {destination.relative_to(root).as_posix()}" if moved.ok else f"{rel}: NOT moved")
+    return notes
+
+
+def print_pulled(pulled: Pulled, *, quiet: bool = False) -> None:
+    """One line per outcome; `quiet` drops the outcomes that changed nothing, for session start."""
+    words = {
+        "no-remote": "no remote — nothing to bring in",
+        "remote-empty": pulled.detail,
+        "up-to-date": "already has everything the remote has",
+        "fast-forward": "fast-forwarded to the remote",
+        "merged": "merged the remote's commits",
+        "skipped": pulled.detail,
+        "conflict": "CONFLICT: the merge was aborted and nothing changed",
+        "failed": f"FAILED: {pulled.detail}",
+    }
+    if quiet and pulled.state in ("no-remote", "up-to-date", "remote-empty"):
+        return
+    print(f"pulled:    {words.get(pulled.state, pulled.state)}")
+    for line in pulled.resolved:
+        print(f"  resolved   {line}")
+    for path in pulled.unresolved:
+        print(f"  unresolved {path} — edit it on one machine, sync, then sync the other")
+
+
+def sync_store(store: Store, terms: list[str], args: argparse.Namespace) -> bool:
+    """Bring the remote in, then push through the usual scan. True when it should have and did not."""
+    root = store.path.expanduser()
+    print(f"store:     {root}  [{store.tier}]")
+    pulled = pull_store(root)
+    print_pulled(pulled)
+    if pulled.blocks_push:
+        print("           not pushed\n")
+        return pulled.state != "skipped"
+    return _push_one(store, terms, args, header=False)
+
+
+def cmd_sync(args: argparse.Namespace, ws: Workspace) -> int:
+    """Fetch, merge and push every store that has a remote, scanning what the push publishes."""
+    if (refusal := local_only(ws.config)) is not None:
+        print(refusal)
+        return 0
+    targets, terms = _remote_stores(ws)
+    if not targets:
+        print("nothing to sync: no store on this machine has a remote — plans.py join <url> --dry-run")
+        return 0
+    return 1 if sum(sync_store(store, terms, args) for store in targets) else 0
+
+
+def auto_sync_after_commit(ws: Workspace, repo: Path, args: argparse.Namespace) -> None:
+    """With `sync = "auto"`, a store commit is synced straight after. A failure never undoes the commit."""
+    cfg = ws.config
+    if cfg.sync != SYNC_AUTO or getattr(args, "no_sync", False) or not is_store(cfg, repo):
+        return
+    store = next(store for store in cfg.stores() if store.path.expanduser().resolve() == repo.resolve())
+    if not git(["remote"], repo):
+        return
+    print()
+    sync_args = argparse.Namespace(dry_run=False, samples=20)
+    if sync_store(store, ws.private_terms, sync_args):
+        print("WARNING:   the commit stands; the sync did not finish — plans.py sync says why")
+
+
+def refresh_stores(ws: Workspace) -> None:
+    """At session start: with `auto`, bring every store's remote in; with `manual`, say when it is stale.
+
+    Printed to stderr, so `absorb --json` stays one JSON document on stdout.
+    """
+    cfg = ws.config
+    if cfg.sync == SYNC_OFF:
+        return
+    for store in cfg.stores():
+        root = store.path.expanduser()
+        if not is_git_repo(root) or not git(["remote"], root):
+            continue
+        if cfg.sync == SYNC_AUTO:
+            _refresh_one(root)
+        elif (age := hours_since_fetch(root)) is None or age >= STALE_FETCH_HOURS:
+            when = "never" if age is None else f"{age} hour(s) ago"
+            print(f"note: {root} was last fetched {when} (sync = manual) — plans.py sync", file=sys.stderr)
+
+
+def _refresh_one(root: Path) -> None:
+    pulled = pull_store(root)
+    if pulled.state in ("no-remote", "up-to-date", "remote-empty"):
+        return
+    with contextlib.redirect_stdout(sys.stderr):
+        print(f"store:     {root}")
+        print_pulled(pulled)
+        if pulled.state in ("failed", "skipped", "conflict"):
+            print("           read the local copy — plans filed on another machine may not show yet")
+
+
+def hours_since_fetch(root: Path) -> int | None:
+    """Whole hours since this store last fetched, from `FETCH_HEAD`'s timestamp; None if it never has."""
+    git_dir = git(["rev-parse", "--absolute-git-dir"], root)
+    if not git_dir:
+        return None
+    fetch_head = Path(git_dir) / "FETCH_HEAD"
+    if not fetch_head.exists():
+        return None
+    return int((time.time() - fetch_head.stat().st_mtime) // 3600)
+
+
+def sync_state(root: Path) -> str:
+    """Behind and ahead of the remote as of the last fetch, and when that was — for `doctor`."""
+    upstream = store_upstream(root)
+    if upstream is None or git(["rev-parse", "--verify", "--quiet", upstream.ref], root) is None:
+        return ""
+    counts = git(["rev-list", "--left-right", "--count", f"{upstream.ref}...HEAD"], root)
+    behind, _, ahead = (counts or "0\t0").partition("\t")
+    age = hours_since_fetch(root)
+    fetched = "never fetched" if age is None else f"fetched {age}h ago"
+    return f"{behind} behind, {ahead} ahead, {fetched}"
+
+
+# Joining a remote, once per machine. Decided 2026-11-25: the skill may add the store's remote, but
+# only on a URL the user has confirmed, and joining never loses a local plan — a store that already
+# holds plans is merged with the remote's history rather than replaced by it.
+
+JOIN_CLONE, JOIN_ADOPT, JOIN_ALREADY = "clone", "adopt", "already joined"
+
+
+def join_state(root: Path, url: str) -> str:
+    """Which of the joining cases this store is in. Raises when joining would mean guessing."""
+    if not root.exists() or not any(root.iterdir()):
+        return JOIN_CLONE
+    if not is_git_repo(root):
+        raise PlanError(f"{root} exists and is not a git repository — nothing here can say what it holds")
+    urls = remote_urls(root)
+    if url in urls.values():
+        return JOIN_ALREADY if _shares_history(root) else JOIN_ADOPT
+    if urls:
+        listed = ", ".join(f"{name} = {value}" for name, value in sorted(urls.items()))
+        raise PlanError(
+            f"{root} already has a remote ({listed}), not {url}. Which one is right is your call; "
+            "nothing was changed. Remove the one that is wrong with git remote remove, then join again."
+        )
+    return JOIN_ADOPT
+
+
+def _shares_history(root: Path) -> bool:
+    """Whether the store's branch and its remote's have a common commit — or nothing to compare yet."""
+    upstream = store_upstream(root)
+    if upstream is None or git(["rev-parse", "--verify", "--quiet", upstream.ref], root) is None:
+        return True
+    if git(["rev-parse", "--verify", "--quiet", "HEAD"], root) is None:
+        return False
+    return git(["merge-base", "HEAD", upstream.ref], root) is not None
+
+
+def remote_default_branch(root: Path, url: str) -> str | None:
+    """The branch the remote's HEAD names, or None for an empty remote. Raises when it is unreachable."""
+    listed = run_git(["ls-remote", "--symref", url, "HEAD"], root if root.is_dir() else Path.cwd(), FETCH_TIMEOUT)
+    if not listed.ok:
+        raise PlanError(f"cannot read {url}: {listed.output}")
+    for line in listed.output.splitlines():
+        if line.startswith("ref: refs/heads/"):
+            return line.removeprefix("ref: refs/heads/").split("\t")[0]
+    return None
+
+
+class JoinPreview(NamedTuple):
+    """What adopting a remote would do, read before anything in the store changes."""
+
+    only_here: list[str]
+    only_remote: list[str]
+    both_differ: list[str]
+    untracked_clashes: list[str]
+    outgoing: int
+
+
+def _tree(root: Path, rev: str) -> dict[str, str]:
+    listed = git(["ls-tree", "-r", rev], root) or ""
+    found: dict[str, str] = {}
+    for line in listed.splitlines():
+        meta, _, path = line.partition("\t")
+        found[path] = meta.split()[2]
+    return found
+
+
+def preview_join(root: Path, url: str, branch: str | None) -> JoinPreview:
+    """Fetch the remote into `FETCH_HEAD` only — no branch, remote or file changes — and compare."""
+    remote: dict[str, str] = {}
+    if branch:
+        fetched = run_git(["fetch", "--quiet", url, branch], root, FETCH_TIMEOUT)
+        if not fetched.ok:
+            raise PlanError(f"cannot fetch {url}: {fetched.output}")
+        remote = _tree(root, "FETCH_HEAD")
+    has_head = git(["rev-parse", "--verify", "--quiet", "HEAD"], root) is not None
+    here = _tree(root, "HEAD") if has_head else {}
+    untracked = (git(["ls-files", "--others", "--exclude-standard"], root) or "").splitlines()
+    count = git(["rev-list", "--count", "HEAD"], root) if has_head else "0"
+    return JoinPreview(
+        only_here=sorted(path for path in here if path not in remote),
+        only_remote=sorted(path for path in remote if path not in here),
+        both_differ=sorted(path for path in here if path in remote and here[path] != remote[path]),
+        untracked_clashes=sorted(path for path in untracked if path in remote),
+        outgoing=int(count or "0"),
+    )
+
+
+def _blocking_untracked(preview: JoinPreview) -> list[str]:
+    """Untracked files the merge would overwrite that are not regenerable — a plan never committed."""
+    return [path for path in preview.untracked_clashes if path not in (STORE_README_FILE, GITATTRIBUTES_FILE)]
+
+
+def _print_join_preview(root: Path, url: str, branch: str | None, preview: JoinPreview) -> None:
+    print(f"store:     {root}")
+    print(f"remote:    {url}  (branch {branch or '— none yet, the remote is empty'})")
+    local = git(["symbolic-ref", "--short", "HEAD"], root)
+    if branch and local and local != branch:
+        print(f"branch:    this store's {local} is renamed to {branch}, the remote's, before merging")
+    plans_here = [path for path in preview.only_here if path.endswith(".md")]
+    print(f"only here: {len(plans_here)} plan file(s), kept and added to the remote's")
+    print(f"only there: {len([path for path in preview.only_remote if path.endswith('.md')])} plan file(s), brought in")
+    for path in preview.both_differ:
+        print(f"  differs  {path}: {_predicted(path)}")
+    for path in preview.untracked_clashes:
+        regenerable = path in (STORE_README_FILE, GITATTRIBUTES_FILE)
+        print(f"  untracked {path}: {'removed, the remote copy replaces it' if regenerable else 'BLOCKS the join'}")
+    print(f"publishes: {preview.outgoing} local commit(s) on the next sync, after the private-name scan")
+
+
+def _predicted(path: str) -> str:
+    if path == LINKS_FILE:
+        return "merged by repository identity"
+    if path in (STORE_README_FILE, GITATTRIBUTES_FILE):
+        return "generated; the remote's copy is kept"
+    if path.endswith(".md"):
+        return "both kept — merged if both edited one plan, else this machine's is renamed -local"
+    return "may conflict; the join stops there and changes nothing"
+
+
+def cmd_join(args: argparse.Namespace, ws: Workspace) -> int:
+    """Tie this machine's store to a remote the user has confirmed, without losing a local plan."""
+    cfg = ws.config
+    store = cfg.store
+    root = store.path.expanduser()
+    if store.tier == SINGLE and not remote_is_sanctioned(args.url, cfg.sanctioned_remotes):
+        raise PlanError(
+            f"{args.url} is not covered by sanctioned_remotes, and this work device's store may only "
+            "go to a destination recorded there: config set sanctioned_remotes '[\"<host>/<owner>\"]'"
+        )
+    state = join_state(root, args.url)
+    if state == JOIN_ALREADY:
+        print(f"{root} is already joined to {args.url} — plans.py sync brings it up to date")
+        return 0
+    if state == JOIN_CLONE:
+        return _join_by_clone(root, args)
+    branch = remote_default_branch(root, args.url)
+    preview = preview_join(root, args.url, branch)
+    _print_join_preview(root, args.url, branch, preview)
+    if blocking := _blocking_untracked(preview):
+        raise PlanError(
+            f"{', '.join(blocking)} exist here uncommitted and on the remote too; joining would overwrite "
+            "them. Commit them with plans.py commit first, then join again. Nothing was changed."
+        )
+    if args.dry_run:
+        print("\ndry run:   nothing changed except fetched objects. Run again without --dry-run to join.")
+        return 0
+    return _adopt(root, args, branch, preview)
+
+
+def _join_by_clone(root: Path, args: argparse.Namespace) -> int:
+    print(f"store:     {root} — absent or empty, so the remote is cloned into it")
+    print(f"remote:    {args.url}")
+    if args.dry_run:
+        print("dry run:   nothing changed")
+        return 0
+    cloned = run_git(["clone", "--quiet", "--origin", args.remote_name, args.url, str(root)], Path.cwd(), PUSH_TIMEOUT)
+    if not cloned.ok:
+        raise PlanError(f"could not clone {args.url}: {cloned.output}")
+    print("cloned:    ok — next: plans.py install, which adds anything this machine still lacks")
+    return 0
+
+
+def _adopt(root: Path, args: argparse.Namespace, branch: str | None, preview: JoinPreview) -> int:
+    name = args.remote_name
+    if args.url not in remote_urls(root).values():
+        added = run_git(["remote", "add", name, args.url], root)
+        if not added.ok:
+            raise PlanError(f"could not add the remote: {added.output}")
+    print(f"\nremote:    added as {name}")
+    if branch is None:
+        print("next:      plans.py sync — the remote is empty, so the first sync publishes this store")
+        return 0
+    fetched = run_git(["fetch", "--quiet", name], root, FETCH_TIMEOUT)
+    if not fetched.ok:
+        raise PlanError(f"could not fetch {name}: {fetched.output}")
+    _rename_branch(root, branch)
+    for path in preview.untracked_clashes:
+        (root / path).unlink()
+    pulled = merge_upstream(root, f"refs/remotes/{name}/{branch}", unrelated=True)
+    print_pulled(pulled)
+    if pulled.blocks_push:
+        print("next:      resolve the unresolved paths above, then plans.py join again")
+        return 1
+    run_git(["branch", f"--set-upstream-to={name}/{branch}"], root)
+    print(f"next:      plans.py sync — scans and publishes {preview.outgoing} local commit(s)")
+    return 0
+
+
+def _rename_branch(root: Path, branch: str) -> None:
+    """Take the remote's branch name, so the first push does not create a second branch there."""
+    local = git(["symbolic-ref", "--short", "HEAD"], root)
+    if not local or local == branch:
+        return
+    if git(["rev-parse", "--verify", "--quiet", "HEAD"], root) is None:
+        git(["symbolic-ref", "HEAD", f"refs/heads/{branch}"], root)
+    else:
+        git(["branch", "-m", local, branch], root)
+    print(f"branch:    renamed {local} to {branch}")
 
 
 def cmd_migrate(args: argparse.Namespace, ws: Workspace) -> int:
@@ -7830,6 +8503,7 @@ def install_decisions(ws: Workspace) -> list[Decision]:
                 ),
             )
         )
+    decisions.append(_sync_decision(cfg))
     decisions.append(
         Decision(
             key="private.extra",
@@ -7840,6 +8514,36 @@ def install_decisions(ws: Workspace) -> list[Decision]:
         )
     )
     return decisions
+
+
+def _sync_decision(cfg: Config) -> Decision:
+    """Local-only, or several machines through a git remote — asked, never assumed.
+
+    Decided 2026-11-25: the default is no remote, so a new user needs none, and the walkthrough asks.
+    The store's join state is read from the repository, because the answer differs for a store that
+    already holds plans: joining merges them into the remote's rather than replacing them.
+    """
+    root = cfg.store.path.expanduser()
+    urls = sorted(remote_urls(root).values()) if is_git_repo(root) else []
+    holding = len(store_plan_files(cfg.store)) if root.is_dir() else 0
+    joined = f"the store's remote is {', '.join(urls)}" if urls else f"no remote; {holding} plan(s) in the store"
+    return Decision(
+        key="sync",
+        what=(
+            "whether this machine keeps its plans locally (`off`) or shares them with your other "
+            "machines through a git remote (`manual`: sync when asked; `auto`: every store commit "
+            "syncs, and absorb fetches first). To share, the user creates an empty private repository "
+            "anywhere git can reach, confirms its URL, and you run plans.py join <url> --dry-run, "
+            "show them the result, then join for real"
+        ),
+        current=f"{cfg.sync}; {joined}",
+        suggest="off on a single machine; auto once there is a second one",
+        cost=(
+            "off on several machines leaves each with plans the others never see. A store that "
+            "already holds plans is merged into the remote's, never replaced — the dry run lists "
+            "every plan on each side and every conflict before anything changes"
+        ),
+    )
 
 
 def _suggest_own_accounts(ws: Workspace) -> str:
@@ -8247,6 +8951,7 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
             "projects_root": str(cfg.projects_root),
             "store": str(cfg.store.path),
             "store_source": cfg.store.source,
+            "sync": cfg.sync,
             "stores": [
                 {
                     # Null on a one-store machine for the same reason the root rows are: `single` is
@@ -8256,6 +8961,7 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
                     "source": store.source,
                     "git": is_git_repo(store.path),
                     "remotes": (git(["remote"], store.path) or "").split(),
+                    "sync_state": sync_state(store.path.expanduser()) if is_git_repo(store.path) else "",
                 }
                 for store in cfg.stores()
             ],
@@ -8375,8 +9081,11 @@ def _print_stores(cfg: Config) -> None:
                 for name, url in sorted(remotes.items())
             ]
             state = f"remote: {', '.join(marks)}" if marks else "no remote"
+            if marks and (synced := sync_state(store.path.expanduser())):
+                state += f"; {synced}"
         tier = f"{store.tier}, " if cfg.split_by_sensitivity else ""
         print(f"store:         {store.path} (from {store.source})  [{tier}{state}]")
+    print(f"sync:          {cfg.sync}{'' if cfg.sync != SYNC_OFF else '  (local-only — no command reaches a remote)'}")
 
 
 def cmd_uninstall(args: argparse.Namespace, ws: Workspace) -> int:
@@ -8583,6 +9292,7 @@ def show_config(cfg: Config) -> int:
         print(f"shareable:     {', '.join(cfg.shareable_root_names()) or '(none)'}{fallback}")
     sanctioned = ", ".join(cfg.sanctioned_remotes) or "(unset — any remote on the guarded store is reported)"
     print(f"sanctioned:    {sanctioned}")
+    print(f"sync:          {cfg.sync}")
     print(f"own_accounts:  {', '.join(cfg.own_accounts) or '(unset — no ownership is checked)'}")
     print(f"default:       {cfg.default.describe() if cfg.default else _no_default_description(cfg)}")
     for section, rules in (("roots", cfg.roots), ("repos", cfg.repos), ("orgs", cfg.orgs)):
@@ -8698,6 +9408,17 @@ def build_parser() -> argparse.ArgumentParser:
     push.add_argument("--samples", type=int, default=20, help="how many hit lines to print (default: 20)")
     push.set_defaults(func=cmd_push)
 
+    sync = add("sync", "bring each store's remote in, settle the known conflicts, then scan and push")
+    sync.add_argument("--dry-run", action="store_true", help="fetch and merge, scan, but push nothing")
+    sync.add_argument("--samples", type=int, default=20, help="how many hit lines to print (default: 20)")
+    sync.set_defaults(func=cmd_sync)
+
+    join = add("join", "tie this machine's store to a remote you confirmed, keeping every local plan")
+    join.add_argument("url", help="the store's git remote, exactly as the user confirmed it")
+    join.add_argument("--dry-run", action="store_true", help="say what joining would do; change nothing")
+    join.add_argument("--remote-name", default="origin", help="the name to give the remote (default: origin)")
+    join.set_defaults(func=cmd_join)
+
     attach = add("attach", "copy evidence somewhere stable and record it in the plan")
     attach.add_argument("plan", help="plan path or bare filename")
     attach.add_argument("files", nargs="+", metavar="FILE", help="the files to copy in")
@@ -8730,6 +9451,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TEXT",
         help="the commit body: what the change is for, what it beat, what it cost. Goes under "
         "the derived subject, never replaces it — where no subject can be derived, use -m",
+    )
+    commit.add_argument(
+        "--no-sync", action="store_true", help='with sync = "auto": keep this store commit local for now'
     )
     commit.set_defaults(func=cmd_commit)
 

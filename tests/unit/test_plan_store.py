@@ -3972,7 +3972,8 @@ def test_pending_says_so_when_there_is_nothing_to_commit(ws, capsys):
 # English sense ("a client's name inside any file"). That is exactly the case the scan's own advice
 # names: a term that is a generic word rather than an identity belongs in `[private] ignore`, never
 # silenced by widening `public_roots`. Without it, `push` refuses every store on the README alone.
-IGNORING_THE_WORD_CLIENT = tiered('[private]\nignore = ["client"]\n')
+# `sync = "manual"` because the default, "off", is a machine that reaches no remote at all.
+IGNORING_THE_WORD_CLIENT = tiered('sync = "manual"\n[private]\nignore = ["client"]\n')
 
 
 def test_only_a_plan_in_transit_is_excused_from_giving_a_reason(ws, capsys, monkeypatch):

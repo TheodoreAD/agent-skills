@@ -1065,6 +1065,24 @@ def test_the_anchor_prevents_refusing_a_correct_action_under_drift(ws, capsys, m
     assert (ws.personal / "plans" / f"{plans.today()}-correct.md").is_file()
 
 
+@pytest.mark.parametrize(("windows", "anchored"), [(True, True), (False, False)])
+def test_the_anchor_ignores_case_in_the_transcript_directory_only_on_windows(ws, monkeypatch, windows, anchored):
+    """Claude Code on Windows names the directory with a lowercase drive letter (`c--Users-...`)
+    while the repo resolves to `C:\\Users\\...`; an exact match never succeeded there. Elsewhere a
+    directory differing only in case is a different path, so it must stay unmatched."""
+    write_config(ws, 'default = "store"\n[roots]\n"github.com-personal" = "repo"\n')
+    monkeypatch.setattr(plans, "WINDOWS", windows)
+    anchor_session_to(ws, ws.personal, monkeypatch)
+    root = ws.home / ".claude" / "projects"
+    exact = root / plans.encode_project_dir(ws.personal)
+    exact.rename(root / exact.name.swapcase())
+    monkeypatch.chdir(ws.personal)
+
+    found = plans.claude_session_repo(plans.load_config())
+
+    assert (found == ws.personal) is anchored
+
+
 def test_the_anchor_falls_back_to_cwd_outside_claude_code(ws, capsys, monkeypatch):
     """The skill has to work under any harness; an absent or unmatched session id is a fallback to
     the previous behaviour, not a failure."""

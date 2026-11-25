@@ -3788,12 +3788,17 @@ def claude_session_repo(cfg: Config) -> Path | None:
 
     The encoding is lossy (several characters all become `-`), so candidates are encoded and
     compared rather than the directory name being decoded, which would be ambiguous.
+
+    On Windows the comparison ignores case. Confirmed 2026-11-25: Claude Code named the directory
+    `c--Users-...` with a lowercase drive letter while the repo resolved to `C:\\Users\\...`, so an
+    exact match never succeeded and doctor always reported no session anchor.
     """
     transcript = claude_transcript()
     if transcript is None:
         return None
-    encoded = transcript.parent.name
-    return next((repo for repo in _candidate_repos(cfg) if encode_project_dir(repo) == encoded), None)
+    fold = str.casefold if WINDOWS else str
+    encoded = fold(transcript.parent.name)
+    return next((repo for repo in _candidate_repos(cfg) if fold(encode_project_dir(repo)) == encoded), None)
 
 
 def claude_transcript() -> Path | None:

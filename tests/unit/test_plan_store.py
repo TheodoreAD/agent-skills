@@ -3377,6 +3377,16 @@ def test_a_personal_machine_keeps_one_store_that_may_have_a_remote(ws, capsys):
     assert "decision: sanctioned_remotes" not in capsys.readouterr().out
 
 
+def test_an_onboarded_machine_with_nothing_private_passes_the_scan(ws, capsys):
+    """Before onboarding, no terms meant nobody had configured the scan. After it, no terms is the
+    user's answer, and refusing left a personal machine unable to publish anything (2026-11-25)."""
+    write_config(ws, 'activities = ["public", "private"]\n[ownership]\n"github.com-personal" = "own"\n')
+    shutil.rmtree(ws.projects / "client.com-bitbucket")  # no client root: nothing here is private
+
+    assert plans.main(["scan", "--path", str(ws.personal)]) == 0
+    assert "nothing this machine must keep out of a published repo" in capsys.readouterr().out
+
+
 def test_doctor_names_plans_left_in_a_sensitive_store_a_personal_machine_stopped_reading(ws, capsys):
     """Re-onboarding as personal drops the sensitive store from every read; a plan still in it
     would vanish from listings without a word."""

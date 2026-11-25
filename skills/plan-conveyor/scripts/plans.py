@@ -7363,7 +7363,10 @@ def _remote_stores(ws: Workspace) -> tuple[list[Store], list[str]]:
         raise PlanError("no plans store exists on this machine yet — run: plans.py install")
     targets = [store for store in stores if git(["remote"], store.path.expanduser())]
     terms = ws.private_terms
-    if targets and not terms:
+    # Empty is vacuous only on a machine nobody classified. Once onboarding is finished it is the
+    # user's answer — every root open, no extra names — and refusing would make a personal machine
+    # unable to publish at all, which is what it did on 2026-11-25 until this line.
+    if targets and not terms and not cfg.onboarded:
         raise PlanError(
             "no private terms could be derived, so the scan would pass vacuously. Set "
             f"public_roots (and [private] extra) in {cfg.path} before pushing a store."
@@ -8437,9 +8440,11 @@ def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
     if root is None:
         raise PlanError(f"{args.path} is not inside a git repository")
     if not terms:
-        print("terms:   none derived — set public_roots (and [private] extra) in the config first")
-        print(f"config:  {cfg.path}")
-        return 1
+        # Onboarded (checked above), so this is the user's answer rather than a gap: every root on
+        # the machine is open and no extra name was given. Secrets are not this scan's job.
+        print("terms:   none — onboarding classified every root here as open and listed no private names,")
+        print("         so there is nothing this machine must keep out of a published repo")
+        return 0
 
     tally: Counter[str] = Counter()
     hits = 0

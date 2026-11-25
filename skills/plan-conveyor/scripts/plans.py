@@ -119,8 +119,12 @@ SHAREABLE, SENSITIVE, SINGLE = "shareable", "sensitive", "single"
 #                organisation, so there is no boundary for a tier to draw. One store, treated as
 #                sensitive throughout, and the second store stops existing rather than sitting
 #                empty while every command still reasons about it.
-CONTRACTOR, WORK = "contractor", "work"
-DEVICES = (CONTRACTOR, WORK)
+#   personal   — only the user's own work, public or private, so there is nothing to keep apart: one
+#                store, which may have a remote like the shareable tier, and no guarded store. Added
+#                2026-11-25 with the activities classification, from which it is derived; before
+#                that a personal machine was a contractor one with an empty sensitive store.
+CONTRACTOR, WORK, PERSONAL_DEVICE = "contractor", "work", "personal"
+DEVICES = (CONTRACTOR, WORK, PERSONAL_DEVICE)
 TIERS = (SHAREABLE, SENSITIVE, SINGLE)
 
 # The classification a machine is onboarded with, decided with the user 2026-11-25 — see the plan
@@ -652,20 +656,34 @@ class Config:
     def classified(self) -> bool:
         """Whether roots are classified, which then decides public and shareable roots.
 
-        On a corporate machine each root's activity can only be `corporate`, so it is never asked:
-        the roots classified for ownership are the classified ones.
+        On a corporate machine each root's activity can only be `corporate`, so it is never asked,
+        and an `own` root needs none either — see `activity_of` — so the roots classified for
+        ownership count as classified too.
         """
-        return bool(self.activity) or (self.corporate and bool(self.ownership))
+        return bool(self.activity) or bool(self.ownership)
 
     @property
     def corporate(self) -> bool:
         return CORPORATE in self.activities
 
     def activity_of(self, root: str) -> str | None:
-        """A root's activity, implied on a corporate machine, None while it is unclassified."""
+        """A root's activity — answered, or implied — and None while it is unclassified.
+
+        Implied in two places, so neither is asked. On a corporate machine every root is corporate.
+        An `own` root holds public and private repos side by side — the user's own account has both
+        — so whether one repo is public is a per-repo property, not the root's; the root answers
+        `private`, the cautious one of the two, which shares the same store and naming rules.
+        Pointed out by the user 2026-11-25: a root does not have to be split by visibility. Only on
+        a machine holding client work is an `own` root asked, because an account created for one
+        client is then possible and behaves as `contractor`.
+        """
+        if root in self.activity:
+            return self.activity[root]
         if self.corporate:
-            return CORPORATE if root in self.ownership or root in self.activity else None
-        return self.activity.get(root)
+            return CORPORATE if root in self.ownership else None
+        if self.ownership.get(root) == OWN and CONTRACTOR not in self.activities:
+            return PRIVATE
+        return None
 
     @property
     def unscoped(self) -> Path:
@@ -767,15 +785,25 @@ class Config:
         """
         return self.sensitive_store if self.split_by_sensitivity else self.store
 
+    @property
+    def guards_remotes(self) -> bool:
+        """Whether any store here must push only to a sanctioned destination.
+
+        False on a personal machine: it holds only the user's own work, so its one store is the
+        shareable kind and may have whatever remote the user gives it, gated on content by `scan`.
+        """
+        return self.device != PERSONAL_DEVICE
+
     def tier_of(self, rel: str | None) -> str:
         """Which half of the store a repo path — or the unscoped area — belongs to.
 
         On a work device there is one store and every root is in it. It is not the *sensitive* tier
         — that word means "must not go where the other tier goes", and there is no other tier here —
-        so it answers `single`, a name no human output prints.
+        so it answers `single`, a name no human output prints. A personal machine's one store is
+        the shareable kind, so it answers that.
         """
         if not self.split_by_sensitivity:
-            return SINGLE
+            return self.store.tier
         if rel is None or rel == UNSCOPED_DIR:
             return SHAREABLE
         if (declared := self.declared_tier(rel)) is not None:
@@ -1017,7 +1045,9 @@ def _device_from_activities(raw: dict[str, object]) -> str | None:
     activities = _activities_field(raw)
     if not activities:
         return None
-    return WORK if CORPORATE in activities else CONTRACTOR
+    if CORPORATE in activities:
+        return WORK
+    return CONTRACTOR if CONTRACTOR in activities else PERSONAL_DEVICE
 
 
 def _activities_field(raw: dict[str, object]) -> tuple[str, ...]:
@@ -1075,7 +1105,7 @@ def load_config() -> Config:
     # organisation, so there is no boundary for a tier to draw. The tier is stamped here, at the one
     # place that knows the device, rather than re-derived by every reader.
     store = _store_field(
-        raw, path, "store", "PLANS_HOME", Path.home() / "plans", SHAREABLE if device == CONTRACTOR else SINGLE
+        raw, path, "store", "PLANS_HOME", Path.home() / "plans", SINGLE if device == WORK else SHAREABLE
     )
     sensitive = _store_field(
         raw, path, "sensitive_store", "PLANS_SENSITIVE_HOME", _sensitive_sibling(store.path), SENSITIVE
@@ -8644,6 +8674,8 @@ def _decisions(ws: Workspace) -> list[Decision]:
                 "the shareable half of the store: the unscoped area and the roots you own. May have a remote"
                 if cfg.split_by_sensitivity
                 else "the store, holding every root on this machine. Its remote has to be one you record below"
+                if cfg.guards_remotes
+                else "the store, holding every root on this machine — all of it your own work. May have a remote"
             ),
             current=f"{cfg.store.path} (from {cfg.store.source})",
             suggest=str(cfg.store.path),
@@ -8777,6 +8809,8 @@ def _sanctioned_decision(ws: Workspace) -> list[Decision]:
     longer for no decision."""
     cfg = ws.config
     decisions: list[Decision] = []
+    if not cfg.guards_remotes:
+        return decisions
     guarded_remotes = sorted(remote_urls(cfg.guarded_store.path).values())
     if cfg.device == WORK or guarded_remotes:
         pointing = f"; it points at {', '.join(guarded_remotes)}" if guarded_remotes else ""
@@ -8833,16 +8867,19 @@ def _root_classification_decisions(ws: Workspace) -> list[Decision]:
                 cost="`own` on someone else's organisation lets plans/ be committed into their repositories",
             )
         )
-        if cfg.corporate:
+        # Implied, and so not asked: every root on a corporate machine, and an `own` root wherever
+        # no client work is possible — see Config.activity_of.
+        if cfg.corporate or (cfg.ownership.get(name) == OWN and CONTRACTOR not in cfg.activities):
             continue
         held = ", ".join(cfg.activities) or "the machine's activities, once answered"
         decisions.append(
             Decision(
                 key=f"activity.{name}",
                 what=(
-                    f"what kind of work {name}/ holds, one of {held}. For your own account, `public` or "
-                    "`private` is the default for its repos. A client's root is `contractor`, which "
-                    "insulates it from every other root"
+                    f"what kind of work {name}/ holds, one of {held}. An organisation you contribute to "
+                    "is `public` (open source) or `private`; a client's root — including an account you "
+                    "made for one client — is `contractor`, which insulates it from every other root. "
+                    "Not asked for your own account otherwise: its repos are public or private one by one"
                 ),
                 current=cfg.activity.get(name, "(unanswered — treated as sensitive until it is)"),
                 suggest=(
@@ -9092,6 +9129,8 @@ def remote_problems(cfg: Config) -> list[str]:
     The shareable tier is deliberately outside this: it is meant to have a remote, and what may go
     on it is a content question `scan` answers.
     """
+    if not cfg.guards_remotes:
+        return []
     guarded = cfg.guarded_store
     if not is_git_repo(guarded.path):
         return []
@@ -9173,6 +9212,28 @@ def misfiled_plans(cfg: Config) -> list[str]:
     return found
 
 
+def stranded_sensitive_plans(cfg: Config) -> list[str]:
+    """Plans left in a sensitive store that this machine no longer reads.
+
+    A machine re-onboarded as `personal` keeps one store, so the sensitive one drops out of every
+    read — and a plan still in it would vanish from `list` without a word. Reported, never moved:
+    moving is a `git mv` across two histories and the user's call. Found 2026-11-25 on the machine
+    whose question created the `personal` shape: one private repo's plan sat in ~/plans-sensitive.
+    """
+    if cfg.split_by_sensitivity or cfg.device != PERSONAL_DEVICE:
+        return []
+    sensitive = cfg.sensitive_store
+    if sensitive.path.expanduser() == cfg.store.path.expanduser() or not sensitive.path.expanduser().is_dir():
+        return []
+    stranded = store_plan_files(sensitive)
+    if not stranded:
+        return []
+    return [
+        f"{sensitive.path} still holds {len(stranded)} plan(s), but this personal machine keeps one store "
+        f"and no longer reads it — move them into {cfg.store.path} (and the repos.toml links with them)"
+    ]
+
+
 def store_problems(cfg: Config) -> list[str]:
     """What is wrong with either store, checked every time rather than only at setup.
 
@@ -9198,6 +9259,7 @@ def store_problems(cfg: Config) -> list[str]:
             )
     found += remote_problems(cfg)
     found += misfiled_plans(cfg)
+    found += stranded_sensitive_plans(cfg)
     # Only the shareable half is nagged about: the sensitive one derives from it by default, so
     # pinning `$PLANS_HOME` already pins both, and a second variable to keep in sync would be one
     # more thing that can disagree between shells for no benefit.
@@ -9520,7 +9582,7 @@ def _print_stores(cfg: Config) -> None:
     nobody has looked at read identically, since both are simply absent from the problems list.
     """
     for store in cfg.stores():
-        guarded = store.path == cfg.guarded_store.path
+        guarded = cfg.guards_remotes and store.path == cfg.guarded_store.path
         if not store.path.is_dir():
             state = "missing"
         elif not is_git_repo(store.path):

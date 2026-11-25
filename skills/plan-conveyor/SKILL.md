@@ -219,27 +219,37 @@ landed where the worktree never looks.
 (your own private work: names may appear in other plans, contents may not), `contractor` (client
 work, each client's root insulated from every other) and `corporate` (one organisation owns
 everything; it must stand alone). It replaces `device`, which it derives: `corporate` is a `work`
-device, anything else a `contractor` one.
+device, any set holding `contractor` a `contractor` one, and `public`/`private` alone a `personal`
+one.
 
 **Then every root is classified, on every machine**, because root names are local and no two
 machines have to share them:
 
 - `ownership.<root>` — `own` (an account you own; its repos may keep plans in-repo, chosen per repo)
   or `shared` (an organisation you contribute to; plans go to the store).
-- `activity.<root>` — one of the machine's activities: `public` or `private` for your own account,
-  `contractor` for a client. Not asked on a corporate machine, where it is implied.
+- `activity.<root>` — one of the machine's activities, asked only where it is not implied. A
+  `shared` root is `public` (open source), `private`, or `contractor` for a client. An `own` root is
+  **not asked**: your account holds public and private repos side by side, so visibility is per
+  repo, not per root — except on a machine with client work, where an account made for one client is
+  possible and answers `contractor`. Not asked at all on a corporate machine.
 
 **The classification decides `public_roots` and `shareable_roots`**, which are then not asked:
 `public`, `private` and `corporate` roots may be named elsewhere and keep their store plans in the
 half that may have a remote; a `contractor` root never. **An unclassified root is treated
 cautiously** — kept out of both — until the user says what it is, and `doctor` reports it.
 
-The two machine shapes that follow from `activities`:
+The three machine shapes that follow from `activities`:
 
-| `device`                   | the machine holds                                    | the store                                  |
-| -------------------------- | ---------------------------------------------------- | ------------------------------------------ |
-| **`contractor`** (default) | several parties' work plus your own public repos     | **two** repositories, split by sensitivity |
-| **`work`**                 | one organisation — an employer-issued or corp device | **one**, with no tier at all               |
+| `device`                   | the machine holds                                    | the store                                            |
+| -------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| **`contractor`** (default) | several parties' work plus your own repos            | **two** repositories, split by sensitivity           |
+| **`personal`**             | only your own work, public and private               | **one**, which may have a remote; nothing guarded    |
+| **`work`**                 | one organisation — an employer-issued or corp device | **one**, with no tier, pushing only where sanctioned |
+
+**A personal machine has nothing to keep apart**, so there is no sensitive store and no
+`sanctioned_remotes` question: a private repo's plans sit beside public ones in the store you sync
+between your machines, and `scan` still guards what reaches a published repo. Added 2026-11-25, when
+the user asked what `~/plans-sensitive` was for on a machine holding no client work.
 
 **A work device has no boundary for a tier to draw**, so the split would be an empty directory every
 command still reasons about. `sensitive_store` and `shareable_roots` stop applying, and `install`

@@ -3354,8 +3354,55 @@ def test_a_root_cannot_take_an_activity_the_machine_does_not_hold(ws):
 def test_activities_decide_the_device(ws):
     write_config(ws, 'activities = ["corporate"]\n')
     assert plans.load_config().device == plans.WORK
-    write_config(ws, 'activities = ["public", "private"]\n')
+    write_config(ws, 'activities = ["public", "contractor"]\n')
     assert plans.load_config().device == plans.CONTRACTOR
+    write_config(ws, 'activities = ["public", "private"]\n')
+    assert plans.load_config().device == plans.PERSONAL_DEVICE
+
+
+def test_a_personal_machine_keeps_one_store_that_may_have_a_remote(ws, capsys):
+    """Only the user's own work is here, so there is nothing to keep apart: no sensitive store to
+    create, and no destination to sanction. Asked by the user 2026-11-25 of ~/plans-sensitive."""
+    write_config(ws, 'activities = ["public", "private"]\n[ownership]\n"github.com-personal" = "own"\n')
+    plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    subprocess.run(["git", "remote", "add", "origin", "git@github.com:me/plans.git"], cwd=ws.store, check=True)
+    cfg = plans.load_config()
+
+    assert [store.path for store in cfg.stores()] == [ws.store]
+    assert cfg.tier_of("github.com-personal/agent-skills") == plans.SHAREABLE
+    assert not ws.sensitive.exists()
+    assert plans.remote_problems(cfg) == []
+    capsys.readouterr()
+    assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
+    assert "decision: sanctioned_remotes" not in capsys.readouterr().out
+
+
+def test_doctor_names_plans_left_in_a_sensitive_store_a_personal_machine_stopped_reading(ws, capsys):
+    """Re-onboarding as personal drops the sensitive store from every read; a plan still in it
+    would vanish from listings without a word."""
+    write_config(ws, 'activities = ["public", "private"]\n')
+    plan(
+        ws.sensitive / "github.com-personal" / "private-repo", "2026-01-01-kept.md", "status: idea\nupdated: 2026-01-01"
+    )
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "still holds 1 plan(s), but this personal machine keeps one store" in capsys.readouterr().out
+
+
+def test_an_own_root_is_asked_its_activity_only_where_client_work_is_possible(ws, capsys):
+    """An account holds public and private repos side by side, so the root is not split by
+    visibility. Pointed out by the user 2026-11-25. Where client work is possible an own root may
+    be an account made for one client, so there it is still asked."""
+    own = '[ownership]\n"github.com-personal" = "own"\n'
+    write_config(ws, f'activities = ["public", "private"]\n{own}')
+    assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
+    assert "decision: activity.github.com-personal" not in capsys.readouterr().out
+    assert "github.com-personal" in plans.load_config().public_root_names()
+
+    write_config(ws, f'activities = ["public", "contractor"]\n{own}')
+    assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
+    assert "decision: activity.github.com-personal" in capsys.readouterr().out
+    assert "github.com-personal" not in plans.load_config().public_root_names()
 
 
 def test_classified_roots_decide_public_and_shareable_roots(ws):

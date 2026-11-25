@@ -57,18 +57,24 @@ vendor. The gap is that **`plans.py` has a pushing side and no pulling side**:
   with no remote is a complete, supported setup, and every sync step is a silent no-op there. The
   `install` walkthrough asks whether this machine keeps its plans locally or syncs them through a
   git remote, and records the answer.]
+- [DECISION 2026-11-25: **one key, `sync = "off" | "manual" | "auto"`, default `"off"`.** A remote's
+  presence implies nothing; the key alone decides, read on every command. The modes:
+  - `off`: no network from any command. `sync` and `push` say the machine is set to local-only and
+    name the key that changes it.
+  - `manual`: nothing syncs on its own. `sync` does it on request, and `absorb` warns when the last
+    fetch is older than a threshold (`FETCH_HEAD`'s mtime), without fetching.
+  - `auto`: what "Recommended direction" items 3 and 4 describe.]
+- [DECISION 2026-11-25: **the skill may add the store's remote, only on a URL the user has
+  confirmed.** This reverses "never adds a remote" for this one case. The script never prompts, so
+  the confirmation is the agent's: it shows the user the exact store, remote name and URL, asks, and
+  only then runs the command, which takes the URL as an explicit argument and has a `--dry-run`. It
+  adds a remote only to the shareable store; on the sensitive store it refuses unless the URL is
+  covered by `sanctioned_remotes`, the existing rule for a work device. It never creates the
+  repository on a host. That stays the user's step, which keeps the skill host-neutral and needs no
+  host API or token.]
 
 ## Open questions
 
-- [NEEDS CLARIFICATION: the config's shape. One key, for example `sync = "off" | "manual" | "auto"`,
-  defaulting to `"off"`, where `"auto"` syncs on every store-writing command and fetches on
-  `absorb`. Or does a remote's presence imply `"auto"`, with the key only for opting down? One key
-  read on every command is easier to explain than an implied mode.]
-- [NEEDS CLARIFICATION: when the user answers "sync" during `install` and gives a URL, does
-  `install` add the remote itself? Today the skill never adds a remote anywhere, and `push` refuses
-  to. An explicit answer during setup is a recorded decision rather than an inference, which is the
-  case for allowing it. It never creates the repository on a host; that stays the user's step, which
-  is what keeps the skill host-neutral.]
 - Second machine: when the remote already has a store, `install` should clone it rather than create
   an empty store and merge two unrelated histories. Check what `install` does today when `~/plans`
   already exists as a clone.
@@ -94,9 +100,13 @@ vendor. The gap is that **`plans.py` has a pushing side and no pulling side**:
    print the same nothing.
 5. **`doctor` reports the sync mode and staleness**: commits behind the remote after a fetch, and
    the age of the last fetch.
-6. **`install --explain` asks the sync question** (decision above), and handles the second-machine
-   clone (open question).
+6. **`install --explain` asks the sync question**: local only (`off`), or sync through a git remote,
+   then `manual` or `auto` and the URL, confirmed before the remote is added (decisions above). It
+   also handles the second-machine clone (open question).
 7. **Skill text**: a "several machines" section in `plan-conveyor`'s `SKILL.md`, and the matching
    README update. Per machine: `install --explain`, with the config kept per machine and out of git,
-   as already documented. Then the sync modes, and the rule that the sensitive store never leaves
-   its machine.
+   as already documented. Then the three modes, the confirmed remote, and the rule that the
+   sensitive store never leaves its machine. The "What this skill reads, runs and writes" section
+   changes with it: **Runs** gains `git fetch`, `merge` and `remote add`; **Network** changes from
+   "only `push`" to the sync modes; the "never adds a remote" wording becomes "adds one only on a
+   URL you confirmed".

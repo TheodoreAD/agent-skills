@@ -258,3 +258,19 @@ Implement in phases, each committed on its own and passing the gate:
 - [DEFERRED: a flat layout (repos straight under the projects root) has no root to classify, so it
   still answers `public_roots` and `shareable_roots` directly. Per-repo classification there waits
   for phase 2's per-repo decisions.]
+- **Phase 2 landed 2026-11-26** (`31c991d`): ownership routes a classified root. Evidence of an
+  earlier choice is honoured both ways — a committed `plans/`, or plans already in the store — so
+  only repos with no plans anywhere are asked.
+- **Phase 3 landed** (`7084375`): the scan judges by destination, each client has its own
+  `[private_terms]`, and secrets are always scanned for. [DECISION: the per-client term question is
+  shown in the same pass as the root's classification; asked only after `contractor` was recorded,
+  it reopened onboarding the moment one pass finished.]
+- **Phase 4 landed** (`6b1fd12`): one store per client under `~/plans-clients/<root>`,
+  identity-named folders for new links, and `links rename` to migrate. [DEFERRED: running
+  `links rename --yes` on the synced `~/plans` store — 8 folders named after the Linux machine's
+  root — waits until the Linux machine runs this version and is onboarded; then run it on one
+  machine and `sync`.]
+- **Phase 5 landed** (`f3c0143`): session-harvest, session-bash-audit and skill-fitness share one
+  flow rule through three tested copies. [DECISION: an exported transcript named by path outside
+  `~/.claude/projects` is not filtered — no project owns it, and naming it is the caller's explicit
+  choice.] The `~/.agents/AGENTS.md` rule was handed to the PULSE session, which owns that file.

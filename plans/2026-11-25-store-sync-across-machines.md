@@ -176,6 +176,9 @@ Built in this repo, all in `skills/plan-conveyor/scripts/plans.py`, tested in
   `absorb`, `doctor`'s mode and staleness, and the `install --explain` question.
 - Resolvers for items 1, 2, 3, 5 and 6 below; `--cc` in the push scan. Each resolver and the flag
   were broken once to confirm a test fails.
+- Item 7: `doctor` lists local attachments a plan names that are not on this machine, in a section
+  of their own rather than as problems. `join` prints the device first, and the dry run flags paths
+  equal under `casefold()`. Both were deferred earlier on 2026-11-25 and built the same day.
 
 Where the build differs from the direction below:
 
@@ -186,16 +189,10 @@ Where the build differs from the direction below:
 
 What is left:
 
-- [DEFERRED: `doctor` reporting a plan that names a local attachment missing on this machine
-  (item 7) — not needed for a second machine to join, and the attachment is safe on the machine that
-  has it.]
-- [DEFERRED: the join dry run printing the machine's `device` first, and flagging two store paths
-  equal under `casefold()` — the Windows machine is personal and joins a store with no such pair, so
-  neither changes this rollout.]
-- Rollout, each step the user's to approve: push this repo, re-install the skill, then on this
-  machine `config set sync auto` and `install` (commits the store's `.gitattributes`), then `sync`.
-  On the Windows machine: install the skills, `install --explain`, `join <url> --dry-run`, `join`,
-  `config set sync auto`.
+- Rollout on this machine, done 2026-11-25: pushed, re-installed through `inv ai.install-skills`,
+  `config set sync auto`, `install` committed both stores' `.gitattributes`, `sync` pushed the
+  shareable store. On the Windows machine: install the skills, `install --explain`,
+  `join <url> --dry-run`, `join`, `config set sync auto`, `sync`.
 - [UNVERIFIED: a real Windows machine joining. The Windows CI leg runs the sync tests; nothing has
   run on that machine yet.]
 

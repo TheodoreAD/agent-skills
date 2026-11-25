@@ -690,7 +690,10 @@ with the remote's history rather than replaced by it**, every local commit kept,
 remote's branch name first so the first push does not create a second branch. A store already tied
 to a different remote is refused with both URLs named, since which one is right is the user's call.
 An uncommitted plan the remote also has stops the join until it is committed. On a work device the
-URL must be covered by `sanctioned_remotes`. The sensitive store never joins anything.
+URL must be covered by `sanctioned_remotes`. The sensitive store never joins anything. Its output
+opens with the machine's `device`, and the dry run flags any two paths that differ only in letter
+case: two files on Linux, one on Windows or macOS, where a plan would silently go missing. Rename
+one before joining.
 
 **What a merge settles on its own, keeping every side's content**, and what it does not:
 
@@ -724,7 +727,9 @@ line.** Python writes CRLF on Windows unless told not to, and Git for Windows' i
 plan written on another, and every edit both make then conflicts across the whole file.
 
 `_attachments/` does not travel. It is kept out of git on purpose, so a plan synced to another
-machine can name a local attachment that is not there.
+machine can name a local attachment that is not there. `doctor` lists those under "local attachments
+not on this machine", apart from its problems: the file is safe where it was attached, and the
+section only says which machine to read it on.
 
 ## Something that belongs to a repo you are not in
 

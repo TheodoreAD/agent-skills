@@ -31,13 +31,14 @@ endpoint. Everything else it touches, it touches through the commands it tells y
 - **Reads**: `scripts/names.py` reads the `SKILL.md` of each skill under the roots you give it — by
   default the loader's own scopes, `~/.agents/skills/` and a project's `.agents/skills/` — taking
   the name and a digest of the file, nothing more. No transcript, no process, no git state.
-- **Runs**: `npx skills add`, `skills ls`, `skills remove`; `skill-fitness`'s scripts for the
-  measurements below. `names.py` shells out to nothing at all.
-- **Writes**: `skills add --global` copies skills into `~/.agents/skills/` and links each detected
-  agent's own skills directory at it; without `--global`, and standing in a repo, it writes
-  `.agents/skills/`, a `.claude/skills` symlink and `skills-lock.json` into that working tree —
-  which is why the flag is not optional here. The `ln -s ~/.agents/skills ~/.claude/skills` it
-  suggests when the installer skipped the link writes one symlink. Nothing else.
+- **Runs**: `npx skills add`, `skills update`, `skills ls`, `skills remove`; `skill-fitness`'s
+  scripts for the measurements below. `names.py` shells out to nothing at all.
+- **Writes**: `skills add --global --agent universal --agent claude-code` copies skills into
+  `~/.agents/skills/`, links each one from `~/.claude/skills/<name>`, and records it in
+  `~/.agents/.skill-lock.json`; `skills update --global` rewrites what moved upstream. Without
+  `--global`, and standing in a repo, `add` writes `.agents/skills/`, `.claude/skills` entries and
+  `skills-lock.json` into that working tree — which is why the flag is not optional here. Nothing
+  else.
 - **Network**: `skills add <owner>/<repo>` clones the repo you name. `names.py` queries
   `skills.sh/api/search` — one GET per name, sending only the name — unless `--offline`, which makes
   it network-free.
@@ -91,12 +92,20 @@ finding the source repo.
    `git rev-parse --git-common-dir` pointing somewhere other than this checkout's `.git` is the
    direct test.]
 
-6. **Re-install.** Nothing watches the source:
+6. **Re-install.** Nothing watches the source. A skill already installed is refreshed from the
+   source its lock entry records; a new one is added:
 
    ```shell
-   npx skills add <owner>/<repo> --global --skill <name>     # one skill
-   npx skills add <owner>/<repo> --global                    # the whole repo
+   npx skills update --global <name>      # one installed skill (omit the name for all of them)
+   npx skills add <owner>/<repo> --global --agent universal --agent claude-code --skill <name>  # a new one
    ```
+
+   **Name both agents on `add`, and no others.** Since CLI 1.9.0 the install mode depends on how
+   many skills directories the targets span: with Claude Code alone it copies straight into
+   `~/.claude/skills/` and leaves `~/.agents/skills/` — the directory every other agent reads —
+   empty; with `universal` beside it, it writes the one real copy there and links Claude Code to it
+   per skill. Naming further agents only adds links, since nearly all of them read
+   `~/.agents/skills/` themselves. Measured 2026-11-25 on a throwaway `HOME`.
 
    Where a machine installs skills declaratively (a setup repo, a dotfile manager), run that
    mechanism instead so its own record stays accurate — it will call the same CLI underneath.
@@ -133,13 +142,15 @@ finding the source repo.
    Confirmed 2026-09-27: `rg -c 'move state that lives outside'` against a freshly installed
    `SKILL.md` found nothing while the rule sat there, wrapped between `state` and `that`.
 
-   [PITFALL: **That listing is not sufficient evidence on its own, and neither is the installer's
-   summary.** Measured 2026-08-27: installing for Claude Code alongside any universal agent prints
-   `symlink → Claude Code` in the plan and creates no `.claude/skills` at all — the final summary
-   quietly drops the line. Claude Code reads `.claude/skills`, not `.agents/skills`, so on a machine
-   where that symlink does not already exist Claude Code gets nothing while every report looks
-   healthy. Check the link itself (`ls -l ~/.claude/skills`); if it is missing, point it at the hub
-   (`ln -s ~/.agents/skills ~/.claude/skills`).]
+   [PITFALL: **That listing is not sufficient evidence on its own — check what Claude Code will
+   actually read.** Claude Code reads `~/.claude/skills/`, never `~/.agents/skills/`, so the
+   installed skill must appear there as `~/.claude/skills/<name>`, a link into the hub
+   (`ls -l ~/.claude/skills/<name>`). A plain directory there instead means it was installed for
+   Claude Code alone and every other agent lacks it; nothing there means Claude Code gets nothing
+   while every report looks healthy. Re-run `add` with both agents named. **Never replace
+   `~/.claude/skills/` with one link to the whole hub**: Claude Code keeps skills synced from a
+   claude.ai account in `~/.claude/skills/synced/`, which would then land in the directory every
+   other agent reads.]
 
 8. **Reload, when the change is meant to take effect in the session that made it.** A re-install
    fixes the file on disk; the copy the running session loaded at start is still the old one, so a
@@ -203,8 +214,10 @@ npx skills add <owner>/<repo> --global
 ```
 
 A skill that documents a repo's _own_ interface belongs committed in that repo under
-`.agents/skills/`, where it needs no install step for anyone working there. A cross-project
-convention skill belongs in a dedicated skills repo. Both install with the same command.
+`.agents/skills/`, where it needs no install step for anyone working there — every agent reads that
+directory except Claude Code, which needs a relative `.claude/skills -> ../.agents/skills` link
+committed beside it. A cross-project convention skill belongs in a dedicated skills repo. Both
+install with the same command.
 
 ## The name is a primary key, and nothing warns you
 
@@ -515,13 +528,14 @@ Four rules that follow, each cheap and each learned the hard way:
   default is worth keeping; a warning nobody can act on is the thing this file spends most of its
   words against.
 
-**Skills cannot depend on each other.** They install individually, are copied rather than symlinked,
-and a global install writes no lockfile — so importing a sibling means hard-coding the hub path this
-section forbids, across an unversioned boundary, with behaviour that changes depending on what else
-the reader happens to have installed. Share a **location** as configuration both read (an
-environment variable, a config file); duplicate ten lines of resolver rather than depending on
-anything; and where one skill genuinely should invoke another, let the **agent** do it and say out
-loud when it skipped because the sibling was not installed.
+**Skills cannot depend on each other.** They install individually, and the global lock
+(`~/.agents/.skill-lock.json`) records each one's source and nothing about what it needs — so
+importing a sibling means hard-coding the hub path this section forbids, across an unversioned
+boundary, with behaviour that changes depending on what else the reader happens to have installed.
+Share a **location** as configuration both read (an environment variable, a config file); duplicate
+ten lines of resolver rather than depending on anything; and where one skill genuinely should invoke
+another, let the **agent** do it and say out loud when it skipped because the sibling was not
+installed.
 
 ## Say what the skill reads, runs and writes — and scrutinise every write
 

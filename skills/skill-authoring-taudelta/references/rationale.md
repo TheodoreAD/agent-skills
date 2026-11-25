@@ -146,9 +146,11 @@ reasons, and the first is fatal on its own.
 
 **The input does not exist at runtime.** An installed skill is not a checkout. Verified 2026-09-02:
 `~/.agents/skills/<name>/` holds `SKILL.md`, `references/` and `scripts/` and nothing else — no
-`.git`, no remote, and a `--global` install writes no `skills-lock.json` anywhere under `~`,
-`~/.agents` or `~/.claude`. A scheme whose input is absent on every machine that would run it is not
-a scheme.
+`.git` and no remote. A `--global` install does keep a lock, `~/.agents/.skill-lock.json` (corrected
+2026-11-25: the 2026-09-02 check looked for the project lock's name, `skills-lock.json`, and found
+none), but it records the source repo, commit and tree hash per skill, not the checkout state this
+scheme would need. A scheme whose input is absent on every machine that would run it is not a
+scheme.
 
 **Flat application names are the Linux convention, and that is measurable rather than arguable.**
 `platformdirs` is the de-facto answer to this exact question — pip, poetry and black all depend on

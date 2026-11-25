@@ -208,10 +208,11 @@ def load_skills(roots: list[Path]) -> list[Skill]:
     """First occurrence of each name wins, and only a *differing* second copy is worth reporting.
 
     Two subtleties, both learned by the first run producing twenty findings and no information.
-    `~/.claude/skills` is commonly a symlink to `~/.agents/skills`, so the same directory arrives
-    twice under two names — resolving each root removes that entirely. And a skills repo checked
-    out on the same machine as its own installed copy legitimately holds every one of those names;
-    that is a duplicate, not a collision.
+    `~/.claude/skills` points into `~/.agents/skills` — one link per skill, or on older setups one
+    link for the whole directory — so the same skill arrives twice. Resolving each root drops the
+    whole-directory case, and the digest comparison below drops the per-skill one, since both names
+    read the same file. And a skills repo checked out on the same machine as its own installed copy
+    legitimately holds every one of those names; that is a duplicate, not a collision.
 
     What is left after both is the finding worth having: **the same name in two scopes with
     different content**, which means one copy is stale — usually an install that has drifted behind

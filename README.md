@@ -27,13 +27,17 @@ read these:
 ## Install
 
 ```shell
-npx skills add TheodoreAD/agent-skills --global          # every skill, user-level
-npx skills add TheodoreAD/agent-skills --global --skill plan-conveyor # just one
+npx skills add TheodoreAD/agent-skills --global                       # every skill, user-level
+npx skills add TheodoreAD/agent-skills --global --skill plan-conveyor  # just one
+npx skills update --global                                             # later, to update them
 ```
 
-The [`skills` CLI](https://github.com/vercel-labs/skills) copies the skill into the canonical
-`~/.agents/skills/` hub (or the agent-specific directory for the agents that need one) and links
-each detected agent at it. Nothing else is required — no manifest to register, no repo to clone.
+The [`skills` CLI](https://github.com/vercel-labs/skills) copies each skill into the canonical
+`~/.agents/skills/` hub, which Codex, Gemini CLI, Copilot, opencode, Cursor, Goose, Cline, Zed and
+most other agents read directly, and links the agents that need their own directory at it. Nothing
+else is required — no manifest to register, no repo to clone. For Claude Code, which reads only
+`~/.claude/skills/`, add `--agent universal --agent claude-code`: named alone, Claude Code gets a
+plain copy and the hub stays empty.
 
 Or, without installing anything, point your agent at [`skills/<name>/SKILL.md`](skills/) and let it
 read the file directly.

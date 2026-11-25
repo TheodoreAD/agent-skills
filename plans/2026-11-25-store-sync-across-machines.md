@@ -1,5 +1,5 @@
 ---
-status: idea
+status: in-progress
 updated: 2026-11-25
 ---
 
@@ -164,6 +164,40 @@ The next machine to join is a Windows one, so these are prerequisites rather tha
 as this machine's; a sensitive store there, if it has one, stays local. The adoption dry run still
 prints the machine's `device` setting before anything else, since the next machine may not be
 personal.]
+
+## Progress, 2026-11-25
+
+Built in this repo, all in `skills/plan-conveyor/scripts/plans.py`, tested in
+`tests/unit/test_plan_sync.py`, and documented in the skill's "Several machines" section:
+
+- `.gitattributes` at this repo's root, and LF on every `write_text` in `plans.py`; `install` writes
+  and commits a `.gitattributes` in each store.
+- The `sync` key, `sync`, `join` (with `--dry-run`), auto-sync after a store `commit`, the fetch at
+  `absorb`, `doctor`'s mode and staleness, and the `install --explain` question.
+- Resolvers for items 1, 2, 3, 5 and 6 below; `--cc` in the push scan. Each resolver and the flag
+  were broken once to confirm a test fails.
+
+Where the build differs from the direction below:
+
+- A store holding nothing but generated files is **adopted**, not replaced: the merge keeps its one
+  commit and takes the remote's README. Same result, and no special case that deletes anything.
+- `save_links` commits the link table without syncing; the plan commit that follows it in the same
+  command does, so nothing stays local in practice.
+
+What is left:
+
+- [DEFERRED: `doctor` reporting a plan that names a local attachment missing on this machine
+  (item 7) — not needed for a second machine to join, and the attachment is safe on the machine that
+  has it.]
+- [DEFERRED: the join dry run printing the machine's `device` first, and flagging two store paths
+  equal under `casefold()` — the Windows machine is personal and joins a store with no such pair, so
+  neither changes this rollout.]
+- Rollout, each step the user's to approve: push this repo, re-install the skill, then on this
+  machine `config set sync auto` and `install` (commits the store's `.gitattributes`), then `sync`.
+  On the Windows machine: install the skills, `install --explain`, `join <url> --dry-run`, `join`,
+  `config set sync auto`.
+- [UNVERIFIED: a real Windows machine joining. The Windows CI leg runs the sync tests; nothing has
+  run on that machine yet.]
 
 ## Recommended direction
 

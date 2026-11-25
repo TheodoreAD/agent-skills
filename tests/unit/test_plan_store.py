@@ -3339,6 +3339,62 @@ CLASSIFIED = (
 )
 
 
+def test_a_shared_root_routes_to_the_store_without_asking(ws):
+    write_config(ws, CLASSIFIED)
+    routing = route(ws.client)
+    assert routing.verdict == "ok"
+    assert routing.rule is not None
+    assert routing.rule.write == "store"
+    assert routing.source == plans.OWNERSHIP_SHARED_SOURCE
+
+
+def test_an_own_repo_already_keeping_plans_stays_in_repo(ws):
+    write_config(ws, CLASSIFIED)
+    plan(ws.personal / "plans", "2026-01-01-earlier.md", "status: idea\nupdated: 2026-01-01")
+    routing = route(ws.personal)
+    assert routing.verdict == "ok"
+    assert routing.rule is not None
+    assert routing.rule.write == "repo"
+
+
+def test_an_own_repo_without_plans_is_asked_once_and_a_root_rule_no_longer_answers(ws, capsys):
+    """Per repo, as the user asked 2026-11-25: a root-wide `repo` rule used to decide for every repo
+    under it, including ones nobody ever chose for."""
+    write_config(ws, f'{CLASSIFIED}[roots]\n"github.com-personal" = "repo"\n')
+    routing = route(ws.personal)
+    assert routing.verdict == "needs-decision"
+    assert "your own repo and has no plans yet" in routing.reason
+
+    rel = "github.com-personal/agent-skills"
+    assert plans.main(["config", "set", f"repos.{rel}", "store", "--path", str(ws.personal)]) == 0
+    routing = route(ws.personal)
+    assert routing.verdict == "ok"
+    assert routing.rule is not None
+    assert routing.rule.write == "store"
+
+
+def test_an_own_repo_already_keeping_plans_in_the_store_stays_there(ws):
+    write_config(ws, CLASSIFIED)
+    plan(ws.store / "github.com-personal" / "agent-skills", "2026-01-01-filed.md", "status: idea\nupdated: 2026-01-01")
+    routing = route(ws.personal)
+    assert routing.verdict == "ok"
+    assert routing.source == plans.OWNERSHIP_STORE_SOURCE
+
+
+def test_a_shared_repo_never_gets_a_plans_directory_even_when_a_rule_says_so(ws):
+    write_config(ws, f'{CLASSIFIED}[repos]\n"client.com-bitbucket/team/api" = "repo"\n')
+    routing = route(ws.client)
+    assert routing.verdict == "needs-decision"
+    assert "go to the store and never into the repo" in routing.reason
+
+
+def test_a_clone_of_someone_elses_repo_under_your_own_root_goes_to_the_store(ws):
+    write_config(ws, f'own_accounts = ["me"]\n{CLASSIFIED}')  # the fixture's remotes belong to "x"
+    routing = route(ws.personal)
+    assert routing.verdict == "ok"
+    assert routing.source == plans.OWNERSHIP_FOREIGN_SOURCE
+
+
 def test_corporate_must_be_the_only_activity(ws):
     write_config(ws, 'activities = ["corporate", "public"]\n')
     with pytest.raises(plans.PlanError, match="corporate is exclusive"):

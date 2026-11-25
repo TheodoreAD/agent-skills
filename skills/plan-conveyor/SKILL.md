@@ -391,9 +391,19 @@ repo's own remote, and it is checked **after `[repos]` and before `[roots]`** �
 | ------- | ------------------------ | ----------------------------------------------------- |
 | 1st     | `[repos]` exact path     | this one repository                                   |
 | 2nd     | `[orgs]` remote owner    | every clone belonging to that account or organisation |
-| 3rd     | longest `[roots]` prefix | every repo filed under that directory                 |
-| 4th     | `default`                | the machine's answer for everything unmatched         |
-| 5th     | the device fallback      | `work` devices only, see above                        |
+| 3rd     | the root's `ownership`   | a classified root: decided by ownership, see below    |
+| 4th     | longest `[roots]` prefix | every repo filed under that directory                 |
+| 5th     | `default`                | the machine's answer for everything unmatched         |
+| 6th     | the device fallback      | `work` devices only, see above                        |
+
+**Under a classified root, ownership decides, repo by repo.** A `shared` root's repos — and a clone
+of another owner's repo filed under your own root — always go to the store, and a `[repos]` entry
+sending one into its own `plans/` is refused. A repo of your own keeps whatever it chose: one that
+already has a committed `plans/` stays `repo`, and one that has none makes `where` exit 3 the first
+time it gets a plan, asking once whether that repo keeps them in-repo or in the store. Record the
+answer with `config set repos.<path> repo` (or `store`). A root-wide `[roots]` rule no longer
+answers for repos under a classified root: the user asked 2026-11-25 that it be an explicit choice
+for each.
 
 `[orgs]` sits above `[roots]` because the two answer different questions and only one of them is
 about the repository. Where they disagree — one clone from somebody else's organisation sitting

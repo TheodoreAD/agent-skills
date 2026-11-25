@@ -1598,6 +1598,54 @@ def _device_fallback(cfg: Config, remote: Remote | None) -> RuleMatch:
     return RuleMatch(Rule(("store",), "store"), WORK_DEFAULT_SOURCE)
 
 
+OWNERSHIP_SHARED_SOURCE = "shared ownership"
+OWNERSHIP_FOREIGN_SOURCE = "a clone of another owner's repo under your own root"
+OWNERSHIP_EXISTING_SOURCE = "your own repo, which already keeps plans/"
+OWNERSHIP_STORE_SOURCE = "your own repo, which already keeps plans in the store"
+OWNERSHIP_UNDECIDED_SOURCE = "your own repo, not decided yet"
+
+
+def repo_ownership(cfg: Config, rel: str | None, remote: Remote | None) -> str | None:
+    """`own` or `shared` for one repo, from its root's classification — None while unclassified.
+
+    The remote overrides an `own` root: a clone of somebody else's repository filed under your own
+    root is still theirs, which is the case `[orgs]` and `foreign_org_refusal` exist for. Only where
+    `own_accounts` is set, since without it every owner reads as foreign.
+    """
+    if rel is None:
+        return None
+    kind = cfg.ownership.get(rel.split("/")[0])
+    if kind != OWN:
+        return kind
+    if cfg.own_accounts and remote is not None and remote.owner and not cfg.owns(remote):
+        return SHARED
+    return OWN
+
+
+def _ownership_rule(cfg: Config, rel: str | None, remote: Remote | None) -> RuleMatch | None:
+    """Phase 2 of the classification plan: ownership decides where a classified root's plans go.
+
+    - `shared` — an organisation with its own tracker: always the store.
+    - `own` — the user's choice, **per repo**, asked the first time that repo gets a plan. A repo
+      that already keeps a committed `plans/` directory made that choice before this existed, so
+      it is honoured rather than asked again; a root-wide `[roots]` rule no longer answers for
+      repos that never chose. Asked for by the user 2026-11-25: plans in an own repo "should still
+      be an explicit choice for each".
+
+    None for an unclassified root, which keeps the `[roots]`/`default` behaviour it always had.
+    """
+    kind = repo_ownership(cfg, rel, remote)
+    if kind is None or rel is None:
+        return None
+    store_only = Rule(("store",), "store")
+    if kind == SHARED:
+        foreign = cfg.ownership.get(rel.split("/")[0]) == OWN
+        return RuleMatch(store_only, OWNERSHIP_FOREIGN_SOURCE if foreign else OWNERSHIP_SHARED_SOURCE)
+    if plans_in(cfg.projects_root / rel / "plans", "repo"):
+        return RuleMatch(Rule(("repo",), "repo"), OWNERSHIP_EXISTING_SOURCE)
+    return RuleMatch(None, OWNERSHIP_UNDECIDED_SOURCE)
+
+
 def match_rule(cfg: Config, rel: str | None, remote: Remote | None = None) -> RuleMatch:
     """Most specific first: a `[repos]` entry, this remote's `[orgs]` entry, the longest `[roots]`
     prefix, `default`, then the device's own fallback.
@@ -1616,6 +1664,8 @@ def match_rule(cfg: Config, rel: str | None, remote: Remote | None = None) -> Ru
     org = _org_rule(cfg, remote)
     if org.rule is not None:
         return org
+    if (owned := _ownership_rule(cfg, rel, remote)) is not None:
+        return owned
     if rel is not None:
         parts = rel.split("/")
         for depth in range(len(parts) - 1, 0, -1):
@@ -2756,7 +2806,23 @@ def resolve(start: Path, cfg: Config) -> Routing:
 
     if rule is not None and rule.write == "repo" and (refusal := foreign_org_refusal(cfg, remote, rel, source)):
         return decide(refusal)
+    if rule is not None and "repo" in rule.read and repo_ownership(cfg, rel, remote) == SHARED:
+        return decide(
+            f"{rel} is shared — an organisation you contribute to, with its own tracker — so its plans "
+            f"go to the store and never into the repo, whatever {source} says. Remove that entry, or "
+            f"classify the root as your own: plans.py config set ownership.{(rel or '').split('/')[0]} own"
+        )
 
+    if rule is None and source == OWNERSHIP_UNDECIDED_SOURCE and store_dir is not None and plans_in(store_dir, "store"):
+        # The store side of the same evidence `_ownership_rule` reads in the repo: plans already
+        # filed in the store for this repo are the choice it made before ownership decided anything.
+        return replace(ok, rule=Rule(("store",), "store"), source=OWNERSHIP_STORE_SOURCE)
+    if rule is None and source == OWNERSHIP_UNDECIDED_SOURCE:
+        return decide(
+            f"{rel} is your own repo and has no plans yet. Ask the user once, for this repo only: keep "
+            f"its plans in the repo (a committed plans/ directory) or in the store outside it? Then "
+            f"record it: plans.py config set repos.{rel} repo   (or store)"
+        )
     if rule is None:
         reason = f"no rule matches {rel or root} and no default is set in {cfg.path}" if cfg.exists else no_config(cfg)
         return decide(reason)
@@ -8735,7 +8801,8 @@ def _decisions(ws: Workspace) -> list[Decision]:
     # `~/projects/<repo>` layout that would be one question per clone on the machine, and `default`
     # above already answers all of them.
     roots = sorted({rel.split("/")[0] for rel in ws.repos})
-    unrouted = [name for name in collection_roots(ws.repos) if name not in cfg.roots]
+    # A classified root needs no route of its own: ownership decides it, repo by repo.
+    unrouted = [name for name in collection_roots(ws.repos) if name not in cfg.roots and name not in cfg.ownership]
     if unrouted and cfg.default is None and cfg.device != WORK:
         decisions += [
             Decision(
@@ -9441,6 +9508,8 @@ def cmd_doctor(args: argparse.Namespace, ws: Workspace) -> int:
         held.repo
         for held in holding
         if (held.repo in local or held.repo not in linked)
+        # Not OWNERSHIP_UNDECIDED_SOURCE: an own repo holding plans has no `plans/` (that would be a
+        # repo route), so its plans are in the store — the choice resolve() reads as made.
         and match_rule(cfg, held.repo, ws.remotes.get(held.repo)).source == "no rule"
     ]
 

@@ -236,6 +236,57 @@ def test_a_subagent_hand_back_is_not_the_user_speaking_mid_turn(tmp_path, monkey
     assert (counts["mid_turn"], counts["handbacks"]) == (0, 1)
 
 
+def compartment_machine(tmp_path, monkeypatch) -> tuple[Path, Path, Path]:
+    """An onboarded machine with one client root and one root of the user's own, a transcript filed
+    under the client's repo, and the projects dir pointed at the fake one."""
+    projects = tmp_path / "projects"
+    client, mine = projects / "acme" / "api", projects / "personal" / "tool"
+    for repo in (client, mine):
+        (repo / ".git").mkdir(parents=True)
+    config = tmp_path / "plan-conveyor.toml"
+    config.write_text(
+        f'projects_root = "{projects.as_posix()}"\nonboarded = "2026-01-01"\n'
+        'activities = ["private", "contractor"]\n'
+        '[ownership]\npersonal = "own"\nacme = "shared"\n[activity]\nacme = "contractor"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PLAN_CONVEYOR_CONFIG", str(config))
+    monkeypatch.setattr(harvest, "PROJECTS_DIR", tmp_path / "claude-projects")
+    monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
+    directory = tmp_path / "claude-projects" / harvest.project_slug(client)
+    directory.mkdir(parents=True)
+    transcript = write_transcript(directory / "s.jsonl", [user_entry("the client's brief")])
+    return client, mine, transcript
+
+
+def test_turns_refuses_to_quote_a_client_session_into_another_compartment(tmp_path, monkeypatch):
+    """Phase 5 of plan-conveyor's classification plan: a client's words never leave its root."""
+    client, mine, transcript = compartment_machine(tmp_path, monkeypatch)
+    args = harvest.build_parser().parse_args(["turns", "--session", str(transcript), "--json"])
+
+    monkeypatch.chdir(mine)
+    with pytest.raises(harvest.HarvestError, match="may not be quoted"):
+        harvest.cmd_turns(args, FakeRunner())
+
+    monkeypatch.chdir(client)
+    assert harvest.cmd_turns(args, FakeRunner())["turns"][0]["text"] == "the client's brief"
+
+
+def test_turns_quotes_only_the_sessions_own_repo_before_onboarding(tmp_path, monkeypatch):
+    client, _mine, transcript = compartment_machine(tmp_path, monkeypatch)
+    config = tmp_path / "plan-conveyor.toml"  # written by compartment_machine
+    config.write_text(config.read_text(encoding="utf-8").replace('onboarded = "2026-01-01"\n', ""), encoding="utf-8")
+    sibling = client.parent / "web"
+    (sibling / ".git").mkdir(parents=True)
+    args = harvest.build_parser().parse_args(["turns", "--session", str(transcript), "--json"])
+
+    monkeypatch.chdir(sibling)  # same client, but nobody classified the machine yet
+    with pytest.raises(harvest.HarvestError):
+        harvest.cmd_turns(args, FakeRunner())
+    monkeypatch.chdir(client)
+    assert harvest.cmd_turns(args, FakeRunner())["turns"]
+
+
 def test_the_attachment_copy_is_a_cross_check_not_a_second_source():
     """`attachment` carries mostly harness noise — 230 token reminders in the transcript this was
     measured on — so matching the type would be the over-broad half of the mistake this step has

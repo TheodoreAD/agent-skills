@@ -24,7 +24,12 @@ considered and rejected).
   `gh`; the process and listening-socket tables; docker images; both plans stores; the installed
   skills hub and the source checkout `skills-state` resolves. The socket step checks whether
   credential-named files (`.env`, `.netrc`, …) **exist** under a directory a listener serves — names
-  only, never contents.
+  only, never contents. `plan-conveyor`'s config for its classification: `turns` **refuses** a
+  transcript from another project unless its content may reach the repo the harvest writes to — a
+  `public` root, the same client's root, anything on a corporate machine — so a client's or a
+  private repo's words are never lifted into another repo's plans. Harvest from that project's own
+  repo instead. An exported transcript named by path, outside `~/.claude/projects`, is the caller's
+  explicit choice and is not filtered.
 - **Runs**: `git` (including `fetch` to each touched repo's own upstream unless `--no-fetch`), `gh`
   and `docker` when installed, `ps`/`ss` on Linux or PowerShell/`netstat` on Windows, and
   `plans.py absorb` read-only. Nothing through a shell. **It never installs, re-installs or removes

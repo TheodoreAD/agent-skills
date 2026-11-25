@@ -16,6 +16,13 @@ no stated cost teaches nothing. Record what a new pattern found in references/re
 
 from __future__ import annotations
 
+import sys
+
+# Before any import below: `tomllib` is 3.11+, and on 3.10 the failure would otherwise be a
+# ModuleNotFoundError naming a stdlib module, with nothing pointing at the interpreter.
+if sys.version_info[:2] < (3, 11):  # noqa: UP036 — runs exactly where requires-python is not enforced
+    sys.exit(f"audit.py needs Python 3.11 or newer; this is {sys.version.split()[0]} ({sys.executable})")
+
 import argparse
 import json
 import os
@@ -23,8 +30,8 @@ import random
 import re
 import signal
 import subprocess
-import sys
 import time
+import tomllib
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -283,6 +290,99 @@ def slug_matches(target: str, project: str) -> bool:
     if len(slug) <= SLUG_CAP:
         return slug == project
     return project.startswith(slug[:SLUG_CAP] + "-")
+
+
+def _conveyor_config() -> dict[str, Any]:
+    """`plan-conveyor`'s config, read as a contract — the same resolution `session-harvest` copies."""
+    override = os.environ.get("PLAN_CONVEYOR_CONFIG")
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if override:
+        path = Path(override).expanduser()
+    elif xdg:
+        path = Path(xdg).expanduser() / "plan-conveyor" / "config.toml"
+    else:
+        path = Path.home() / ".config" / "plan-conveyor" / "config.toml"
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+class Compartments:
+    """Which transcripts' commands and project names may be shown where this audit runs.
+
+    Phase 5 of `plan-conveyor`'s classification plan (2026-11-25), duplicated from `session-harvest`
+    for the reason `project_slug` gives. Counts read every transcript — a rate carries no content —
+    but a sample, a re-run, a denied command and a per-session row quote or name a project, so they
+    come only from transcripts whose content may reach the session's own repo: that repo, a `public`
+    root, anything on a corporate machine, or the same client's root. Nothing asks; the report says
+    how many sessions it counted without naming.
+    """
+
+    def __init__(self, cwd: Path) -> None:
+        config = _conveyor_config()
+        self.onboarded = "onboarded" in config
+        self.activities = {str(item) for item in config.get("activities", [])}
+        self.activity = {str(k).strip("/"): str(v) for k, v in dict(config.get("activity", {})).items()}
+        self.ownership = {str(k).strip("/"): str(v) for k, v in dict(config.get("ownership", {})).items()}
+        root = Path(str(config.get("projects_root") or "~/projects")).expanduser()
+        self.rel_by_slug = {
+            self._fold(project_slug(str(repo))): repo.relative_to(root).as_posix() for repo in _checkouts(root)
+        }
+        top = next((p for p in (cwd, *cwd.parents) if (p / ".git").exists()), cwd)
+        self.here_slug = self._fold(project_slug(str(top)))
+        self.here = self.rel_by_slug.get(self.here_slug)
+
+    @staticmethod
+    def _fold(slug: str) -> str:
+        return slug.casefold() if WINDOWS else slug
+
+    def activity_of(self, root: str) -> str | None:
+        if root in self.activity:
+            return self.activity[root]
+        if "corporate" in self.activities:
+            return "corporate" if root in self.ownership else None
+        if self.ownership.get(root) == "own" and "contractor" not in self.activities:
+            return "private"
+        return None
+
+    def may_quote(self, project: str) -> bool:
+        slug = self._fold(project)
+        if slug == self.here_slug:
+            return True
+        if not self.onboarded:
+            return False
+        if "corporate" in self.activities:
+            return True
+        source = self.rel_by_slug.get(slug)
+        if source is None:
+            return False
+        kind = self.activity_of(source.split("/")[0])
+        if kind == "public":
+            return True
+        return kind == "contractor" and self.here is not None and self.here.split("/")[0] == source.split("/")[0]
+
+
+def _checkouts(root: Path, depth: int = 3) -> list[Path]:
+    """Every git checkout under a root, stopping at each `.git` and never following a symlink."""
+    found: list[Path] = []
+
+    def walk(directory: Path, remaining: int) -> None:
+        try:
+            children = sorted(p for p in directory.iterdir() if p.is_dir() and not p.is_symlink())
+        except OSError:
+            return
+        for child in children:
+            if child.name.startswith("."):
+                continue
+            if (child / ".git").exists():
+                found.append(child)
+            elif remaining > 1:
+                walk(child, remaining - 1)
+
+    if root.is_dir():
+        walk(root, depth)
+    return found
 
 
 def _absolute_target(raw: str) -> str:
@@ -1302,9 +1402,19 @@ def report(
     print(f"  {replayed} more were copies a resumed transcript replayed from its parent, counted once")
 
     _print_rates("per model", _group(calls, lambda c: f"{c.model}{' [sub]' if c.subagent else ''}"))
-    main_calls = [c for c in calls if not c.subagent]
+    # Everything below that names a project or quotes a command shows only what may reach this
+    # session's repo; the counts above and the totals below still read every transcript.
+    compartments = Compartments(Path.cwd())
+    shown = [c for c in calls if compartments.may_quote(c.project)]
+    unnamed = len({c.session for c in calls}) - len({c.session for c in shown})
+    main_calls = [c for c in shown if not c.subagent]
     by_session = _group(main_calls, lambda c: f"{short_project(c.project)}/{c.session[:8]} {c.model}")
     _print_rates("per session (main, largest first)", by_session, limit=25)
+    if unnamed:
+        print(
+            f"  {unnamed} session(s) from projects in another compartment are counted in every total but "
+            "not named or quoted here (plan-conveyor's classification)"
+        )
 
     # The verdict prints here, above the samples, because the samples are the bulk and the verdict is
     # the answer. See report_session's note: a run piped through `head -12` lost the comparison
@@ -1320,15 +1430,15 @@ def report(
     for name in CHAIN_TAGS:
         print(f"{name:24} {totals[name]:5}")
 
-    reruns = _truncation_reruns(calls)
+    reruns = _truncation_reruns(shown)
     print(f"\n== re-runs after a head/tail-truncated first run: {len(reruns)} ==")
     for base in reruns[:samples]:
         print("  " + base[:140].replace("\n", "\\n"))
 
     if samples:
-        _print_samples(calls, samples)
+        _print_samples(shown, samples)
 
-    denied = [c for c in calls if c.denied]
+    denied = [c for c in shown if c.denied]
     print(f"\n== denied ({len(denied)}) ==")
     for c in denied:
         print(f"[{c.model[:12]}] {c.cmd[:160]!r}\n    -> {c.result[:120]!r}")
@@ -1747,7 +1857,9 @@ def main() -> None:
             (args.since, args.until),
         )
     if args.json:
-        dump_json(calls, args.json)
+        # Every call's command goes into this file, so it carries what the report may quote, no more.
+        compartments = Compartments(Path.cwd())
+        dump_json([c for c in calls if compartments.may_quote(c.project)], args.json)
 
 
 if __name__ == "__main__":

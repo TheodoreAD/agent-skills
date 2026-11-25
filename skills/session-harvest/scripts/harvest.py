@@ -1078,8 +1078,26 @@ def cmd_transcript(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 # --------------------------------------------------------------------------------------------
 
 
+def transcript_project(path: Path) -> str | None:
+    """The project directory a transcript belongs to, or None for a file outside the projects dir —
+    an exported transcript the caller named by path, which no project owns."""
+    try:
+        return path.resolve().relative_to(PROJECTS_DIR.resolve()).parts[0]
+    except (ValueError, IndexError, OSError):
+        return None
+
+
 def cmd_turns(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     transcript = resolve_transcript(args.session, args.job, args.expect, Path.cwd())
+    project = transcript_project(transcript.path)
+    if project is not None and not Compartments(Path.cwd()).may_quote(project):
+        # Refused, never filtered quietly: a harvest that returned nothing would read as a session
+        # with nothing in it. The agent reports this and harvests from the session's own repo.
+        raise HarvestError(
+            f"turns: refused — {transcript.path} belongs to {project}, whose words may not be quoted into "
+            "the repo this harvest writes to (another client's compartment, a private repo, or a project "
+            "no classified root explains). Run the harvest from that project's own repo instead."
+        )
     turns = user_turns(transcript.entries)
     found, preamble_hits = answers(transcript.entries)
     queued, queued_attachments = queued_messages(transcript.entries)
@@ -1213,6 +1231,71 @@ def checkouts(root: Path, depth: int = 3) -> list[Path]:
     if root.is_dir():
         walk(root, depth)
     return found
+
+
+class Compartments:
+    """Which transcripts' words may be quoted into the repo this harvest writes to.
+
+    Phase 5 of `plan-conveyor`'s classification plan (2026-11-25), read from that skill's config as
+    the same contract as everything above, never through `plans.py`. Quoting — a user message, a
+    command, a decision lifted into a plan — is allowed only where the content may reach the
+    destination: the session's own repo always; a `public` root anywhere; anything on a corporate
+    machine; a client's root only into that same root. A private repo's content stays in that repo,
+    and a transcript from a project no classified root explains is never quoted. On a machine whose
+    onboarding is unfinished nothing but the session's own repo is. Nothing here asks: the user
+    wanted strong onboarding and few questions after it.
+
+    The same class sits in `session-bash-audit` and `skill-fitness`, duplicated rather than imported
+    for the reason `project_slug` gives.
+    """
+
+    def __init__(self, cwd: Path) -> None:
+        config = plan_conveyor_config()
+        self.onboarded = "onboarded" in config
+        self.activities = {str(item) for item in config.get("activities", [])}
+        self.activity = {str(k).strip("/"): str(v) for k, v in dict(config.get("activity", {})).items()}
+        self.ownership = {str(k).strip("/"): str(v) for k, v in dict(config.get("ownership", {})).items()}
+        root = Path(str(config.get("projects_root") or "~/projects")).expanduser()
+        self.rel_by_slug = {
+            self._fold(project_slug(repo)): repo.relative_to(root).as_posix() for repo in checkouts(root)
+        }
+        top = next((p for p in (cwd, *cwd.parents) if (p / ".git").exists()), cwd)
+        self.here_slug = self._fold(project_slug(top))
+        self.here = self.rel_by_slug.get(self.here_slug)
+
+    @staticmethod
+    def _fold(slug: str) -> str:
+        """Windows names the transcript directory with a lowercase drive letter, so compare folded."""
+        return slug.casefold() if WINDOWS else slug
+
+    def activity_of(self, root: str) -> str | None:
+        """As `plans.py`'s `Config.activity_of`: answered, else implied, else None."""
+        if root in self.activity:
+            return self.activity[root]
+        if "corporate" in self.activities:
+            return "corporate" if root in self.ownership else None
+        if self.ownership.get(root) == "own" and "contractor" not in self.activities:
+            return "private"
+        return None
+
+    def may_quote(self, project_dir: str) -> bool:
+        """Whether a transcript from this project directory may be quoted where this harvest writes."""
+        slug = self._fold(project_dir)
+        if slug == self.here_slug:
+            return True
+        if not self.onboarded:
+            return False
+        if "corporate" in self.activities:
+            return True
+        source = self.rel_by_slug.get(slug)
+        if source is None:
+            return False
+        kind = self.activity_of(source.split("/")[0])
+        if kind == "public":
+            return True
+        if kind == "contractor":
+            return self.here is not None and self.here.split("/")[0] == source.split("/")[0]
+        return False
 
 
 def skills_checkouts(name: str, root: Path, depth: int = 3) -> list[Path]:

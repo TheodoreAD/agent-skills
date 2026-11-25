@@ -91,7 +91,10 @@ habit instead, from output loss, which holds everywhere.
 - **Reads**: `~/.claude/projects/*.jsonl` and `~/.claude/settings.json`, Claude Code's own files,
   read-only; and, if it is there, your own expectations at
   `$XDG_CONFIG_HOME/session-bash-audit/expectations.json` (`~/.config/…` on every OS) or wherever
-  `--expectations <path>` names.
+  `--expectations <path>` names. `plan-conveyor`'s config, when present, for its classification:
+  rates count every transcript, but samples, re-runs, denied calls, per-session rows and `--json`
+  show only transcripts whose content may reach the repo the audit runs in — that repo, a `public`
+  root, the same client's root, anything on a corporate machine — and say how many were held back.
 - **Runs**: three read-only `git` commands against its own directory, and only while writing a
   baseline — `ls-files`, `rev-parse HEAD` and `status --porcelain` on `audit.py` itself, to record
   which version of the instrument produced that measurement. Nothing else: `prompts.py` replays the

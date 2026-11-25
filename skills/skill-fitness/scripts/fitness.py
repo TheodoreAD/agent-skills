@@ -46,6 +46,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+import tomllib
 import warnings
 from collections import Counter, defaultdict
 from collections.abc import Iterator
@@ -1102,6 +1103,100 @@ def scan_portability(skills: list[Skill], extra_repos: list[str] | None = None) 
     return {"author": owner, "author_repos": repos, "skills": rows}
 
 
+def _conveyor_config() -> dict[str, Any]:
+    """`plan-conveyor`'s config, read as a contract — the same resolution `session-harvest` copies."""
+    override = os.environ.get("PLAN_CONVEYOR_CONFIG")
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if override:
+        path = Path(override).expanduser()
+    elif xdg:
+        path = Path(xdg).expanduser() / "plan-conveyor" / "config.toml"
+    else:
+        path = Path.home() / ".config" / "plan-conveyor" / "config.toml"
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _checkouts(root: Path, depth: int = 3) -> list[Path]:
+    """Every git checkout under a root, stopping at each `.git` and never following a symlink."""
+    found: list[Path] = []
+
+    def walk(directory: Path, remaining: int) -> None:
+        try:
+            children = sorted(p for p in directory.iterdir() if p.is_dir() and not p.is_symlink())
+        except OSError:
+            return
+        for child in children:
+            if child.name.startswith("."):
+                continue
+            if (child / ".git").exists():
+                found.append(child)
+            elif remaining > 1:
+                walk(child, remaining - 1)
+
+    if root.is_dir():
+        walk(root, depth)
+    return found
+
+
+class Compartments:
+    """Which transcripts' commands may be quoted where this report is read.
+
+    Phase 5 of `plan-conveyor`'s classification plan (2026-11-25), duplicated from `session-harvest`
+    because skills install individually. Counts read every transcript; an `example` quotes a
+    command, so it comes only from a transcript whose content may reach the session's own repo — that
+    repo, a `public` root, anything on a corporate machine, or the same client's root.
+    """
+
+    def __init__(self, cwd: Path) -> None:
+        config = _conveyor_config()
+        self.onboarded = "onboarded" in config
+        self.activities = {str(item) for item in config.get("activities", [])}
+        self.activity = {str(k).strip("/"): str(v) for k, v in dict(config.get("activity", {})).items()}
+        self.ownership = {str(k).strip("/"): str(v) for k, v in dict(config.get("ownership", {})).items()}
+        root = Path(str(config.get("projects_root") or "~/projects")).expanduser()
+        self.rel_by_slug = {self._fold(_slug(repo)): repo.relative_to(root).as_posix() for repo in _checkouts(root)}
+        top = next((p for p in (cwd, *cwd.parents) if (p / ".git").exists()), cwd)
+        self.here_slug = self._fold(_slug(top))
+        self.here = self.rel_by_slug.get(self.here_slug)
+
+    @staticmethod
+    def _fold(slug: str) -> str:
+        return slug.casefold() if os.name == "nt" else slug
+
+    def activity_of(self, root: str) -> str | None:
+        if root in self.activity:
+            return self.activity[root]
+        if "corporate" in self.activities:
+            return "corporate" if root in self.ownership else None
+        if self.ownership.get(root) == "own" and "contractor" not in self.activities:
+            return "private"
+        return None
+
+    def may_quote(self, project: str) -> bool:
+        slug = self._fold(project)
+        if slug == self.here_slug:
+            return True
+        if not self.onboarded:
+            return False
+        if "corporate" in self.activities:
+            return True
+        source = self.rel_by_slug.get(slug)
+        if source is None:
+            return False
+        kind = self.activity_of(source.split("/")[0])
+        if kind == "public":
+            return True
+        return kind == "contractor" and self.here is not None and self.here.split("/")[0] == source.split("/")[0]
+
+
+def _slug(path: Path) -> str:
+    """Claude Code's transcript directory name for a project: every non-alphanumeric becomes `-`."""
+    return re.sub(r"[^a-zA-Z0-9]", "-", str(path))
+
+
 def scan_absorbable(min_sessions: int = 2) -> list[dict[str, Any]]:
     """Recurring throwaway Python: the agent solving the same problem again instead of reaching
     for a script.
@@ -1126,12 +1221,15 @@ def scan_absorbable(min_sessions: int = 2) -> list[dict[str, Any]]:
             if mods:
                 clusters[mods].append((project, path.stem, src))
 
+    compartments = Compartments(Path.cwd())
     rows: list[dict[str, Any]] = []
     for mods, hits in clusters.items():
         sessions = {s for _, s, _ in hits}
         if len(sessions) < min_sessions:
             continue
         shapes = Counter(_shape(src) for _, _, src in hits)
+        # Counted from every transcript, quoted only from one whose content may be shown here.
+        quotable = [src for project, _, src in hits if compartments.may_quote(project)]
         rows.append(
             {
                 "imports": sorted(mods),
@@ -1139,7 +1237,9 @@ def scan_absorbable(min_sessions: int = 2) -> list[dict[str, Any]]:
                 "sessions": len(sessions),
                 "projects": len({p for p, _, _ in hits}),
                 "distinct_shapes": len(shapes),
-                "example": min((src for _, _, src in hits), key=len).strip()[:200],
+                "example": min(quotable, key=len).strip()[:200]
+                if quotable
+                else "(every example is from another compartment — not quoted)",
             }
         )
     rows.sort(key=lambda r: (-int(r["sessions"]), -int(r["calls"])))

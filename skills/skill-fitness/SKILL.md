@@ -33,7 +33,9 @@ do not detect.
 
 - **Reads**: skills directories — `./skills` in a checkout, `~/.agents/skills`, `~/.claude/skills`,
   or whatever `--root` names; Claude Code's `~/.claude/projects/*.jsonl` and `~/.claude.json` for
-  usage and the listings actually sent; a git ref through `git archive` for `--ref`.
+  usage and the listings actually sent; a git ref through `git archive` for `--ref`; and
+  `plan-conveyor`'s config, when present, so an example command is quoted only from a transcript
+  whose content may reach the repo it runs in — counts still read every transcript.
 - **Runs**: `git archive` for `--ref`. `trigger.py` runs `claude -p` in a temporary directory — the
   only thing in this skill that spends tokens, and it is refused for a suite whose skills you do not
   have.

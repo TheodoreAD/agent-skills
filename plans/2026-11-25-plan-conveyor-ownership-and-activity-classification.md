@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 updated: 2026-11-25
 ---
 
@@ -240,5 +240,21 @@ Implement in phases, each committed on its own and passing the gate:
 5. **The transcript readers honour compartments**: session-harvest, skill-fitness and
    session-bash-audit, plus the `~/.agents/AGENTS.md` rule.
 
-Before phase 1: re-run this machine's onboarding by hand with the current tool, asking every
-decision, so `sync` can run in the meantime.
+## Progress
+
+- **Phase 1 landed 2026-11-25** (`0a70dd7`, `960897a`, `1c1a19d`), and the Windows machine was
+  onboarded with it the same day: activities `public` + `private`, one `own` root, eight decisions,
+  `onboarded` stamped.
+- [DECISION: an `own` root is not asked its activity, pointed out by the user while onboarding. One
+  account holds public and private repos side by side, so visibility is per repo; the root implies
+  `private`, the cautious of the two. It is still asked where `contractor` is an activity, because
+  an account made for one client is then possible.]
+- [DECISION: activities without `contractor` or `corporate` derive a third device, `personal`: one
+  store that may have a remote, no guarded store, no `sanctioned_remotes` question. The user asked
+  what `~/plans-sensitive` was for on a machine with no client work, and the answer was nothing.
+  `doctor` names plans left in a sensitive store such a machine stopped reading.]
+- [DECISION: once onboarded, an empty private-term list is an answer, not a gap, so `scan` passes
+  and `sync` publishes. Before this, the onboarded personal machine could not publish at all.]
+- [DEFERRED: a flat layout (repos straight under the projects root) has no root to classify, so it
+  still answers `public_roots` and `shareable_roots` directly. Per-repo classification there waits
+  for phase 2's per-repo decisions.]

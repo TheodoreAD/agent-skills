@@ -760,6 +760,9 @@ def test_tree_size_does_not_follow_a_symlink_out_of_the_store(tmp_path):
     outside.mkdir()
     (outside / "huge").write_bytes(b"x" * (2 * library.MB))
     entry = make_clone(store, "github.com--a--b")
-    (entry / "link").symlink_to(outside)
+    try:
+        (entry / "link").symlink_to(outside)
+    except OSError as exc:  # Windows without developer mode refuses to create one at all
+        pytest.skip(f"this runner cannot create a symlink: {exc}")
 
     assert library.mb(library.tree_size(entry)) == 0

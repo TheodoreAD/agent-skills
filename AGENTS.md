@@ -4,9 +4,13 @@ Cross-tool instructions for AI coding agents working in this repo. Universal con
 home-level instructions file, `~/.agents/AGENTS.md` — read natively by agents following the
 `.agents/` convention, copied to each other agent's own path (`~/.claude/CLAUDE.md` for Claude Code)
 — and nothing there is repeated here, only what is specific to this repo. A skill that points its
-reader at the home file names `~/.agents/AGENTS.md`; `~/AGENTS.md` is read by no agent. `CLAUDE.md`
-is a plain symlink to this file, not a wrapper that imports it, so every harness reads
-byte-identical content.
+reader at the home file names `~/.agents/AGENTS.md`; `~/AGENTS.md` is read by no agent.
+
+**This repo has no `CLAUDE.md`, and must not get one back.** Claude Code reads `AGENTS.md` natively
+from v2.1.277, but only while no `CLAUDE.md` exists in the repo or any directory above it — so a
+`CLAUDE.md` of any kind takes this file's place. Until 2026-11-25 it was a symlink to this file,
+which a Windows checkout without Developer Mode materialises as a 9-byte text file reading
+`AGENTS.md`: Claude Code there read that instead of these instructions, and `dprint` failed on it.
 
 ## What this repo is
 

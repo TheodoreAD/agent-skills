@@ -1,5 +1,5 @@
 ---
-status: idea
+status: planned
 updated: 2026-11-25
 ---
 
@@ -73,10 +73,10 @@ them. It applies to every write and every push, on every machine.
 | **shared** | `corporate`  | the employer's organisation                    | the store                              |
 | **shared** | `contractor` | a client's organisation                        | that client's store                    |
 
-[NEEDS CLARIFICATION: two combinations are not covered by the classification. `own` + `contractor`
-(an account the user created for one client) and `shared` + `private` (someone else's private repo
-the user collaborates on personally). The working assumption is that the first behaves as
-`contractor` for that client's root, and the second as `private` with plans in the store.]
+[DECISION: the two combinations the classification does not name, settled by the user 2026-11-25.
+`own` + `contractor` (an account the user created for one client) behaves as `contractor` for that
+client's root. `shared` + `private` (someone else's private repo the user collaborates on
+personally) behaves as `private`, with its plans in the store.]
 
 ## What the classification means for plan-conveyor
 
@@ -97,9 +97,14 @@ rules reduce to compartments:
 | **contractor R** | only repos and plans inside root R | only repos and plans inside root R |
 | **corporate**    | anywhere on the machine            | anywhere on the machine            |
 
-[NEEDS CLARIFICATION: may a client repo's plans name the user's private repos? The definition of
-`private` allows names in "other plans", but a client repo is read by the client. Working default:
-no — names of private repos do not flow into a contractor compartment.]
+[DECISION: names of private repos do not flow into a contractor compartment, settled by the user
+2026-11-25. The definition of `private` allows names in "other plans", but a client repo is read by
+the client.]
+
+[DECISION: each contractor compartment keeps its own private term list (its ticket prefix, its
+domain, its product codenames), settled by the user 2026-11-25. A per-client list is what lets a
+check inside one root allow a term between that root's repos while still refusing it everywhere
+else. Machine-wide terms remain for anything that belongs to no single client.]
 
 ### Configuration (per machine, XDG, never synced)
 
@@ -179,12 +184,31 @@ write move anything out of the compartment it came from?
 
 ## What it means beyond plan-conveyor
 
-- **session-harvest** reads transcripts from every project on the machine. A harvest run in a
-  personal repo must skip transcripts from contractor compartments, or it quotes client sessions
-  into personal plans.
-- **research-library** is one shared `$RESEARCH_HOME`. A client's repository cloned there crosses
-  compartments; client material belongs in a per-client library or in that client's root.
-- **skill-fitness** and **session-bash-audit** read transcripts too, and need the same filter.
+The user's priority, 2026-11-25: strong onboarding and very few questions afterwards. Plans
+committed in the wrong place and pushed are the main risk; the transcript readers are a smaller one,
+so they get defensive defaults that never ask.
+
+- **research-library needs no restriction.** It holds public information only, by definition, so
+  nothing in it belongs to a compartment. [DECISION: by the user 2026-11-25.]
+- **Transcript readers share one compartment filter**, derived from the same config, so none of them
+  asks anything:
+  - Each transcript is attributed to a repo through its project directory (the encoding
+    `claude_session_repo` already matches), and so to a compartment.
+  - **What is quoted** — a verbatim command, a user message, a decision lifted into a plan — comes
+    only from transcripts whose content may reach the destination under the flow table: public from
+    anywhere, private only from the same repo, contractor only from the same root, corporate from
+    anywhere on that machine.
+  - **What is counted** — rates, totals, which skills fired — may read every transcript, because a
+    count carries no content. Example lines in a report are quoted, so they pass the filter above.
+  - A transcript from a directory that maps to no classified root (home, a temp folder) counts as
+    unknown and is never quoted.
+  - Every report says how many transcripts the filter skipped, so a thin result is explained rather
+    than silent.
+  - On a machine whose onboarding is unfinished, readers quote only the session's own repo and say
+    why.
+- **session-harvest** is the one that writes into plans, so it applies the quote filter to
+  everything it lifts. **skill-fitness** and **session-bash-audit** mostly count, and filter their
+  examples.
 - **Claude Code's own state** is not compartmented: `~/.claude/projects/` holds every session's
   transcript in one tree. That is the harness, and an agent rule in `~/.agents/AGENTS.md` is the
   available control: a session in a contractor compartment reads nothing outside its root.
@@ -199,10 +223,6 @@ write move anything out of the compartment it came from?
 
 ## Open questions
 
-- [NEEDS CLARIFICATION: the two uncovered combinations above, and whether private names may enter a
-  contractor compartment.]
-- [NEEDS CLARIFICATION: does a contractor compartment get its own `private.extra` (its ticket
-  prefix, its domain), or is that list machine-wide?]
 - [DEFERRED: migrating an existing synced store from tier folders named by machine roots to
   identity-named compartment stores needs every machine on the new version first; it is the last
   phase, not the first.]
@@ -217,7 +237,7 @@ Implement in phases, each committed on its own and passing the gate:
 2. **Routing by ownership**: per-repo `plans = repo | store` for `own`, store only for `shared`.
 3. **Scan as a flow check**, plus universal secret detection.
 4. **Stores per compartment, folders named by identity**, with a migration both machines run.
-5. **The other skills honour compartments**: session-harvest, research-library, skill-fitness,
+5. **The transcript readers honour compartments**: session-harvest, skill-fitness and
    session-bash-audit, plus the `~/.agents/AGENTS.md` rule.
 
 Before phase 1: re-run this machine's onboarding by hand with the current tool, asking every

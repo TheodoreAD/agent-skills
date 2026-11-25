@@ -1,0 +1,9 @@
+# Every text file is stored and checked out with LF line endings, on every OS and whatever
+# core.autocrlf says. Git for Windows' installer sets core.autocrlf=true system-wide, which checks
+# files out with CRLF; dprint then reformats every markdown file and a Windows checkout fails the
+# gate on files nobody touched.
+* text=auto eol=lf
+
+# Windows-only scripts are the one exception: cmd.exe needs CRLF. None exist here yet.
+*.bat text eol=crlf
+*.cmd text eol=crlf

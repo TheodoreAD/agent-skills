@@ -634,6 +634,19 @@ into a public repo.
 `[private] extra` is not optional decoration: an employer with no repo on this machine has no
 directory to derive from, and is invisible to the scan until someone adds it.
 
+**The scan judges by where the write lands.** In a repo under a `contractor` root, that client's own
+names and its own `[private_terms]` list may appear — they move freely between its repos — while
+every other client's names and terms are hits, and so are the names of your private repos, which may
+appear in your own plans but never in a client's. Everywhere else, every client's names and terms
+are hits. Each client's list is asked during onboarding (`private_terms.<root>`), so a ticket prefix
+or email domain is covered without a directory to derive it from.
+
+**Secrets are always scanned for**, whatever the machine's classification and with no ignore list:
+private key headers and the documented token shapes of AWS, GitHub, Slack, Anthropic, OpenAI and
+Google. A hit is reported as `[secret: <kind>]` with the token redacted from the line. Remove it,
+and rotate it if it was ever pushed. An onboarded machine with no private names still runs the scan
+for secrets alone.
+
 Only a **collection** name is split into its organisation. A directory under `projects_root` that is
 itself a repository contributes its whole name and nothing else — splitting it is how ordinary words
 enter the term list, and a gate that flags "repo" in every document is a gate that gets switched

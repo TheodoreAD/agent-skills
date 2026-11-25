@@ -299,6 +299,7 @@ CONFIG_TABLES = (
     "ownership",
     "activity",
     "answered",
+    "private_terms",
 )
 
 # The gates SKILL.md states in prose, as data. Everything else is a free transition.
@@ -459,6 +460,11 @@ public_roots = ["github.com-personal"]
 # "public" or "private" is the default for its repos; a client's root is "contractor". An
 # unclassified root is treated as sensitive. Not asked on a corporate machine, where it is implied.
 # personal = "public"
+
+[private_terms]
+# Per client root: names that identify that client but are not directory names — its ticket prefix,
+# email domain, product codenames. Allowed between that client's own repos, refused everywhere else.
+# "client-root" = ["ACME-", "acme.example"]
 
 [answered]
 # Written by `config set` and `config confirm`: which decisions the user answered, and when.
@@ -651,6 +657,10 @@ class Config:
     answered: dict[str, str] = field(default_factory=dict)
     # The date onboarding was first completed, written by `install`. None until then.
     onboarded: str | None = None
+    # A contractor root -> the names that identify that client and are not directory names: its
+    # ticket prefix, its domain, its codenames. Per client, decided by the user 2026-11-25, so a
+    # scan inside one client's root can allow its own terms while refusing them everywhere else.
+    client_terms: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def classified(self) -> bool:
@@ -1121,6 +1131,10 @@ def load_config() -> Config:
         activity=activity,
         answered=_answered(raw),
         onboarded=None if onboarded is None else str(onboarded),
+        client_terms={
+            name.strip("/"): _strings(value, f"private_terms.{name}")
+            for name, value in _table(raw, "private_terms").items()
+        },
         path=path,
         exists=path.is_file(),
         device=device,
@@ -3303,7 +3317,32 @@ def repo_paths(cfg: Config) -> list[str]:
     return walk_projects(cfg).repos
 
 
-def private_terms(cfg: Config, repos: list[str]) -> list[str]:
+def _root_name_terms(cfg: Config, public: set[str]) -> set[str]:
+    """The names every non-public directory under the projects root contributes."""
+    terms: set[str] = set()
+    if not cfg.projects_root.is_dir():
+        return terms
+    for path in cfg.projects_root.iterdir():
+        if not path.is_dir() or path.name in public or path.name.startswith("."):
+            continue
+        terms.add(path.name)
+        if is_repository(path):
+            # A repo cloned straight into the projects root is not an organisation, and splitting
+            # its name is how ordinary words enter the term list. Measured 2026-08-29 against a
+            # scratch root: `~/projects/loose-repo` contributed `loose`, `loose-repo` and **`repo`**
+            # — a gate that flags the word "repo" in every document is a gate that gets switched
+            # off, which is the exact failure the only-split-root-names rule was written to avoid.
+            continue
+        # An organisation appears in more forms than its directory name: a root called
+        # `<org>.com-bitbucket-<something>` is the same client as an `@<org>.com` email address in
+        # a doc. Splitting the root name on its separators catches both; the hosting words are
+        # dropped because "github" and "com" identify nobody. Only ROOT names are split — splitting
+        # repo names too would gate on ordinary words like "telemetry".
+        terms.update(part for part in re.split(r"[.\-_]", path.name) if part.lower() not in HOSTING_WORDS)
+    return terms
+
+
+def private_terms(cfg: Config, repos: list[str], destination: str | None = None) -> list[str]:
     """Every name that must not appear in a repo you publish, derived from the machine itself.
 
     A hard-coded list would have to live somewhere, and the only places available are a published
@@ -3311,32 +3350,29 @@ def private_terms(cfg: Config, repos: list[str]) -> list[str]:
     instead means a new client root is covered the moment it is cloned, with nothing to maintain:
     every path component under a non-public root — the root, its projects, its repo names — is a
     name that identifies work that is not yours to disclose.
+
+    `destination` is the root a write lands in, which makes this a flow check (phase 3 of the
+    classification plan). Inside a contractor root, that client's own names and its own
+    `[private_terms]` move freely between its repos, every other client's stay forbidden, and the
+    names of your private repos are added — they may appear in your own plans, never in a client's.
+    Anywhere else, every client's names and terms are forbidden, as before.
     """
     public = set(cfg.public_root_names())
-    terms: set[str] = set()
-    if cfg.projects_root.is_dir():
-        for path in cfg.projects_root.iterdir():
-            if not path.is_dir() or path.name in public or path.name.startswith("."):
-                continue
-            terms.add(path.name)
-            if is_repository(path):
-                # A repo cloned straight into the projects root is not an organisation, and
-                # splitting its name is how ordinary words enter the term list. Measured
-                # 2026-08-29 against a scratch root: `~/projects/loose-repo` contributed `loose`,
-                # `loose-repo` and **`repo`** — a gate that flags the word "repo" in every document
-                # is a gate that gets switched off, which is the exact failure the
-                # only-split-root-names rule was written to avoid.
-                continue
-            # An organisation appears in more forms than its directory name: a root called
-            # `<org>.com-bitbucket-<something>` is the same client as an `@<org>.com` email address
-            # in a doc. Splitting the root name on its separators catches both; the hosting words
-            # are dropped because "github" and "com" identify nobody. Only ROOT names are split —
-            # splitting repo names too would gate on ordinary words like "telemetry".
-            terms.update(part for part in re.split(r"[.\-_]", path.name) if part.lower() not in HOSTING_WORDS)
+    inside_client = destination is not None and cfg.activity_of(destination) == CONTRACTOR
+    if inside_client and destination is not None:
+        public.add(destination)
+    terms = _root_name_terms(cfg, public)
     for rel in repos:
         parts = rel.split("/")
         if parts[0] not in public:
             terms.update(parts)
+        elif inside_client and parts[0] != destination and cfg.activity_of(parts[0]) == PRIVATE and len(parts) > 1:
+            # Repo names only: a private root's own directory name is usually a word like
+            # `personal`, and gating on it inside every client repo would be noise.
+            terms.update(parts[1:])
+    for root, names in cfg.client_terms.items():
+        if root != destination:
+            terms.update(names)
     terms.update(cfg.private_extra)
     terms.difference_update(cfg.private_ignore)
     return sorted(term for term in terms if len(term) >= MIN_PRIVATE_TERM)
@@ -3350,14 +3386,40 @@ class ScanHit(NamedTuple):
     text: str
 
 
+# Credentials, found in every scan whatever the machine's classification: secrets are the one thing
+# no activity may publish, so detection is not a feature of any one of them (the user, 2026-11-25).
+# Deliberately few and high-precision — each pattern is a vendor's documented token shape — because
+# a secret check that cries wolf gets bypassed, and this one has no ignore list.
+SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("private key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY")),
+    ("AWS access key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})\b")),
+    ("Slack token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}")),
+    ("Anthropic key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
+    ("OpenAI key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9]{32,}\b")),
+    ("Google API key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
+)
+
+
 def scan_text(text: str, terms: list[str]) -> list[ScanHit]:
-    """Every private term appearing in the text, case-insensitively."""
-    if not terms:
-        return []
-    pattern = re.compile("|".join(re.escape(term) for term in sorted(terms, key=len, reverse=True)), re.IGNORECASE)
+    """Every secret and every private term in the text, terms case-insensitively.
+
+    A secret is reported as `secret: <kind>` with the token itself redacted from the line, so the
+    report never repeats what it found.
+    """
+    pattern = (
+        re.compile("|".join(re.escape(term) for term in sorted(terms, key=len, reverse=True)), re.IGNORECASE)
+        if terms
+        else None
+    )
     hits: list[ScanHit] = []
     for number, line in enumerate(text.splitlines(), start=1):
-        match = pattern.search(line)
+        secret = next(((kind, found) for kind, rx in SECRET_PATTERNS if (found := rx.search(line))), None)
+        if secret is not None:
+            kind, found = secret
+            hits.append(ScanHit(number, f"secret: {kind}", line.replace(found.group(0), "[redacted]").strip()))
+            continue
+        match = pattern.search(line) if pattern is not None else None
         if match:
             hits.append(ScanHit(number, match.group(0), line.strip()))
     return hits
@@ -8495,8 +8557,18 @@ def report_unread(unread: list[UnreadPath], mode: str, samples: int) -> None:
         print(f"  plans.py scan --mode {mode} --path <that directory>")
 
 
+def destination_root(cfg: Config, root: Path) -> str | None:
+    """The projects-root directory a repo sits under — the compartment a write into it lands in."""
+    main = linked_worktree_of(root) or root
+    try:
+        rel = main.resolve().relative_to(cfg.projects_root.resolve()).as_posix()
+    except (ValueError, OSError):
+        return None
+    return rel.split("/")[0] if "/" in rel else None
+
+
 def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
-    """Refuse to let a client's identity reach a repo that gets published."""
+    """Refuse to let a client's identity — or any secret — reach a repo that gets published."""
     cfg = ws.config
     terms = ws.private_terms
     if args.list_terms:
@@ -8505,12 +8577,15 @@ def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
     root = repo_root_of(args.path)
     if root is None:
         raise PlanError(f"{args.path} is not inside a git repository")
+    destination = destination_root(cfg, root)
+    if destination is not None and cfg.activity_of(destination) == CONTRACTOR:
+        terms = private_terms(cfg, ws.repos, destination)
+        print(f"compartment: {destination} — its own names and terms may appear here, no other root's may")
     if not terms:
         # Onboarded (checked above), so this is the user's answer rather than a gap: every root on
-        # the machine is open and no extra name was given. Secrets are not this scan's job.
-        print("terms:   none — onboarding classified every root here as open and listed no private names,")
-        print("         so there is nothing this machine must keep out of a published repo")
-        return 0
+        # the machine is open and no extra name was given. Secrets are still scanned for below.
+        print("terms:   none — onboarding classified every root here as open and listed no private names;")
+        print("         scanning for secrets only")
 
     tally: Counter[str] = Counter()
     hits = 0
@@ -8523,16 +8598,28 @@ def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
             hits += 1
     if hits > args.samples:
         print(f"... {hits - args.samples} more (raise --samples to see them)")
-    print(f"\n{hits} hit(s) over {args.mode}, against {len(terms)} private term(s) from {cfg.projects_root}")
+    print(
+        f"\n{hits} hit(s) over {args.mode}, against {len(terms)} private term(s) from {cfg.projects_root} "
+        "and every secret pattern"
+    )
     for term, count in tally.most_common(10):
         print(f"  {count:>5}  {term}")
     report_unread(plan.unread, args.mode, args.samples)
-    if hits:
-        print("\nEach names work that is not yours to disclose. Redact before committing. A term that")
-        print("is a generic English word rather than an identity belongs in the config's")
+    _scan_advice(tally)
+    return 1 if hits else 0
+
+
+def _scan_advice(tally: Counter[str]) -> None:
+    """What to do about the hits: a secret is rotated, a name is redacted. Nothing when clean."""
+    secrets = sum(count for term, count in tally.items() if term.startswith("secret: "))
+    if secrets:
+        print("\nA secret is in what would be published. Remove it, and rotate it if it was ever pushed:")
+        print("a credential that reached a remote is compromised whatever happens to the commit.")
+    if sum(tally.values()) > secrets:
+        print("\nEach name is work that is not yours to disclose here. Redact before committing. A term")
+        print("that is a generic English word rather than an identity belongs in the config's")
         print("[private] ignore list — never widen public_roots to silence it.")
         print("A hit already in pushed history is a purge decision for the user, not an edit.")
-    return 1 if hits else 0
 
 
 def cmd_repos(args: argparse.Namespace, ws: Workspace) -> int:
@@ -8963,6 +9050,28 @@ def _root_classification_decisions(ws: Workspace) -> list[Decision]:
                 "puts its plans in the store that may have a remote",
             )
         )
+        # Asked once a root is (or may yet be) a client's. Shown alongside the activity question
+        # rather than after it, so one pass of the walkthrough covers a new client root.
+        # Shown while `activities` is still unanswered too, so one pass of the walkthrough covers
+        # it: asked only after `contractor` was recorded, it reopened onboarding the moment the
+        # first pass finished, which a test walking the walkthrough once caught 2026-11-26.
+        maybe_client = name not in cfg.activity and cfg.ownership.get(name) != OWN
+        client_work_possible = not cfg.activities or CONTRACTOR in cfg.activities
+        if client_work_possible and (cfg.activity.get(name) == CONTRACTOR or maybe_client):
+            decisions.append(
+                Decision(
+                    key=f"private_terms.{name}",
+                    what=(
+                        f"if {name}/ is a client's: names that identify that client but are not "
+                        "directory names — its ticket prefix, email domain, product codenames. Allowed "
+                        "between that client's own repos, refused in every other repo and store. Not "
+                        "a client's: answer an empty list"
+                    ),
+                    current=", ".join(cfg.client_terms.get(name, ())) or "(empty)",
+                    suggest="the client's ticket prefix and email domain at least",
+                    cost="a client name with no directory to derive it from reaches your other repos unseen",
+                )
+            )
     return decisions
 
 

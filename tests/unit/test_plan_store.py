@@ -3395,6 +3395,67 @@ def test_a_clone_of_someone_elses_repo_under_your_own_root_goes_to_the_store(ws)
     assert routing.source == plans.OWNERSHIP_FOREIGN_SOURCE
 
 
+TWO_CLIENTS = (
+    'activities = ["private", "contractor"]\n'
+    "[ownership]\n"
+    '"github.com-personal" = "own"\n"client.com-bitbucket" = "shared"\n"otterco-gitlab" = "shared"\n'
+    "[activity]\n"
+    '"github.com-personal" = "private"\n"client.com-bitbucket" = "contractor"\n"otterco-gitlab" = "contractor"\n'
+    "[private_terms]\n"
+    '"client.com-bitbucket" = ["ZEBRA-"]\n"otterco-gitlab" = ["OTTERWARE"]\n'
+)
+
+
+def stage(repo: Path, text: str) -> None:
+    (repo / "notes.md").write_text(text, encoding="utf-8")
+    subprocess.run(["git", "add", "notes.md"], cwd=repo, check=True)
+
+
+def staged_hits(ws: Workspace, repo: Path, capsys) -> str:
+    capsys.readouterr()
+    plans.main(["scan", "--mode", "staged", "--path", str(repo)])
+    return capsys.readouterr().out
+
+
+def test_inside_a_client_root_its_own_names_flow_and_nothing_else_does(ws, capsys):
+    """Phase 3: the scan is a flow check. One client's names and terms move between its own repos;
+    another client's never do, and neither do the names of your private repos (the user, 2026-11-25)."""
+    make_repo(ws.projects / "otterco-gitlab" / "billing")
+    write_config(ws, TWO_CLIENTS)
+    stage(
+        ws.client, "ZEBRA-12 in client.com-bitbucket api\nlike otterco-gitlab does\nOTTERWARE too\nsee agent-skills\n"
+    )
+
+    out = staged_hits(ws, ws.client, capsys)
+    assert "compartment: client.com-bitbucket" in out
+    assert "[otterco" in out.lower()
+    assert "[OTTERWARE]" in out
+    assert "[agent-skills]" in out
+    assert "ZEBRA" not in out.split("hit(s)")[1], "the client's own term is allowed in its own repo"
+    assert ":1: [" not in out, "the first line names only the client itself"
+
+
+def test_a_clients_terms_are_refused_outside_its_root(ws, capsys):
+    make_repo(ws.projects / "otterco-gitlab" / "billing")
+    write_config(ws, TWO_CLIENTS)
+    stage(ws.personal, "fixed ZEBRA-12 for them\n")
+
+    assert "[ZEBRA-]" in staged_hits(ws, ws.personal, capsys)
+
+
+def test_a_secret_is_found_and_redacted_on_any_machine(ws, capsys):
+    """Secrets are universal: found even where nothing else is private, and never echoed back."""
+    write_config(ws, 'activities = ["public", "private"]\n[ownership]\n"github.com-personal" = "own"\n')
+    shutil.rmtree(ws.projects / "client.com-bitbucket")
+    token = "AKIA" + "Q" * 16  # assembled, so this file never holds one
+    stage(ws.personal, f"aws_access_key_id = {token}\n")
+
+    out = staged_hits(ws, ws.personal, capsys)
+    assert "[secret: AWS access key]" in out
+    assert token not in out
+    assert "rotate it" in out
+
+
 def test_corporate_must_be_the_only_activity(ws):
     write_config(ws, 'activities = ["corporate", "public"]\n')
     with pytest.raises(plans.PlanError, match="corporate is exclusive"):
@@ -3440,7 +3501,7 @@ def test_an_onboarded_machine_with_nothing_private_passes_the_scan(ws, capsys):
     shutil.rmtree(ws.projects / "client.com-bitbucket")  # no client root: nothing here is private
 
     assert plans.main(["scan", "--path", str(ws.personal)]) == 0
-    assert "nothing this machine must keep out of a published repo" in capsys.readouterr().out
+    assert "scanning for secrets only" in capsys.readouterr().out
 
 
 def test_doctor_names_plans_left_in_a_sensitive_store_a_personal_machine_stopped_reading(ws, capsys):
@@ -3515,7 +3576,13 @@ def test_confirm_records_keeping_a_value_and_refuses_one_never_set(ws, capsys):
 def answer_every_decision(ws: Workspace) -> None:
     """Walk the onboarding the way an agent would: an answer for each open decision."""
     choices = {"activities": '["public", "contractor"]'}
-    for decision in plans.open_decisions(plans.Workspace(ws.personal)):
+    # Re-read after each answer, as the walkthrough's output would be: one answer can remove another
+    # question (an own root is not asked for a client's term list).
+    for _ in range(50):
+        pending = plans.open_decisions(plans.Workspace(ws.personal))
+        if not pending:
+            return
+        decision = pending[0]
         if decision.key in choices:
             value = choices[decision.key]
         elif decision.key.startswith("ownership."):
@@ -3526,6 +3593,7 @@ def answer_every_decision(ws: Workspace) -> None:
             assert plans.main(["config", "confirm", decision.key, "--path", str(ws.personal)]) == 0, decision.key
             continue
         assert plans.main(["config", "set", decision.key, value, "--path", str(ws.personal)]) == 0
+    pytest.fail("the walkthrough never ran out of open decisions")
 
 
 def test_install_stamps_onboarded_only_once_every_decision_is_answered(ws, capsys):
@@ -3536,6 +3604,8 @@ def test_install_stamps_onboarded_only_once_every_decision_is_answered(ws, capsy
     assert plans.load_config().onboarded is None
 
     answer_every_decision(ws)
+    left = [decision.key for decision in plans.open_decisions(plans.Workspace(ws.personal))]
+    assert not left, f"one pass of the walkthrough left {left} open"
     assert plans.main(["install", "--path", str(ws.personal)]) == 0
     assert f"onboarded:   {plans.today()}" in capsys.readouterr().out
     assert plans.load_config().onboarded == plans.today()

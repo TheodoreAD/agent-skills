@@ -78,7 +78,7 @@ class Machines:
         self.config.write_text(
             f'projects_root = "{(self.home / "projects").as_posix()}"\n'
             f'store = "{self.here.as_posix()}"\n'
-            'default = "store"\npublic_roots = ["github.com-personal"]\n'
+            'default = "store"\npublic_roots = ["github.com-personal"]\nonboarded = "2026-01-01"\n'
             f'sync = "{sync}"\n{extra}'
             '[private]\nignore = ["client"]\n[roots]\n"github.com-personal" = "repo"\n',
             encoding="utf-8",

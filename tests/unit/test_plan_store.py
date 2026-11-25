@@ -116,12 +116,16 @@ def ws(tmp_path, monkeypatch):
     )
 
 
-def write_config(ws: Workspace, body: str) -> None:
+def write_config(ws: Workspace, body: str, *, onboarded: bool = True) -> None:
+    """A config for the fake machine. Onboarded by default: the publishing commands refuse on a
+    machine whose onboarding is unfinished, and only the tests about onboarding want that."""
     ws.config.parent.mkdir(parents=True, exist_ok=True)
+    stamp = 'onboarded = "2026-01-01"\n' if onboarded else ""
     # `as_posix()`: a Windows path in a TOML basic string is a run of escapes (`\U` is a unicode
     # escape), and the first Windows run failed 100 tests on exactly that line.
     ws.config.write_text(
-        f'projects_root = "{ws.projects.as_posix()}"\nstore = "{ws.store.as_posix()}"\n{body}', encoding="utf-8"
+        f'projects_root = "{ws.projects.as_posix()}"\nstore = "{ws.store.as_posix()}"\n{stamp}{body}',
+        encoding="utf-8",
     )
 
 
@@ -1766,8 +1770,12 @@ def test_explain_writes_nothing_and_names_the_decisions(ws, capsys):
     assert "nothing was written" in out
     assert not ws.store.exists()
     assert ws.config.read_text(encoding="utf-8") == before
-    for key in ("projects_root", "store", "default", "public_roots", "private.extra"):
+    for key in ("activities", "projects_root", "store", "default", "private.extra"):
         assert f"decision: {key}" in out
+    # Roots are classified instead, and the classification decides the public and shareable roots.
+    assert "decision: ownership.github.com-personal" in out
+    assert "decision: activity.client.com-bitbucket" in out
+    assert "decision: public_roots" not in out
 
 
 def test_explain_asks_per_root_only_when_no_default_answers_it(ws, capsys):
@@ -3315,6 +3323,131 @@ def test_doctor_accepts_a_folder_another_machine_linked_under_its_own_root_name(
     assert "desktop-root/tool" in out, "the linked folder is still listed as holding plans"
     assert "is in the shareable store but desktop-root" not in out
     assert "desktop-root/tool holds plans but no rule routes it" not in out
+
+
+# --------------------------------------------------------------------------------------------
+# onboarding: the classification, and the record that it was answered
+#
+# Asked for by the user 2026-11-25, after a machine was "set up" by a session that accepted every
+# default: the user is asked what each root is on every machine, and the config says whether that
+# happened. Plan: 2026-11-25-plan-conveyor-ownership-and-activity-classification.md.
+
+CLASSIFIED = (
+    'activities = ["public", "contractor"]\n'
+    '[ownership]\n"github.com-personal" = "own"\n"client.com-bitbucket" = "shared"\n'
+    '[activity]\n"github.com-personal" = "public"\n"client.com-bitbucket" = "contractor"\n'
+)
+
+
+def test_corporate_must_be_the_only_activity(ws):
+    write_config(ws, 'activities = ["corporate", "public"]\n')
+    with pytest.raises(plans.PlanError, match="corporate is exclusive"):
+        plans.load_config()
+
+
+def test_a_root_cannot_take_an_activity_the_machine_does_not_hold(ws):
+    write_config(ws, 'activities = ["public"]\n[activity]\n"client.com-bitbucket" = "contractor"\n')
+    with pytest.raises(plans.PlanError, match="this machine's activities are public"):
+        plans.load_config()
+
+
+def test_activities_decide_the_device(ws):
+    write_config(ws, 'activities = ["corporate"]\n')
+    assert plans.load_config().device == plans.WORK
+    write_config(ws, 'activities = ["public", "private"]\n')
+    assert plans.load_config().device == plans.CONTRACTOR
+
+
+def test_classified_roots_decide_public_and_shareable_roots(ws):
+    """The classification wins over a stale `public_roots`, so a machine answered once is not
+    answered twice — and a client's root never lands in the half of the store with a remote."""
+    write_config(ws, f'public_roots = ["client.com-bitbucket"]\n{CLASSIFIED}')
+    cfg = plans.load_config()
+
+    assert cfg.public_root_names() == ("github.com-personal",)
+    assert cfg.tier_of("client.com-bitbucket/team/api") == plans.SENSITIVE
+    assert cfg.tier_of("github.com-personal/agent-skills") == plans.SHAREABLE
+
+
+def test_an_unclassified_root_stays_out_of_the_public_roots(ws):
+    """A root that appears after onboarding is treated cautiously until the user says what it is."""
+    write_config(ws, 'activities = ["public"]\n[activity]\n"github.com-personal" = "public"\n')
+    assert plans.load_config().public_root_names() == ("github.com-personal",)
+
+
+def test_config_set_records_when_the_user_answered(ws, capsys):
+    write_config(ws, "", onboarded=False)
+
+    assert plans.main(["config", "set", "activities", '["public"]', "--path", str(ws.personal)]) == 0
+    assert plans.load_config().answered["activities"] == plans.today()
+
+    capsys.readouterr()
+    assert plans.main(["install", "--explain", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert f"decision: activities\n  answered: {plans.today()}" in out
+    assert "decision: ownership.github.com-personal\n  answered: no — ask" in out
+
+
+def test_confirm_records_keeping_a_value_and_refuses_one_never_set(ws, capsys):
+    write_config(ws, "", onboarded=False)
+
+    assert plans.main(["config", "confirm", "store", "--path", str(ws.personal)]) == 0
+    assert plans.load_config().answered["store"] == plans.today()
+    # Nothing to keep: confirming would mark a question answered that nobody answered.
+    assert plans.main(["config", "confirm", "activities", "--path", str(ws.personal)]) == 1
+    assert plans.main(["config", "confirm", "not-a-decision", "--path", str(ws.personal)]) == 1
+    assert "activities" not in plans.load_config().answered
+
+
+def answer_every_decision(ws: Workspace) -> None:
+    """Walk the onboarding the way an agent would: an answer for each open decision."""
+    choices = {"activities": '["public", "contractor"]'}
+    for decision in plans.open_decisions(plans.Workspace(ws.personal)):
+        if decision.key in choices:
+            value = choices[decision.key]
+        elif decision.key.startswith("ownership."):
+            value = "own" if "personal" in decision.key else "shared"
+        elif decision.key.startswith("activity."):
+            value = "public" if "personal" in decision.key else "contractor"
+        else:
+            assert plans.main(["config", "confirm", decision.key, "--path", str(ws.personal)]) == 0, decision.key
+            continue
+        assert plans.main(["config", "set", decision.key, value, "--path", str(ws.personal)]) == 0
+
+
+def test_install_stamps_onboarded_only_once_every_decision_is_answered(ws, capsys):
+    write_config(ws, 'default = "store"\n', onboarded=False)
+
+    assert plans.main(["install", "--path", str(ws.personal)]) == 0
+    assert "decision(s) open" in capsys.readouterr().out
+    assert plans.load_config().onboarded is None
+
+    answer_every_decision(ws)
+    assert plans.main(["install", "--path", str(ws.personal)]) == 0
+    assert f"onboarded:   {plans.today()}" in capsys.readouterr().out
+    assert plans.load_config().onboarded == plans.today()
+
+
+def test_publishing_refuses_until_onboarding_is_finished(ws, capsys):
+    """scan is the gate every commit to a published repo runs, and sync and push are how a store
+    leaves the machine — none of them may act for a machine nobody classified."""
+    write_config(ws, 'default = "store"\nsync = "manual"\n', onboarded=False)
+
+    for command in (["scan"], ["sync"], ["push"], ["join", "git@example.com:me/plans.git"]):
+        assert plans.main([*command, "--path", str(ws.personal)]) == 1, command
+        assert "onboarding is finished" in capsys.readouterr().err
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "onboarding is unfinished, so scan, sync, push and join refuse" in capsys.readouterr().out
+
+
+def test_doctor_reports_a_root_that_appeared_after_onboarding(ws, capsys):
+    write_config(ws, 'default = "store"\n')  # stamped, but nothing was ever classified
+
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "onboarding reopened since 2026-01-01" in out
+    assert "ownership.client.com-bitbucket" in out
 
 
 # --------------------------------------------------------------------------------------------

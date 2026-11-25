@@ -123,6 +123,28 @@ CONTRACTOR, WORK = "contractor", "work"
 DEVICES = (CONTRACTOR, WORK)
 TIERS = (SHAREABLE, SENSITIVE, SINGLE)
 
+# The classification a machine is onboarded with, decided with the user 2026-11-25 — see the plan
+# `2026-11-25-plan-conveyor-ownership-and-activity-classification.md` in this skill's repo.
+#
+# Activities are what kinds of work this machine holds, one or several:
+#
+#   public      the user's own public work; nothing to redact but secrets.
+#   private     the user's own private work; names may appear in other plans, contents may not.
+#   contractor  client work; each client root is insulated from every other root.
+#   corporate   one organisation owns everything here. Exclusive: it is the machine's only activity.
+#
+# Ownership is per root, and says who the repos under it belong to:
+#
+#   own     an account the user owns. Its repos may keep plans in-repo, chosen per repo.
+#   shared  an organisation the user contributes to. Plans go to the store, never into its repos.
+PUBLIC, PRIVATE, CORPORATE = "public", "private", "corporate"
+ACTIVITIES = (PUBLIC, PRIVATE, CONTRACTOR, CORPORATE)
+OWN, SHARED = "own", "shared"
+OWNERSHIPS = (OWN, SHARED)
+# The activities whose roots behave as the user's own personal work: their names may appear in a
+# published repo, and their plans go in the store half that may have a remote.
+PERSONAL_ACTIVITIES = (PUBLIC, PRIVATE)
+
 # Whether this machine syncs its stores with their git remotes — one key, read on every command, and
 # a remote's presence implies nothing. Decided with the user 2026-11-25: the default is `off`, so a
 # new user needs no remote at all, and `install --explain` asks.
@@ -261,7 +283,19 @@ SCOPES = ("auto", "repo", "family", "unscoped")
 
 # Tables `config set` understands. A key's table is whatever precedes its first dot, but only when
 # it is one of these — a [repos] key is a path full of dots and must not be split on every one.
-CONFIG_TABLES = ("roots", "repos", "orgs", "tiers", "about", "private", "view", "attachments")
+CONFIG_TABLES = (
+    "roots",
+    "repos",
+    "orgs",
+    "tiers",
+    "about",
+    "private",
+    "view",
+    "attachments",
+    "ownership",
+    "activity",
+    "answered",
+)
 
 # The gates SKILL.md states in prose, as data. Everything else is a free transition.
 #
@@ -301,6 +335,23 @@ projects_root = "~/projects"
 # on a single-employer machine costs an unused directory; guessing `work` on a machine that holds
 # several parties' work puts client plans in a store you believe is safe to push.
 # device = "work"
+
+# What kinds of work this machine holds — the question that replaces `device` above, whose answer
+# it derives (`corporate` means `work`, anything else `contractor`). One or several of:
+#
+#   public      your own public work; nothing to redact but secrets.
+#   private     your own private work; names may appear in other plans, contents may not.
+#   contractor  client work; each client's root is insulated from every other root.
+#   corporate   one organisation owns everything here. Exclusive: it must be the only activity.
+#
+# Each root is then classified under [ownership] and [activity] below, and those classifications
+# decide `public_roots` and `shareable_roots`, which stop needing answers of their own.
+# activities = ["public", "private"]
+
+# Onboarding is recorded, not assumed. `plans.py config set` notes each answer under [answered],
+# `plans.py config confirm <key>` records keeping the current value, and `plans.py install` writes
+# `onboarded` once nothing is open. Until then scan, sync, push and join refuse.
+# onboarded = "2026-01-01"
 
 # On a contractor device the store is two git repositories, split by how sensitive their contents
 # are. `store` is the shareable tier: the unscoped area plus the mirrors of the roots named in
@@ -392,6 +443,21 @@ public_roots = ["github.com-personal"]
 # nothing private is ever written from that clone. The reverse — a client repo cloned under your own
 # root for an experiment — is declared "sensitive". Set with: plans.py config set tiers.<path> <tier>
 # "github.com-acme/vendored-lib" = "shareable"
+
+[ownership]
+# Whose repos each root holds. "own": an account you own — its repos may keep plans in-repo,
+# chosen per repo. "shared": an organisation you contribute to — plans go to the store. Root names
+# are this machine's own; no other machine has to use the same ones.
+# personal = "own"
+
+[activity]
+# What kind of work each root holds, one of this machine's `activities`. For your own account,
+# "public" or "private" is the default for its repos; a client's root is "contractor". An
+# unclassified root is treated as sensitive. Not asked on a corporate machine, where it is implied.
+# personal = "public"
+
+[answered]
+# Written by `config set` and `config confirm`: which decisions the user answered, and when.
 
 [private]
 # Anything else that must never reach a published repo and is not a directory name: work email
@@ -572,6 +638,34 @@ class Config:
     # matching prefix wins, like [roots].
     tiers: dict[str, str] = field(default_factory=dict)
     sync: str = SYNC_OFF
+    # The onboarding classification. Empty until the user has answered it, never inferred.
+    activities: tuple[str, ...] = ()
+    ownership: dict[str, str] = field(default_factory=dict)
+    activity: dict[str, str] = field(default_factory=dict)
+    # Decision key -> the date the user answered it. A value equal to the default is still an
+    # answer, and this is the only place the difference between "chosen" and "never asked" lives.
+    answered: dict[str, str] = field(default_factory=dict)
+    # The date onboarding was first completed, written by `install`. None until then.
+    onboarded: str | None = None
+
+    @property
+    def classified(self) -> bool:
+        """Whether roots are classified, which then decides public and shareable roots.
+
+        On a corporate machine each root's activity can only be `corporate`, so it is never asked:
+        the roots classified for ownership are the classified ones.
+        """
+        return bool(self.activity) or (self.corporate and bool(self.ownership))
+
+    @property
+    def corporate(self) -> bool:
+        return CORPORATE in self.activities
+
+    def activity_of(self, root: str) -> str | None:
+        """A root's activity, implied on a corporate machine, None while it is unclassified."""
+        if self.corporate:
+            return CORPORATE if root in self.ownership or root in self.activity else None
+        return self.activity.get(root)
 
     @property
     def unscoped(self) -> Path:
@@ -603,7 +697,15 @@ class Config:
 
     def public_root_names(self) -> tuple[str, ...]:
         """Roots whose contents may be named in a published repo. Falls back to the roots configured
-        to keep their plans in-repo, since a repo trusted to hold its own plans is one you own."""
+        to keep their plans in-repo, since a repo trusted to hold its own plans is one you own.
+
+        Once roots are classified, the classification answers instead: a root whose activity is
+        `public` or `private` is the user's own personal work, whose names may appear elsewhere. An
+        unclassified root is left out, so a root that appears after onboarding stays on the cautious
+        side until the user says what it is.
+        """
+        if self.classified:
+            return self._personal_roots()
         if self.public_roots:
             return self.public_roots
         return tuple(sorted(name for name, rule in self.roots.items() if rule.write == "repo"))
@@ -616,8 +718,20 @@ class Config:
         but they are not the same question, and a root whose name may be published while its plans
         may not is exactly the case a single overloaded key cannot express. Defaulting costs one
         accessor and keeps the config as short as reuse would have.
+
+        Classified roots answer it the same way `public_root_names` does: personal work goes in the
+        half that may have a remote, a client's root never does.
         """
+        if self.classified:
+            return self._personal_roots()
         return self.shareable_roots or self.public_root_names()
+
+    def _personal_roots(self) -> tuple[str, ...]:
+        """Roots open to the rest of the machine. A corporate machine is one compartment, so every
+        corporate root counts; `corporate` is exclusive, so it never sits beside a client's root."""
+        open_kinds = (*PERSONAL_ACTIVITIES, CORPORATE)
+        names = {*self.activity, *self.ownership}
+        return tuple(sorted(name for name in names if self.activity_of(name) in open_kinds))
 
     @property
     def has_a_tier_boundary(self) -> bool:
@@ -888,10 +1002,62 @@ def _device_field(raw: dict[str, object]) -> str:
     directory and a line of output. The failure modes are not symmetric, so the default follows the
     one that cannot leak.
     """
-    value = setting("DEVICE")[1] or raw.get("device") or CONTRACTOR
+    value = setting("DEVICE")[1] or _device_from_activities(raw) or raw.get("device") or CONTRACTOR
     if value not in DEVICES:
         raise PlanError(f"device must be one of {', '.join(DEVICES)}, got {value!r}")
     return str(value)
+
+
+def _device_from_activities(raw: dict[str, object]) -> str | None:
+    """`work` for a corporate machine, `contractor` for any other answered set, None when unanswered.
+
+    `activities` supersedes `device`: it asks what the machine holds rather than what it is, and the
+    store shape follows from the answer, so a machine onboarded with activities is never asked both.
+    """
+    activities = _activities_field(raw)
+    if not activities:
+        return None
+    return WORK if CORPORATE in activities else CONTRACTOR
+
+
+def _activities_field(raw: dict[str, object]) -> tuple[str, ...]:
+    """`activities`: a subset of ACTIVITIES, with `corporate` only ever on its own."""
+    found = _strings(raw.get("activities"), "activities")
+    unknown = [item for item in found if item not in ACTIVITIES]
+    if unknown:
+        raise PlanError(f"activities: {unknown} not among {', '.join(ACTIVITIES)}")
+    if CORPORATE in found and len(set(found)) > 1:
+        raise PlanError(
+            "activities: corporate is exclusive — a corporate machine holds one organisation's work and "
+            "nothing else, so it cannot sit beside another activity"
+        )
+    return tuple(dict.fromkeys(found))
+
+
+def _classification(raw: dict[str, object], activities: tuple[str, ...]) -> tuple[dict[str, str], dict[str, str]]:
+    """`[ownership]` and `[activity]`, per root, checked against each other and against the machine.
+
+    Refused at load time like every other value here, because `config set` re-reads and restores on
+    a rejection — and an activity the machine does not hold is a misclassification, not a typo.
+    """
+    ownership = {name.strip("/"): str(value) for name, value in _table(raw, "ownership").items()}
+    for name, value in ownership.items():
+        if value not in OWNERSHIPS:
+            raise PlanError(f'ownership."{name}" = {value!r}: ownership is "{OWN}" or "{SHARED}"')
+    activity = {name.strip("/"): str(value) for name, value in _table(raw, "activity").items()}
+    for name, value in activity.items():
+        if value not in ACTIVITIES:
+            raise PlanError(f'activity."{name}" = {value!r}: an activity is one of {", ".join(ACTIVITIES)}')
+        if activities and value not in activities:
+            raise PlanError(
+                f'activity."{name}" = {value!r}, but this machine\'s activities are {", ".join(activities)} — '
+                f"add it there first, or classify the root as one of those"
+            )
+    return ownership, activity
+
+
+def _answered(raw: dict[str, object]) -> dict[str, str]:
+    return {name: str(value) for name, value in _table(raw, "answered").items()}
 
 
 def load_config() -> Config:
@@ -916,7 +1082,15 @@ def load_config() -> Config:
     )
 
     default = raw.get("default")
+    activities = _activities_field(raw)
+    ownership, activity = _classification(raw, activities)
+    onboarded = raw.get("onboarded")
     return Config(
+        activities=activities,
+        ownership=ownership,
+        activity=activity,
+        answered=_answered(raw),
+        onboarded=None if onboarded is None else str(onboarded),
         path=path,
         exists=path.is_file(),
         device=device,
@@ -7131,6 +7305,7 @@ def cmd_push(args: argparse.Namespace, ws: Workspace) -> int:
     if (refusal := local_only(ws.config)) is not None:
         print(refusal)
         return 0
+    require_onboarded(ws.config, "push")
     targets, terms = _remote_stores(ws)
     if not targets:
         print("nothing to push: no store on this machine has a remote.")
@@ -7659,6 +7834,7 @@ def cmd_sync(args: argparse.Namespace, ws: Workspace) -> int:
     if (refusal := local_only(ws.config)) is not None:
         print(refusal)
         return 0
+    require_onboarded(ws.config, "sync")
     targets, terms = _remote_stores(ws)
     if not targets:
         print("nothing to sync: no store on this machine has a remote — plans.py join <url> --dry-run")
@@ -7675,6 +7851,10 @@ def auto_sync_after_commit(ws: Workspace, repo: Path, args: argparse.Namespace) 
     if not git(["remote"], repo):
         return
     print()
+    if not cfg.onboarded:
+        # The commit is local and stands; only the publish waits, and it says why rather than failing.
+        print("note:      not synced — this machine's onboarding is unfinished (plans.py install --explain)")
+        return
     sync_args = argparse.Namespace(dry_run=False, samples=20)
     if sync_store(store, ws.private_terms, sync_args):
         print("WARNING:   the commit stands; the sync did not finish — plans.py sync says why")
@@ -7874,6 +8054,7 @@ def _predicted(path: str) -> str:
 def cmd_join(args: argparse.Namespace, ws: Workspace) -> int:
     """Tie this machine's store to a remote the user has confirmed, without losing a local plan."""
     cfg = ws.config
+    require_onboarded(cfg, "join")
     store = cfg.store
     root = store.path.expanduser()
     # First, before anything else is read: which store may go where depends on the kind of machine,
@@ -8221,6 +8402,7 @@ def cmd_scan(args: argparse.Namespace, ws: Workspace) -> int:
     terms = ws.private_terms
     if args.list_terms:
         return list_terms(cfg, terms)
+    require_onboarded(cfg, "scan")
     root = repo_root_of(args.path)
     if root is None:
         raise PlanError(f"{args.path} is not inside a git repository")
@@ -8405,9 +8587,22 @@ class Decision:
     current: str
     suggest: str
     cost: str
+    # The date the user answered it, from `[answered]`; None while it is open.
+    answered: str | None = None
+
+
+def open_decisions(ws: Workspace) -> list[Decision]:
+    """The decisions nobody has answered yet — what onboarding still needs from the user."""
+    return [decision for decision in install_decisions(ws) if decision.answered is None]
 
 
 def install_decisions(ws: Workspace) -> list[Decision]:
+    """Every decision, each carrying whether and when the user answered it."""
+    cfg = ws.config
+    return [replace(decision, answered=cfg.answered.get(decision.key)) for decision in _decisions(ws)]
+
+
+def _decisions(ws: Workspace) -> list[Decision]:
     """Everything `install` cannot decide on the user's behalf, with what it would guess and why.
 
     Printed rather than prompted. The script has to keep working when a human runs it by hand, and
@@ -8417,20 +8612,23 @@ def install_decisions(ws: Workspace) -> list[Decision]:
     cfg = ws.config
     unset = "(unset — the default is in use)"
     decisions = [
-        # First, because it decides whether the two below are one question or two.
+        # First, because it decides whether the store splits and which root activities can be chosen.
+        # It replaces the old `device` question, whose answer it derives.
         Decision(
-            key="device",
+            key="activities",
             what=(
-                "what kind of machine this is. `contractor` — several parties' work plus your own "
-                "public repos, so the store splits by sensitivity. `work` — an employer-issued or "
-                "corporate device where everything belongs to one organisation, so one store, no "
-                "tier to choose, and a remote only where you have recorded it as sanctioned"
+                "what kinds of work this machine holds — choose every one that applies. `public`: your "
+                "own public work. `private`: your own private work, whose names may appear in other "
+                "plans but whose contents may not. `contractor`: client work, each client's root "
+                "insulated from every other. `corporate`: one organisation owns everything here — it "
+                "must be the only activity"
             ),
-            current=cfg.device,
-            suggest="work if this machine is issued by one employer; contractor otherwise",
+            current=", ".join(cfg.activities) or f"(unanswered — treated as `device = {cfg.device}`)",
+            suggest="public and private on a personal machine, plus contractor if it holds client work; "
+            "corporate alone on an employer-issued machine",
             cost=(
-                "saying `work` on a machine that holds several parties' work puts client plans in a "
-                "store you believe is safe to push — which is why the default is the cautious one"
+                "corporate on a machine that holds several parties' work puts client plans in one store "
+                "you believe is safe to push; leaving contractor out leaves a client's root unprotected"
             ),
         ),
         Decision(
@@ -8490,6 +8688,7 @@ def install_decisions(ws: Workspace) -> list[Decision]:
             cost="a default of `repo` silently adds plans/ to repos you do not own",
         )
     )
+    decisions += _root_classification_decisions(ws)
 
     # One question per unrouted root only when nothing else answers it. With a `default` set, every
     # one of them has the same answer already, and asking anyway turned a six-question walkthrough
@@ -8527,7 +8726,25 @@ def install_decisions(ws: Workspace) -> list[Decision]:
         for org in ws.known_orgs
         if cfg.own_accounts and org.org != NO_REMOTE and not org.own and org.writes_into_repos and not org.decided
     ]
+    # Classified roots decide both lists below, so they are asked only where there is no root to
+    # classify — a flat layout, every repo straight under the projects root.
+    if not collection_roots(ws.repos):
+        decisions += _root_list_decisions(cfg, roots)
+    decisions.append(_sync_decision(cfg))
     decisions.append(
+        Decision(
+            key="private.extra",
+            what="names that must never reach a published repo and are not directories here",
+            current=", ".join(cfg.private_extra) or "(empty)",
+            suggest="any employer with no clone on this machine, work email domains, ticket prefixes",
+            cost="an employer with no directory to derive from is invisible to `scan` until listed",
+        )
+    )
+    return decisions + _sanctioned_decision(ws)
+
+
+def _root_list_decisions(cfg: Config, roots: list[str]) -> list[Decision]:
+    decisions = [
         Decision(
             key="public_roots",
             what="roots whose names may appear in a repo you publish; everything else is scanned for",
@@ -8536,7 +8753,7 @@ def install_decisions(ws: Workspace) -> list[Decision]:
             cost="too wide silences a whole organisation's names in `scan`, which is the gate that "
             "stops a client's identity reaching a published repo",
         )
-    )
+    ]
     # Only where there are two tiers. A work device has one store, so this is a question about a
     # split that does not exist there — asked anyway until 2026-09-12, while the skill said it had
     # stopped applying.
@@ -8551,9 +8768,15 @@ def install_decisions(ws: Workspace) -> list[Decision]:
                 cost="a root listed here has its plans pushed to whatever remote the shareable store has",
             )
         )
-    # Asked where it can actually be answered: a machine whose guarded store has no remote and is
-    # not a work device has nothing to sanction yet, and a walkthrough that asks anyway is one
-    # question longer for no decision.
+    return decisions
+
+
+def _sanctioned_decision(ws: Workspace) -> list[Decision]:
+    """Asked where it can actually be answered: a machine whose guarded store has no remote and is
+    not a work device has nothing to sanction yet, and a walkthrough that asks anyway is one question
+    longer for no decision."""
+    cfg = ws.config
+    decisions: list[Decision] = []
     guarded_remotes = sorted(remote_urls(cfg.guarded_store.path).values())
     if cfg.device == WORK or guarded_remotes:
         pointing = f"; it points at {', '.join(guarded_remotes)}" if guarded_remotes else ""
@@ -8576,16 +8799,61 @@ def install_decisions(ws: Workspace) -> list[Decision]:
                 ),
             )
         )
-    decisions.append(_sync_decision(cfg))
-    decisions.append(
-        Decision(
-            key="private.extra",
-            what="names that must never reach a published repo and are not directories here",
-            current=", ".join(cfg.private_extra) or "(empty)",
-            suggest="any employer with no clone on this machine, work email domains, ticket prefixes",
-            cost="an employer with no directory to derive from is invisible to `scan` until listed",
+    return decisions
+
+
+def _root_classification_decisions(ws: Workspace) -> list[Decision]:
+    """Two questions per root: whose repos are these, and what kind of work are they.
+
+    Asked of every collection root, every machine, with a suggestion read from the remotes — never
+    an answer written for the user. On a corporate machine the activity can only be `corporate`, so
+    only ownership is asked there.
+    """
+    cfg = ws.config
+    decisions: list[Decision] = []
+    for name in collection_roots(ws.repos):
+        remotes = [remote for rel, remote in ws.remotes.items() if rel.split("/")[0] == name and remote]
+        mine = sum(cfg.owns(remote) for remote in remotes)
+        if not cfg.own_accounts:
+            hint = "own if these are under your own account, shared otherwise"
+        elif remotes and mine * 2 >= len(remotes):
+            hint = f"own — {mine} of {len(remotes)} remote(s) here are your accounts"
+        else:
+            hint = f"shared — {mine} of {len(remotes)} remote(s) here are your accounts"
+        decisions.append(
+            Decision(
+                key=f"ownership.{name}",
+                what=(
+                    f"whose repos are under {name}/. `own`: an account you own, whose repos may keep "
+                    "plans in-repo, chosen per repo. `shared`: an organisation you contribute to, whose "
+                    "plans go to the store and never into its repos"
+                ),
+                current=cfg.ownership.get(name, "(unanswered)"),
+                suggest=hint,
+                cost="`own` on someone else's organisation lets plans/ be committed into their repositories",
+            )
         )
-    )
+        if cfg.corporate:
+            continue
+        held = ", ".join(cfg.activities) or "the machine's activities, once answered"
+        decisions.append(
+            Decision(
+                key=f"activity.{name}",
+                what=(
+                    f"what kind of work {name}/ holds, one of {held}. For your own account, `public` or "
+                    "`private` is the default for its repos. A client's root is `contractor`, which "
+                    "insulates it from every other root"
+                ),
+                current=cfg.activity.get(name, "(unanswered — treated as sensitive until it is)"),
+                suggest=(
+                    "contractor if this is a client's work"
+                    if CONTRACTOR in cfg.activities
+                    else "public for open work, private for your own private repos"
+                ),
+                cost="`public` or `private` on a client's root lets its names into your other plans and "
+                "puts its plans in the store that may have a remote",
+            )
+        )
     return decisions
 
 
@@ -8688,17 +8956,62 @@ def explain_install(ws: Workspace) -> int:
     print("  nothing else — it never edits a value you have already set")
 
     decisions = install_decisions(ws)
-    print(f"\n{len(decisions)} decision(s) — put each to the user, then record it with `config set`:")
+    pending = [decision for decision in decisions if decision.answered is None]
+    print(
+        f"\n{len(decisions)} decision(s), {len(pending)} open — put each open one to the user, then record "
+        "the answer with `config set <key> <value>`, or `config confirm <key>` when they keep the current value:"
+    )
     for decision in decisions:
         print(f"\ndecision: {decision.key}")
+        print(f"  answered: {decision.answered or 'no — ask'}")
         print(f"  what:    {decision.what}")
         print(f"  current: {decision.current}")
         print(f"  suggest: {decision.suggest}")
         print(f"  cost:    {decision.cost}")
-    print("\nnothing was written. Run `install` once the decisions above are recorded.")
+    state = f"onboarded {cfg.onboarded}" if cfg.onboarded else "not onboarded"
+    print(f"\nnothing was written. This machine is {state}; run `install` once every decision is answered.")
     if any(key.startswith("roots.") for key in (d.key for d in decisions)):
         print("Root names above that are not under a public root are not yours to disclose.")
     return 0
+
+
+def _record_onboarding(ws: Workspace) -> None:
+    """Stamp `onboarded` the first time every decision is answered, and say what is still open.
+
+    Written by `install` rather than by `config set`, because `install` is the walkthrough's last
+    step and the one place that sees every decision at once. Asked for by the user 2026-11-25: the
+    config has to say whether a machine finished onboarding, and a machine set up by a session that
+    accepted every default must not look like one whose owner was asked.
+    """
+    cfg = ws.config
+    pending = open_decisions(ws)
+    if pending:
+        print(f"onboarding:  {len(pending)} decision(s) open: {', '.join(d.key for d in pending)}")
+        print("             plans.py install --explain, put each to the user, then run install again")
+        return
+    if cfg.onboarded:
+        print(f"onboarded:   {cfg.onboarded}")
+        return
+    set_config_value(cfg.path, "onboarded", today())
+    print(f"onboarded:   {today()} — every decision is answered")
+
+
+def require_onboarded(cfg: Config, command: str) -> None:
+    """Refuse anything that can publish until this machine's onboarding is finished.
+
+    The cost of publishing from a machine nobody classified is a client's plan in a store with a
+    remote, or a client's name in a public repo; the cost of refusing is one walkthrough. A root
+    that appears after onboarding does not re-block this: it is unclassified, so every check treats
+    it as sensitive until it is answered, and `doctor` names it.
+    """
+    if cfg.onboarded:
+        return
+    raise PlanError(
+        f"{command} is refused until this machine's onboarding is finished, so nothing is published from "
+        "a machine whose owner was never asked what is personal, private or a client's. Run "
+        "plans.py install --explain, put each open decision to the user, record the answers, then "
+        "plans.py install"
+    )
 
 
 def run_install(args: argparse.Namespace, ws: Workspace) -> int:
@@ -8720,6 +9033,7 @@ def run_install(args: argparse.Namespace, ws: Workspace) -> int:
     if not os.environ.get("PLANS_HOME"):
         print(f"todo:        PLANS_HOME is unset; the default {cfg.store.path} is in use. Export it from")
         print("             your shell profile so everything else on the machine agrees.")
+    _record_onboarding(ws)
     if not args.quiet:
         print("\nnext:        plans.py where   (in a repo)   /   plans.py new <topic> --unscoped")
     return 0
@@ -8967,12 +9281,35 @@ def _all_problems(ws: Workspace, unrouted: list[str], *, strict: bool = False) -
     """Everything wrong, in one list: the store, the tree's shape, ownership, and unrouted repos."""
     routing = [f"{rel} holds plans but no rule routes it" for rel in unrouted]
     return (
-        store_problems(ws.config)
+        onboarding_problems(ws)
+        + store_problems(ws.config)
         + layout_problems(ws, strict=strict)
         + org_problems(ws.config, ws.known_orgs)
         + routing
         + link_problems(ws.config)
     )
+
+
+def onboarding_problems(ws: Workspace) -> list[str]:
+    """Unfinished onboarding, or a decision that appeared after it — a new root, usually.
+
+    One line rather than one per decision: the walkthrough lists them, and doctor's job is to say
+    that it is needed and what blocks meanwhile.
+    """
+    cfg = ws.config
+    pending = open_decisions(ws)
+    if not pending:
+        return []
+    keys = ", ".join(decision.key for decision in pending)
+    if not cfg.onboarded:
+        return [
+            f"onboarding is unfinished, so scan, sync, push and join refuse: {len(pending)} open "
+            f"({keys}) — plans.py install --explain, ask the user, then plans.py install"
+        ]
+    return [
+        f"onboarding reopened since {cfg.onboarded}: {keys} — until answered, an unclassified root's "
+        "names stay out of every published repo. plans.py install --explain"
+    ]
 
 
 def link_problems(cfg: Config) -> list[str]:
@@ -9388,10 +9725,55 @@ def cmd_config(args: argparse.Namespace, ws: Workspace) -> int:
             path.write_text(original, encoding="utf-8", newline="\n")
             raise
         print(f"{action}:  {args.key}")
+        _mark_answered(path, args.key)
         print(f"config:  {path}")
         return 0
+    if args.action == "confirm":
+        return confirm_decision(ws, path, args.key)
 
     return show_config(ws.config)
+
+
+def decision_key(key: str) -> str:
+    """A config key as `[answered]` records it: the table and the unquoted name, dot-joined."""
+    table, name = split_config_key(key)
+    return f"{table}.{name}" if table else name
+
+
+def _mark_answered(path: Path, key: str) -> None:
+    """Record that the user answered this key today — the onboarding record `install` reads.
+
+    Every `config set` counts, because the walkthrough's rule is that only the user's answer is
+    recorded with it. The record itself and `onboarded` are bookkeeping, not answers.
+    """
+    recorded = decision_key(key)
+    if recorded.startswith("answered.") or recorded == "onboarded":
+        return
+    set_config_value(path, f"answered.{recorded}", today())
+
+
+def confirm_decision(ws: Workspace, path: Path, key: str | None) -> int:
+    """The user keeps the current value: record it as their answer without changing it.
+
+    Separate from `set` so that keeping a default needs no retyping of a value that may be long or
+    derived, and so it is refused for anything that is not an onboarding decision — confirming an
+    arbitrary key would let a session mark a question answered that nobody ever asked.
+    """
+    if key is None:
+        raise PlanError("config confirm needs a decision key, e.g. config confirm store")
+    if not path.exists():
+        raise PlanError(f"no config at {path} — run: plans.py install")
+    recorded = decision_key(key)
+    known = {decision.key: decision for decision in install_decisions(ws)}
+    if recorded not in known:
+        raise PlanError(f"{recorded} is not one of this machine's decisions: {', '.join(sorted(known))}")
+    decision = known[recorded]
+    if decision.current.startswith("(unanswered"):
+        raise PlanError(f"{recorded} has no value to keep — record one with: plans.py config set {recorded} <value>")
+    set_config_value(path, f"answered.{recorded}", today())
+    print(f"confirmed: {recorded} = {decision.current}")
+    print(f"config:    {path}")
+    return 0
 
 
 def show_config(cfg: Config) -> int:
@@ -9682,8 +10064,10 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall.set_defaults(func=cmd_uninstall)
 
     config = add("config", "show, locate, create or edit the routing config")
-    config.add_argument("action", choices=("show", "path", "init", "set"), nargs="?", default="show")
-    config.add_argument("key", nargs="?", help="set: e.g. default, view.idea_limit, roots.<root>")
+    config.add_argument("action", choices=("show", "path", "init", "set", "confirm"), nargs="?", default="show")
+    config.add_argument(
+        "key", nargs="?", help="set/confirm: e.g. activities, ownership.<root>, view.idea_limit, roots.<root>"
+    )
     config.add_argument("value", nargs="?", help="set: a TOML literal, or a bare string")
     config.set_defaults(func=cmd_config)
 

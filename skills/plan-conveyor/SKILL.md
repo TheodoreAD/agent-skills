@@ -43,14 +43,15 @@ case none of them solves cheaply — is
   `git fetch`, `git remote add`, `git branch -m` and the same merge in the shareable store, or
   `git clone` into it when it is absent. The history-purge sequence in "Never let a client's
   identity reach a repo you publish" is printed for you to run; the script never runs it.
-- **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
-  files in the session repo's `plans/` and in both stores — `new`, `migrate start`, `set-status`,
-  `move`, `absorb --apply`, `graduate`, and the retirement you perform by hand. The store
-  directories, their READMEs and their `.gitattributes`, created `0700`. A merge through `sync` or
-  `join` writes plan files and `repos.toml` in a store, and may write a second copy of a plan with a
-  `-local` suffix or move a folder's plans into the folder the remote links that repository to.
-  Through `attach`: a copy of each file you name, either in a directory beside the plan or in the
-  store's `_attachments/`, the plan's own `## Attachments` rows, and one line in the store's
+- **Writes**: its own config, through `install`, `config set`, `config confirm`, `describe` and
+  `uninstall` only — including the onboarding record (`[answered]` and `onboarded`). Plan files in
+  the session repo's `plans/` and in both stores — `new`, `migrate start`, `set-status`, `move`,
+  `absorb --apply`, `graduate`, and the retirement you perform by hand. The store directories, their
+  READMEs and their `.gitattributes`, created `0700`. A merge through `sync` or `join` writes plan
+  files and `repos.toml` in a store, and may write a second copy of a plan with a `-local` suffix or
+  move a folder's plans into the folder the remote links that repository to. Through `attach`: a
+  copy of each file you name, either in a directory beside the plan or in the store's
+  `_attachments/`, the plan's own `## Attachments` rows, and one line in the store's
   `.git/info/exclude`. Each store's `repos.toml`, and — through `links fix --yes` — the `repo:` line
   of store-held plans. `link --move-to private` and `links merge` move a store folder's files, and
   its local attachments, to another folder or the other store. A conversation ledger per session
@@ -212,9 +213,28 @@ standing in and unexplained that reads as a bug. Before this, both directions lo
 one written from a worktree landed where the main checkout never looks, and one filed _for_ the repo
 landed where the worktree never looks.
 
-### First: which kind of machine is this?
+### First: what does this machine hold, and what is each root?
 
-`device` in the config, and it decides whether the store splits at all:
+**`activities` is the first question**, one or several of `public` (your own public work), `private`
+(your own private work: names may appear in other plans, contents may not), `contractor` (client
+work, each client's root insulated from every other) and `corporate` (one organisation owns
+everything; it must stand alone). It replaces `device`, which it derives: `corporate` is a `work`
+device, anything else a `contractor` one.
+
+**Then every root is classified, on every machine**, because root names are local and no two
+machines have to share them:
+
+- `ownership.<root>` — `own` (an account you own; its repos may keep plans in-repo, chosen per repo)
+  or `shared` (an organisation you contribute to; plans go to the store).
+- `activity.<root>` — one of the machine's activities: `public` or `private` for your own account,
+  `contractor` for a client. Not asked on a corporate machine, where it is implied.
+
+**The classification decides `public_roots` and `shareable_roots`**, which are then not asked:
+`public`, `private` and `corporate` roots may be named elsewhere and keep their store plans in the
+half that may have a remote; a `contractor` root never. **An unclassified root is treated
+cautiously** — kept out of both — until the user says what it is, and `doctor` reports it.
+
+The two machine shapes that follow from `activities`:
 
 | `device`                   | the machine holds                                    | the store                                  |
 | -------------------------- | ---------------------------------------------------- | ------------------------------------------ |
@@ -469,21 +489,30 @@ with nothing to type into. So the decisions are printed as data and **you** are 
 surface:
 
 1. `python3 <path> install --explain` — what it would create, then one block per decision, each with
-   what it is, what is currently set, what it would suggest, and what it costs to get wrong. Writes
-   nothing.
-2. Put each decision to the user with `AskUserQuestion`, using the `suggest` line as the recommended
-   option and the `cost` line as the description. Do not skip to the defaults: the `default`,
-   `own_accounts`, `public_roots` and `shareable_roots` answers decide whether plans land in repos
-   the user does not own, whether `scan` will catch a client's name, and which roots may reach a
-   remote at all. **`own_accounts` is the one to confirm rather than accept**: the suggestion is
-   built from the commonest remote owner on the machine, which on a corporate box is the employer —
-   recording that answer would mark their organisation as the user's own and make every ownership
-   check downstream pass silently.
-3. Record each answer with `config set` (above). Never edit the TOML by hand.
+   whether and when it was **answered**, what it is, what is currently set, what it would suggest,
+   and what it costs to get wrong. Writes nothing.
+2. Put **every decision marked `answered: no — ask`** to the user with `AskUserQuestion`, using the
+   `suggest` line as the recommended option and the `cost` line as the description — `activities` as
+   a multi-select. Do not skip to the defaults, and never answer one yourself: a value already in
+   the config is not an answer until the user gives it. `activities` and each root's `ownership` and
+   `activity` decide whether plans land in repos the user does not own, whether `scan` will catch a
+   client's name, and which roots may reach a remote at all. **`own_accounts` is the one to confirm
+   rather than accept**: the suggestion is built from the commonest remote owner on the machine,
+   which on a corporate box is the employer — recording that answer would mark their organisation as
+   the user's own and make every ownership check downstream pass silently.
+3. Record each answer with `config set <key> <value>`, or `config confirm <key>` when the user keeps
+   the value shown. Both note the answer under `[answered]`. Never edit the TOML by hand.
 4. `python3 <path> install` — idempotent: writes the config skeleton if there isn't one (never over
    an existing one), creates **both stores** as git repositories, adds neither a remote, creates the
-   repo-less area.
+   repo-less area, and **writes `onboarded` once no decision is open**.
 5. `python3 <path> doctor` — confirm it took, and that no problem is left.
+
+**Until `onboarded` is written, `scan`, `sync`, `push` and `join` refuse**, and an automatic sync
+after a commit is skipped with a note; the commit itself stands. Asked for by the user 2026-11-25,
+after a machine was "set up" by a session that accepted every default: nothing may be published from
+a machine whose owner was never asked what is personal, private or a client's. A root or
+organisation that appears later reopens just its own decisions — `doctor` names them, and until they
+are answered the root is kept out of the public and shareable lists rather than blocking everything.
 
 It asks one question per unrouted root only when no `default` covers them; with a default set, that
 answer is already given and the walkthrough stays short.

@@ -406,6 +406,19 @@ Never symlink this store, or a subtree of it, into a work repo — that puts the
 the tree repo-scoped agent reads walk.
 """
 
+STORE_README_FILE = "README.md"
+GITATTRIBUTES_FILE = ".gitattributes"
+
+# Every file `plans.py` writes is LF on every OS (`newline="\n"`), and this makes the store itself
+# hold that line whatever the machine's `core.autocrlf` says. Git for Windows' installer sets that to
+# `true`, which checks files out CRLF; a plan committed CRLF from one machine differs on every line
+# from the same plan written on another, so any concurrent edit conflicts across the whole file.
+STORE_GITATTRIBUTES = """\
+# Written by plan-conveyor's install. Every plan is stored and checked out with LF line endings on
+# every OS, so a store edited from Linux and Windows machines never conflicts across whole files.
+* text=auto eol=lf
+"""
+
 STORE_README = {
     SHAREABLE: f"""\
 # Plans store — shareable tier
@@ -1634,7 +1647,7 @@ def write_links(links: Links) -> Path:
     if tomllib.loads(text) != links.entries:
         raise PlanError(f"refusing to write {links.path}: the rendered table does not read back as written")
     links.path.parent.mkdir(parents=True, exist_ok=True)
-    links.path.write_text(text, encoding="utf-8")
+    links.path.write_text(text, encoding="utf-8", newline="\n")
     return links.path
 
 
@@ -2325,7 +2338,7 @@ def _apply_survey(survey: LinkSurvey, *, prune: bool) -> None:
     for identity, folder in survey.to_link.items():
         links = links.linked(identity, folder)
     for path, identity in survey.rewrites.items():
-        path.write_text(with_repo_field(path.read_text(encoding="utf-8"), identity), encoding="utf-8")
+        path.write_text(with_repo_field(path.read_text(encoding="utf-8"), identity), encoding="utf-8", newline="\n")
     if prune:
         for path in survey.empty:
             shutil.rmtree(path)
@@ -4086,7 +4099,7 @@ def write_plan(
     lines += ["## Open questions", "", "## Recommended direction", ""]
 
     target.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines), encoding="utf-8")
+    path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
     print(f"created: {path}")
     print(f"where:   {where}")
     if belongs_to:
@@ -4483,7 +4496,7 @@ def cmd_set_status(args: argparse.Namespace, ws: Workspace) -> int:
     body = lines[1:end]
     kept = [line for line in body if not line.startswith(("status:", "updated:"))]
     front = [f"status: {yaml_scalar(args.status)}", f"updated: {today()}", *kept]
-    plan.path.write_text("\n".join(["---", *front, "---", *lines[end + 1 :], ""]), encoding="utf-8")
+    plan.path.write_text("\n".join(["---", *front, "---", *lines[end + 1 :], ""]), encoding="utf-8", newline="\n")
     if args.json:
         payload = {"path": str(plan.path), "from": plan.status, "to": args.status, "updated": today()}
         print(json.dumps(payload, indent=2))
@@ -4792,7 +4805,7 @@ def _take_plans(chosen: list[PlanFile], target: Path) -> TakenPlans:
             continue
         target.mkdir(parents=True, exist_ok=True)
         text = strip_frontmatter_key(plan.path.read_text(encoding="utf-8"), "repo")
-        destination.write_text(text, encoding="utf-8")
+        destination.write_text(text, encoding="utf-8", newline="\n")
         move_attachments(plan.path, target)
         plan.path.unlink()
         moved.append(MovedPlan(plan, destination))
@@ -4824,7 +4837,7 @@ def cmd_move(args: argparse.Namespace, ws: Workspace) -> int:
         # store" — drift that no single command performs, which is why it survived unnoticed.
         text = strip_frontmatter_key(text, "repo")
     target.mkdir(parents=True, exist_ok=True)
-    destination.write_text(text, encoding="utf-8")
+    destination.write_text(text, encoding="utf-8", newline="\n")
     carried = move_attachments(plan.path, target)
     plan.path.unlink()
     print(f"moved:   {plan.path}")
@@ -4937,7 +4950,7 @@ def _report_citations(citations: list[Path], old: str, new: str, *, rewrite: boo
         print("  may be prose about the plan rather than a link to it.")
         return
     for path in citations:
-        path.write_text(path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+        path.write_text(path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8", newline="\n")
         print(f"repointed: {path}")
     print(f"\n{len(citations)} file(s) now cite {new}. Read them: a citation that quoted a section")
     print("title still points at the old wording, which a filename substitution cannot fix.")
@@ -5052,7 +5065,7 @@ def exclude_attachments(store: Path) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     prefix = "" if not existing or existing.endswith("\n") else "\n"
-    path.write_text(f"{existing}{prefix}{entry}\n", encoding="utf-8")
+    path.write_text(f"{existing}{prefix}{entry}\n", encoding="utf-8", newline="\n")
 
 
 def attachment_row(entry: Attached) -> str:
@@ -5089,7 +5102,7 @@ def record_attachments(plan: Path, entries: list[Attached]) -> None:
         while end > heading + 1 and not lines[end - 1].strip():
             end -= 1
         lines[end:end] = rows
-    plan.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    plan.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def store_plan_files(store: Store) -> list[Path]:
@@ -6246,7 +6259,7 @@ def ensure_ledger(key: str) -> Path:
     for heading in [h for h, _, _ in LEDGER_SECTIONS] + list(LEDGER_PREFILLED):
         if heading not in have:
             sections.append((heading, []))
-    path.write_text(render_ledger(sections), encoding="utf-8")
+    path.write_text(render_ledger(sections), encoding="utf-8", newline="\n")
     return path
 
 
@@ -6269,7 +6282,7 @@ def append_to_section(path: Path, heading: str, lines: list[str]) -> None:
             break
     else:
         sections.append((heading, lines))
-    path.write_text(render_ledger(sections), encoding="utf-8")
+    path.write_text(render_ledger(sections), encoding="utf-8", newline="\n")
 
 
 def replace_section(path: Path, heading: str, lines: list[str]) -> None:
@@ -6280,7 +6293,7 @@ def replace_section(path: Path, heading: str, lines: list[str]) -> None:
             break
     else:
         sections.append((heading, lines))
-    path.write_text(render_ledger(sections), encoding="utf-8")
+    path.write_text(render_ledger(sections), encoding="utf-8", newline="\n")
 
 
 def ledger_gated_text(text: str) -> str:
@@ -6708,7 +6721,7 @@ def _migrate_start(args: argparse.Namespace, ws: Workspace) -> int:
         lines += _carried_block(sources, named, ledger)
 
     target.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines), encoding="utf-8")
+    path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
     print(f"created:   {path}")
     print(f"where:     {where}")
     if ledger:
@@ -6988,7 +7001,9 @@ def _delete_sources(cfg: Config, plan: Path, offered: list[SourceVerdict], repo:
         for verdict in plan_sources:
             body = verdict.path.read_text(encoding="utf-8").rstrip()
             verdict.path.write_text(
-                f"{body}\n\n## Migrated to\n\n- `{plan.name}` — consolidated there on {today()}\n", encoding="utf-8"
+                f"{body}\n\n## Migrated to\n\n- `{plan.name}` — consolidated there on {today()}\n",
+                encoding="utf-8",
+                newline="\n",
             )
         marked = [verdict.path for verdict in plan_sources]
         label = commit_label(cfg, repo, marked[0])
@@ -7593,7 +7608,7 @@ def cmd_describe(args: argparse.Namespace, ws: Workspace) -> int:
         lines.insert(index + 1, entry)
     else:
         lines += ["", "# What each repo is for — used to route a plan without grepping the repos.", "[about]", entry]
-    cfg.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    cfg.path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     print(f"described: {args.repo}")
     print(f"config:    {cfg.path}")
     return 0
@@ -7622,7 +7637,7 @@ def cmd_graduate(args: argparse.Namespace, ws: Workspace) -> int:
     if into_store and "repo" not in parse_frontmatter(text):
         text = text.replace("\nupdated:", f"\nrepo: {routing.identity or routing.rel}\nupdated:", 1)
     target.mkdir(parents=True, exist_ok=True)
-    destination.write_text(text, encoding="utf-8")
+    destination.write_text(text, encoding="utf-8", newline="\n")
     carried = move_attachments(plan.path, target)
     plan.path.unlink()
     print(f"graduated: {plan.path.name}")
@@ -7914,28 +7929,13 @@ def run_install(args: argparse.Namespace, ws: Workspace) -> int:
     cfg = ws.config
     if not cfg.path.exists():
         cfg.path.parent.mkdir(parents=True, exist_ok=True)
-        cfg.path.write_text(CONFIG_SKELETON, encoding="utf-8")
+        cfg.path.write_text(CONFIG_SKELETON, encoding="utf-8", newline="\n")
         print(f"created:     {cfg.path}")
     else:
         print(f"exists:      {cfg.path}")
 
     for store in cfg.stores():
-        prefix = tier_prefix(cfg, store)
-        tier = f"  [{store.tier}]" if cfg.split_by_sensitivity else ""
-        store.path.mkdir(parents=True, exist_ok=True, mode=STORE_MODE)
-        if not (store.path / ".git").is_dir():
-            if git(["init", "-q"], store.path) is None:
-                raise PlanError(f"git init failed in {store.path}")
-            print(f"initialized: {store.path} (git){tier}")
-        else:
-            print(f"exists:      {store.path}{tier}")
-        readme = store.path / "README.md"
-        if not readme.exists():
-            readme.write_text(STORE_README[store.tier], encoding="utf-8")
-            print(f"created:     {readme}")
-        if not git(["config", "user.email"], store.path):
-            print(f"todo:        the {prefix}store has no git identity and cannot commit —")
-            print(f"             git -C {store.path} config user.name/user.email")
+        _install_store(cfg, store)
     cfg.unscoped.mkdir(parents=True, exist_ok=True)
 
     for problem in remote_problems(cfg):
@@ -7946,6 +7946,39 @@ def run_install(args: argparse.Namespace, ws: Workspace) -> int:
     if not args.quiet:
         print("\nnext:        plans.py where   (in a repo)   /   plans.py new <topic> --unscoped")
     return 0
+
+
+def _install_store(cfg: Config, store: Store) -> None:
+    """One store: a git repository holding the two files `install` generates, committed when it can.
+
+    The generated files are committed so that a store joining a remote carries them like any other
+    file, and a second machine's copy arrives with the line-ending rule already in force. Committed
+    only when the store has a git identity: without one there is nothing to commit with, and the
+    `todo` line says so.
+    """
+    prefix = tier_prefix(cfg, store)
+    tier = f"  [{store.tier}]" if cfg.split_by_sensitivity else ""
+    store.path.mkdir(parents=True, exist_ok=True, mode=STORE_MODE)
+    if not (store.path / ".git").is_dir():
+        if git(["init", "-q"], store.path) is None:
+            raise PlanError(f"git init failed in {store.path}")
+        print(f"initialized: {store.path} (git){tier}")
+    else:
+        print(f"exists:      {store.path}{tier}")
+    generated = {STORE_README_FILE: STORE_README[store.tier], GITATTRIBUTES_FILE: STORE_GITATTRIBUTES}
+    for name, text in generated.items():
+        path = store.path / name
+        if not path.exists():
+            path.write_text(text, encoding="utf-8", newline="\n")
+            print(f"created:     {path}")
+    if not git(["config", "user.email"], store.path):
+        print(f"todo:        the {prefix}store has no git identity and cannot commit —")
+        print(f"             git -C {store.path} config user.name/user.email")
+        return
+    untracked = [store.path / name for name in generated if not git(["ls-files", "--", name], store.path)]
+    if untracked:
+        sha = commit_paths(store.path, untracked, "store: the files install writes, README and line endings")
+        print(f"committed:   {sha[:12]}  {', '.join(path.name for path in untracked)}")
 
 
 def remote_problems(cfg: Config) -> list[str]:
@@ -8475,7 +8508,7 @@ def set_config_value(path: Path, key: str, value: str) -> str:
     span = table_span(lines, table)
     if span is None:
         lines += ["", f"[{table}]", entry]
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         return "added"
 
     start, end = span
@@ -8494,7 +8527,7 @@ def set_config_value(path: Path, key: str, value: str) -> str:
             insert -= 1
         lines.insert(insert, entry)
         action = "added"
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     return action
 
 
@@ -8508,7 +8541,7 @@ def cmd_config(args: argparse.Namespace, ws: Workspace) -> int:
             print(f"exists:  {path} (left alone)")
             return 0
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(CONFIG_SKELETON, encoding="utf-8")
+        path.write_text(CONFIG_SKELETON, encoding="utf-8", newline="\n")
         print(f"created: {path}")
         return 0
     if args.action == "set":
@@ -8529,7 +8562,7 @@ def cmd_config(args: argparse.Namespace, ws: Workspace) -> int:
             # wants a second read of the same file, which is what a cache is there to prevent.
             load_config()
         except PlanError:
-            path.write_text(original, encoding="utf-8")
+            path.write_text(original, encoding="utf-8", newline="\n")
             raise
         print(f"{action}:  {args.key}")
         print(f"config:  {path}")

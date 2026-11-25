@@ -1839,6 +1839,40 @@ def test_install_is_idempotent_and_sets_both_tiers_up(ws, capsys):
     assert ws.config.read_text(encoding="utf-8") == edited  # never clobbers a config that already exists
 
 
+def test_install_pins_the_stores_line_endings_and_commits_what_it_wrote(ws, capsys, monkeypatch):
+    """A plan committed CRLF from a Windows machine differs on every line from the same plan written
+    on Linux, so any edit both make conflicts across the whole file. The store's own attributes
+    decide, not each machine's core.autocrlf."""
+    for key, value in (("GIT_CONFIG_COUNT", "2"), ("GIT_CONFIG_KEY_0", "user.name"), ("GIT_CONFIG_VALUE_0", "Test")):
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("GIT_CONFIG_KEY_1", "user.email")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_1", "test@example.com")
+    assert plans.main(["install", "--path", str(ws.personal)]) == 0
+    for store in (ws.store, ws.sensitive):
+        assert "* text=auto eol=lf" in (store / ".gitattributes").read_text(encoding="utf-8")
+        tracked = subprocess.run(["git", "ls-files"], cwd=store, capture_output=True, text=True, check=True).stdout
+        assert set(tracked.split()) == {".gitattributes", "README.md"}
+
+    capsys.readouterr()
+    assert plans.main(["install", "--path", str(ws.personal)]) == 0
+    assert "committed:" not in capsys.readouterr().out  # a second run has nothing new to commit
+
+
+def test_every_file_plans_writes_is_lf_on_every_os(ws):
+    """`Path.write_text` translates `\\n` to `os.linesep` unless told otherwise, so on Windows every
+    plan, link table and config this script writes would be CRLF. Read from the source, because the
+    Linux leg cannot see the difference and the Windows leg should not be the only thing that can."""
+    source = SCRIPT.read_text(encoding="utf-8")
+    calls = re.findall(r"\.write_text\((?:[^()]|\([^()]*\))*\)", source)
+    assert calls
+    assert [call for call in calls if 'newline="\\n"' not in call] == []
+
+    write_config(ws, 'default = "store"\n')
+    plans.main(["new", "line-endings", "--unscoped", "--path", str(ws.client)])
+    written = next((ws.store / "_unscoped").glob("*-line-endings.md"))
+    assert b"\r" not in written.read_bytes()
+
+
 def test_uninstall_keeps_both_stores_unless_told_twice(ws, capsys):
     write_config(ws, 'default = "store"\n')
     plans.main(["new", "keep-me", "--unscoped", "--path", str(ws.client)])

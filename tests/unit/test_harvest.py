@@ -2414,6 +2414,29 @@ def test_a_missing_plan_names_the_cause_its_deleting_commit_establishes(tmp_path
 
 
 @pytest.mark.parametrize(
+    ("history", "cause"),
+    [
+        ("", harvest.NEVER_COMMITTED),  # no commit on any ref ever touched the path
+        ("abc123400feed\n", None),  # it was committed, and something other than a deletion moved it
+    ],
+)
+def test_a_plan_no_commit_ever_touched_is_named_as_never_committed(tmp_path, history, cause):
+    """2026-11-25: two plans read `cause not determined` seventeen days on, and neither path had
+    any history at all — nothing in git could bring them back, which is a different remedy."""
+    repo = tmp_path / "repo"
+    (repo / "plans").mkdir(parents=True)
+    plan = repo / "plans" / "2026-11-08-landed.md"
+    runner = FakeRunner(
+        {
+            f"git -C {repo / 'plans'} rev-parse --show-toplevel": (0, f"{repo}\n", ""),
+            f"git -C {repo} log -1 --diff-filter=D": (0, "", ""),
+            f"git -C {repo} log -1 --all": (0, history, ""),
+        }
+    )
+    assert harvest.missing_cause(runner, plan, []) == cause
+
+
+@pytest.mark.parametrize(
     ("written", "main"),
     [
         ("repo/.claude/worktrees/fix-x/plans/2026-09-12-a.md", "repo/plans/2026-09-12-a.md"),

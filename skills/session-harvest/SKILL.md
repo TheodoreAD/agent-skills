@@ -1277,10 +1277,14 @@ Added 2026-09-28, after a session that retired eight plans got nine undetermined
 A third cause comes from the session's own command rather than from git: **a `plans.py rename` it
 ran reads `renamed by this session to <new>`**, followed to what became of the new name, because the
 old name is often never committed — renaming a merged plan on absorption is the common case. **A
-plan written in a linked worktree the session has since removed is looked up on `main`**, at the
-same path under the repo's `plans/`, with a line naming the worktree path it was written as — before
-2026-09-28 it dropped out of the list entirely, and a background session, which writes every plan
-through a worktree, got a count of one for five.
+path no commit on any ref ever touched reads `never committed`**, and that remedy is neither of the
+others: nothing in git can bring it back, so the report says where its content went or that it is
+lost. Confirmed 2026-11-25: two plans a session wrote on its first day were undetermined seventeen
+days later, and their content had landed in a skill's references and a commit body. **A plan written
+in a linked worktree the session has since removed is looked up on `main`**, at the same path under
+the repo's `plans/`, with a line naming the worktree path it was written as — before 2026-09-28 it
+dropped out of the list entirely, and a background session, which writes every plan through a
+worktree, got a count of one for five.
 
 **Two kinds of number are printed there, and only one of them goes stale by the session running
 longer.** A measurement **of the session** — an adherence row, a call count, anything `--until`

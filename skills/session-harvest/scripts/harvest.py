@@ -3968,6 +3968,8 @@ def missing_cause(runner: Runner, path: Path, receipts: Sequence[str]) -> str | 
     except ValueError:
         return None
     ran = runner(["git", "-C", str(top), "log", "-1", "--diff-filter=D", "--format=%H%x1f%s", "--", rel])
+    if ran.ok and not ran.out.strip():
+        return _never_committed(runner, top, rel)
     if not ran.ok or COMMIT_FIELD not in ran.out:
         return None
     sha, subject = ran.out.strip().split(COMMIT_FIELD, 1)
@@ -3976,6 +3978,22 @@ def missing_cause(runner: Runner, path: Path, receipts: Sequence[str]) -> str | 
     if ABSORBED_SUBJECT_RE.search(subject):
         return f"absorbed ({sha[:9]})"
     return None
+
+
+NEVER_COMMITTED = "never committed — written and removed before any commit, so no history holds it"
+
+
+def _never_committed(runner: Runner, top: Path, rel: str) -> str | None:
+    """The third cause: no commit on any ref ever touched the path.
+
+    Not a retirement and not an absorption, and the remedy differs from both: nothing in git can
+    bring the file back, so the report has to say where its content went or that it is lost.
+    Confirmed 2026-11-25: two plans a session wrote on its first day read `cause not determined`
+    seventeen days later, and `git log --all` on either path was empty — the work had landed in a
+    skill's references and a commit body, and the plans themselves had never been committed.
+    """
+    ever = runner(["git", "-C", str(top), "log", "-1", "--all", "--format=%H", "--", rel])
+    return NEVER_COMMITTED if ever.ok and not ever.out.strip() else None
 
 
 # `plans.py rename <file> <new-topic>`: the date prefix is kept, so the new name follows from the

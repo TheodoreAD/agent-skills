@@ -31,6 +31,11 @@ Cursor, Copilot, Gemini CLI and others.
 - Handing work to another repo without touching it. A session that notices something another repo
   needs files a plan for that repo. The next session working there is offered it. Nobody commits
   into someone else's working tree.
+- Several machines, if you want them. The store works fully local by default. To share it, create an
+  empty private repository anywhere git can reach and `join` it once per machine. A store that
+  already holds plans is merged in, never replaced. After that, `sync` (or every store commit, if
+  you choose `auto`) fetches, merges and pushes. It settles the conflicts that are safe to settle
+  and stops on the rest without changing anything.
 - A check against leaking client names. Before a commit to a public repo, `scan` looks for employer
   and client names, derived from your own project directories. There is no list of clients to
   maintain, which also means there is no such list to leak.
@@ -116,8 +121,9 @@ Needs Python 3.11 or newer and git. No packages to install.
 
 It writes plan files in your repo's `plans/` and in its own stores (`~/plans` by default). It
 commits through its own `commit` command, which takes only the plan files it names, so another
-session's staged work never rides along. It uses the network for one command, `push`, and only to
-the remote your store already has. The complete list is in
+session's staged work never rides along. It uses no network unless you set `sync` to `manual` or
+`auto`, and then only the git remote your store is joined to. It adds that remote only through
+`join`, on a URL you confirmed. The complete list is in
 [`SKILL.md`](SKILL.md#what-this-skill-reads-runs-and-writes).
 
 ## Read more

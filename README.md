@@ -77,8 +77,9 @@ a baseline you ask for; `session-harvest`'s script writes nothing and its sweep 
 processes, listening sockets, container images and both stores; `skill-fitness` writes nothing but a
 baseline you name; `release-herald` writes only its own config, cache and drafts under the XDG
 directories, and creates a GitHub release — a draft unless told otherwise — only when asked.
-`plan-conveyor` also describes pushing the shareable half of its store to a remote you configure —
-behind a content scan, and never the half holding employer or client work.
+`plan-conveyor` also syncs the shareable half of its store across your machines through a git remote
+you confirm, when you turn that on — every push behind a content scan, and never the half holding
+employer or client work.
 
 **Python 3.11 or newer** is the one requirement every script shares, run by your own `python3` with
 nothing to install. Below it a script exits with a sentence saying so rather than a traceback.

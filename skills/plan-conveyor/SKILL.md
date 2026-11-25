@@ -1,7 +1,7 @@
 ---
 name: plan-conveyor
 description: "Use when capturing an idea, drafting a design, or tracking work-in-progress in a repo's plans/ directory — creating or updating a plans/YYYY-MM-DD-topic.md file (including a bug, idea or risk turned up incidentally), asking what plans exist or what to work on next, here or across every repo, advancing a status, retiring a landed/abandoned plan once its content has a permanent home elsewhere, consolidating a session's plans and loose notes into one plan without loss, migrating a legacy PLAN.md/DESIGN.md onto this convention, or auditing AGENTS.md/README.md/docs for planning/status/future-work content that has drifted in and belongs in plans/ instead. Also owns where a plan file may live and what may be written in it: a work, client or employer repo that cannot take a plans/ directory keeps its plans in the store outside every working tree ($PLANS_HOME); an idea with no repo yet is filed unscoped and graduated later; and no plan committed to a repo you publish may name a client, employer or internal project."
-compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard and keys the conversation ledger, and whose transcript fills the user's words in; any other harness exports PLAN_CONVEYOR_SESSION_REPO and passes --ledger instead. No network access.
+compatibility: Python 3.11+ (stdlib only) and git. Optional Claude Code, whose exported session id anchors the cross-repo guard and keys the conversation ledger, and whose transcript fills the user's words in; any other harness exports PLAN_CONVEYOR_SESSION_REPO and passes --ledger instead. No network access unless you set sync to manual or auto, which reaches only the git remote your store is joined to.
 ---
 
 # Structured, stateful plan files
@@ -34,33 +34,45 @@ case none of them solves cheaply — is
   into the store (`new`, `new --for`, `move --to store`, `graduate`), and through `link --remote`,
   `link --to`, `link --new`, `link --move-to private`, `links fix --yes`, `links merge` and
   `links claim`, which commit the plan files they move or rewrite with it. `rename` also runs
-  `git mv`. **`git push` runs only through `push`, only against a plans store, and only once the
-  scan of that push's own outgoing commits comes back clean.** The history-purge sequence in "Never
-  let a client's identity reach a repo you publish" is printed for you to run; the script never runs
-  it.
+  `git mv`. `install` commits the two files it generates in each store, `README.md` and
+  `.gitattributes`, once the store has a git identity. **`git push` runs only through `push` and
+  `sync`, only against a plans store, and only once the scan of that push's own outgoing commits
+  comes back clean.** `sync`, `absorb` with `sync = "auto"`, and `commit` of a store-held plan with
+  `sync = "auto"` also run `git fetch` and `git merge` in a store, then commit the merge;
+  `git merge-file` settles one plan edited on two machines. `join` runs `git ls-remote`,
+  `git fetch`, `git remote add`, `git branch -m` and the same merge in the shareable store, or
+  `git clone` into it when it is absent. The history-purge sequence in "Never let a client's
+  identity reach a repo you publish" is printed for you to run; the script never runs it.
 - **Writes**: its own config, through `install`, `config set`, `describe` and `uninstall` only. Plan
   files in the session repo's `plans/` and in both stores — `new`, `migrate start`, `set-status`,
   `move`, `absorb --apply`, `graduate`, and the retirement you perform by hand. The store
-  directories and their READMEs, created `0700`. Through `attach`: a copy of each file you name,
-  either in a directory beside the plan or in the store's `_attachments/`, the plan's own
-  `## Attachments` rows, and one line in the store's `.git/info/exclude`. Each store's `repos.toml`,
-  and — through `links fix --yes` — the `repo:` line of store-held plans. `link --move-to private`
-  and `links merge` move a store folder's files, and its local attachments, to another folder or the
-  other store. A conversation ledger per session under `$XDG_STATE_HOME/plan-conveyor/ledgers/`
-  (default `~/.local/state/…` on every OS; the pre-2026-11-08 `%LOCALAPPDATA%\plan-conveyor\` is
-  used while it is the only copy), created `0700`, through `note` and `migrate ledger`;
-  `migrate finish` copies it beside the plan as a committed attachment and then removes that state
-  copy, which is the one file it deletes outside a repository. **Deletes files only through
-  `migrate finish --delete-sources`**, and only the ones it has just listed as deletable, in the
-  session's own repository, after its coverage gate has passed — never on its own initiative and
-  never without that flag. The only other removals are of directories left holding no file: the ones
-  a move or merge empties, and those `links fix --yes --prune-empty` lists. Never a file in any
-  other repo's working tree: `new` refuses and names `--for`, and `migrate` refuses a source outside
-  this repository. `archive`, `list`, `tags`, `refs`, `pending`, `migrate check`, `doctor`, `scan`,
-  `where`, bare `link`, `links` and `links fix` without `--yes` write nothing.
-- **Network**: only `push`, and only to publish a plans store to the remote that store already has.
-  It never adds a remote, never pushes a repo, and refuses rather than publishing when the scan of
-  its own outgoing commits finds a private name. Every other command is offline.
+  directories, their READMEs and their `.gitattributes`, created `0700`. A merge through `sync` or
+  `join` writes plan files and `repos.toml` in a store, and may write a second copy of a plan with a
+  `-local` suffix or move a folder's plans into the folder the remote links that repository to.
+  Through `attach`: a copy of each file you name, either in a directory beside the plan or in the
+  store's `_attachments/`, the plan's own `## Attachments` rows, and one line in the store's
+  `.git/info/exclude`. Each store's `repos.toml`, and — through `links fix --yes` — the `repo:` line
+  of store-held plans. `link --move-to private` and `links merge` move a store folder's files, and
+  its local attachments, to another folder or the other store. A conversation ledger per session
+  under `$XDG_STATE_HOME/plan-conveyor/ledgers/` (default `~/.local/state/…` on every OS; the
+  pre-2026-11-08 `%LOCALAPPDATA%\plan-conveyor\` is used while it is the only copy), created `0700`,
+  through `note` and `migrate ledger`; `migrate finish` copies it beside the plan as a committed
+  attachment and then removes that state copy, which is the one file it deletes outside a
+  repository. **Deletes files only through `migrate finish --delete-sources`**, and only the ones it
+  has just listed as deletable, in the session's own repository, after its coverage gate has passed
+  — never on its own initiative and never without that flag. The only other removals are of
+  directories left holding no file: the ones a move or merge empties, and those
+  `links fix --yes --prune-empty` lists. Never a file in any other repo's working tree: `new`
+  refuses and names `--for`, and `migrate` refuses a source outside this repository. `archive`,
+  `list`, `tags`, `refs`, `pending`, `migrate check`, `doctor`, `scan`, `where`, bare `link`,
+  `links` and `links fix` without `--yes` write nothing.
+- **Network**: none with `sync = "off"`, the default — `push` and `sync` then say the machine is
+  local-only. Otherwise `push` and `sync` reach the remote each store already has; with
+  `sync = "auto"`, so do `absorb` (a fetch) and `commit` of a store-held plan (a fetch and a push).
+  `join` reaches the URL you give it, and **adds a remote only on a URL the user has confirmed**,
+  only to the shareable store — or, on a work device, to the one store, when `sanctioned_remotes`
+  covers it. It never pushes a repo, and refuses rather than publishing when the scan of its own
+  outgoing commits finds a private name. Every other command is offline.
 
 ## Run the script, don't re-derive it
 
@@ -140,6 +152,8 @@ python3 <path> archive --search <words>     # a retired plan, back out of git hi
 # keeping the machine right
 python3 <path> scan                         # no private name reaches a repo you publish
 python3 <path> push                         # scan what the push would publish, then push the store
+python3 <path> sync                         # bring the remote in, settle known conflicts, scan, push
+python3 <path> join <url> --dry-run         # what joining this machine's store to a remote would do
 python3 <path> orgs                         # whose repo each directory is, from its own remote
 python3 <path> link                         # which repository this clone is, and its store folder
 python3 <path> links fix                    # move a store onto links, or repair them; --yes applies
@@ -647,6 +661,70 @@ see.
 It pushes only a store, only to a remote that store already has, and it never adds one. A store with
 no remote is reported as nothing to push, which is the documented and permanent state of the
 sensitive tier rather than a problem to fix.
+
+### Several machines: `join` once, then `sync`
+
+**One `sync` key per machine decides whether anything reaches a remote**, and a remote's presence
+implies nothing. `off` is the default, so a store with no remote is a complete setup and nobody has
+to create one. `install --explain` asks; put the question to the user and record the answer with
+`config set sync <mode>`.
+
+| `sync`   | what happens                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `off`    | nothing reaches the network; `sync` and `push` say the machine is local-only                                        |
+| `manual` | `sync` fetches, merges and pushes when run; `absorb` warns when the store was last fetched a day ago or more        |
+| `auto`   | `commit` of a store-held plan syncs straight after (`--no-sync` keeps one local); `absorb` fetches and merges first |
+
+**Joining a remote is done once per machine, on a URL the user has confirmed.** The user creates an
+empty private repository anywhere git can reach — any host, a bare repository on a NAS — and gives
+you its URL. Show it back to them, then:
+
+```shell
+python3 <path> join <url> --dry-run   # each side's plans, every conflict, what will be published
+python3 <path> join <url>             # after the user has seen that and said yes
+python3 <path> sync                   # publishes this machine's commits, behind the scan
+```
+
+`join` never loses a plan. An absent store is cloned. **A store that already holds plans is merged
+with the remote's history rather than replaced by it**, every local commit kept, and it takes the
+remote's branch name first so the first push does not create a second branch. A store already tied
+to a different remote is refused with both URLs named, since which one is right is the user's call.
+An uncommitted plan the remote also has stops the join until it is committed. On a work device the
+URL must be covered by `sanctioned_remotes`. The sensitive store never joins anything.
+
+**What a merge settles on its own, keeping every side's content**, and what it does not:
+
+- **`repos.toml`** is merged by repository identity, never by git's line merge, which reports
+  adjacent links as a conflict and merges one repository spelled in two letter cases into two
+  folders without a word. When one repository is linked to two folders, the remote's folder is kept
+  and this machine's plans move into it.
+- **The generated `README.md` and `.gitattributes`** keep the remote's copy.
+- **An edit against a deletion** keeps the edit. This is `absorb --apply` on one machine while the
+  other edits the filed plan.
+- **One date and topic filed on both machines** keeps both, this machine's renamed with `-local`.
+- **One plan edited on both machines** gets `updated:` set to the later date, since every edit
+  rewrites that line, and the rest is merged with `git merge-file`.
+- **Anything else aborts the merge and changes nothing.** Every session on the machine shares the
+  store's working tree, so a store left mid-merge would block all of them. The output names each
+  unresolved path: edit it on one machine, sync that one, then sync the other.
+
+Another session's staged work postpones the merge rather than failing it, because `git merge`
+refuses while the shared index differs from `HEAD`. The push after a merge scans the merge commit
+too: plain `git log -p` prints no diff for one, so text written while resolving a conflict by hand
+was invisible to the scan until `--cc` was added, 2026-11-25.
+
+**Merge, never rebase**, for the reason the shared tree gives: a rebase rewrites commits another
+session on the machine may be about to push. And **never a timer or a git hook**: a background merge
+can land while a session is midway through committing into the shared index. Inside the commands it
+shows up in their output.
+
+**Every file `plans.py` writes is LF on every OS, and each store's `.gitattributes` holds that
+line.** Python writes CRLF on Windows unless told not to, and Git for Windows' installer sets
+`core.autocrlf = true`; a plan committed CRLF from one machine differs on every line from the same
+plan written on another, and every edit both make then conflicts across the whole file.
+
+`_attachments/` does not travel. It is kept out of git on purpose, so a plan synced to another
+machine can name a local attachment that is not there.
 
 ## Something that belongs to a repo you are not in
 

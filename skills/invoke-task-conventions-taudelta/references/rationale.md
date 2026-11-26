@@ -65,7 +65,7 @@ executing this convention across two repos on 2026-08-24, not from theory:
 - The `Collection.from_module` trap was found by reading `inv --list` against the module sources
   during `repo-tasks`' naming audit — four undeclared tasks, one of which (`dev-env.claude-hook`)
   `power-user-linux-setup` had documented as a heading in `docs/claude-code.md` and in
-  `tests/README.md`. Its real name is `agents.wire-claude-hook`.
+  `tests/README.md`. Its real name was `agents.wire-claude-hook`, a task repo-tasks v0.8.0 removed.
 - Fixing that leak then _removed_ the command from `power-user-linux-setup`, because that repo wires
   only four upstream namespaces and `agents` was not one of them. Caught by running `inv --list`
   after the dependency bump — the test suite could not have caught it, since it asserts on the

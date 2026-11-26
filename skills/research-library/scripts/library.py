@@ -49,7 +49,9 @@ import argparse
 import json
 import os
 import re
+import shutil
 import signal
+import stat
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -467,7 +469,14 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     # filter took `.git` to **644 KB**. 48x, and `grep -rIl` returned the identical 185 files in all
     # three.
     lever = ["--filter=blob:none", "--sparse"] if text_only else []
-    clone = ["git", "clone", *depth, *lever, args.url, str(target)]
+    # Git for Windows refuses a path over 260 characters unless `core.longpaths` is on, and deep
+    # snapshot-test trees pass that easily from a store under a home directory. Measured 2026-11-26
+    # on `astral-sh/ruff`: the text-only `sparse-checkout set` exited 254 on
+    # `crates/ruff_linter/src/rules/airflow/snapshots/...` without it and 0 with it, so the entry
+    # fell back to every file. `clone -c` writes it into the new clone's own config before anything
+    # is checked out, so the sparse step and every later `update` inherit it; git elsewhere ignores
+    # the key.
+    clone = ["git", "clone", "-c", "core.longpaths=true", *depth, *lever, args.url, str(target)]
     payload: dict[str, Any] = {"url": args.url, "name": name, "path": str(target), "clone": clone}
 
     if target.exists():
@@ -495,7 +504,7 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 
     ran = runner(clone)
     if not ran.ok:
-        raise LibraryError(f"clone failed ({ran.code}): {ran.err.strip() or ran.out.strip()}")
+        raise LibraryError(clone_failure(target, ran))
 
     moved = rename_to_canonical(runner, root, target, name)
     if moved != target:
@@ -528,6 +537,42 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         for line in body.splitlines():
             print(f"    {line}")
     return payload
+
+
+def clone_failure(target: Path, ran: Ran) -> str:
+    """Why the clone failed, with what it left behind removed.
+
+    `git clone` deletes its directory when the fetch fails but keeps it when only the checkout does
+    ("Clone succeeded, but checkout failed", exit 128), and what it keeps is a `.git` with nothing
+    checked out and no provenance file: an entry `check` then reports, and one a grep searches as
+    though it were empty. `add` refused an existing target before cloning, so whatever is there now
+    is this clone's own and nobody else's work.
+    """
+    reason = ran.err.strip() or ran.out.strip() or str(ran.code)
+    message = f"clone failed ({ran.code}): {reason}"
+    if target.exists():
+        # `onexc` is 3.12+ and `onerror` is deprecated from 3.12; the handler fits both shapes.
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(target, onexc=_clear_read_only)
+        else:
+            shutil.rmtree(target, onerror=_clear_read_only)
+        message += f"\nremoved the partial clone at {target}"
+    if "invalid path" in reason:
+        # Measured 2026-11-26 on `g-plane/pretty_yaml`, whose YAML-spec fixtures carry `"` in their
+        # names: Git for Windows rejects the whole tree at index time, so excluding the paths with a
+        # sparse pattern before checkout fails the same way. The one setting that gets past it,
+        # `core.protectNTFS=false`, is a security protection and is not a library's to turn off.
+        message += (
+            '\nthe tree has a path this filesystem cannot hold (on Windows: " : < > | ? *), and no '
+            "sparse pattern avoids it — clone it on Linux or WSL, or take a release archive instead"
+        )
+    return message
+
+
+def _clear_read_only(function: Any, path: str, _excinfo: Any) -> None:
+    """Git marks pack files read-only, which stops `rmtree` on Windows; clear the bit and retry."""
+    Path(path).chmod(stat.S_IWRITE)
+    function(path)
 
 
 def _dry_run(args: argparse.Namespace, target: Path, clone: list[str], *, text_only: bool) -> dict[str, Any]:

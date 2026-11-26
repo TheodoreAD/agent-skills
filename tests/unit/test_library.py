@@ -145,7 +145,7 @@ def test_add_dry_run_writes_nothing_and_prints_both_halves(tmp_path, capsys):
     out = capsys.readouterr().out
     assert git.calls == [], "a dry run must not run git at all"
     assert not (store / "repos" / "github.com--encode--httpx").exists()
-    assert "git clone --depth 1" in out
+    assert "git clone -c core.longpaths=true --depth 1" in out
     assert "kind: repo-clone" in payload["provenance"]
 
 
@@ -200,6 +200,53 @@ def test_add_refuses_an_entry_that_already_exists(tmp_path):
     args = library.build_parser().parse_args(["add", "https://github.com/encode/httpx", "--root", str(store)])
     with pytest.raises(library.LibraryError, match="already exists"):
         library.cmd_add(args, FakeGit())
+
+
+def test_add_clones_with_long_paths_on(tmp_path, capsys):
+    """Git for Windows refuses paths over 260 characters without `core.longpaths`. Measured
+    2026-11-26 on `astral-sh/ruff`: the text-only sparse step exited 254 without it and 0 with it.
+    `clone -c` puts it in the clone's own config, so the sparse step and later updates inherit it."""
+    store = make_store(tmp_path)
+    argv = ["add", "https://github.com/encode/httpx", "--root", str(store), "--dry-run"]
+    payload = library.cmd_add(library.build_parser().parse_args(argv), FakeGit())
+    capsys.readouterr()
+    clone = payload["clone"]
+    assert clone[:4] == ["git", "clone", "-c", "core.longpaths=true"]
+
+
+def test_a_failed_checkout_removes_the_half_clone_it_left(tmp_path):
+    """`git clone` keeps its directory when only the checkout fails, holding a `.git`, nothing
+    checked out and no provenance file. Seen 2026-11-26 on `g-plane/pretty_yaml`, whose fixture
+    names hold `"`, which Windows cannot store."""
+    store = make_store(tmp_path)
+    target = store / "repos" / "github.com--g-plane--pretty_yaml"
+    err = "error: invalid path 'tests/a-\"b\".yaml'\nfatal: unable to checkout working tree\n"
+
+    def failing_clone(argv, cwd=None):
+        if argv[:2] != ["git", "clone"]:
+            return library.Ran(tuple(argv), 1, "", "")
+        (target / ".git" / "objects").mkdir(parents=True)
+        pack = target / ".git" / "objects" / "pack.idx"
+        pack.write_text("x", encoding="utf-8")
+        pack.chmod(0o444)  # git's pack files are read-only, which is what stops a plain rmtree on Windows
+        return library.Ran(tuple(argv), 128, "", err)
+
+    args = library.build_parser().parse_args(["add", "https://github.com/g-plane/pretty_yaml", "--root", str(store)])
+    with pytest.raises(library.LibraryError) as raised:
+        library.cmd_add(args, failing_clone)
+    assert not target.exists()
+    assert "removed the partial clone" in str(raised.value)
+    assert "no sparse pattern avoids it" in str(raised.value)
+
+
+def test_a_failed_fetch_says_why_and_mentions_no_removal(tmp_path):
+    store = make_store(tmp_path)
+    git = FakeGit({"git clone": (128, "", "fatal: repository not found\n")})
+    args = library.build_parser().parse_args(["add", "https://github.com/no/such", "--root", str(store)])
+    with pytest.raises(library.LibraryError, match="repository not found") as raised:
+        library.cmd_add(args, git)
+    assert "removed" not in str(raised.value)
+    assert "invalid path" not in str(raised.value)
 
 
 def test_a_missing_library_is_an_error_rather_than_a_directory_this_script_creates(tmp_path):

@@ -27,7 +27,8 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
   `package_health.py` also runs `node --version` when node is on `PATH`, to compare a floor, and for
   its `apt` source `apt-cache policy` and `apt-cache show`, which only read this machine's apt
   cache.
-- **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file, `provenance`
+- **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file (and deletes
+  the directory a clone that failed at checkout left behind, which nothing else had), `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field.
   `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
   or a copy into a project repo, and nothing outside the store is ever touched.
@@ -50,6 +51,7 @@ own `AGENTS.md` may already point at the specific entry relevant to that project
 $RESEARCH_HOME/
   repos/<host>--<owner>--<repo>/   # shallow git clones
   docs/<file>.pdf|.epub            # downloaded reference docs
+  docs/<host>--<path>-<version>/   # source snapshots of projects with no clonable git
   pages/<slug>/                    # mirrored/llms.txt-derived doc site snapshots
   README.md                        # full conventions + rationale
 ```
@@ -90,6 +92,21 @@ rather than prompting — an interactive prompt inside an agent's Bash call hang
 into. `--yes` proceeds, `--min <MB>` moves the line (default 250 MB), `--depth N` or `--full` clones
 more than one commit and records it. The check is GitHub's API, so a host it cannot ask is never a
 host it refuses to clone from.
+
+**Adding many at once, the exit-3 ones are the list to bring back.** Run the batch, collect the
+entries that stopped on size, and put that list to the user, or rerun it with `--yes` when they have
+already said to take everything. Seen 2026-11-25 on a 35-repo batch: four stopped (raylib, pydantic,
+crawl, nerd-fonts) and the rest went in unattended.
+
+**On Windows, two checkout failures are handled for you, and a third cannot be.** `add` clones with
+`core.longpaths=true`, written into the clone's own config: without it a path past 260 characters
+fails the text-only step, the entry falls back to every file, **and even that checkout silently
+lacks the long-path files**. Measured 2026-11-26: `astral-sh/ruff` was 5 files short and
+`CDDA-Tilesets` 232, both visible only in `git status`. Re-added, the tilesets went from 453 MB to
+71 MB. A tree with a name Windows cannot store at all (`"` `:` `<` `>` `|` `?` `*`, as in
+`g-plane/pretty_yaml`'s YAML-spec fixtures) fails at index time whatever the sparse set says; `add`
+deletes the half clone and says so. Clone that one from Linux or WSL, or take a release archive (see
+below). Never turn off `core.protectNTFS` to get past it: it is a security protection.
 
 **The reported size is a trigger, never a prediction, and the warning deliberately quotes no
 estimate.** Measured 2026-09-07 against five real entries at depth 1: on-disk cost ran from 0.23×
@@ -141,6 +158,34 @@ someone applied by hand.
 
 `update` needs no special case: a shallow fetch and hard reset leave `core.sparseCheckout` and the
 pattern list intact, confirmed on a real refresh.
+
+## When there is no git repo to clone
+
+Some projects worth reading publish no clonable git: a self-hosted forge that wants a login, a
+Subversion repository, a source tarball on a download page. Get the source anyway. Hand-grabbed code
+still beats prose about it, for the same reason a clone does.
+
+- **Where it goes:** `docs/<name>/`, never `repos/`. `check` treats anything under `repos/` without
+  a `.git` as a clone that failed partway, which is the right reading there. Name it after where it
+  came from plus the version, e.g. `docs/te4.org--t-engine4-src-1.7.6`. Record it with
+  `library.py provenance <entry> --url <url> --kind site-mirror --ref <version or revision>`.
+- **Keep it text-only by the same rule `add` uses:** keep a file when its first 8 KB holds no NUL
+  byte, and keep documents too. **Look inside nested archives**: a game may pack its scripts into
+  zips inside the tarball. Measured 2026-11-26 on Tales of Maj'Eyal 1.7.6, whose Lua sits in `.team`
+  zips: a 477 MB download became 2,975 files and 44 MB, 2,338 of them Lua. Extracting only the outer
+  layer would have kept almost none of it.
+- **A self-hosted GitLab may refuse anonymous reads entirely.** Its explore page lists no public
+  projects and the clone asks for a login. ToME's `git.net-core.org` did that on 2026-11-26, and the
+  release source tarball on the project's own site was the way in.
+- **Subversion needs no svn client.** A server's plain HTTP view is a directory index whose links
+  can be walked and fetched file by file, at the revision the index states. SourceForge took about 7
+  s a file and dropped connections (`WinError 10060`) partway through Liberal Crime Squad's trunk,
+  so a mirror there needs retries with backoff and has to resume, skipping what it already has; the
+  rerun finished at r864, 289 files and 5.3 MB, 0 failures. SourceForge's "download snapshot" zip
+  returned 404.
+- **In PowerShell, quote an argument that begins with `-` and contains a dot.** `-gfx.team` reaches
+  a native program as two arguments, `-gfx` and `.team`. That silently skipped every `.team` archive
+  in the first ToME extraction.
 
 ## What the library costs
 

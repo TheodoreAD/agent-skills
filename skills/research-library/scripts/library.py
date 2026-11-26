@@ -19,6 +19,8 @@ it.
     library.py update                                      # refresh, each entry at its own depth
     library.py deepen <entry> --depth 500                  # more history, recorded as deliberate
     library.py reshallow <entry>                           # back to a depth-1 footprint, disk included
+    library.py unpack <archive> --name <n> --url <u> --ref <version>   # a release archive, text-only
+    library.py svn https://svn.example.org/repo/trunk/     # a Subversion tree over HTTP, text-only
 
 The four commands above `check` are the clone's whole lifecycle, and they are code rather than prose
 for a measured reason: returning a deepened clone to its original footprint takes five git commands
@@ -28,9 +30,10 @@ reclaim nothing while reporting success. See `reshallow` for the numbers.
 `add` clones **text-only** by default — see `UNGREPPABLE_EXTENSIONS`. `--all-files` opts one clone
 out, and `RESEARCH_TEXT_ONLY=0` opts a whole machine out.
 
-Stdlib only, so it runs by path with no install step. `add`, `provenance`, `update`, `deepen` and
-`reshallow` write, and only inside `$RESEARCH_HOME`; `name`, `check` and `size` are read-only. Every
-subcommand takes `--json`.
+Stdlib only, so it runs by path with no install step. `add`, `provenance`, `update`, `deepen`,
+`reshallow`, `unpack` and `svn` write, and only inside `$RESEARCH_HOME`; `name`, `check` and `size`
+are read-only. `svn` is the one command that makes HTTP requests itself, to the URL it is given.
+Every subcommand takes `--json`.
 
 Exit codes: 0 ok, 1 error (or a finding under `check --strict`), 2 argparse usage, 3 needs-decision
 — `add` found a repo the host reports as large, so the user chooses rather than the script.
@@ -46,6 +49,7 @@ if sys.version_info[:2] < (3, 11):  # noqa: UP036 — runs exactly where require
     sys.exit(f"library.py needs Python 3.11 or newer; this is {sys.version.split()[0]} ({sys.executable})")
 
 import argparse
+import io
 import json
 import os
 import re
@@ -53,10 +57,16 @@ import shutil
 import signal
 import stat
 import subprocess
-from collections.abc import Sequence
+import tarfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 NEEDS_DECISION = 3
@@ -81,7 +91,11 @@ DEPTH_FIELD = "depth"
 FULL_DEPTH = "full"
 TEXT_ONLY_FIELD = "text-only"
 TEXT_ONLY_ENV = "RESEARCH_TEXT_ONLY"
-KINDS = ("repo-clone", "llms-txt-mirror", "site-mirror")
+# `source-snapshot`: a project's source taken at one version from something other than git — an
+# unpacked release archive, a Subversion tree fetched over HTTP. Added 2026-11-26 for exactly those
+# two, which had been recorded as `site-mirror` and are not one.
+SNAPSHOT_KIND = "source-snapshot"
+KINDS = ("repo-clone", "llms-txt-mirror", "site-mirror", SNAPSHOT_KIND)
 
 # What a text-only clone leaves on the server. The constraint on this list is not "big" and not
 # "not source" — it is that **ripgrep and grep already skip every format named here**, because both
@@ -1170,6 +1184,373 @@ def cmd_name(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------------------------
+# sources with no git: a release archive, a Subversion tree
+#
+# Both land under `docs/`, never `repos/`: `check` reads a `.git`-less entry under `repos/` as a clone
+# that failed partway, which is the right reading there. Both keep what `add` keeps — a file whose
+# first block has no NUL byte, and documents — because the reason is the same: a search reads nothing
+# else. And both write the provenance file themselves, as `source-snapshot`, since that is the half
+# that gets skipped.
+
+SNIFF_BYTES = 8192
+# A release archive may pack its real source in archives of its own: Tales of Maj'Eyal 1.7.6 ships
+# its Lua as `.team` zips inside the tarball, so unpacking one layer kept almost none of it (measured
+# 2026-11-26: 477 MB downloaded, 2,975 files and 44 MB kept, 2,338 of them Lua, only by opening the
+# inner layer). Three levels is past anything seen; the limit exists so a crafted archive cannot
+# recurse without end.
+NESTED_LIMIT = 3
+NESTED_SUFFIX = ".d"
+USER_AGENT = "research-library (+https://github.com/TheodoreAD/agent-skills)"
+SVN_REVISION = re.compile(r"Revision (\d+):")
+# mod_dav_svn's plain index is `<li><a href="name/">`; with `SVNIndexXSLT` set it serves XML instead,
+# `<dir name=".." href=".."/>` and `<file .../>`. Both shapes, so a host's styling choice does not
+# make a tree look empty.
+SVN_HREF = re.compile(r'<li><a href="([^"]+)">|<(?:dir|file)\b[^>]*\bhref="([^"]+)"')
+
+
+def keeps(name: str, data: bytes) -> bool:
+    """`add`'s rule for one file: text to a grep, or a document an agent reads anyway."""
+    suffix = PurePosixPath(name).suffix.lower().lstrip(".")
+    return suffix in DOCUMENT_EXTENSIONS or b"\0" not in data[:SNIFF_BYTES]
+
+
+def skipped_by_name(name: str) -> bool:
+    """Not worth fetching at all: the extension alone says no search would read it."""
+    return PurePosixPath(name).suffix.lower().lstrip(".") in UNGREPPABLE_EXTENSIONS
+
+
+def safe_relative(name: str) -> PurePosixPath | None:
+    """The member's path inside the entry, or None for one that would land outside it."""
+    path = PurePosixPath(name.replace("\\", "/"))
+    if path.is_absolute() or ".." in path.parts or not path.parts or ":" in path.parts[0]:
+        return None
+    return path
+
+
+def _archive_kind(data: bytes) -> str:
+    if zipfile.is_zipfile(io.BytesIO(data)):
+        return "zip"
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data)):
+            return "tar"
+    except (tarfile.TarError, OSError, EOFError):
+        return ""
+
+
+def archive_members(source: Path | bytes) -> Iterator[tuple[str, bytes]]:
+    """Every file in a zip or a tar (any compression), as (name, bytes), directories left out."""
+    data = source if isinstance(source, bytes) else None
+    kind = _archive_kind(data) if data is not None else ("zip" if zipfile.is_zipfile(source) else "tar")
+    if kind == "zip":
+        with zipfile.ZipFile(io.BytesIO(data) if data is not None else source) as archive:
+            for info in archive.infolist():
+                if not info.is_dir():
+                    yield info.filename, archive.read(info)
+        return
+    if kind != "tar":
+        raise LibraryError("not a zip or tar archive")
+    name = None if data is not None else source
+    with tarfile.open(name=name, fileobj=io.BytesIO(data) if data is not None else None) as archive:
+        for member in archive:
+            if not member.isfile():
+                continue
+            handle = archive.extractfile(member)
+            if handle is not None:
+                yield member.name, handle.read()
+
+
+@dataclass
+class Tally:
+    """What an unpack or a mirror kept, and everything it did not, so the report can say both."""
+
+    kept: int = 0
+    kept_bytes: int = 0
+    skipped: int = 0
+    skipped_bytes: int = 0
+    archives: int = 0
+    failed: list[str] | None = None
+
+    def fail(self, line: str) -> None:
+        if self.failed is None:
+            self.failed = []
+        self.failed.append(line)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "kept": self.kept,
+            "kept_mb": round(self.kept_bytes / MB, 1),
+            "skipped": self.skipped,
+            "skipped_mb": round(self.skipped_bytes / MB, 1),
+            "archives_opened": self.archives,
+            "failed": list(self.failed or []),
+        }
+
+
+def write_member(target: Path, relative: PurePosixPath, data: bytes, tally: Tally) -> None:
+    """Write one kept file, through a `.part` name so an interrupted run never leaves a truncated
+    file that a resumed one would take for finished."""
+    destination = target.joinpath(*relative.parts)
+    partial = destination.with_name(destination.name + ".part")
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        partial.write_bytes(data)
+        partial.replace(destination)
+    except OSError as error:
+        # A name this filesystem cannot hold (`"` on Windows) fails here, one file at a time,
+        # rather than taking the whole snapshot with it the way it takes a git checkout.
+        tally.fail(f"{relative.as_posix()}: {error}")
+        return
+    tally.kept += 1
+    tally.kept_bytes += len(data)
+
+
+def unpack_into(
+    source: Path | bytes, target: Path, prefix: str, skips: Sequence[str], tally: Tally, level: int = 0
+) -> None:
+    for name, data in archive_members(source):
+        path = prefix + name
+        relative = safe_relative(path)
+        if relative is None:
+            tally.fail(f"{path}: refused, it would land outside the entry")
+            continue
+        if any(skip in relative.as_posix() for skip in skips):
+            tally.skipped += 1
+            tally.skipped_bytes += len(data)
+            continue
+        suffix = relative.suffix.lower().lstrip(".")
+        if level < NESTED_LIMIT and suffix not in DOCUMENT_EXTENSIONS and _archive_kind(data):
+            tally.archives += 1
+            unpack_into(data, target, relative.as_posix() + NESTED_SUFFIX + "/", skips, tally, level + 1)
+            continue
+        if not keeps(path, data):
+            tally.skipped += 1
+            tally.skipped_bytes += len(data)
+            continue
+        write_member(target, relative, data, tally)
+
+
+def hoist_single_directory(target: Path) -> None:
+    """A release archive usually wraps everything in `<project>-<version>/`; the entry's own name
+    already says that, so its contents move up one level, the way `tar --strip-components=1` would."""
+    children = [child for child in target.iterdir() if child.name != PROVENANCE]
+    if len(children) != 1 or not children[0].is_dir():
+        return
+    wrapper = children[0]
+    inner = list(wrapper.iterdir())
+    if any(child.name == wrapper.name for child in inner):
+        return  # `pkg-1.0/pkg-1.0/` would collide with itself on the way up
+    for child in inner:
+        child.rename(target / child.name)
+    wrapper.rmdir()
+
+
+def cmd_unpack(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
+    """Unpack a downloaded release archive into `docs/<name>/`, text-only, and record it."""
+    root = store_root(args.root)
+    archive = Path(args.archive)
+    if not archive.is_file():
+        raise LibraryError(f"{archive} is not a file — download the archive first, then unpack it")
+    target = root / "docs" / args.name
+    if target.exists():
+        raise LibraryError(f"{target} already exists — remove it to unpack again")
+    payload: dict[str, Any] = {"archive": str(archive), "path": str(target)}
+    provenance = render_provenance(args.url, SNAPSHOT_KIND, args.ref, today(), args.note or "", text_only=True)
+    if args.dry_run:
+        tally = Tally()
+        for name, data in archive_members(archive):
+            if keeps(name, data):
+                tally.kept += 1
+                tally.kept_bytes += len(data)
+            else:
+                tally.skipped += 1
+                tally.skipped_bytes += len(data)
+        payload |= {"dry_run": True, "provenance": provenance, "outer_layer": tally.as_dict()}
+        if not args.json:
+            print(f"would unpack {archive} into {target}")
+            print(
+                f"  outer layer alone: {tally.kept} files kept, {tally.skipped} skipped;"
+                " nested archives open on a real run"
+            )
+            print(f"\n# {target / PROVENANCE}\n{provenance}")
+        return payload
+
+    tally = Tally()
+    target.mkdir(parents=True)
+    try:
+        unpack_into(archive, target, "", args.skip or [], tally)
+    except (LibraryError, tarfile.TarError, zipfile.BadZipFile) as error:
+        shutil.rmtree(target, ignore_errors=True)
+        raise LibraryError(f"{archive}: {error}") from error
+    hoist_single_directory(target)
+    (target / PROVENANCE).write_text(provenance, encoding="utf-8")
+    payload |= {"provenance": provenance, **tally.as_dict()}
+    if not args.json:
+        _print_tally(f"unpacked {archive} into {target}", tally)
+    return payload
+
+
+class Fetcher(Protocol):
+    """Every HTTP read the Subversion mirror makes, behind one seam, so its walk is testable offline."""
+
+    def __call__(self, url: str) -> bytes: ...
+
+
+class LiveFetcher:
+    """urllib with retries. SourceForge's Subversion view took about 7 s a file and dropped the
+    connection (`WinError 10060`) partway through a 289-file tree on 2026-11-26; six tries with a
+    growing pause got every file."""
+
+    def __init__(self, attempts: int = 6, pause: float = 5.0, sleep: Any = None, opener: Any = None) -> None:
+        self.attempts: int = attempts
+        self.pause: float = pause
+        self.sleep: Any = sleep or time.sleep
+        self.opener: Any = opener or urllib.request.urlopen
+
+    def __call__(self, url: str) -> bytes:
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        for attempt in range(1, self.attempts + 1):
+            try:
+                with self.opener(request, timeout=60) as response:
+                    body: bytes = response.read()
+                    return body
+            except urllib.error.HTTPError:
+                raise  # a 404 or a 403 is an answer; asking again changes nothing
+            except OSError:
+                if attempt == self.attempts:
+                    raise
+                self.sleep(self.pause * attempt)
+        raise AssertionError("unreachable")  # pragma: no cover
+
+
+def svn_revision(listing: str) -> str:
+    found = SVN_REVISION.search(listing)
+    if not found:
+        raise LibraryError("no 'Revision N:' in the index — this does not look like a Subversion HTTP view")
+    return found.group(1)
+
+
+def svn_links(listing: str) -> list[str]:
+    links: list[str] = []
+    for plain, xml in SVN_HREF.findall(listing):
+        href = plain or xml
+        # Relative links only: `../` is the parent, and anything with a scheme or a leading slash
+        # points off this tree.
+        if href in ("../", "..") or href.startswith("/") or "://" in href or href.startswith("?"):
+            continue
+        links.append(href)
+    return links
+
+
+def svn_entry_name(url: str, revision: str) -> str:
+    parts = urllib.parse.urlsplit(url)
+    segments = [urllib.parse.unquote(s) for s in parts.path.split("/") if s]
+    if not parts.hostname or not segments:
+        raise LibraryError(f"cannot name an entry from {url!r} — pass --name")
+    return "--".join([parts.hostname, *segments]) + f"-r{revision}"
+
+
+def svn_mirror(url: str, target: Path, fetch: Fetcher, tally: Tally) -> tuple[str, str]:
+    """Walk the tree under `url`, keep what a search reads, and return the first and last revision
+    the index reported — different when someone committed while the walk ran."""
+    base = url if url.endswith("/") else url + "/"
+    first = fetch(base).decode("utf-8", errors="replace")
+    start = svn_revision(first)
+    pending: list[tuple[str, str]] = [("", first)]
+    while pending:
+        relative_dir, listing = pending.pop()
+        for href in svn_links(listing):
+            path = relative_dir + href
+            if href.endswith("/"):
+                try:
+                    pending.append((path, fetch(base + path).decode("utf-8", errors="replace")))
+                except OSError as error:
+                    tally.fail(f"{path}: {error}")
+                continue
+            _svn_file(base, path, target, fetch, tally)
+    try:
+        end = svn_revision(fetch(base).decode("utf-8", errors="replace"))
+    except OSError:
+        end = start  # the files are already on disk; an unanswered last question should not lose them
+    return start, end
+
+
+def _svn_file(base: str, path: str, target: Path, fetch: Fetcher, tally: Tally) -> None:
+    relative = safe_relative(urllib.parse.unquote(path))
+    if relative is None:
+        tally.fail(f"{path}: refused, it would land outside the entry")
+        return
+    if skipped_by_name(relative.name):
+        tally.skipped += 1
+        return
+    if target.joinpath(*relative.parts).is_file():
+        tally.kept += 1  # fetched by an earlier, interrupted run
+        return
+    try:
+        data = fetch(base + path)
+    except OSError as error:
+        tally.fail(f"{path}: {error}")
+        return
+    if not keeps(relative.name, data):
+        tally.skipped += 1
+        tally.skipped_bytes += len(data)
+        return
+    write_member(target, relative, data, tally)
+
+
+def cmd_svn(args: argparse.Namespace, runner: Runner, fetch: Fetcher | None = None) -> dict[str, Any]:
+    """Mirror one path of a Subversion repository over its HTTP view, text-only, with no svn client."""
+    root = store_root(args.root)
+    fetch = fetch or LiveFetcher()
+    base = args.url if args.url.endswith("/") else args.url + "/"
+    try:
+        revision = svn_revision(fetch(base).decode("utf-8", "replace"))
+    except OSError as error:
+        raise LibraryError(f"{args.url}: {error}") from error
+    name = args.name or svn_entry_name(args.url, revision)
+    target = root / "docs" / name
+    if target.exists() and not args.resume:
+        raise LibraryError(f"{target} already exists — pass --resume to fetch only what it is missing")
+    payload: dict[str, Any] = {"url": args.url, "name": name, "path": str(target), "revision": revision}
+    if args.dry_run:
+        payload["dry_run"] = True
+        if not args.json:
+            print(f"would mirror {args.url} at r{revision} into {target}")
+        return payload
+
+    target.mkdir(parents=True, exist_ok=True)
+    tally = Tally()
+    try:
+        start, end = svn_mirror(args.url, target, fetch, tally)
+    except OSError as error:
+        raise LibraryError(f"{args.url}: {error} — rerun with --resume to continue") from error
+    note = args.note or ""
+    if start != end:
+        moved = f"the tree moved from r{start} to r{end} during the walk, so files may mix the two"
+        note = f"{note}; {moved}" if note else moved
+    provenance = render_provenance(args.url, SNAPSHOT_KIND, f"r{start}", today(), note, text_only=True)
+    (target / PROVENANCE).write_text(provenance, encoding="utf-8")
+    payload |= {"provenance": provenance, "revision": start, **tally.as_dict()}
+    if not args.json:
+        _print_tally(f"mirrored {args.url} at r{start} into {target}", tally)
+    if tally.failed:
+        # After the provenance file, as in `add`: the entry is real and says where it came from, and
+        # the failure is loud. `--resume` fetches only the missing files.
+        raise LibraryError(f"{len(tally.failed)} file(s) failed — rerun the same command with --resume")
+    return payload
+
+
+def _print_tally(headline: str, tally: Tally) -> None:
+    counts = tally.as_dict()
+    print(headline)
+    print(f"  kept {counts['kept']} files, {counts['kept_mb']} MB;", end=" ")
+    print(f"skipped {counts['skipped']}, {counts['skipped_mb']} MB")
+    if tally.archives:
+        print(f"  opened {tally.archives} nested archive(s), each unpacked beside itself as <name>{NESTED_SUFFIX}/")
+    for line in tally.failed or []:
+        print(f"  failed: {line}")
+
+
+# --------------------------------------------------------------------------------------------
 # cli
 
 
@@ -1246,6 +1627,31 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--note")
     prov.add_argument("--dry-run", action="store_true")
 
+    unpack = subparsers.add_parser(
+        "unpack", parents=[common], help="unpack a downloaded source archive into docs/, text-only, and record it"
+    )
+    unpack.add_argument("archive", help="the downloaded .tar.* or .zip")
+    unpack.add_argument("--name", required=True, help="the entry under docs/, e.g. <host>--<project>-<version>")
+    unpack.add_argument("--url", required=True, help="where the archive was downloaded from")
+    unpack.add_argument("--ref", required=True, help="the version the archive is")
+    unpack.add_argument("--note")
+    unpack.add_argument(
+        "--skip",
+        action="append",
+        metavar="TEXT",
+        help="leave out every path containing TEXT (repeatable); one starting with - is written --skip='-gfx.team'",
+    )
+    unpack.add_argument("--dry-run", action="store_true", help="count the outer layer, write nothing")
+
+    svn = subparsers.add_parser(
+        "svn", parents=[common], help="mirror a Subversion path over its HTTP view into docs/, text-only"
+    )
+    svn.add_argument("url", help="the HTTP URL of a directory in the repository, e.g. .../trunk/")
+    svn.add_argument("--name", help="the entry under docs/ (default: <host>--<path>-r<revision>)")
+    svn.add_argument("--note")
+    svn.add_argument("--resume", action="store_true", help="continue into an existing entry, fetching what it lacks")
+    svn.add_argument("--dry-run", action="store_true", help="read the revision and name the entry, fetch no files")
+
     check = subparsers.add_parser("check", parents=[common], help="every entry against the store's conventions")
     check.add_argument("--strict", action="store_true", help="exit 1 when any entry has a finding")
     check.add_argument(
@@ -1265,6 +1671,8 @@ COMMANDS = {
     "update": cmd_update,
     "deepen": cmd_deepen,
     "reshallow": cmd_reshallow,
+    "unpack": cmd_unpack,
+    "svn": cmd_svn,
 }
 
 

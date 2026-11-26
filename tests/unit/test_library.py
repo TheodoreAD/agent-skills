@@ -12,7 +12,10 @@ and a test that writes into the real library would corrupt the thing it is check
 # pyright: reportAny=false
 
 import importlib.util
+import io
 import sys
+import tarfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -40,6 +43,7 @@ def _no_subprocess(monkeypatch):
         raise AssertionError(f"a test shelled out: {args!r} {kwargs!r}")
 
     monkeypatch.setattr(library.subprocess, "run", refuse)
+    monkeypatch.setattr(library.urllib.request, "urlopen", refuse)
 
 
 @pytest.fixture(autouse=True)
@@ -813,3 +817,243 @@ def test_tree_size_does_not_follow_a_symlink_out_of_the_store(tmp_path):
         pytest.skip(f"this runner cannot create a symlink: {exc}")
 
     assert library.mb(library.tree_size(entry)) == 0
+
+
+# --------------------------------------------------------------------------------------------
+# sources with no git: unpack and svn
+#
+# Both were one-off scripts first, on 2026-11-26: Tales of Maj'Eyal's release tarball, whose Lua sits
+# in `.team` zips inside it, and Liberal Crime Squad's Subversion trunk on SourceForge, mirrored over
+# HTTP with no svn client. These tests build both shapes in memory; nothing is downloaded.
+
+TEXT = b"print('hello')\n"
+BINARY = b"\x89PNG\r\n\x1a\n\x00\x00binary"
+
+
+def zip_bytes(files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, data in files.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()
+
+
+def write_tarball(path: Path, files: dict[str, bytes]) -> Path:
+    with tarfile.open(path, "w:gz") as archive:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    return path
+
+
+def unpack_args(store: Path, archive: Path, *extra: str):
+    argv = ["unpack", str(archive), "--name", "example.org--game-1.0", "--url", "https://example.org/game-1.0.tar.gz"]
+    return library.build_parser().parse_args([*argv, "--ref", "1.0", "--root", str(store), *extra])
+
+
+def test_unpack_keeps_text_opens_nested_archives_and_records_it(tmp_path, capsys):
+    """The inner layer is the point: unpacking only the outer one would have kept almost none of
+    ToME's Lua, which ships as `.team` zips."""
+    store = make_store(tmp_path)
+    archive = write_tarball(
+        tmp_path / "game-1.0.tar.gz",
+        {
+            "game-1.0/README": b"read me\n",
+            "game-1.0/art/logo.png": BINARY,
+            "game-1.0/manual.pdf": b"%PDF-1.4\x00binary but a document",
+            "game-1.0/modules/core.team": zip_bytes({"data/ai.lua": TEXT, "data/sprite.png": BINARY}),
+        },
+    )
+    payload = library.cmd_unpack(unpack_args(store, archive), FakeGit())
+    capsys.readouterr()
+    entry = store / "docs" / "example.org--game-1.0"
+
+    assert (entry / "README").is_file(), "the single wrapper directory is hoisted away"
+    assert (entry / "modules" / "core.team.d" / "data" / "ai.lua").read_bytes() == TEXT
+    assert (entry / "manual.pdf").is_file(), "documents are kept although a grep calls them binary"
+    assert not (entry / "art" / "logo.png").exists()
+    assert not (entry / "modules" / "core.team.d" / "data" / "sprite.png").exists()
+    assert payload["archives_opened"] == 1
+    source = (entry / "SOURCE.md").read_text(encoding="utf-8")
+    assert "kind: source-snapshot" in source
+    assert "ref: 1.0" in source
+    assert "text-only: yes" in source
+    assert library.check_entry(FakeGit(), store, entry)["findings"] == []
+
+
+def test_unpack_skip_leaves_out_paths_containing_the_text(tmp_path, capsys):
+    store = make_store(tmp_path)
+    archive = write_tarball(tmp_path / "g.tar.gz", {"g/a-gfx.team": zip_bytes({"x.lua": TEXT}), "g/b.lua": TEXT})
+    library.cmd_unpack(unpack_args(store, archive, "--skip=-gfx.team"), FakeGit())
+    capsys.readouterr()
+    entry = store / "docs" / "example.org--game-1.0"
+    assert (entry / "b.lua").is_file()
+    assert not (entry / "a-gfx.team.d").exists()
+
+
+def test_unpack_refuses_a_member_that_would_land_outside_the_entry(tmp_path, capsys):
+    store = make_store(tmp_path)
+    archive = write_tarball(tmp_path / "evil.tar.gz", {"../escape.txt": TEXT, "ok.txt": TEXT})
+    payload = library.cmd_unpack(unpack_args(store, archive), FakeGit())
+    capsys.readouterr()
+    assert not (tmp_path / "docs" / "escape.txt").exists()
+    assert not (store / "escape.txt").exists()
+    assert any("outside the entry" in line for line in payload["failed"])
+
+
+def test_unpack_refuses_an_existing_entry_and_a_non_archive(tmp_path):
+    store = make_store(tmp_path)
+    junk = tmp_path / "not-an-archive.tar.gz"
+    junk.write_bytes(b"plain text, not an archive")
+    with pytest.raises(library.LibraryError):
+        library.cmd_unpack(unpack_args(store, junk), FakeGit())
+    assert not (store / "docs" / "example.org--game-1.0").exists(), "a failed unpack leaves nothing"
+
+    (store / "docs" / "example.org--game-1.0").mkdir()
+    archive = write_tarball(tmp_path / "g.tar.gz", {"a.txt": TEXT})
+    with pytest.raises(library.LibraryError, match="already exists"):
+        library.cmd_unpack(unpack_args(store, archive), FakeGit())
+
+
+def test_unpack_dry_run_writes_nothing(tmp_path, capsys):
+    store = make_store(tmp_path)
+    archive = write_tarball(tmp_path / "g.tar.gz", {"g/a.txt": TEXT, "g/b.png": BINARY})
+    payload = library.cmd_unpack(unpack_args(store, archive, "--dry-run"), FakeGit())
+    capsys.readouterr()
+    assert payload["outer_layer"]["kept"] == 1
+    assert payload["outer_layer"]["skipped"] == 1
+    assert not (store / "docs" / "example.org--game-1.0").exists()
+
+
+def svn_index(revision: int, *names: str) -> bytes:
+    """mod_dav_svn's plain index, the shape SourceForge served."""
+    items = "".join(f'<li><a href="{name}">{name}</a></li>\n' for name in ("../", *names))
+    return f"<html><head><title>repo - Revision {revision}: /trunk</title></head><body><ul>{items}</ul>".encode()
+
+
+class FakeSvn:
+    def __init__(self, pages: dict[str, bytes], flaky: set[str] | None = None):
+        self.pages: dict[str, bytes] = pages
+        self.flaky: set[str] = flaky or set()
+        self.calls: list[str] = []
+
+    def __call__(self, url: str) -> bytes:
+        self.calls.append(url)
+        if url in self.flaky:
+            raise TimeoutError("timed out")
+        return self.pages[url]
+
+
+BASE = "https://svn.example.org/p/game/code/trunk/"
+
+
+def svn_pages(revision: int = 864) -> dict[str, bytes]:
+    return {
+        BASE: svn_index(revision, "src/", "README.txt", "icon.png"),
+        BASE + "src/": svn_index(revision, "main.cpp", "blob.dat"),
+        BASE + "README.txt": b"readme\n",
+        BASE + "src/main.cpp": b"int main() {}\n",
+        BASE + "src/blob.dat": b"\x00\x01binary",
+    }
+
+
+def svn_args(store: Path, *extra: str):
+    return library.build_parser().parse_args(["svn", BASE, "--root", str(store), *extra])
+
+
+def test_svn_mirrors_text_names_the_entry_by_revision_and_never_fetches_an_image(tmp_path, capsys):
+    store = make_store(tmp_path)
+    fetch = FakeSvn(svn_pages())
+    payload = library.cmd_svn(svn_args(store), FakeGit(), fetch=fetch)
+    capsys.readouterr()
+    entry = store / "docs" / "svn.example.org--p--game--code--trunk-r864"
+
+    assert payload["name"] == entry.name
+    assert (entry / "README.txt").read_bytes() == b"readme\n"
+    assert (entry / "src" / "main.cpp").is_file()
+    assert not (entry / "src" / "blob.dat").exists(), "binary by content is dropped after the fetch"
+    assert BASE + "icon.png" not in fetch.calls, "binary by extension is never fetched"
+    source = (entry / "SOURCE.md").read_text(encoding="utf-8")
+    assert "kind: source-snapshot" in source
+    assert "ref: r864" in source
+    assert library.check_entry(FakeGit(), store, entry)["findings"] == []
+
+
+def test_svn_records_its_failures_and_resume_fetches_only_what_is_missing(tmp_path, capsys):
+    """SourceForge dropped connections partway through on 2026-11-26. The entry keeps what arrived,
+    says so, and a resumed run asks only for the rest."""
+    store = make_store(tmp_path)
+    with pytest.raises(library.LibraryError, match="--resume"):
+        library.cmd_svn(svn_args(store), FakeGit(), fetch=FakeSvn(svn_pages(), flaky={BASE + "src/main.cpp"}))
+    entry = store / "docs" / "svn.example.org--p--game--code--trunk-r864"
+    assert (entry / "README.txt").is_file()
+    assert (entry / "SOURCE.md").is_file()
+
+    with pytest.raises(library.LibraryError, match="already exists"):
+        library.cmd_svn(svn_args(store), FakeGit(), fetch=FakeSvn(svn_pages()))
+
+    again = FakeSvn(svn_pages())
+    payload = library.cmd_svn(svn_args(store, "--resume"), FakeGit(), fetch=again)
+    capsys.readouterr()
+    assert (entry / "src" / "main.cpp").is_file()
+    assert BASE + "README.txt" not in again.calls
+    assert payload["failed"] == []
+
+
+def test_svn_notes_a_tree_that_moved_during_the_walk(tmp_path, capsys):
+    store = make_store(tmp_path)
+    pages = svn_pages(864)
+    walk = iter([pages[BASE], pages[BASE], svn_index(865, "src/", "README.txt", "icon.png")])
+
+    def fetch(url: str) -> bytes:
+        return next(walk) if url == BASE else pages[url]
+
+    library.cmd_svn(svn_args(store), FakeGit(), fetch=fetch)
+    capsys.readouterr()
+    source = (store / "docs" / "svn.example.org--p--game--code--trunk-r864" / "SOURCE.md").read_text(encoding="utf-8")
+    assert "moved from r864 to r865" in source
+
+
+def test_svn_refuses_a_page_that_is_not_a_subversion_view(tmp_path):
+    store = make_store(tmp_path)
+    with pytest.raises(library.LibraryError, match="Subversion"):
+        library.cmd_svn(svn_args(store), FakeGit(), fetch=FakeSvn({BASE: b"<html>a blog</html>"}))
+
+
+def test_svn_reads_the_xml_index_too():
+    listing = '<svn><index rev="12"><dir name="src" href="src/"/><file name="a.c" href="a.c"/></index></svn>'
+    assert library.svn_links(listing) == ["src/", "a.c"]
+
+
+def test_the_live_fetcher_retries_a_dropped_connection_and_not_an_http_answer():
+    pauses: list[float] = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return b"ok"
+
+    attempts = iter([TimeoutError("timed out"), ConnectionResetError("reset"), Response()])
+
+    def opener(request, timeout):
+        result = next(attempts)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    fetch = library.LiveFetcher(sleep=pauses.append, opener=opener)
+    assert fetch("https://svn.example.org/x") == b"ok"
+    assert pauses == [5.0, 10.0]
+
+    def not_found(request, timeout):
+        raise library.urllib.error.HTTPError("u", 404, "Not Found", None, None)
+
+    with pytest.raises(library.urllib.error.HTTPError):
+        library.LiveFetcher(sleep=pauses.append, opener=not_found)("https://svn.example.org/x")
+    assert pauses == [5.0, 10.0], "a 404 is an answer, asked once"

@@ -1,7 +1,7 @@
 ---
 name: research-library
 description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library. Also owns judging a named package or tool before depending on or installing it — from PyPI, npm, crates.io or apt, or shipped only as GitHub release binaries: whether it is still maintained, who actually commits to it, how often it releases on its stable line, what a release really ships and costs (wheel or sdist, npm platform packages and install scripts, prebuilt binaries), whether its Python, node or glibc floor fits this machine, how far an apt package lags upstream, whether it ships types, how much test suite backs it, whether a version cap will hold you back — read from the registry, the GitHub API and the project's own source rather than from a search summary."
-compatibility: Python 3.11+ (stdlib only), git, network - clones from the URL you give; package health from PyPI, npm, crates.io, Debian madison and Launchpad over HTTPS and GitHub through gh (your own token and rate limit); the apt source needs apt-cache (Debian or Ubuntu). Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs neither. A library directory ($RESEARCH_HOME, default ~/research) that you create.
+compatibility: Python 3.11+ (stdlib only), git, network - clones or svn-mirrors the URL you give; package health from PyPI, npm, crates.io, Debian madison and Launchpad over HTTPS and GitHub through gh (your own token); the apt source needs apt-cache (Debian or Ubuntu). Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs neither. A library directory ($RESEARCH_HOME, default ~/research) that you create.
 ---
 
 # Research library
@@ -29,15 +29,17 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
   cache.
 - **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file (and deletes
   the directory a clone that failed at checkout left behind, which nothing else had), `provenance`
-  writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field.
-  `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
-  or a copy into a project repo, and nothing outside the store is ever touched.
+  writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field,
+  and `unpack` and `svn` write a new entry under `docs/` and its provenance file. `name`, `check`
+  and `size` write nothing, and `--dry-run` prints what would run. Never a symlink or a copy into a
+  project repo, and nothing outside the store is ever touched.
 - **Reads from the environment**: `RESEARCH_HOME` for the store, and `RESEARCH_TEXT_ONLY` for
   whether `add` clones text-only by default.
-- **Network**: the clone URL you give; PyPI, the npm registry, crates.io, Debian's madison API
-  (`api.ftp-master.debian.org`), Launchpad (`api.launchpad.net`) and GitHub for `package_health.py`,
-  and GitHub for the pre-clone size question, GitHub through your own `gh` login. Only public
-  read-only endpoints; nothing is uploaded.
+- **Network**: the clone URL you give, and for `svn` the Subversion URL you give, over HTTPS; PyPI,
+  the npm registry, crates.io, Debian's madison API (`api.ftp-master.debian.org`), Launchpad
+  (`api.launchpad.net`) and GitHub for `package_health.py`, and GitHub for the pre-clone size
+  question, GitHub through your own `gh` login. Only public read-only endpoints; nothing is
+  uploaded.
 
 ## Before fetching anything from the web
 
@@ -51,7 +53,7 @@ own `AGENTS.md` may already point at the specific entry relevant to that project
 $RESEARCH_HOME/
   repos/<host>--<owner>--<repo>/   # shallow git clones
   docs/<file>.pdf|.epub            # downloaded reference docs
-  docs/<host>--<path>-<version>/   # source snapshots of projects with no clonable git
+  docs/<host>--<path>-<version>/   # source snapshots (unpack, svn) of projects with no clonable git
   pages/<slug>/                    # mirrored/llms.txt-derived doc site snapshots
   README.md                        # full conventions + rationale
 ```
@@ -82,10 +84,11 @@ is the deterministic part and the part that gets skipped. `--json` on everything
 are read-only, `add` and `provenance` write only inside `$RESEARCH_HOME`.
 
 The provenance file's shape, since `check` enforces it and a reader may need to fix one by hand:
-`url`, `kind` (`repo-clone`, `llms-txt-mirror` or `site-mirror`), `ref` (branch/tag/commit for a
-clone, fetch date for a mirror), `fetched`, `depth` when the history was deliberately deepened (see
-below), `text-only` when the checkout is narrowed (see below), and `note` only when non-obvious —
-e.g. docs publishing from a different branch or repo than the one cloned.
+`url`, `kind` (`repo-clone`, `llms-txt-mirror`, `site-mirror` or `source-snapshot`), `ref`
+(branch/tag/commit for a clone, fetch date for a mirror, version or revision for a snapshot),
+`fetched`, `depth` when the history was deliberately deepened (see below), `text-only` when the
+checkout is narrowed (see below), and `note` only when non-obvious — e.g. docs publishing from a
+different branch or repo than the one cloned.
 
 **`add` asks before cloning something the host calls large**, exiting 3 with the reported figure
 rather than prompting — an interactive prompt inside an agent's Bash call hangs with nothing to type
@@ -163,29 +166,39 @@ pattern list intact, confirmed on a real refresh.
 
 Some projects worth reading publish no clonable git: a self-hosted forge that wants a login, a
 Subversion repository, a source tarball on a download page. Get the source anyway. Hand-grabbed code
-still beats prose about it, for the same reason a clone does.
+still beats prose about it, for the same reason a clone does. Two commands cover the shapes seen so
+far, and both keep what `add` keeps, land in `docs/<name>/` and write a `source-snapshot` provenance
+file with `text-only: yes`:
 
-- **Where it goes:** `docs/<name>/`, never `repos/`. `check` treats anything under `repos/` without
-  a `.git` as a clone that failed partway, which is the right reading there. Name it after where it
-  came from plus the version, e.g. `docs/te4.org--t-engine4-src-1.7.6`. Record it with
-  `library.py provenance <entry> --url <url> --kind site-mirror --ref <version or revision>`.
-- **Keep it text-only by the same rule `add` uses:** keep a file when its first 8 KB holds no NUL
-  byte, and keep documents too. **Look inside nested archives**: a game may pack its scripts into
-  zips inside the tarball. Measured 2026-11-26 on Tales of Maj'Eyal 1.7.6, whose Lua sits in `.team`
-  zips: a 477 MB download became 2,975 files and 44 MB, 2,338 of them Lua. Extracting only the outer
-  layer would have kept almost none of it.
+```shell
+python3 $S/scripts/library.py unpack <archive> --name <host>--<project>-<version> --url <u> --ref <version>
+python3 $S/scripts/library.py svn <http url of a directory>/   # named <host>--<path>-r<revision>
+python3 $S/scripts/library.py svn <url>/ --resume              # after a dropped connection
+```
+
+- **`docs/`, never `repos/`.** `check` treats anything under `repos/` without a `.git` as a clone
+  that failed partway, which is the right reading there.
+- **`unpack` takes an archive you downloaded** (any `.tar.*` or `.zip`) and opens the archives
+  inside it, up to three levels deep, each into `<name>.d/` beside where it sat. That inner layer is
+  the point: Tales of Maj'Eyal 1.7.6 ships its Lua as `.team` zips inside the tarball. Measured
+  2026-11-26, a 477 MB download unpacked in 29 s to 6,040 files and 109 MB, 2,790 of them Lua, and
+  unpacking the outer layer alone keeps almost none of it. `--skip <text>` leaves out paths
+  containing the text. Write one starting with `-` as `--skip=-gfx.team`, since argparse otherwise
+  reads it as a flag, and PowerShell splits an unquoted `-gfx.team` into two arguments besides. That
+  split silently skipped every `.team` archive in the first, hand-run extraction. A single wrapper
+  directory is hoisted away, members that would land outside the entry are refused, and a name the
+  filesystem cannot hold fails alone rather than taking the snapshot with it.
 - **A self-hosted GitLab may refuse anonymous reads entirely.** Its explore page lists no public
   projects and the clone asks for a login. ToME's `git.net-core.org` did that on 2026-11-26, and the
   release source tarball on the project's own site was the way in.
-- **Subversion needs no svn client.** A server's plain HTTP view is a directory index whose links
-  can be walked and fetched file by file, at the revision the index states. SourceForge took about 7
-  s a file and dropped connections (`WinError 10060`) partway through Liberal Crime Squad's trunk,
-  so a mirror there needs retries with backoff and has to resume, skipping what it already has; the
-  rerun finished at r864, 289 files and 5.3 MB, 0 failures. SourceForge's "download snapshot" zip
-  returned 404.
-- **In PowerShell, quote an argument that begins with `-` and contains a dot.** `-gfx.team` reaches
-  a native program as two arguments, `-gfx` and `.team`. That silently skipped every `.team` archive
-  in the first ToME extraction.
+- **`svn` needs no svn client.** It walks the server's HTTP directory index, plain or XML, and
+  records the revision the index states. Files whose extension says binary are never fetched.
+  SourceForge took about 7 s a file and dropped connections (`WinError 10060`) partway through
+  Liberal Crime Squad's trunk, so it retries six times with a growing pause and keeps every file
+  that arrived. A run that still lost some writes its provenance, exits 1 and names `--resume`,
+  which fetches only what is missing. If someone commits during the walk, the `note` says which two
+  revisions the files may mix. Liberal Crime Squad's trunk finished at r864: 289 files, 5.3 MB.
+  SourceForge's "download snapshot" zip returned 404.
 
 ## What the library costs
 

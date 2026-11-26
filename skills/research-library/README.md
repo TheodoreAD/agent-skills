@@ -24,6 +24,9 @@ Cursor, Copilot, Gemini CLI and others.
 - Clones hold text only, by default. Images, video and compiled files stay on the server, since grep
   skips them anyway. On one real repo that took the clone from 141 MB to 3 MB, with the same 257
   searchable files in both.
+- Source with no git to clone, too. One command unpacks a release archive text-only, opening the
+  archives inside it; another mirrors a Subversion tree over its web view, with no svn client and
+  resuming after a dropped connection.
 - Updates that don't destroy anything. One command refreshes every clone, and it leaves alone a
   clone that someone deliberately deepened to read its history.
 - A disk report that says which entries are big and why: history, vendored code, or binaries nobody
@@ -90,8 +93,8 @@ Needs Python 3.11 or newer and git. `gh`, logged in, for the GitHub half of the 
 ## What it touches
 
 It writes only inside the library directory, never into a project. It uses the network for the clone
-URLs you give it and for public, read-only registry and GitHub APIs, through your own `gh` login.
-The complete list is in [`SKILL.md`](SKILL.md#what-this-skill-reads-runs-and-writes).
+and Subversion URLs you give it and for public, read-only registry and GitHub APIs, through your own
+`gh` login. The complete list is in [`SKILL.md`](SKILL.md#what-this-skill-reads-runs-and-writes).
 
 ## Read more
 

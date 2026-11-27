@@ -762,6 +762,11 @@ READ_ONLY_GIT = frozenset(
 READ_ONLY_GIT_VERBS = frozenset(
     {("stash", "list"), ("worktree", "list"), ("remote",), ("remote", "-v"), ("remote", "get-url")}
     | {("remote", "show"), ("config", "--get"), ("config", "--get-regexp"), ("config", "--list")}
+    # `git branch` lists only with a listing flag or nothing after it; `git branch <name>` creates
+    # one. Joined 2026-11-27: a session that ran `branch -vv` against three repos to look for
+    # unpushed commits had all three swept, a 2020 toy repo's dirty paths printed as its own.
+    | {("branch",), ("branch", "-v"), ("branch", "-vv"), ("branch", "-a"), ("branch", "-r")}
+    | {("branch", "--list"), ("branch", "--show-current"), ("branch", "--contains")}
 )
 CWD_RESET_MARKER = "Shell cwd was reset to "
 GIT_VALUED_OPTIONS = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})

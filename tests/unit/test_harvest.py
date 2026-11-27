@@ -389,6 +389,12 @@ def test_a_repo_the_session_only_read_is_not_enrolled():
         ("find /r -name '*.pyc' -delete", False),
         ("cd /r && inv quality.precommit", False),
         ("git -C /r fetch", False),
+        ("git -C /r branch -vv", True),
+        ("git -C /r branch --show-current", True),
+        ("git -C /r branch", True),
+        ("git -C /r branch -r --contains abc1234", True),
+        ("git -C /r branch new-feature", False),
+        ("git -C /r branch -D old-feature", False),
     ],
 )
 def test_what_counts_as_a_read(command, read_only):

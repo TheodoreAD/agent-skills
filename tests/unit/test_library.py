@@ -1061,3 +1061,102 @@ def test_the_live_fetcher_retries_a_dropped_connection_and_not_an_http_answer():
     # failure wherever collection runs late enough to land inside a test (Windows CI, 2026-11-26).
     raised.value.close()
     assert pauses == [5.0, 10.0], "a 404 is an answer, asked once"
+
+
+PAGE = "https://art.example.org/content/one-bit-tileset-16x24"
+SHEET = "https://art.example.org/files/creatures.png"
+PACK = "https://art.example.org/files/pack.zip"
+
+
+def asset_args(store: Path, *extra: str):
+    argv = ["asset", SHEET, PACK, "--page", PAGE, "--license", "CC-BY 4.0", "--root", str(store)]
+    return library.build_parser().parse_args([*argv, *extra])
+
+
+def asset_pages() -> dict[str, bytes]:
+    return {
+        SHEET: BINARY,
+        PACK: zip_bytes({"pack/tiles/wall.png": BINARY, "pack/readme.txt": TEXT, "pack/extra.zip": zip_bytes({})}),
+    }
+
+
+def test_asset_keeps_every_byte_unpacks_archives_and_records_the_licence(tmp_path, capsys):
+    """The opposite of every other entry: an image is exactly what this kind is kept for."""
+    store = make_store(tmp_path)
+    payload = library.cmd_asset(asset_args(store), FakeGit(), fetch=FakeSvn(asset_pages()))
+    capsys.readouterr()
+    entry = store / "assets" / "art.example.org--one-bit-tileset-16x24"
+
+    assert payload["name"] == entry.name, "named <host>--<last segment of the page>"
+    assert (entry / "creatures.png").read_bytes() == BINARY
+    assert (entry / "pack" / "tiles" / "wall.png").read_bytes() == BINARY, "the wrapper folder is hoisted"
+    assert (entry / "pack" / "extra.zip").is_file(), "an archive inside a pack is kept as it is"
+    assert not (entry / "pack.zip").exists()
+    source = (entry / "SOURCE.md").read_text(encoding="utf-8")
+    assert f"url: {PAGE}" in source
+    assert "kind: asset-pack" in source
+    assert "license: CC-BY 4.0" in source
+    assert f"downloads: {SHEET} {PACK}" in source
+    assert "text-only" not in source
+    assert library.check_entry(FakeGit(), store, entry)["findings"] == []
+
+
+def test_asset_keep_archives_stores_the_archive_unopened(tmp_path, capsys):
+    store = make_store(tmp_path)
+    library.cmd_asset(asset_args(store, "--keep-archives"), FakeGit(), fetch=FakeSvn(asset_pages()))
+    capsys.readouterr()
+    entry = store / "assets" / "art.example.org--one-bit-tileset-16x24"
+    assert (entry / "pack.zip").is_file()
+    assert not (entry / "pack").exists()
+
+
+def test_asset_records_failures_and_resume_fetches_only_what_is_missing(tmp_path, capsys):
+    store = make_store(tmp_path)
+    with pytest.raises(library.LibraryError, match="--resume"):
+        library.cmd_asset(asset_args(store), FakeGit(), fetch=FakeSvn(asset_pages(), flaky={PACK}))
+    entry = store / "assets" / "art.example.org--one-bit-tileset-16x24"
+    assert (entry / "creatures.png").is_file()
+    assert (entry / "SOURCE.md").is_file()
+
+    with pytest.raises(library.LibraryError, match="already exists"):
+        library.cmd_asset(asset_args(store), FakeGit(), fetch=FakeSvn(asset_pages()))
+
+    again = FakeSvn(asset_pages())
+    payload = library.cmd_asset(asset_args(store, "--resume"), FakeGit(), fetch=again)
+    capsys.readouterr()
+    assert again.calls == [PACK]
+    assert (entry / "pack" / "readme.txt").is_file()
+    assert payload["failed"] == []
+
+
+def test_asset_refuses_a_pack_member_that_would_land_outside_the_entry(tmp_path, capsys):
+    store = make_store(tmp_path)
+    pages = {SHEET: BINARY, PACK: zip_bytes({"../escape.png": BINARY})}
+    with pytest.raises(library.LibraryError):
+        library.cmd_asset(asset_args(store), FakeGit(), fetch=FakeSvn(pages))
+    capsys.readouterr()
+    assert not (store / "assets" / "escape.png").exists()
+
+
+def test_asset_dry_run_fetches_nothing(tmp_path, capsys):
+    store = make_store(tmp_path)
+    fetch = FakeSvn(asset_pages())
+    payload = library.cmd_asset(asset_args(store, "--dry-run"), FakeGit(), fetch=fetch)
+    capsys.readouterr()
+    assert fetch.calls == []
+    assert "license: CC-BY 4.0" in payload["provenance"]
+    assert not (store / "assets" / "art.example.org--one-bit-tileset-16x24").exists()
+
+
+def test_an_asset_pack_without_a_licence_is_a_finding_and_provenance_refuses_one(tmp_path):
+    store = make_store(tmp_path)
+    entry = store / "assets" / "example.org--pack"
+    entry.mkdir()
+    (entry / "SOURCE.md").write_text("url: u\nkind: asset-pack\nref: r\nfetched: f\n", encoding="utf-8")
+    assert any("license" in f for f in library.check_entry(FakeGit(), store, entry)["findings"])
+
+    args = library.build_parser().parse_args(
+        ["provenance", str(entry), "--url", "u", "--kind", "asset-pack", "--root", str(store)]
+    )
+    with pytest.raises(library.LibraryError, match="--license"):
+        library.cmd_provenance(args, FakeGit())

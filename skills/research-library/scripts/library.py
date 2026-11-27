@@ -21,6 +21,7 @@ it.
     library.py reshallow <entry>                           # back to a depth-1 footprint, disk included
     library.py unpack <archive> --name <n> --url <u> --ref <version>   # a release archive, text-only
     library.py svn https://svn.example.org/repo/trunk/     # a Subversion tree over HTTP, text-only
+    library.py asset <file url>... --page <url> --license CC0   # art and tilesets, every byte kept
 
 The four commands above `check` are the clone's whole lifecycle, and they are code rather than prose
 for a measured reason: returning a deepened clone to its original footprint takes five git commands
@@ -31,8 +32,8 @@ reclaim nothing while reporting success. See `reshallow` for the numbers.
 out, and `RESEARCH_TEXT_ONLY=0` opts a whole machine out.
 
 Stdlib only, so it runs by path with no install step. `add`, `provenance`, `update`, `deepen`,
-`reshallow`, `unpack` and `svn` write, and only inside `$RESEARCH_HOME`; `name`, `check` and `size`
-are read-only. `svn` is the one command that makes HTTP requests itself, to the URL it is given.
+`reshallow`, `unpack`, `svn` and `asset` write, and only inside `$RESEARCH_HOME`; `name`, `check`
+and `size` are read-only. `svn` and `asset` make HTTP requests themselves, to the URLs they are given.
 Every subcommand takes `--json`.
 
 Exit codes: 0 ok, 1 error (or a finding under `check --strict`), 2 argparse usage, 3 needs-decision
@@ -79,7 +80,7 @@ MB = 1024 * 1024
 # list of ordinary repos. A default, not a rule: `--min` moves it and `--min 0` prints everything.
 PROBLEMATIC_MB = 250
 
-BUCKETS = ("repos", "pages", "docs")
+BUCKETS = ("repos", "pages", "docs", "assets")
 PROVENANCE = "SOURCE.md"
 # The fields the store's own README requires. `note` is optional by that same README, and asking for
 # it would make every conformant entry a finding. `depth` is optional for the same reason and carries
@@ -95,7 +96,14 @@ TEXT_ONLY_ENV = "RESEARCH_TEXT_ONLY"
 # unpacked release archive, a Subversion tree fetched over HTTP. Added 2026-11-26 for exactly those
 # two, which had been recorded as `site-mirror` and are not one.
 SNAPSHOT_KIND = "source-snapshot"
-KINDS = ("repo-clone", "llms-txt-mirror", "site-mirror", SNAPSHOT_KIND)
+# `asset-pack`: files kept *for* their bytes — tilesets, sprite sheets, palettes, sample art — under
+# `assets/`. Added 2026-11-27, when art research needed the sheets themselves and the only routes were
+# a hand-written `docs/` folder or a text-only clone that drops exactly the files wanted. An asset is
+# only usable if you can tell what you may do with it, so this kind must record a `license`.
+ASSET_KIND = "asset-pack"
+KINDS = ("repo-clone", "llms-txt-mirror", "site-mirror", SNAPSHOT_KIND, ASSET_KIND)
+LICENSE_FIELD = "license"
+DOWNLOADS_FIELD = "downloads"
 
 # What a text-only clone leaves on the server. The constraint on this list is not "big" and not
 # "not source" — it is that **ripgrep and grep already skip every format named here**, because both
@@ -298,9 +306,21 @@ def provenance_path(entry: Path) -> Path:
 
 
 def render_provenance(
-    url: str, kind: str, ref: str, fetched: str, note: str = "", depth: str = "", text_only: bool = False
+    url: str,
+    kind: str,
+    ref: str,
+    fetched: str,
+    note: str = "",
+    depth: str = "",
+    text_only: bool = False,
+    licence: str = "",
+    downloads: Sequence[str] = (),
 ) -> str:
     lines = [f"url: {url}", f"kind: {kind}", f"ref: {ref}", f"fetched: {fetched}"]
+    if licence:
+        lines.append(f"{LICENSE_FIELD}: {licence}")
+    if downloads:
+        lines.append(f"{DOWNLOADS_FIELD}: {' '.join(downloads)}")
     if depth:
         lines.append(f"{DEPTH_FIELD}: {depth}")
     if text_only:
@@ -533,7 +553,9 @@ def cmd_add(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
     # Recorded at clone time when it is anything but the default, so `update` never has to guess
     # whether a deep entry was meant — the guess it would otherwise make is the one that truncates.
     kept = FULL_DEPTH if args.full else (str(args.depth) if args.depth != 1 else "")
-    body = render_provenance(origin, args.kind, ref, today(), args.note or "", depth=kept, text_only=text_only)
+    body = render_provenance(
+        origin, args.kind, ref, today(), args.note or "", depth=kept, text_only=text_only, licence=args.license or ""
+    )
     (target / PROVENANCE).write_text(body, encoding="utf-8")
     payload |= {"provenance": body, "ref": ref, "origin": origin, "text_only": text_only}
 
@@ -666,7 +688,11 @@ def cmd_provenance(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
         raise LibraryError(f"kind must be one of {', '.join(KINDS)}")
 
     path = provenance_path(entry)
-    body = render_provenance(args.url, args.kind, args.ref or today(), today(), args.note or "")
+    if args.kind == ASSET_KIND and not args.license:
+        raise LibraryError(f"an {ASSET_KIND} records its licence: pass --license")
+    body = render_provenance(
+        args.url, args.kind, args.ref or today(), today(), args.note or "", licence=args.license or ""
+    )
     if not args.dry_run:
         path.write_text(body, encoding="utf-8")
     if not args.json:
@@ -1073,6 +1099,11 @@ def check_entry(runner: Runner, root: Path, entry: Path, remote: bool = False) -
             findings.append(f"provenance missing: {', '.join(missing)}")
         if fields.get("kind") and fields["kind"] not in KINDS:
             findings.append(f"provenance kind {fields['kind']!r} is not one of {', '.join(KINDS)}")
+        if fields.get("kind") == ASSET_KIND and not fields.get(LICENSE_FIELD):
+            findings.append(
+                f"an {ASSET_KIND} with no {LICENSE_FIELD} — nobody can tell what the files may be used for; "
+                "record it, or `license: unknown` if the page states none"
+            )
 
     if entry.parent.name != "repos":
         return record
@@ -1305,8 +1336,24 @@ def write_member(target: Path, relative: PurePosixPath, data: bytes, tally: Tall
 
 
 def unpack_into(
-    source: Path | bytes, target: Path, prefix: str, skips: Sequence[str], tally: Tally, level: int = 0
+    source: Path | bytes,
+    target: Path,
+    prefix: str,
+    skips: Sequence[str],
+    tally: Tally,
+    level: int = 0,
+    keep_all: bool = False,
 ) -> None:
+    """`keep_all` is the asset rule: every member as it is, nested archives included unopened —
+    in an asset pack an inner zip is itself a deliverable, not a wrapper hiding source."""
+    if keep_all:
+        for name, data in archive_members(source):
+            relative = safe_relative(prefix + name)
+            if relative is None:
+                tally.fail(f"{prefix + name}: refused, it would land outside the entry")
+                continue
+            write_member(target, relative, data, tally)
+        return
     for name, data in archive_members(source):
         path = prefix + name
         relative = safe_relative(path)
@@ -1539,6 +1586,108 @@ def cmd_svn(args: argparse.Namespace, runner: Runner, fetch: Fetcher | None = No
     return payload
 
 
+# --------------------------------------------------------------------------------------------
+# assets: files kept for their bytes
+#
+# Everything above keeps what a search reads. Art research is the case where the bytes are the point
+# — a tileset's sprite sheet, a palette, a sample — so this keeps every file it downloads, under
+# `assets/`, and records the licence, without which an asset cannot be used for anything.
+
+ARCHIVE_SUFFIXES = (".zip", ".tar", ".tgz", ".tar.gz", ".tar.bz2", ".tar.xz")
+
+
+def asset_entry_name(page: str) -> str:
+    """`<host>--<last path segment>`, like a repo's `<host>--<owner>--<repo>`, so two copies of one
+    pack from one site collide visibly instead of hiding under two hand-picked names."""
+    parts = urllib.parse.urlsplit(page)
+    segments = [urllib.parse.unquote(s) for s in parts.path.split("/") if s]
+    if not parts.hostname or not segments:
+        raise LibraryError(f"cannot name an entry from {page!r} — pass --name")
+    return f"{parts.hostname}--{segments[-1]}"
+
+
+def _download_name(url: str) -> PurePosixPath | None:
+    segments = [s for s in urllib.parse.urlsplit(url).path.split("/") if s]
+    return safe_relative(urllib.parse.unquote(segments[-1])) if segments else None
+
+
+def _archive_stem(name: str) -> str | None:
+    """The folder an archive unpacks into, or None for a file that is not named as an archive."""
+    lower = name.lower()
+    for suffix in sorted(ARCHIVE_SUFFIXES, key=len, reverse=True):
+        if lower.endswith(suffix):
+            return name[: -len(suffix)]
+    return None
+
+
+def _store_download(
+    url: str, target: Path, fetch: Fetcher, tally: Tally, unpacked: list[str], keep_archives: bool
+) -> None:
+    """One URL into the entry: skipped if an earlier run stored it, unpacked whole if an archive."""
+    relative = _download_name(url)
+    if relative is None:
+        tally.fail(f"{url}: no file name in the URL to save it under")
+        return
+    stem = None if keep_archives else _archive_stem(relative.name)
+    if (stem and (target / stem).is_dir()) or target.joinpath(*relative.parts).is_file():
+        tally.kept += 1  # stored by an earlier, interrupted run
+        return
+    try:
+        data = fetch(url)
+    except OSError as error:
+        tally.fail(f"{url}: {error}")
+        return
+    if not (stem and _archive_kind(data)):
+        write_member(target, relative, data, tally)
+        return
+    unpacked.append(stem)
+    try:
+        unpack_into(data, target / stem, "", (), tally, keep_all=True)
+    except (LibraryError, tarfile.TarError, zipfile.BadZipFile) as error:
+        tally.fail(f"{url}: {error}")
+        return
+    if (target / stem).is_dir():  # absent when every member was refused
+        hoist_single_directory(target / stem)
+
+
+def cmd_asset(args: argparse.Namespace, runner: Runner, fetch: Fetcher | None = None) -> dict[str, Any]:
+    """Download files into `assets/<name>/`, every byte kept, and record the page and the licence."""
+    root = store_root(args.root)
+    fetch = fetch or LiveFetcher()
+    page = args.page or args.urls[0]
+    name = args.name or asset_entry_name(page)
+    target = root / "assets" / name
+    if target.exists() and not args.resume:
+        raise LibraryError(f"{target} already exists — pass --resume to fetch only what it is missing")
+    provenance = render_provenance(
+        page, ASSET_KIND, args.ref or today(), today(), args.note or "", licence=args.license, downloads=args.urls
+    )
+    payload: dict[str, Any] = {"name": name, "path": str(target), "downloads": list(args.urls)}
+    if args.dry_run:
+        payload |= {"dry_run": True, "provenance": provenance}
+        if not args.json:
+            print(f"would download {len(args.urls)} file(s) into {target}")
+            print(f"\n# {target / PROVENANCE}\n{provenance}")
+        return payload
+
+    target.mkdir(parents=True, exist_ok=True)
+    tally = Tally()
+    unpacked: list[str] = []
+    for url in args.urls:
+        _store_download(url, target, fetch, tally, unpacked, keep_archives=args.keep_archives)
+
+    (target / PROVENANCE).write_text(provenance, encoding="utf-8")
+    payload |= {"provenance": provenance, "unpacked": unpacked, **tally.as_dict()}
+    if not args.json:
+        _print_tally(f"stored {len(args.urls)} download(s) in {target}", tally)
+        for folder in unpacked:
+            print(f"  unpacked an archive into {folder}/, every file kept")
+    if tally.failed:
+        # After the provenance file, as in `svn`: the entry is real and says where it came from.
+        raise LibraryError(f"{len(tally.failed)} download(s) failed — rerun the same command with --resume")
+    return payload
+
+
 def _print_tally(headline: str, tally: Tally) -> None:
     counts = tally.as_dict()
     print(headline)
@@ -1589,6 +1738,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"skip the file types a grep skips anyway (the default; {TEXT_ONLY_ENV}=0 turns it off)",
     )
     text.add_argument("--all-files", action="store_true", help="check out every file, images and binaries included")
+    add.add_argument("--license", help="the licence, recorded in SOURCE.md; worth it for a repo kept for its assets")
 
     size = subparsers.add_parser("size", parents=[common], help="what the library costs, biggest entry first")
     size.add_argument(
@@ -1625,6 +1775,7 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--kind", required=True, choices=KINDS)
     prov.add_argument("--ref", help="branch/tag/commit, or the fetch date for a mirror (default: today)")
     prov.add_argument("--note")
+    prov.add_argument("--license", help=f"the licence; required for --kind {ASSET_KIND}")
     prov.add_argument("--dry-run", action="store_true")
 
     unpack = subparsers.add_parser(
@@ -1652,6 +1803,19 @@ def build_parser() -> argparse.ArgumentParser:
     svn.add_argument("--resume", action="store_true", help="continue into an existing entry, fetching what it lacks")
     svn.add_argument("--dry-run", action="store_true", help="read the revision and name the entry, fetch no files")
 
+    asset = subparsers.add_parser(
+        "asset", parents=[common], help="download files kept for their bytes (art, tilesets) into assets/, every file"
+    )
+    asset.add_argument("urls", nargs="+", metavar="url", help="direct file URLs; a .zip or .tar.* is unpacked")
+    asset.add_argument("--license", required=True, help="as the page states it, e.g. CC0, CC-BY 4.0, or unknown")
+    asset.add_argument("--page", help="the page the files are offered on, recorded as url (default: the first URL)")
+    asset.add_argument("--name", help="the entry under assets/ (default: <host>--<last segment of the page>)")
+    asset.add_argument("--ref", help="a version, if the pack has one (default: today)")
+    asset.add_argument("--note")
+    asset.add_argument("--keep-archives", action="store_true", help="store archives as downloaded, unopened")
+    asset.add_argument("--resume", action="store_true", help="continue into an existing entry, fetching what it lacks")
+    asset.add_argument("--dry-run", action="store_true", help="name the entry and print its provenance, fetch nothing")
+
     check = subparsers.add_parser("check", parents=[common], help="every entry against the store's conventions")
     check.add_argument("--strict", action="store_true", help="exit 1 when any entry has a finding")
     check.add_argument(
@@ -1673,6 +1837,7 @@ COMMANDS = {
     "reshallow": cmd_reshallow,
     "unpack": cmd_unpack,
     "svn": cmd_svn,
+    "asset": cmd_asset,
 }
 
 

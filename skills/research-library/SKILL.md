@@ -1,7 +1,7 @@
 ---
 name: research-library
 description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library. Also owns judging a named package or tool before depending on or installing it — from PyPI, npm, crates.io or apt, or shipped only as GitHub release binaries: whether it is still maintained, who actually commits to it, how often it releases on its stable line, what a release really ships and costs (wheel or sdist, npm platform packages and install scripts, prebuilt binaries), whether its Python, node or glibc floor fits this machine, how far an apt package lags upstream, whether it ships types, how much test suite backs it, whether a version cap will hold you back — read from the registry, the GitHub API and the project's own source rather than from a search summary."
-compatibility: Python 3.11+ (stdlib only), git, network - clones or svn-mirrors the URL you give; package health from PyPI, npm, crates.io, Debian madison and Launchpad over HTTPS and GitHub through gh (your own token); the apt source needs apt-cache (Debian or Ubuntu). Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs neither. A library directory ($RESEARCH_HOME, default ~/research) that you create.
+compatibility: Python 3.11+ (stdlib only), git, network - clones, mirrors or downloads the URLs you give; package health from PyPI, npm, crates.io, Debian madison and Launchpad over HTTPS and GitHub through gh (your own token); the apt source needs apt-cache (Debian or Ubuntu). Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs neither. A library directory ($RESEARCH_HOME, default ~/research) that you create.
 ---
 
 # Research library
@@ -30,22 +30,22 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
 - **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file (and deletes
   the directory a clone that failed at checkout left behind, which nothing else had), `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field,
-  and `unpack` and `svn` write a new entry under `docs/` and its provenance file. `name`, `check`
-  and `size` write nothing, and `--dry-run` prints what would run. Never a symlink or a copy into a
-  project repo, and nothing outside the store is ever touched.
+  `unpack` and `svn` write a new entry under `docs/` and its provenance file, and `asset` writes one
+  under `assets/`. `name`, `check` and `size` write nothing, and `--dry-run` prints what would run.
+  Never a symlink or a copy into a project repo, and nothing outside the store is ever touched.
 - **Reads from the environment**: `RESEARCH_HOME` for the store, and `RESEARCH_TEXT_ONLY` for
   whether `add` clones text-only by default.
-- **Network**: the clone URL you give, and for `svn` the Subversion URL you give, over HTTPS; PyPI,
-  the npm registry, crates.io, Debian's madison API (`api.ftp-master.debian.org`), Launchpad
-  (`api.launchpad.net`) and GitHub for `package_health.py`, and GitHub for the pre-clone size
-  question, GitHub through your own `gh` login. Only public read-only endpoints; nothing is
-  uploaded.
+- **Network**: the clone URL you give, for `svn` the Subversion URL you give, and for `asset` the
+  file URLs you give, over HTTPS; PyPI, the npm registry, crates.io, Debian's madison API
+  (`api.ftp-master.debian.org`), Launchpad (`api.launchpad.net`) and GitHub for `package_health.py`,
+  and GitHub for the pre-clone size question, GitHub through your own `gh` login. Only public
+  read-only endpoints; nothing is uploaded.
 
 ## Before fetching anything from the web
 
-Check `$RESEARCH_HOME/repos/`, `$RESEARCH_HOME/docs/`, and `$RESEARCH_HOME/pages/` for existing
-material on the topic before reaching for WebFetch/WebSearch or cloning a fresh copy. A project's
-own `AGENTS.md` may already point at the specific entry relevant to that project.
+Check `$RESEARCH_HOME/repos/`, `docs/`, `pages/` and `assets/` for existing material on the topic
+before reaching for WebFetch/WebSearch or cloning a fresh copy. A project's own `AGENTS.md` may
+already point at the specific entry relevant to that project.
 
 ## Layout
 
@@ -55,6 +55,7 @@ $RESEARCH_HOME/
   docs/<file>.pdf|.epub            # downloaded reference docs
   docs/<host>--<path>-<version>/   # source snapshots (unpack, svn) of projects with no clonable git
   pages/<slug>/                    # mirrored/llms.txt-derived doc site snapshots
+  assets/<host>--<slug>/           # files kept for their bytes: tilesets, sprite sheets, sample art
   README.md                        # full conventions + rationale
 ```
 
@@ -84,11 +85,13 @@ is the deterministic part and the part that gets skipped. `--json` on everything
 are read-only, `add` and `provenance` write only inside `$RESEARCH_HOME`.
 
 The provenance file's shape, since `check` enforces it and a reader may need to fix one by hand:
-`url`, `kind` (`repo-clone`, `llms-txt-mirror`, `site-mirror` or `source-snapshot`), `ref`
-(branch/tag/commit for a clone, fetch date for a mirror, version or revision for a snapshot),
+`url`, `kind` (`repo-clone`, `llms-txt-mirror`, `site-mirror`, `source-snapshot` or `asset-pack`),
+`ref` (branch/tag/commit for a clone, fetch date for a mirror, version or revision for a snapshot),
 `fetched`, `depth` when the history was deliberately deepened (see below), `text-only` when the
-checkout is narrowed (see below), and `note` only when non-obvious — e.g. docs publishing from a
-different branch or repo than the one cloned.
+checkout is narrowed (see below), `license` (required for an `asset-pack`, and `--license` on `add`
+and `provenance` records it anywhere), `downloads` for the file URLs an `asset` run fetched, and
+`note` only when non-obvious — e.g. docs publishing from a different branch or repo than the one
+cloned.
 
 **`add` asks before cloning something the host calls large**, exiting 3 with the reported figure
 rather than prompting — an interactive prompt inside an agent's Bash call hangs with nothing to type
@@ -199,6 +202,34 @@ python3 $S/scripts/library.py svn <url>/ --resume              # after a dropped
   which fetches only what is missing. If someone commits during the walk, the `note` says which two
   revisions the files may mix. Liberal Crime Squad's trunk finished at r864: 289 files, 5.3 MB.
   SourceForge's "download snapshot" zip returned 404.
+
+## Assets: when the bytes are the point
+
+Everything above keeps what a search reads. Art research is the case where the images themselves are
+what you came for — a tileset's sprite sheet, a palette, a sample sprite to compare against — and a
+text-only clone drops exactly those. Free assets you look at go into the library like code does, so
+the next session opens the file instead of finding the page again:
+
+```shell
+python3 $S/scripts/library.py asset <file url>... --page <the page offering them> --license "CC-BY 4.0"
+python3 $S/scripts/library.py asset <url>... --page <p> --license CC0 --resume   # after a failure
+python3 $S/scripts/library.py add <repo url> --all-files --license CC0           # a pack that is a git repo
+```
+
+- **`assets/<host>--<slug>/`**, the slug being the page's last path segment, so two copies of one
+  pack from one site collide visibly. `--name` overrides it.
+- **Every byte is kept.** A downloaded `.zip` or `.tar.*` is unpacked into a folder named after it,
+  its single wrapper folder hoisted away, with every member kept and any archive inside it left as
+  it is; `--keep-archives` stores archives unopened instead. Members that would land outside the
+  entry are refused.
+- **The licence is required**, as the page states it (`CC0`, `CC-BY 4.0`, or `unknown` when it
+  states none): an asset nobody can say may be used is no use as a reference for real work. `check`
+  reports an `asset-pack` without one.
+- **Pass direct file URLs.** A store page that builds its download with JavaScript (itch.io, some
+  asset shops) has none to give; download by hand, then
+  `provenance <path> --kind asset-pack --license <l>`.
+- First used 2026-11-27 for a 1-bit 16x24 roguelike tileset from OpenGameArt (six PNG sheets), for a
+  game weighing Caves of Qud-style tiles.
 
 ## What the library costs
 

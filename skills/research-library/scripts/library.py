@@ -22,6 +22,7 @@ it.
     library.py unpack <archive> --name <n> --url <u> --ref <version>   # a release archive, text-only
     library.py svn https://svn.example.org/repo/trunk/     # a Subversion tree over HTTP, text-only
     library.py asset <file url>... --page <url> --license CC0   # art and tilesets, every byte kept
+    library.py asset <downloaded file>... --page <url> --license CC0   # after browser_download.py
 
 The four commands above `check` are the clone's whole lifecycle, and they are code rather than prose
 for a measured reason: returning a deepened clone to its original footprint takes five git commands
@@ -1620,11 +1621,17 @@ def _archive_stem(name: str) -> str | None:
     return None
 
 
+def is_web_url(source: str) -> bool:
+    return urllib.parse.urlsplit(source).scheme in ("http", "https")
+
+
 def _store_download(
     url: str, target: Path, fetch: Fetcher, tally: Tally, unpacked: list[str], keep_archives: bool
 ) -> None:
-    """One URL into the entry: skipped if an earlier run stored it, unpacked whole if an archive."""
-    relative = _download_name(url)
+    """One URL, or one file already downloaded, into the entry: skipped if an earlier run stored
+    it, unpacked whole if an archive."""
+    web = is_web_url(url)
+    relative = _download_name(url) if web else safe_relative(Path(url).name)
     if relative is None:
         tally.fail(f"{url}: no file name in the URL to save it under")
         return
@@ -1633,7 +1640,7 @@ def _store_download(
         tally.kept += 1  # stored by an earlier, interrupted run
         return
     try:
-        data = fetch(url)
+        data = fetch(url) if web else Path(url).read_bytes()
     except OSError as error:
         tally.fail(f"{url}: {error}")
         return
@@ -1650,19 +1657,44 @@ def _store_download(
         hoist_single_directory(target / stem)
 
 
+def _asset_sources(sources: Sequence[str], page: str | None) -> tuple[list[str], list[str]]:
+    """Split web URLs from files already downloaded, refusing a file that is not there or one with
+    no page to record as its source."""
+    urls = [s for s in sources if is_web_url(s)]
+    files = [s for s in sources if not is_web_url(s)]
+    missing = [f for f in files if not Path(f).is_file()]
+    if missing:
+        raise LibraryError(f"neither a web URL nor a file: {', '.join(missing)}")
+    if files and not page:
+        raise LibraryError("a downloaded file has no URL to record — pass --page <the page it came from>")
+    return urls, files
+
+
 def cmd_asset(args: argparse.Namespace, runner: Runner, fetch: Fetcher | None = None) -> dict[str, Any]:
     """Download files into `assets/<name>/`, every byte kept, and record the page and the licence."""
     root = store_root(args.root)
     fetch = fetch or LiveFetcher()
+    urls, files = _asset_sources(args.urls, args.page)
     page = args.page or args.urls[0]
     name = args.name or asset_entry_name(page)
     target = root / "assets" / name
     if target.exists() and not args.resume:
         raise LibraryError(f"{target} already exists — pass --resume to fetch only what it is missing")
+    # A local file's path names this machine's folders, never where the file came from, so only web
+    # URLs are recorded; the page is the source for the rest.
+    note = args.note or ""
+    if files:
+        by_hand = f"{len(files)} file(s) downloaded from the page through a browser"
+        note = f"{note}; {by_hand}" if note else by_hand
     provenance = render_provenance(
-        page, ASSET_KIND, args.ref or today(), today(), args.note or "", licence=args.license, downloads=args.urls
+        page, ASSET_KIND, args.ref or today(), today(), note, licence=args.license, downloads=urls
     )
-    payload: dict[str, Any] = {"name": name, "path": str(target), "downloads": list(args.urls)}
+    payload: dict[str, Any] = {
+        "name": name,
+        "path": str(target),
+        "downloads": urls,
+        "files": [Path(f).name for f in files],
+    }
     if args.dry_run:
         payload |= {"dry_run": True, "provenance": provenance}
         if not args.json:
@@ -1806,7 +1838,12 @@ def build_parser() -> argparse.ArgumentParser:
     asset = subparsers.add_parser(
         "asset", parents=[common], help="download files kept for their bytes (art, tilesets) into assets/, every file"
     )
-    asset.add_argument("urls", nargs="+", metavar="url", help="direct file URLs; a .zip or .tar.* is unpacked")
+    asset.add_argument(
+        "urls",
+        nargs="+",
+        metavar="url-or-file",
+        help="direct file URLs, or files already downloaded (browser_download.py); a .zip or .tar.* is unpacked",
+    )
     asset.add_argument("--license", required=True, help="as the page states it, e.g. CC0, CC-BY 4.0, or unknown")
     asset.add_argument("--page", help="the page the files are offered on, recorded as url (default: the first URL)")
     asset.add_argument("--name", help="the entry under assets/ (default: <host>--<last segment of the page>)")

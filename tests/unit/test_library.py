@@ -1148,6 +1148,42 @@ def test_asset_dry_run_fetches_nothing(tmp_path, capsys):
     assert not (store / "assets" / "art.example.org--one-bit-tileset-16x24").exists()
 
 
+def test_asset_stores_files_already_downloaded_and_records_no_local_path(tmp_path, capsys):
+    """What `browser_download.py` hands over: files on disk, from a page with no direct link."""
+    store = make_store(tmp_path)
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    (staged / "pack.zip").write_bytes(zip_bytes({"pack/sheet.png": BINARY}))
+    (staged / "single.png").write_bytes(BINARY)
+    argv = ["asset", str(staged / "pack.zip"), str(staged / "single.png"), "--page", PAGE, "--license", "CC0"]
+    args = library.build_parser().parse_args([*argv, "--root", str(store)])
+    payload = library.cmd_asset(args, FakeGit(), fetch=FakeSvn({}))
+    capsys.readouterr()
+    entry = store / "assets" / "art.example.org--one-bit-tileset-16x24"
+
+    assert (entry / "pack" / "sheet.png").read_bytes() == BINARY
+    assert (entry / "single.png").read_bytes() == BINARY
+    assert payload["files"] == ["pack.zip", "single.png"]
+    source = (entry / "SOURCE.md").read_text(encoding="utf-8")
+    assert str(staged) not in source, "a local path names this machine, not the source"
+    assert "downloads:" not in source
+    assert "2 file(s) downloaded from the page through a browser" in source
+
+
+def test_asset_from_a_file_needs_the_page_and_an_existing_file(tmp_path):
+    store = make_store(tmp_path)
+    real = tmp_path / "a.png"
+    real.write_bytes(BINARY)
+    parse = library.build_parser().parse_args
+    with pytest.raises(library.LibraryError, match="--page"):
+        library.cmd_asset(parse(["asset", str(real), "--license", "CC0", "--root", str(store)]), FakeGit())
+    with pytest.raises(library.LibraryError, match="neither a web URL nor a file"):
+        library.cmd_asset(
+            parse(["asset", str(tmp_path / "nope.png"), "--page", PAGE, "--license", "CC0", "--root", str(store)]),
+            FakeGit(),
+        )
+
+
 def test_an_asset_pack_without_a_licence_is_a_finding_and_provenance_refuses_one(tmp_path):
     store = make_store(tmp_path)
     entry = store / "assets" / "example.org--pack"

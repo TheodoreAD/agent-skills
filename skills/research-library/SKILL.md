@@ -1,7 +1,7 @@
 ---
 name: research-library
 description: "Use when working with, adding to, or updating the shared cross-project research library at $RESEARCH_HOME (vendor repo clones, reference PDFs/epubs, mirrored docs pages) — before fetching the same material from the web, when cloning a reference repo for a project, or when asked to update/refresh the library. Also owns judging a named package or tool before depending on or installing it — from PyPI, npm, crates.io or apt, or shipped only as GitHub release binaries: whether it is still maintained, who actually commits to it, how often it releases on its stable line, what a release really ships and costs (wheel or sdist, npm platform packages and install scripts, prebuilt binaries), whether its Python, node or glibc floor fits this machine, how far an apt package lags upstream, whether it ships types, how much test suite backs it, whether a version cap will hold you back — read from the registry, the GitHub API and the project's own source rather than from a search summary."
-compatibility: Python 3.11+ (stdlib only), git, network - clones, mirrors or downloads the URLs you give; package health from PyPI, npm, crates.io, Debian madison and Launchpad over HTTPS and GitHub through gh (your own token); the apt source needs apt-cache (Debian or Ubuntu). Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs neither. A library directory ($RESEARCH_HOME, default ~/research) that you create.
+compatibility: Python 3.11+ (stdlib; Playwright for browser_download.py), git, network - clones, mirrors or downloads the URLs you give; package health from PyPI, npm, crates.io, Debian madison and Launchpad over HTTPS and GitHub via gh; apt needs apt-cache. Text-only clones need a git with `clone --filter=blob:none --sparse` and `sparse-checkout set --no-cone`, measured on git 2.43; `--all-files` needs neither. A library directory ($RESEARCH_HOME, default ~/research) that you create.
 ---
 
 # Research library
@@ -26,20 +26,24 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
   list and the latest release) and for a repo's reported size before `add` clones it.
   `package_health.py` also runs `node --version` when node is on `PATH`, to compare a floor, and for
   its `apt` source `apt-cache policy` and `apt-cache show`, which only read this machine's apt
-  cache.
+  cache. `browser_download.py` runs a headless browser (installed Edge or Chrome, else Playwright's
+  Chromium) with a fresh profile: no cookies, no logins.
 - **Writes**: only inside `$RESEARCH_HOME` — `add` clones and writes a provenance file (and deletes
   the directory a clone that failed at checkout left behind, which nothing else had), `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field,
   `unpack` and `svn` write a new entry under `docs/` and its provenance file, and `asset` writes one
-  under `assets/`. `name`, `check` and `size` write nothing, and `--dry-run` prints what would run.
-  Never a symlink or a copy into a project repo, and nothing outside the store is ever touched.
+  under `assets/` (from URLs or from files already downloaded), and `browser_download.py` saves into
+  `.downloads/` in the store, or `--out`. `name`, `check` and `size` write nothing, and `--dry-run`
+  prints what would run. Never a symlink or a copy into a project repo, and nothing outside the
+  store is ever touched.
 - **Reads from the environment**: `RESEARCH_HOME` for the store, and `RESEARCH_TEXT_ONLY` for
   whether `add` clones text-only by default.
-- **Network**: the clone URL you give, for `svn` the Subversion URL you give, and for `asset` the
-  file URLs you give, over HTTPS; PyPI, the npm registry, crates.io, Debian's madison API
-  (`api.ftp-master.debian.org`), Launchpad (`api.launchpad.net`) and GitHub for `package_health.py`,
-  and GitHub for the pre-clone size question, GitHub through your own `gh` login. Only public
-  read-only endpoints; nothing is uploaded.
+- **Network**: the clone URL you give, for `svn` the Subversion URL you give, for `asset` the file
+  URLs you give, and for `browser_download.py` the page you give and whatever that page loads, over
+  HTTPS; PyPI, the npm registry, crates.io, Debian's madison API (`api.ftp-master.debian.org`),
+  Launchpad (`api.launchpad.net`) and GitHub for `package_health.py`, and GitHub for the pre-clone
+  size question, GitHub through your own `gh` login. Only public read-only endpoints; nothing is
+  uploaded.
 
 ## Before fetching anything from the web
 
@@ -225,9 +229,26 @@ python3 $S/scripts/library.py add <repo url> --all-files --license CC0          
 - **The licence is required**, as the page states it (`CC0`, `CC-BY 4.0`, or `unknown` when it
   states none): an asset nobody can say may be used is no use as a reference for real work. `check`
   reports an `asset-pack` without one.
-- **Pass direct file URLs.** A store page that builds its download with JavaScript (itch.io, some
-  asset shops) has none to give; download by hand, then
-  `provenance <path> --kind asset-pack --license <l>`.
+- **When a page has no direct link, click through it with a browser.** Kenney's "Continue without
+  donating" and itch.io's "No thanks, just take me to the downloads" build the link with JavaScript
+  or sign it to expire within a minute, so there is no URL to pass. `browser_download.py` opens the
+  page in a headless Edge, Chrome or Playwright Chromium, clicks through and saves the files into
+  `$RESEARCH_HOME/.downloads/<host>--<slug>/` (a staging folder `check` never reads, safe to delete
+  once stored); `asset` then takes those files like URLs, with `--page` required:
+
+  ```shell
+  uv run --with playwright python $S/scripts/browser_download.py https://kenney.nl/assets/<pack>
+  uv run --with playwright python $S/scripts/browser_download.py https://<maker>.itch.io/<pack>
+  uv run --with playwright python $S/scripts/browser_download.py <url> --click 'text=Download'  # any other site
+  python3 $S/scripts/library.py asset <saved file>... --page <url> --license CC0
+  ```
+
+  Kenney and itch.io need no `--click`; any other site takes one `--click` per button, in order
+  (Playwright selectors). It needs Playwright, the one third-party dependency in this skill, loaded
+  only when a page opens, so `--help` and `--dry-run` work without it. **Free downloads only**: it
+  never logs in, fills a form, pays or gets past a CAPTCHA, and a page wanting any of those gives no
+  download, so it prints the page's download-looking links and exits 1. Seen 2026-11-27: six Kenney
+  packs and an itch.io tileset, none of which had a URL to fetch.
 - First used 2026-11-27 for a 1-bit 16x24 roguelike tileset from OpenGameArt (six PNG sheets), for a
   game weighing Caves of Qud-style tiles.
 

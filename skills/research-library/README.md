@@ -29,6 +29,8 @@ Cursor, Copilot, Gemini CLI and others.
   resuming after a dropped connection.
 - Assets kept whole when the images are the point: tilesets, sprite sheets, sample art. One command
   downloads them, unpacks any archive with every file kept, and records the page and the licence.
+  Where a site only offers a button (Kenney, itch.io), an optional browser script clicks through the
+  free download for you; it never logs in or pays.
 - Updates that don't destroy anything. One command refreshes every clone, and it leaves alone a
   clone that someone deliberately deepened to read its history.
 - A disk report that says which entries are big and why: history, vendored code, or binaries nobody

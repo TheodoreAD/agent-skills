@@ -1139,6 +1139,57 @@ that still holds plan files takes `--force` on top of that. The held-file count 
 irreversible action, which is worse than refusing the whole thing. An uninstall that silently
 emptied the store would be the single most destructive thing this skill could do.
 
+### Why stores sync with plain git, inside the commands (2026-11-25)
+
+The user began working on several machines, each running whichever vendor's agent CLI was at hand,
+and ruled out vendor lock-in. So "several machines" means **machines the user controls**, and
+vendor-hosted sandboxes (Claude Code on the web, Codex cloud, Copilot's coding agent, Cursor
+background agents, Jules) are out of scope: reaching the store from one means a setup in that
+vendor's own environment format. A sandbox still sees the plans inside the repo it cloned, and
+nothing is built for it.
+
+**The gap was a pushing side with no pulling side.** `push` scanned `@{upstream}..<tip>` and never
+fetched, so a second machine's push was refused as non-fast-forward and nothing resolved it; the
+next session reached for a bare `git pull`. `absorb` read the local store only, and since it is
+silent when nothing waits, "nothing waiting" and "never fetched" printed the same nothing. Measured
+the same day, 221 of 229 plans lived in a repo's own `plans/` and already travelled with it; the
+store held 25 files, and those were the ones at risk.
+
+- **Automated, because conflicts come from one file changing on two machines between syncs**, not
+  from how many commits pile up — and this store has exactly those files. In its last 200 commits
+  three store-held design plans for one repo were edited 16, 15 and 9 times, several `_unscoped/`
+  plans 6–7 times each. Syncing on every write narrows the window; nothing closes it.
+- **Inside the commands, never a timer or a git hook.** A background merge could land while a
+  session is midway through committing into the shared index, and an agent should see what ran.
+- **Default `off`, per machine, and `install --explain` asks.** In the user's words: "the default
+  should be no remote, but the skill should ask the user their preference. the goal is to allow new
+  users to set this up without requiring them to set up the remote." One key with three modes, read
+  on every command, because a remote's presence was the wrong signal: it says a remote exists, not
+  that this machine should talk to it.
+- **The skill adds a remote only on a URL the user confirmed, and never creates the repository on a
+  host.** That reversed an earlier "never adds a remote" for this one case. Leaving creation to the
+  user keeps the skill host-neutral: no host API, no token, any git remote works.
+- **Joining never loses a plan**, in the user's words "bring in the remote repo and add the extra
+  local contents to that". Adoption merges with `--allow-unrelated-histories` so every local commit
+  survives un-reauthored, which makes the first push publish the machine's whole local history;
+  `push`'s range scan covers it, and the dry run counts the commits going out. A store holding only
+  generated files is adopted the same way rather than replaced: same result, no special case that
+  deletes anything.
+
+**What can conflict outside one plan was read from the store's tracked files before any code was
+written**, and each answer is in `SKILL.md`'s "Several machines". The two that are easy to miss:
+`repos.toml` merges _cleanly_ when two machines spell one owner in different letter case, which git
+sees as two keys and `identity_key` as one, so it is resolved by identity in code and never by line;
+and the `updated:` line makes any two edits to one plan conflict on line 3, which is why that line
+is settled to the later date before `git merge-file` runs on the rest. The config file, the state
+ledgers and `.git/info/exclude` are machine-local and cannot conflict.
+
+**Verified on a second machine, 2026-11-25 22:15**: the Windows machine's store, holding one
+Windows-only plan, joined the shared remote by adoption (store merge `9dd4292`, unrelated histories)
+and has synced since. Two days later `join` was found to raise a KeyError on a `personal` device, a
+kind added after `join` was written. Why the Windows join did not hit it is not established. Fixed
+with a test in `3106b68`.
+
 ## What it costs to ask what is open
 
 Every command here is read by an agent that pays for the output in context, so the shape of the

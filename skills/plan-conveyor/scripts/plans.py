@@ -7870,9 +7870,9 @@ def outgoing_range(repo: Path) -> tuple[str, int, str] | None:
 # syncing a store across machines
 #
 # Plain git against whatever remote the store has — no host API, so any git remote works: GitHub,
-# another host, a bare repository on a NAS. The design, the decisions and what was measured are in
-# agent-skills' plans/2026-11-25-store-sync-across-machines.md while it is live, and in this
-# skill's SKILL.md under "Several machines" once it has landed.
+# another host, a bare repository on a NAS. How it behaves is in this skill's SKILL.md under
+# "Several machines"; why, and what was measured, in references/design-rationale.md under "Why
+# stores sync with plain git, inside the commands".
 
 FETCH_TIMEOUT = 30
 STALE_FETCH_HOURS = 24
@@ -8020,7 +8020,8 @@ def unmerged_paths(root: Path) -> dict[str, set[int]]:
 def resolve_conflict(root: Path, path: str, stages: set[int]) -> str:
     """Settle one conflicted path, saying how — or "" when it is not one of the known-safe cases.
 
-    The cases are the ones the store-sync plan listed after reading the store's tracked files: the
+    The cases are the ones read from the store's tracked files before sync was written (see
+    references/design-rationale.md, "Why stores sync with plain git, inside the commands"): the
     link table, the two generated files, an edit against a deletion, two filings of one name, and
     two edits of one plan whose `updated:` line differs. Each keeps every side's content; none picks
     a winner between two pieces of writing.

@@ -112,6 +112,17 @@ happens to run. A command that works may be an accident of someone's import stat
 selected upstream modules silently loses any task in a module it doesn't import. Run `inv --list`
 after a dependency bump, not just the test suite.
 
+**`c.run` output can lose a non-ASCII character, so parse it on ASCII anchors only.** invoke reads a
+child's stdout in 1000-byte chunks and decodes each one on its own with `errors="replace"`
+(`Runner.decode`), so a multi-byte UTF-8 character that straddles a chunk boundary becomes
+replacement characters in `result.stdout`. Which character that hits depends only on where the
+boundary falls, so the same command against the same input reads correctly once and wrongly the next
+time, with no error. It bit repo-tasks' `deps.check-currency`: a regex anchored on `uv tree`'s `├──`
+prefix silently dropped the `invoke-stubs` line, reporting it as absent (fixed in `v0.7.2` by
+anchoring on any non-word prefix). When a task parses output rather than shows it, anchor the
+pattern on ASCII, or run the command with `subprocess.run`, which decodes the whole output at once —
+always when the text can carry arbitrary names, such as commit subjects or file paths.
+
 ## A task may not run anything that waits for typed input
 
 **Not through `c.run`, with or without `pty=True`.** Two independent causes, and the second is fatal

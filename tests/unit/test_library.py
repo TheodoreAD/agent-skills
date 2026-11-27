@@ -1054,6 +1054,10 @@ def test_the_live_fetcher_retries_a_dropped_connection_and_not_an_http_answer():
     def not_found(request, timeout):
         raise library.urllib.error.HTTPError("u", 404, "Not Found", None, None)
 
-    with pytest.raises(library.urllib.error.HTTPError):
+    with pytest.raises(library.urllib.error.HTTPError) as raised:
         library.LiveFetcher(sleep=pauses.append, opener=not_found)("https://svn.example.org/x")
+    # An HTTPError built with fp=None wraps a temporary file of its own; left to the garbage
+    # collector it raises ResourceWarning, which the gate's filterwarnings=error turns into a
+    # failure wherever collection runs late enough to land inside a test (Windows CI, 2026-11-26).
+    raised.value.close()
     assert pauses == [5.0, 10.0], "a 404 is an answer, asked once"

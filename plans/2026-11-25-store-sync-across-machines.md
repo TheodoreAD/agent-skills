@@ -1,6 +1,6 @@
 ---
-status: in-progress
-updated: 2026-11-25
+status: landed
+updated: 2026-11-27
 ---
 
 # Store sync across machines
@@ -193,11 +193,13 @@ What is left:
   `config set sync auto`, `install` committed both stores' `.gitattributes`, `sync` pushed the
   shareable store. On the Windows machine: install the skills, `install --explain`,
   `join <url> --dry-run`, `join`, `config set sync auto`, `sync`.
-- [UNVERIFIED: a real Windows machine joining. The Windows CI leg runs the sync tests; nothing has
-  run on that machine yet.] Found 2026-11-27, before that join ran: `join` raised a KeyError on a
-  `personal` device, which arrived with activities after `join` was written and is exactly what the
-  Windows machine is. Fixed in `3106b68`, with a test, so the join needs that commit installed on
-  Windows first.
+- A real Windows machine joining: **verified 2026-11-27 from the store's history.** Store merge
+  `9dd4292` (2026-11-25 22:15) joins two unrelated histories, one side a single Windows-only commit
+  (`39b9b13`), the other the whole shared store, with the message `join`'s merge writes; `2a83678`
+  is a later sync, and plans filed on Windows on 2026-11-27 reached this machine through the remote.
+  Separately, `join` was found raising a KeyError on a `personal` device, which is what the Windows
+  machine is now; fixed with a test in `3106b68`. The Windows machine still needs that installed for
+  `where` to name it correctly; no join is needed there.
 
 ## Recommended direction
 
@@ -232,3 +234,21 @@ What is left:
    changes with it: **Runs** gains `git fetch`, `merge` and `remote add`; **Network** changes from
    "only `push`" to the sync modes; the "never adds a remote" wording becomes "adds one only on a
    URL you confirmed".
+
+## Migrated to
+
+- **How it behaves**: `skills/plan-conveyor/SKILL.md`, "Several machines: `join` once, then `sync`"
+  — the modes, the join procedure, every merge resolution, merge-not-rebase, no timer or hook, LF,
+  attachments not travelling. Already there since the build; nothing added at retirement.
+- **Why**: `skills/plan-conveyor/references/design-rationale.md`, new section "Why stores sync with
+  plain git, inside the commands (2026-11-25)" — the vendor-sandbox scope decision, the
+  push-without-pull gap and its measurement, why automated and why inside the commands, the user's
+  words on default `off` and on never losing a plan, the confirmed-URL rule and why the skill never
+  creates the repository, adoption publishing the whole local history, the generated-only store
+  adopted rather than replaced, the two easy-to-miss conflicts, and the Windows join as verified.
+- **Code pointers**: the two comments in `skills/plan-conveyor/scripts/plans.py` that named this
+  plan now name those two documents.
+- **Not migrated**: the conflict list item by item and the Recommended direction's seven steps,
+  which are the code contract and are covered by `SKILL.md` and `tests/unit/test_plan_sync.py`; the
+  Windows prerequisite checklist, all built and tested on the Windows CI leg; the rollout log, a
+  verification record; and `save_links` committing without syncing, a detail the code states.

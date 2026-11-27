@@ -4065,6 +4065,36 @@ def missing_cause(runner: Runner, path: Path, receipts: Sequence[str]) -> str | 
         return f"retired by this session ({sha[:9]})"
     if ABSORBED_SUBJECT_RE.search(subject):
         return f"absorbed ({sha[:9]})"
+    if LINKS_SUBJECT_RE.match(subject):
+        return _moved_by_links(runner, top, rel, sha, receipts)
+    return None
+
+
+# `plans.py links rename` commits one store folder's move as `links: <identity> -> <identity>, ...`.
+LINKS_SUBJECT_RE = re.compile(r"links:\s")
+
+
+def _moved_by_links(runner: Runner, top: Path, rel: str, sha: str, receipts: Sequence[str]) -> str | None:
+    """`moved by links rename (<sha>) to <new>`, followed to what became of the new path.
+
+    A pathspec naming only the old path hides the rename's other side, so git reports the `links`
+    commit as a deletion; the rename is read from that commit's own file list. Confirmed 2026-11-27:
+    a session's `filed` listed four plans `MISSING (cause not determined)`, every one moved from a
+    `github.com-personal/<repo>/` folder to `github.com/TheodoreAD/<repo>/` by another session's
+    `links rename`, and then absorbed by its repo — the store's `R100` lines said both in one read.
+    """
+    shown = runner(["git", "-C", str(top), "show", "-M", "--name-status", "--format=", sha])
+    if not shown.ok:
+        return None
+    for line in shown.out.splitlines():
+        status, _, paths = line.partition("\t")
+        old, _, new = paths.partition("\t")
+        if status.startswith("R") and old == rel and new:
+            moved = f"moved by links rename ({sha[:9]}) to {new}"
+            if (top / new).exists():
+                return moved
+            later = missing_cause(runner, top / new, receipts)
+            return f"{moved}, then {later or 'gone, cause not determined'}"
     return None
 
 

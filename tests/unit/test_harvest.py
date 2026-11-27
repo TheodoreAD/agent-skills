@@ -2471,6 +2471,43 @@ def test_a_missing_plan_names_the_cause_its_deleting_commit_establishes(tmp_path
 
 
 @pytest.mark.parametrize(
+    ("new_exists", "absorbed", "cause"),
+    [
+        (True, "", "moved by links rename (abc123400) to new/2026-11-08-a.md"),
+        (
+            False,
+            "fed987600aa\x1frepo-tasks: five plans absorbed into repo-tasks, removed from store\n",
+            "moved by links rename (abc123400) to new/2026-11-08-a.md, then absorbed (fed987600)",
+        ),
+    ],
+)
+def test_a_plan_a_links_rename_moved_is_followed_to_its_new_folder(tmp_path, new_exists, absorbed, cause):
+    """2026-11-27: four plans read `cause not determined`, every one moved by another session's
+    `links rename` and then absorbed — a pathspec on the old path sees the move as a deletion."""
+    repo = tmp_path / "store"
+    (repo / "old").mkdir(parents=True)
+    plan = repo / "old" / "2026-11-08-a.md"
+    if new_exists:
+        (repo / "new").mkdir()
+        (repo / "new" / "2026-11-08-a.md").write_text("x\n", encoding="utf-8")
+    links = "links: github.com/o/r -> github.com/o/r, named by repository"
+    runner = FakeRunner(
+        {
+            f"git -C {repo / 'old'} rev-parse --show-toplevel": (0, f"{repo}\n", ""),
+            f"git -C {repo} rev-parse --show-toplevel": (0, f"{repo}\n", ""),
+            f"git -C {repo} log -1 --diff-filter=D --format=%H%x1f%s -- old/": (0, f"abc123400feed\x1f{links}\n", ""),
+            f"git -C {repo} log -1 --diff-filter=D --format=%H%x1f%s -- new/": (0, absorbed, ""),
+            f"git -C {repo} show -M --name-status --format= abc123400feed": (
+                0,
+                "R100\told/2026-11-08-a.md\tnew/2026-11-08-a.md\n",
+                "",
+            ),
+        }
+    )
+    assert harvest.missing_cause(runner, plan, []) == cause
+
+
+@pytest.mark.parametrize(
     ("history", "cause"),
     [
         ("", harvest.NEVER_COMMITTED),  # no commit on any ref ever touched the path

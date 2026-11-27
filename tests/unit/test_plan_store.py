@@ -3733,6 +3733,57 @@ def test_doctor_reports_a_root_that_appeared_after_onboarding(ws, capsys):
     assert "ownership.client.com-bitbucket" in out
 
 
+@pytest.fixture
+def flat_machine(ws):
+    """A projects root holding only repos: one of the user's, one client's."""
+    flat = ws.home / "flat"
+    for name in ("mytool", "clientapi"):
+        make_repo(flat / name)
+    ws.config.parent.mkdir(parents=True, exist_ok=True)
+    head = f'projects_root = "{flat.as_posix()}"\nstore = "{ws.store.as_posix()}"\n'
+    return ws, flat, head
+
+
+def test_a_flat_layout_classifies_each_repo_as_its_own_root(flat_machine):
+    """The deferred half of the classification plan: with no collection root to classify, each
+    repo is asked ownership and activity, and the visibility lists are no longer asked at all."""
+    ws, flat, head = flat_machine
+    ws.config.write_text(head + 'activities = ["public", "contractor"]\n', encoding="utf-8")
+    keys = {decision.key for decision in plans.install_decisions(plans.Workspace(flat / "mytool"))}
+
+    assert {"ownership.mytool", "ownership.clientapi", "activity.clientapi"} <= keys
+    assert not keys & {"public_roots", "shareable_roots"}
+
+
+def test_a_flat_client_repo_is_its_own_compartment(flat_machine):
+    ws, _, head = flat_machine
+    ws.config.write_text(
+        head + 'activities = ["private", "contractor"]\n'
+        '[ownership]\nmytool = "own"\nclientapi = "shared"\n[activity]\nmytool = "private"\nclientapi = "contractor"\n',
+        encoding="utf-8",
+    )
+    cfg = plans.load_config()
+    repos = ["mytool", "clientapi"]
+
+    assert cfg.client_roots() == ("clientapi",)
+    assert cfg.store_for("clientapi") == cfg.client_store("clientapi")
+    # Everywhere else the client's name is forbidden; inside it, your private repo's name is.
+    assert "clientapi" in plans.private_terms(cfg, repos, destination="mytool")
+    inside = plans.private_terms(cfg, repos, destination="clientapi")
+    assert "clientapi" not in inside
+    assert "mytool" in inside
+
+
+def test_doctor_counts_a_flat_layouts_open_repo_questions_rather_than_listing_them(flat_machine, capsys):
+    ws, flat, head = flat_machine
+    ws.config.write_text(head + 'default = "store"\n', encoding="utf-8")
+
+    assert plans.main(["doctor", "--path", str(flat / "mytool")]) == 0
+    out = capsys.readouterr().out
+    assert "ownership.* (2)" in out
+    assert "ownership.mytool" not in out
+
+
 # --------------------------------------------------------------------------------------------
 # retired plans
 #

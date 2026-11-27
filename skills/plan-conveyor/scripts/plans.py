@@ -3581,10 +3581,11 @@ def private_terms(cfg: Config, repos: list[str], destination: str | None = None)
         parts = rel.split("/")
         if parts[0] not in public:
             terms.update(parts)
-        elif inside_client and parts[0] != destination and cfg.activity_of(parts[0]) == PRIVATE and len(parts) > 1:
+        elif inside_client and parts[0] != destination and cfg.activity_of(parts[0]) == PRIVATE:
             # Repo names only: a private root's own directory name is usually a word like
-            # `personal`, and gating on it inside every client repo would be noise.
-            terms.update(parts[1:])
+            # `personal`, and gating on it inside every client repo would be noise. On a flat
+            # layout the first segment is the repo, so it is the name.
+            terms.update(parts[1:] or parts)
     for root, names in cfg.client_terms.items():
         if root != destination:
             terms.update(names)
@@ -9107,7 +9108,6 @@ def _decisions(ws: Workspace) -> list[Decision]:
     # Collections only, never a repo cloned straight into the projects root: on a flat
     # `~/projects/<repo>` layout that would be one question per clone on the machine, and `default`
     # above already answers all of them.
-    roots = sorted({rel.split("/")[0] for rel in ws.repos})
     # A classified root needs no route of its own: ownership decides it, repo by repo.
     unrouted = [name for name in collection_roots(ws.repos) if name not in cfg.roots and name not in cfg.ownership]
     if unrouted and cfg.default is None and cfg.device != WORK:
@@ -9137,10 +9137,8 @@ def _decisions(ws: Workspace) -> list[Decision]:
         for org in ws.known_orgs
         if cfg.own_accounts and org.org != NO_REMOTE and not org.own and org.writes_into_repos and not org.decided
     ]
-    # Classified roots decide both lists below, so they are asked only where there is no root to
-    # classify — a flat layout, every repo straight under the projects root.
-    if not collection_roots(ws.repos):
-        decisions += _root_list_decisions(cfg, roots)
+    # Classified roots decide `public_roots` and `shareable_roots`, so neither list is asked: on a
+    # flat layout each repo is classified as its own root instead — see `classifiable_roots`.
     decisions.append(_sync_decision(cfg))
     decisions.append(
         Decision(
@@ -9152,34 +9150,6 @@ def _decisions(ws: Workspace) -> list[Decision]:
         )
     )
     return decisions + _sanctioned_decision(ws)
-
-
-def _root_list_decisions(cfg: Config, roots: list[str]) -> list[Decision]:
-    decisions = [
-        Decision(
-            key="public_roots",
-            what="roots whose names may appear in a repo you publish; everything else is scanned for",
-            current=", ".join(cfg.public_roots) or "(unset — falls back to the roots routed `repo`)",
-            suggest=", ".join(name for name in roots if cfg.roots.get(name, Rule((), "")).write == "repo") or "(none)",
-            cost="too wide silences a whole organisation's names in `scan`, which is the gate that "
-            "stops a client's identity reaching a published repo",
-        )
-    ]
-    # Only where there are two tiers. A work device has one store, so this is a question about a
-    # split that does not exist there — asked anyway until 2026-09-12, while the skill said it had
-    # stopped applying.
-    if cfg.split_by_sensitivity:
-        public = ", ".join(cfg.public_root_names())
-        decisions.append(
-            Decision(
-                key="shareable_roots",
-                what="roots whose plans go in the tier that may have a remote; every other root is local-only",
-                current=", ".join(cfg.shareable_roots) or f"(unset — falls back to public_roots: {public})",
-                suggest=public or "(none)",
-                cost="a root listed here has its plans pushed to whatever remote the shareable store has",
-            )
-        )
-    return decisions
 
 
 def _sanctioned_decision(ws: Workspace) -> list[Decision]:
@@ -9220,11 +9190,15 @@ def _root_classification_decisions(ws: Workspace) -> list[Decision]:
 
     Asked of every collection root, every machine, with a suggestion read from the remotes — never
     an answer written for the user. On a corporate machine the activity can only be `corporate`, so
-    only ownership is asked there.
+    only ownership is asked there. On a flat layout each repo is its own root — see
+    `classifiable_roots`.
     """
     cfg = ws.config
     decisions: list[Decision] = []
-    for name in collection_roots(ws.repos):
+    flat = not collection_roots(ws.repos)
+    for name in classifiable_roots(ws.repos):
+        # A flat layout's "root" is one repository, so the question names it as one.
+        subject = f"the repo {name}" if flat else f"the repos under {name}/"
         remotes = [remote for rel, remote in ws.remotes.items() if rel.split("/")[0] == name and remote]
         mine = sum(cfg.owns(remote) for remote in remotes)
         if not cfg.own_accounts:
@@ -9237,7 +9211,7 @@ def _root_classification_decisions(ws: Workspace) -> list[Decision]:
             Decision(
                 key=f"ownership.{name}",
                 what=(
-                    f"whose repos are under {name}/. `own`: an account you own, whose repos may keep "
+                    f"who owns {subject}. `own`: an account you own, whose repos may keep "
                     "plans in-repo, chosen per repo. `shared`: an organisation you contribute to, whose "
                     "plans go to the store and never into its repos"
                 ),
@@ -9255,7 +9229,7 @@ def _root_classification_decisions(ws: Workspace) -> list[Decision]:
             Decision(
                 key=f"activity.{name}",
                 what=(
-                    f"what kind of work {name}/ holds, one of {held}. An organisation you contribute to "
+                    f"what kind of work is in {subject}, one of {held}. An organisation you contribute to "
                     "is `public` (open source) or `private`; a client's root — including an account you "
                     "made for one client — is `contractor`, which insulates it from every other root. "
                     "Not asked for your own account otherwise: its repos are public or private one by one"
@@ -9282,7 +9256,7 @@ def _root_classification_decisions(ws: Workspace) -> list[Decision]:
                 Decision(
                     key=f"private_terms.{name}",
                     what=(
-                        f"if {name}/ is a client's: names that identify that client but are not "
+                        f"if {subject} belong to a client: names that identify that client but are not "
                         "directory names — its ticket prefix, email domain, product codenames. Allowed "
                         "between that client's own repos, refused in every other repo and store. Not "
                         "a client's: answer an empty list"
@@ -9759,6 +9733,23 @@ def collection_roots(repos: list[str]) -> list[str]:
     return sorted({rel.split("/")[0] for rel in repos} - at_root)
 
 
+def classifiable_roots(repos: list[str]) -> list[str]:
+    """The names onboarding classifies: the collection roots, or on a flat layout every repo.
+
+    Everything that reads the classification keys a repo by its first path segment, and on a flat
+    `~/projects/<repo>` layout that segment is the repo itself, so `ownership.<repo>` and
+    `activity.<repo>` route, tier and scan it exactly as a root's entry would. Until 2026-11-27 a
+    flat layout was asked `public_roots` and `shareable_roots` instead, which cover visibility and
+    nothing else, so a client's repo cloned there got no compartment and no store of its own.
+
+    Per repo there because there is nothing coarser to ask about, and the questions are ones the
+    user can answer from the suggestion, which reads each repo's own remote. A repo cloned straight
+    into the root of a tree that also has collection roots is still not asked: it is the exception
+    beside them, and `default` answers it as it always has.
+    """
+    return collection_roots(repos) or sorted(set(repos))
+
+
 def inert_root_rules(cfg: Config, known: list[str]) -> list[str]:
     """`[roots]` entries that name a repo rather than a directory of repos, and so match nothing.
 
@@ -9803,7 +9794,9 @@ def onboarding_problems(ws: Workspace) -> list[str]:
     pending = open_decisions(ws)
     if not pending:
         return []
-    keys = ", ".join(decision.key for decision in pending)
+    open_keys = [decision.key for decision in pending]
+    # On a flat layout each per-root key names one clone, and listing them is a roster of the machine.
+    keys = _summarise_keys(open_keys) if not collection_roots(ws.repos) else ", ".join(open_keys)
     if not cfg.onboarded:
         return [
             f"onboarding is unfinished, so scan, sync, push and join refuse: {len(pending)} open "
@@ -9813,6 +9806,24 @@ def onboarding_problems(ws: Workspace) -> list[str]:
         f"onboarding reopened since {cfg.onboarded}: {keys} — until answered, an unclassified root's "
         "names stay out of every published repo. plans.py install --explain"
     ]
+
+
+def _summarise_keys(keys: list[str]) -> str:
+    """Decision keys for one line, each per-repo table counted rather than listed.
+
+    On a flat layout every repo carries its own `ownership.<repo>`, so listing them would make
+    doctor's one onboarding line a roster of every clone on the machine — the per-repo noise the
+    user asked to be rid of 2026-09-07. The walkthrough still names each one.
+    """
+    tables: dict[str, int] = {}
+    plain: list[str] = []
+    for key in keys:
+        table, dot, _ = key.partition(".")
+        if dot and table in CONFIG_TABLES:
+            tables[table] = tables.get(table, 0) + 1
+        else:
+            plain.append(key)
+    return ", ".join([*plain, *(f"{table}.* ({count})" for table, count in tables.items())])
 
 
 def link_problems(cfg: Config) -> list[str]:

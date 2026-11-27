@@ -2920,7 +2920,9 @@ def _apply_move(cfg: Config, move: FolderMove) -> None:
             break
         parent.rmdir()
 
-    message = f"links: {', '.join(move.identities)} -> {move.target_folder}, named by repository"
+    # The folder the plans left, not the identities: after a rename the identity is the new folder
+    # name, so a subject built from it read "X -> X" and the store's log stopped saying what moved.
+    message = f"links: {move.folder} -> {move.target_folder}, named by repository"
     source_links = read_links(move.source)
     remaining = {name: folder for name, folder in source_links.entries.items() if folder != move.folder}
     if move.target.path == move.source.path:

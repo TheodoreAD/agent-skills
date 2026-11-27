@@ -3488,6 +3488,8 @@ def test_links_rename_moves_legacy_folders_into_identity_names_and_client_stores
     shared sensitive store. The dry run changes nothing; --yes moves plans, links and attachments."""
     write_config(ws, CLASSIFIED)
     plans.main(["install", "--quiet", "--path", str(ws.personal)])
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.com")):
+        subprocess.run(["git", "config", key, value], cwd=ws.store, check=True)
     (ws.sensitive / plans.LINKS_FILE).write_text(
         '"example.com/x/api" = "client.com-bitbucket/team/api"\n', encoding="utf-8"
     )
@@ -3519,6 +3521,13 @@ def test_links_rename_moves_legacy_folders_into_identity_names_and_client_stores
         "example.com/x/api": "example.com/x/api"
     }
     assert plans.read_links(plans.load_config().sensitive_store).entries == {}
+    # The subject names the folder the plans left, not the identity twice: after a rename the
+    # identity is the new folder, so a subject built from it reads "X -> X" and git log in the
+    # store no longer says what moved.
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"], cwd=ws.store, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert subject == "links: github.com-personal/agent-skills -> example.com/x/agent-skills, named by repository"
     capsys.readouterr()
     assert plans.main(["links", "rename", "--path", str(ws.personal)]) == 0
     assert "nothing to rename" in capsys.readouterr().out

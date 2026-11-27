@@ -252,6 +252,12 @@ machines have to share them:
 half that may have a remote; a `contractor` root never. **An unclassified root is treated
 cautiously** — kept out of both — until the user says what it is, and `doctor` reports it.
 
+**On a flat layout, every repo straight under `projects_root`, each repo is its own root** and is
+asked the same two questions as `ownership.<repo>` and `activity.<repo>`, so a client's repo cloned
+there gets a compartment and a store of its own. Until 2026-11-27 such a machine was asked
+`public_roots` and `shareable_roots` instead, which decide visibility and nothing else. `doctor`
+counts those open questions rather than listing them.
+
 The three machine shapes that follow from `activities`:
 
 | `device`                   | the machine holds                                    | the store                                              |
@@ -584,12 +590,13 @@ beneath it.
 - **A repo cloned straight into `projects_root` is routed with `[repos]`, never `[roots]`.** A
   `[roots]` key is a path _prefix_, and a repo at depth 1 has no prefix, so an entry naming it is
   never consulted and the repo falls through to `default` — which `doctor` reports through
-  `inert_root_rules` if you write one anyway. **A git repository is never a candidate root**, so
-  neither `doctor` nor `install --explain` ever asks you to categorise one: on a flat
+  `inert_root_rules` if you write one anyway. **A git repository is never a candidate `[roots]`
+  entry**, so neither `doctor` nor `install --explain` asks you to route one: on a flat
   `~/projects/<repo>` layout, the more common one in the wild, every clone would otherwise be listed
   as an undecided root, which is one warning per repo on the machine. `default` answers all of them,
   and a repo that genuinely needs its own answer takes a `[repos]` entry when a plan is first
-  written there.
+  written there. Classification is the exception, above: on a flat layout each repo's ownership and
+  activity are asked, because they decide where its plans may go, not only its route.
 
 **Categorise every root explicitly**, even where `default` would give the same answer. Then a root
 falling through to `default` means exactly "this appeared since you last decided anything", and

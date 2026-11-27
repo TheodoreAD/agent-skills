@@ -260,7 +260,7 @@ def compartment_machine(tmp_path, monkeypatch) -> tuple[Path, Path, Path]:
 
 
 def test_turns_refuses_to_quote_a_client_session_into_another_compartment(tmp_path, monkeypatch):
-    """Phase 5 of plan-conveyor's classification plan: a client's words never leave its root."""
+    """A client's words never leave its root, per plan-conveyor's machine classification."""
     client, mine, transcript = compartment_machine(tmp_path, monkeypatch)
     args = harvest.build_parser().parse_args(["turns", "--session", str(transcript), "--json"])
 

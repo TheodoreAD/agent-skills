@@ -3353,7 +3353,7 @@ def test_doctor_accepts_a_folder_another_machine_linked_under_its_own_root_name(
 #
 # Asked for by the user 2026-11-25, after a machine was "set up" by a session that accepted every
 # default: the user is asked what each root is on every machine, and the config says whether that
-# happened. Plan: 2026-11-25-plan-conveyor-ownership-and-activity-classification.md.
+# happened. Rationale: plan-conveyor's references/design-rationale.md, "Why a machine is classified".
 
 CLASSIFIED = (
     'activities = ["public", "contractor"]\n'
@@ -3745,8 +3745,8 @@ def flat_machine(ws):
 
 
 def test_a_flat_layout_classifies_each_repo_as_its_own_root(flat_machine):
-    """The deferred half of the classification plan: with no collection root to classify, each
-    repo is asked ownership and activity, and the visibility lists are no longer asked at all."""
+    """With no collection root to classify, each repo is asked ownership and activity, and the
+    visibility lists are no longer asked at all."""
     ws, flat, head = flat_machine
     ws.config.write_text(head + 'activities = ["public", "contractor"]\n', encoding="utf-8")
     keys = {decision.key for decision in plans.install_decisions(plans.Workspace(flat / "mytool"))}

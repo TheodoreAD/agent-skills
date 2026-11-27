@@ -127,8 +127,8 @@ CONTRACTOR, WORK, PERSONAL_DEVICE = "contractor", "work", "personal"
 DEVICES = (CONTRACTOR, WORK, PERSONAL_DEVICE)
 TIERS = (SHAREABLE, SENSITIVE, SINGLE)
 
-# The classification a machine is onboarded with, decided with the user 2026-11-25 — see the plan
-# `2026-11-25-plan-conveyor-ownership-and-activity-classification.md` in this skill's repo.
+# The classification a machine is onboarded with, decided with the user 2026-11-25 — the reasoning
+# is in `references/design-rationale.md`, "Why a machine is classified by activity and ownership".
 #
 # Activities are what kinds of work this machine holds, one or several:
 #
@@ -1674,7 +1674,7 @@ def repo_ownership(cfg: Config, rel: str | None, remote: Remote | None) -> str |
 
 
 def _ownership_rule(cfg: Config, rel: str | None, remote: Remote | None) -> RuleMatch | None:
-    """Phase 2 of the classification plan: ownership decides where a classified root's plans go.
+    """Ownership decides where a classified root's plans go.
 
     - `shared` — an organisation with its own tracker: always the store.
     - `own` — the user's choice, **per repo**, asked the first time that repo gets a plan. A repo
@@ -2242,8 +2242,8 @@ def _unlinked_route(cfg: Config, clone: CloneIdentity, own: str, rel: str | None
         return StoreRoute(None, None, own, False)
     store = cfg.store_for(rel)
     # A classified machine names a new repository's folder after the repository itself, so the
-    # store carries no machine's directory names (phase 4 of the classification plan). That folder
-    # names the remote, never a private root, so the clone-path naming check below does not apply.
+    # store carries no machine's directory names. That folder names the remote, never a private
+    # root, so the clone-path naming check below does not apply.
     # Never where the clone-path folder already exists, unlinked: its plans would drop out of sight
     # behind a new empty folder. `links rename` moves such a folder deliberately instead.
     legacy = (store.path.expanduser() / rel).is_dir()
@@ -2841,11 +2841,10 @@ def _primary_identity(identities: list[str]) -> str:
 def planned_moves(cfg: Config) -> list[FolderMove]:
     """Every linked folder still named after a machine's directories, or outside its client's store.
 
-    Phase 4 of the classification plan. Only on a classified machine — elsewhere a clone-path name
-    is still the convention, and renaming would be churn nobody asked for. A clone-path folder's
-    first segment is the root it was filed from, which is how a client's folder still sitting in the
-    shared sensitive store is recognised; a folder already named by identity carries no root and
-    stays in the store it is in.
+    Only on a classified machine — elsewhere a clone-path name is still the convention, and
+    renaming would be churn nobody asked for. A clone-path folder's first segment is the root it
+    was filed from, which is how a client's folder still sitting in the shared sensitive store is
+    recognised; a folder already named by identity carries no root and stays in the store it is in.
     """
     if not cfg.classified:
         return []
@@ -3566,10 +3565,10 @@ def private_terms(cfg: Config, repos: list[str], destination: str | None = None)
     every path component under a non-public root — the root, its projects, its repo names — is a
     name that identifies work that is not yours to disclose.
 
-    `destination` is the root a write lands in, which makes this a flow check (phase 3 of the
-    classification plan). Inside a contractor root, that client's own names and its own
-    `[private_terms]` move freely between its repos, every other client's stay forbidden, and the
-    names of your private repos are added — they may appear in your own plans, never in a client's.
+    `destination` is the root a write lands in, which makes this a flow check. Inside a contractor
+    root, that client's own names and its own `[private_terms]` move freely between its repos, every
+    other client's stay forbidden, and the names of your private repos are added — they may appear
+    in your own plans, never in a client's.
     Anywhere else, every client's names and terms are forbidden, as before.
     """
     public = set(cfg.public_root_names())

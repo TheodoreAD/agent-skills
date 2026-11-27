@@ -311,7 +311,7 @@ def _conveyor_config() -> dict[str, Any]:
 class Compartments:
     """Which transcripts' commands and project names may be shown where this audit runs.
 
-    Phase 5 of `plan-conveyor`'s classification plan (2026-11-25), duplicated from `session-harvest`
+    Part of `plan-conveyor`'s machine classification (2026-11-25), duplicated from `session-harvest`
     for the reason `project_slug` gives. Counts read every transcript — a rate carries no content —
     but a sample, a re-run, a denied command and a per-session row quote or name a project, so they
     come only from transcripts whose content may reach the session's own repo: that repo, a `public`

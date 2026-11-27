@@ -1241,7 +1241,7 @@ def checkouts(root: Path, depth: int = 3) -> list[Path]:
 class Compartments:
     """Which transcripts' words may be quoted into the repo this harvest writes to.
 
-    Phase 5 of `plan-conveyor`'s classification plan (2026-11-25), read from that skill's config as
+    Part of `plan-conveyor`'s machine classification (2026-11-25), read from that skill's config as
     the same contract as everything above, never through `plans.py`. Quoting — a user message, a
     command, a decision lifted into a plan — is allowed only where the content may reach the
     destination: the session's own repo always; a `public` root anywhere; anything on a corporate

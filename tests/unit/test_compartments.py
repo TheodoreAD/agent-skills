@@ -2,8 +2,9 @@
 
 session-harvest, session-bash-audit and skill-fitness each carry their own `Compartments`, because
 skills install individually and none may import another. That makes drift between the copies the
-failure to guard against, so every case here runs against all three. Phase 5 of plan-conveyor's
-`plans/2026-11-25-plan-conveyor-ownership-and-activity-classification.md`.
+failure to guard against, so every case here runs against all three. The flow rule is reasoned in
+plan-conveyor's `references/design-rationale.md`, "Why a machine is classified by activity and
+ownership".
 """
 
 # Loaded by path because `skills/` holds no importable package, so every symbol is Any by

@@ -1144,7 +1144,7 @@ def _checkouts(root: Path, depth: int = 3) -> list[Path]:
 class Compartments:
     """Which transcripts' commands may be quoted where this report is read.
 
-    Phase 5 of `plan-conveyor`'s classification plan (2026-11-25), duplicated from `session-harvest`
+    Part of `plan-conveyor`'s machine classification (2026-11-25), duplicated from `session-harvest`
     because skills install individually. Counts read every transcript; an `example` quotes a
     command, so it comes only from a transcript whose content may reach the session's own repo — that
     repo, a `public` root, anything on a corporate machine, or the same client's root.

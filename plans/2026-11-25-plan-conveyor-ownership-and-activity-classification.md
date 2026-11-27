@@ -1,6 +1,6 @@
 ---
-status: in-progress
-updated: 2026-11-25
+status: landed
+updated: 2026-11-27
 ---
 
 # Plan conveyor ownership and activity classification
@@ -168,10 +168,10 @@ write move anything out of the compartment it came from?
 
 - Forbidden names for a destination are the names of every contractor compartment except its own,
   plus private repo names when the destination is a contractor compartment.
-- Content from a private repo leaking into another repo cannot be found by matching names.
-  [UNVERIFIED: whether fingerprinting a private plan's distinctive lines catches a quote without
-  drowning in false positives. Until that is measured, private-content flow is guarded by the
-  cross-repo write rules below and by an agent rule, not by the scan.]
+- Content from a private repo leaking into another repo cannot be found by matching names. Whether
+  fingerprinting can catch it is an open idea, moved 2026-11-27 to
+  `plans/2026-11-27-private-content-flow-detection.md` together with per-repo visibility, which was
+  never built.
 - Secret detection runs on every write regardless of compartment.
 
 ### Routing and cross-repo writes
@@ -254,9 +254,13 @@ Implement in phases, each committed on its own and passing the gate:
   `doctor` names plans left in a sensitive store such a machine stopped reading.]
 - [DECISION: once onboarded, an empty private-term list is an answer, not a gap, so `scan` passes
   and `sync` publishes. Before this, the onboarded personal machine could not publish at all.]
-- [DEFERRED: a flat layout (repos straight under the projects root) has no root to classify, so it
-  still answers `public_roots` and `shareable_roots` directly. Per-repo classification there waits
-  for phase 2's per-repo decisions.]
+- A flat layout (repos straight under the projects root) had no root to classify, so it answered
+  `public_roots` and `shareable_roots` directly. Landed 2026-11-27 in `66532e6`: each repo there is
+  classified as its own root, and doctor counts those questions rather than listing them. [DECISION:
+  asked per repo at setup, unlike `plans = repo | store`, because classification decides where a
+  repo's plans and words may go, and a client repo on a flat machine otherwise has no insulation.
+  One answer for the whole flat tree was rejected: it cannot tell your repo from a client's beside
+  it.]
 - **Phase 2 landed 2026-11-26** (`31c991d`): ownership routes a classified root. Evidence of an
   earlier choice is honoured both ways — a committed `plans/`, or plans already in the store — so
   only repos with no plans anywhere are asked.

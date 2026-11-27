@@ -26,6 +26,7 @@ meant to be.
 - [`rg -r` is `--replace`, not `--recursive` (2026-08-27)](#rg--r-is---replace-not---recursive-2026-08-27)
 - [`git -C <own repo>` is the ban on `cd` wearing the recommended flag (2026-08-29)](#git--c-own-repo-is-the-ban-on-cd-wearing-the-recommended-flag-2026-08-29)
 - [Open / to re-measure](#open--to-re-measure)
+- [Back to auto as the default (2026-11-25)](#back-to-auto-as-the-default-2026-11-25)
 
 ## Baseline 2026-08-24
 
@@ -158,7 +159,9 @@ mode's premise is "don't classify, judge", and it actively degrades the behaviou
 simple commands) that make prefix rules work. They can't be reconciled by rules or prose, so the
 machine default moved to `acceptEdits` (dogfooding from 2026-08-24). Auto mode remains a per-session
 opt-in for exploratory work where classifier judgment is acceptable; nothing in the repo fights it
-when it is on.
+when it is on. **Superseded 2026-11-25**: the default is back to `auto`, and the `git commit`/`push`
+row no longer describes the machine — see
+[Back to auto as the default](#back-to-auto-as-the-default-2026-11-25).
 
 ## Harness facts (checked 2026-08-24)
 
@@ -219,7 +222,8 @@ of these across a Claude Code upgrade.
 ## Decisions taken 2026-08-24
 
 - Machine default permission mode → `acceptEdits`, declared as `claude_default_mode` on
-  `[packages.claude-code]` in `setup.toml`, synced by `inv ai.install-skills`.
+  `[packages.claude-code]` in `setup.toml`, synced by `inv ai.install-skills`. (Superseded
+  2026-11-25 by `auto`; see the last section.)
 - `/tmp/claude-1000` and `~/.claude/jobs` → `permissions.additionalDirectories`
   (`claude_additional_directories`, same package), so harness scratch writes don't prompt.
 - `cp mv rm rmdir mkdir touch` keep their `write` classification but stop rendering as `ask`
@@ -1090,3 +1094,27 @@ The rates and verdicts recorded in earlier sections stand at that precision. The
 this corpus's 81, 174 and 6 on the parallel-session rows, and the "9 of 9,224" above — were each
 taken on a corpus that has since moved on, so they were not re-derived; read them as upper bounds. A
 baseline now records `replayed_dropped`, and `--compare` says so when reading one that lacks it.
+
+## Back to auto as the default (2026-11-25)
+
+**The machine's declared mode is `auto` again**, so a session reading the 2026-08-24 sections to
+decide whether a rule or the mode needs changing should start here. The declaration had stopped
+describing the machine: 96% of Bash calls in the week to 2026-09-05 ran under auto, toggled per
+session, because `acceptEdits` cost about 1,562 web prompts a month against auto's 10 classifier
+denials, all benign. The user's threat model settled the rest: a mistake an agent can make here is a
+mess in GitHub or in the OS, both recoverable, the OS from `power-user-linux-setup` itself.
+
+What changed in `power-user-linux-setup`, all on 2026-11-25:
+
+- `7acc9c2`: `claude_default_mode = "auto"`, with an `autoMode` block that lets an agent merge a
+  pull request it opened on the user's own repo.
+- `c0ee53f`: `git commit`, `git push` and `gh pr` are deliberately unmatched, through a
+  `defer_overrides` knob in `cli-allowlist/tools.toml`, so the classifier judges them; force pushes
+  and history rewrites keep ask rules and always prompt.
+- `d7cc423`: the ask rules shrank from 704 to 440, keeping what leaves the machine.
+
+So in the mode comparison above, "Who decides an unmatched Bash call" is the classifier, and the
+`git commit`/`push` checkpoint is the classifier's judgment except for force pushes and rewrites.
+The measurements in every section stay as taken; they describe the setup of their day. The full
+reasoning is in that repo's `plans/2026-11-08-auto-mode-as-default-with-slim-rules.md` and its
+`contributing/cli-allowlist.md`, section "`defer_overrides`".

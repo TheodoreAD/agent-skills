@@ -223,9 +223,8 @@ so they get defensive defaults that never ask.
 
 ## Open questions
 
-- [DEFERRED: migrating an existing synced store from tier folders named by machine roots to
-  identity-named compartment stores needs every machine on the new version first; it is the last
-  phase, not the first.]
+- Migrating the synced store to identity-named folders, once deferred until every machine ran the
+  new version, is done: see phase 4 under Progress.
 
 ## Recommended direction
 
@@ -266,10 +265,11 @@ Implement in phases, each committed on its own and passing the gate:
   shown in the same pass as the root's classification; asked only after `contractor` was recorded,
   it reopened onboarding the moment one pass finished.]
 - **Phase 4 landed** (`6b1fd12`): one store per client under `~/plans-clients/<root>`,
-  identity-named folders for new links, and `links rename` to migrate. [DEFERRED: running
-  `links rename --yes` on the synced `~/plans` store — 8 folders named after the Linux machine's
-  root — waits until the Linux machine runs this version and is onboarded; then run it on one
-  machine and `sync`.]
+  identity-named folders for new links, and `links rename` to migrate. The synced `~/plans` store's
+  8 folders named after the Linux machine's root were renamed on 2026-11-26 (store commits `a838fe6`
+  through `a53dfc8`) and synced; the Linux machine was onboarded 2026-11-26/27 with activities
+  public, private and contractor. Checked 2026-11-27: the store holds only `_unscoped/` and
+  `github.com/` at its top, and is level with its remote.
 - **Phase 5 landed** (`f3c0143`): session-harvest, session-bash-audit and skill-fitness share one
   flow rule through three tested copies. [DECISION: an exported transcript named by path outside
   `~/.claude/projects` is not filtered — no project owns it, and naming it is the caller's explicit

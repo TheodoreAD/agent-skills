@@ -194,7 +194,10 @@ What is left:
   shareable store. On the Windows machine: install the skills, `install --explain`,
   `join <url> --dry-run`, `join`, `config set sync auto`, `sync`.
 - [UNVERIFIED: a real Windows machine joining. The Windows CI leg runs the sync tests; nothing has
-  run on that machine yet.]
+  run on that machine yet.] Found 2026-11-27, before that join ran: `join` raised a KeyError on a
+  `personal` device, which arrived with activities after `join` was written and is exactly what the
+  Windows machine is. Fixed in `3106b68`, with a test, so the join needs that commit installed on
+  Windows first.
 
 ## Recommended direction
 

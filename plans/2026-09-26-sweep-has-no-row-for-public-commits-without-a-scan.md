@@ -1,6 +1,6 @@
 ---
 status: idea
-updated: 2026-09-29
+updated: 2026-11-27
 source_repo: github.com-personal/repo-tasks
 source_session: 86d02b45-c393-4ecd-96a7-75d16974465d.jsonl
 source_moment: 2026-09-26T14:07:42Z
@@ -39,6 +39,19 @@ the procedure asks it.
   scan — but it says the gap is routine rather than rare. Deciding publishability is the part this
   row needs that `harvest.py` does not have yet: `scan` cannot tell, and `plans.py` derives it from
   `public_roots` or the roots routed `repo`.
+- **A second sample, 2026-11-25**, filed from a hekate session (`5f84bc91-…`, at 18:29:44Z) and
+  absorbed here. That session pushed the shareable store seven times in about an hour, every time
+  with `git -C ~/plans push` and never with `plans.py push`, while it did use `plans.py commit` and
+  `plans.py new`. So the skill was loaded; the rule that carries the scan was what it didn't follow,
+  and no message weighed `plans.py push` and set it aside. The first push was denied by the
+  auto-mode classifier; the user then approved a push through `AskUserQuestion`, and the session
+  took that as approval for its own command rather than switching to the one the skill names.
+  `session-bash-audit` over its last 427 Bash calls: `git-C-mutating` 8 (seven store pushes, one
+  store commit), while `store-write-by-git` read 3 and caught none of the pushes. **That answers the
+  question below: the row covers writes, not `push`.** `harvest.py sweep` again reported the store
+  clean, and a retroactive `scan --mode history --path ~/plans` returned 0 hits against 61 terms.
+  The plans store's `push` now runs the scan from `sync` too, so `plans.py sync` is a second
+  sanctioned route that the row should accept alongside `plans.py push`.
 
 ## Recommended direction
 
@@ -53,8 +66,9 @@ and saying nothing about the session's commits, and proposes `scan --mode outgoi
 This row should name whichever of those lands, not `--mode history`.
 
 Also, a push to a plans store by any means other than `plans.py push` is itself a finding.
-`audit.py` has a `store-write-by-git` row; check whether it covers `push` or only writes. It read 0
-here while `git-C-mutating` caught the push.
+`audit.py` has a `store-write-by-git` row, and it covers writes only: it read 0 here and 3 in the
+2026-11-25 sample while `git-C-mutating` caught every push. Extend it to match `push` too, so the
+audit's own summary surfaces a bare-git store push rather than one sample line.
 
 [NEEDS CLARIFICATION: should the row prompt the retroactive scan, or run it? Running it is read-only
 and cheap. But `sweep` deliberately runs no repo's own commands, and `scan` belongs to `plan-docs`,

@@ -9640,6 +9640,34 @@ def stranded_sensitive_plans(cfg: Config) -> list[str]:
     ]
 
 
+GITHUB_NOREPLY_SUFFIX = "@users.noreply.github.com"
+
+
+def private_email_on_github(store: Store, prefix: str) -> list[str]:
+    """A store that commits under a non-noreply address while one of its remotes is on github.com.
+
+    GitHub's "block command line pushes that expose my email" protection refuses such a push with
+    GH007 — at push time, after every session has piled commits on top. On 2026-11-25 the shareable
+    store reached 39 unpushed commits, 26 under a private address set by hand in the store's own
+    `.git/config`, and fixing it took a rebase that had to wait for a parallel session to stop
+    committing. Narrow on purpose: only github.com has a known noreply form, so another host is not
+    second-guessed. Names where the value comes from, since a global `includeIf` and a store-local
+    setting are fixed in different places.
+    """
+    hosts = {remote.host for url in remote_urls(store.path).values() if (remote := parse_remote(url))}
+    if "github.com" not in hosts:
+        return []
+    email = git(["config", "user.email"], store.path) or ""
+    if email.endswith(GITHUB_NOREPLY_SUFFIX):
+        return []
+    origin = (git(["config", "--show-origin", "--get", "user.email"], store.path) or "").split("\t")[0]
+    return [
+        f"the {prefix}store commits as {email}, which is not a GitHub noreply address, and pushes to "
+        f"github.com — a push GitHub refuses with GH007 when email privacy is on. Set it ({origin or 'git config'}) "
+        f"to <id>+<login>{GITHUB_NOREPLY_SUFFIX}"
+    ]
+
+
 def store_problems(cfg: Config) -> list[str]:
     """What is wrong with either store, checked every time rather than only at setup.
 
@@ -9663,6 +9691,8 @@ def store_problems(cfg: Config) -> list[str]:
                 f"the {prefix}store has no git identity and cannot commit — "
                 f"git -C {store.path} config user.name/user.email"
             )
+        else:
+            found += private_email_on_github(store, prefix)
     found += remote_problems(cfg)
     found += misfiled_plans(cfg)
     found += stranded_sensitive_plans(cfg)

@@ -1820,6 +1820,29 @@ def test_doctor_reports_a_store_that_lost_its_git_identity(ws, capsys):
     assert "no git identity" in capsys.readouterr().out
 
 
+def test_doctor_flags_a_store_committing_under_a_private_email_to_github(ws, capsys):
+    """GitHub refuses a push exposing a private address (GH007), but only at push time; the store
+    once reached 39 unpushed commits that way. A noreply address, or a host other than github.com,
+    is left alone."""
+    write_config(ws, 'default = "store"\n')
+    plans.main(["install", "--path", str(ws.personal)])
+    subprocess.run(["git", "config", "user.email", "me@example.com"], cwd=ws.store, check=True)
+    subprocess.run(["git", "remote", "add", "origin", "git@gitlab.example.org:me/plans.git"], cwd=ws.store, check=True)
+    capsys.readouterr()
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "noreply" not in capsys.readouterr().out
+
+    set_remote(ws.store, "git@github.com:me/plans.git")
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    out = capsys.readouterr().out
+    assert "commits as me@example.com, which is not a GitHub noreply address" in out
+    assert ".git/config" in out  # says where the value is set
+
+    subprocess.run(["git", "config", "user.email", "1+me@users.noreply.github.com"], cwd=ws.store, check=True)
+    assert plans.main(["doctor", "--path", str(ws.personal)]) == 0
+    assert "noreply address" not in capsys.readouterr().out
+
+
 def test_doctor_flags_a_repo_holding_plans_that_no_rule_routes(ws, capsys):
     write_config(ws, "")  # no default, no roots — nothing routes anything
     plan(ws.personal / "plans", "2026-01-01-orphan.md", "status: idea\nupdated: 2026-01-01")

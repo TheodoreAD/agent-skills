@@ -32,10 +32,11 @@ setting `RESEARCH_HOME` in a shell profile is the only setup step.
   the directory a clone that failed at checkout left behind, which nothing else had), `provenance`
   writes that file, `update` and `deepen` and `reshallow` change clones and their `depth:` field,
   `unpack` and `svn` write a new entry under `docs/` and its provenance file, and `asset` writes one
-  under `assets/` (from URLs or from files already downloaded), and `browser_download.py` saves into
-  `.downloads/` in the store, or `--out`. `name`, `check` and `size` write nothing, and `--dry-run`
-  prints what would run. Never a symlink or a copy into a project repo, and nothing outside the
-  store is ever touched.
+  under `assets/` (from URLs or from files already downloaded) with its `MANIFEST.tsv` and
+  `_origin/`, `manifest` writes those for existing asset entries, and `browser_download.py` saves
+  into `.downloads/` in the store, or `--out`, with an `.origin.json` per file and a page snapshot.
+  `name`, `check` and `size` write nothing, and `--dry-run` prints what would run. Never a symlink
+  or a copy into a project repo, and nothing outside the store is ever touched.
 - **Reads from the environment**: `RESEARCH_HOME` for the store, and `RESEARCH_TEXT_ONLY` for
   whether `add` clones text-only by default.
 - **Network**: the clone URL you give, for `svn` the Subversion URL you give, for `asset` the file
@@ -229,6 +230,24 @@ python3 $S/scripts/library.py add <repo url> --all-files --license CC0          
 - **The licence is required**, as the page states it (`CC0`, `CC-BY 4.0`, or `unknown` when it
   states none): an asset nobody can say may be used is no use as a reference for real work. `check`
   reports an `asset-pack` without one.
+- **Every file's origin is recorded, so anything used later can be traced.** `asset` writes
+  `MANIFEST.tsv` (path, bytes, sha256, origin — the URL, the archive it was unpacked from, or the
+  browser download's real URL) and keeps `_origin/`: the page as it was when the files were taken
+  (`page.html`, where the licence wording lives and can change later) and each browser download's
+  `<file>.origin.json` (page, clicks, download URL, time). A local path is never recorded: it names
+  this machine, not the source. `check` reports an asset entry with no manifest, files the manifest
+  does not list or lists as missing or resized, and files whose origin is unrecorded.
+
+  ```shell
+  python3 $S/scripts/library.py manifest                  # write one for every asset entry lacking it
+  python3 $S/scripts/library.py manifest <entry> --verify # recompute every hash, list what changed
+  python3 $S/scripts/library.py manifest --capture-page   # also save each page now, as page-captured-<date>.html
+  ```
+
+  `manifest` on an entry stored before manifests existed infers each file's origin from the
+  `downloads` field, and marks the rest unrecorded; a page captured later is dated in its name so it
+  is never mistaken for the page at download time. Asked for 2026-11-28: "a clear record of origin
+  for everything, in case we need to trace what we used".
 - **When a page has no direct link, click through it with a browser.** Kenney's "Continue without
   donating" and itch.io's "No thanks, just take me to the downloads" build the link with JavaScript
   or sign it to expire within a minute, so there is no URL to pass. `browser_download.py` opens the

@@ -81,6 +81,28 @@ def test_dry_run_opens_no_browser_and_needs_no_playwright(tmp_path):
     assert not (tmp_path / ".downloads").exists()
 
 
+def test_each_download_gets_an_origin_record_library_py_reads(tmp_path):
+    """The sidecar is what `library.py asset` records as the file's origin, so both must agree on it."""
+    saved = tmp_path / "pack.zip"
+    saved.write_bytes(b"zip bytes")
+    steps = plan("https://someone.itch.io/a-tileset", "--root", str(tmp_path))
+    sidecar = browser.write_sidecar(
+        browser.Saved(saved, "https://cdn.example.org/pack.zip?sig=1"),
+        steps,
+        steps["page"],
+        "2026-11-28T10:00:00+00:00",
+    )
+    record = __import__("json").loads(sidecar.read_text(encoding="utf-8"))
+
+    assert sidecar.name == "pack.zip.origin.json"
+    assert record["page"] == "https://someone.itch.io/a-tileset"
+    assert record["start_page"] == "https://someone.itch.io/a-tileset/purchase"
+    assert record["download_url"] == "https://cdn.example.org/pack.zip?sig=1"
+    assert record["bytes"] == len(b"zip bytes")
+    library_path = SCRIPT.with_name("library.py")
+    assert f'SIDECAR_SUFFIX = "{browser.SIDECAR_SUFFIX}"' in library_path.read_text(encoding="utf-8")
+
+
 def test_without_playwright_the_error_names_the_command(monkeypatch):
     def missing(name: str):
         raise ImportError(name)

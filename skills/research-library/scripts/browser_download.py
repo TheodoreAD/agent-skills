@@ -26,7 +26,13 @@ first, so no browser download is needed where either exists; otherwise
 `python -m playwright install chromium` once.
 
 Files land in `$RESEARCH_HOME/.downloads/<host>--<slug>/` by default: inside the store, and outside
-every bucket, so `check` never reads a staging folder as an entry.
+every bucket, so `check` never reads a staging folder as an entry. Beside each file goes
+`<file>.origin.json` (the page, the clicks, the real download URL, the time), and beside them all
+`page.html` and `page.txt`, the page as it was when the files were taken. `library.py asset` keeps
+both under the entry's `_origin/` and records the download URL in its `MANIFEST.tsv`.
+
+An itch.io pack that is free with no donation prompt lists its files on its own page and has an
+empty `/purchase` page; when the purchase route yields nothing, the page itself is tried.
 """
 
 from __future__ import annotations
@@ -44,10 +50,12 @@ import re
 import urllib.parse
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 STAGING = ".downloads"
+SIDECAR_SUFFIX = ".origin.json"  # the name library.py reads; both scripts spell it the same
 # Each site's steps, in order. A step that matches nothing is skipped, so a page that has already
 # moved past one (itch's purchase page shown straight to its download list) still works. `every`
 # marks the step whose every match is a separate file to download.
@@ -116,6 +124,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
             "button, in order (Playwright selectors, e.g. 'text=Download')"
         )
     return {
+        "source": args.url,
         "page": start_page(args.url, preset),
         "steps": list(steps),
         "every": args.every or bool(preset and preset.every),
@@ -160,7 +169,13 @@ def _open(api: Any, tab: Any, start: str, earlier: Sequence[str]) -> None:
         tab.wait_for_timeout(SETTLE_MS)
 
 
-def _save(api: Any, tab: Any, selector: str, index: int, wait_ms: int, out: Path) -> Path | None:
+@dataclass(frozen=True)
+class Saved:
+    path: Path
+    download_url: str
+
+
+def _save(api: Any, tab: Any, selector: str, index: int, wait_ms: int, out: Path) -> Saved | None:
     try:
         with tab.expect_download(timeout=wait_ms) as info:
             tab.locator(selector).nth(index).click(timeout=10000)
@@ -169,10 +184,10 @@ def _save(api: Any, tab: Any, selector: str, index: int, wait_ms: int, out: Path
     download = info.value
     target = out / Path(download.suggested_filename).name
     download.save_as(target)
-    return target
+    return Saved(target, download.url)
 
 
-def _download_all(api: Any, context: Any, start: str, steps: dict[str, Any], out: Path) -> tuple[list[Path], Any]:
+def _download_all(api: Any, context: Any, start: str, steps: dict[str, Any], out: Path) -> tuple[list[Saved], Any]:
     """Walk the steps in one tab; when the last step has several files, fetch each in a fresh tab.
 
     itch.io's download list is a signed link that stops working within seconds, and after one click
@@ -208,6 +223,37 @@ def _download_all(api: Any, context: Any, start: str, steps: dict[str, Any], out
     return [], page
 
 
+def _snapshot(api: Any, context: Any, url: str, out: Path) -> None:
+    """The page as it is now, `page.html` and its visible text `page.txt`: the licence wording lives
+    there and can change after the files are taken, so `library.py asset` keeps this as evidence."""
+    tab = context.new_page()
+    try:
+        tab.goto(url, wait_until="domcontentloaded", timeout=60000)
+        tab.wait_for_timeout(SETTLE_MS)
+        (out / "page.html").write_text(tab.content(), encoding="utf-8")
+        (out / "page.txt").write_text(f"{url}\n\n{tab.inner_text('body')}", encoding="utf-8")
+    except api.Error:
+        pass  # the files are what was asked for; a missing snapshot shows as a missing file
+    finally:
+        tab.close()
+
+
+def write_sidecar(saved: Saved, steps: dict[str, Any], start: str, when: str) -> Path:
+    """`<file>.origin.json` beside each download: what `library.py asset` records as its origin."""
+    record = {
+        "page": steps["source"],
+        "start_page": start,
+        "clicks": steps["steps"],
+        "download_url": saved.download_url,
+        "file": saved.path.name,
+        "bytes": saved.path.stat().st_size,
+        "saved_at": when,
+    }
+    sidecar = saved.path.with_name(saved.path.name + SIDECAR_SUFFIX)
+    sidecar.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+    return sidecar
+
+
 def fetch(steps: dict[str, Any], channel: str | None) -> dict[str, Any]:
     api = _playwright()
     out = Path(steps["out"])
@@ -216,12 +262,25 @@ def fetch(steps: dict[str, Any], channel: str | None) -> dict[str, Any]:
         browser = _launch(api, playwright, channel)
         try:
             context = browser.new_context(accept_downloads=True)
-            saved, page = _download_all(api, context, steps["page"], steps, out)
+            start = steps["page"]
+            saved, page = _download_all(api, context, start, steps, out)
+            if not saved and start != steps["source"]:
+                # A free itch.io pack with no donation prompt lists its files on its own page, and its
+                # /purchase page is empty (seen 2026-11-28 on 3 of 20 packs).
+                start = steps["source"]
+                direct = {**steps, "steps": steps["steps"][-1:]}
+                saved, page = _download_all(api, context, start, direct, out)
             links = [] if saved else page.eval_on_selector_all("a[href]", "e => e.map(a => [a.innerText, a.href])")
+            if saved:
+                _snapshot(api, context, steps["source"], out)
         finally:
             browser.close()
+    when = datetime.now(UTC).isoformat(timespec="seconds")
+    for item in saved:
+        write_sidecar(item, steps, start, when)
     found = [[text.strip(), href] for text, href in links if DOWNLOAD_LINK.search(f"{text} {href}")]
-    return {**steps, "saved": [str(p) for p in saved], "sizes": [p.stat().st_size for p in saved], "links": found}
+    paths = [item.path for item in saved]
+    return {**steps, "saved": [str(p) for p in paths], "sizes": [p.stat().st_size for p in paths], "links": found}
 
 
 def build_parser() -> argparse.ArgumentParser:

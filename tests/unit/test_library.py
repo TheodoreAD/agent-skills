@@ -1073,8 +1073,12 @@ def asset_args(store: Path, *extra: str):
     return library.build_parser().parse_args([*argv, *extra])
 
 
+PAGE_HTML = b"<html>One-bit tileset. License: CC-BY 4.0</html>"
+
+
 def asset_pages() -> dict[str, bytes]:
     return {
+        PAGE: PAGE_HTML,
         SHEET: BINARY,
         PACK: zip_bytes({"pack/tiles/wall.png": BINARY, "pack/readme.txt": TEXT, "pack/extra.zip": zip_bytes({})}),
     }
@@ -1099,6 +1103,29 @@ def test_asset_keeps_every_byte_unpacks_archives_and_records_the_licence(tmp_pat
     assert f"downloads: {SHEET} {PACK}" in source
     assert "text-only" not in source
     assert library.check_entry(FakeGit(), store, entry)["findings"] == []
+
+
+def manifest_rows(entry: Path) -> dict[str, list[str]]:
+    lines = (entry / "MANIFEST.tsv").read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "path\tbytes\tsha256\torigin"
+    return {line.split("\t")[0]: line.split("\t")[1:] for line in lines[1:]}
+
+
+def test_asset_records_every_file_s_origin_and_hash_and_keeps_the_page(tmp_path, capsys):
+    """Asked for 2026-11-28: a clear record of origin for everything, to trace what was used."""
+    store = make_store(tmp_path)
+    library.cmd_asset(asset_args(store), FakeGit(), fetch=FakeSvn(asset_pages()))
+    capsys.readouterr()
+    entry = store / "assets" / "art.example.org--one-bit-tileset-16x24"
+    rows = manifest_rows(entry)
+
+    assert set(rows) == {"creatures.png", "pack/tiles/wall.png", "pack/readme.txt", "pack/extra.zip"}
+    size, digest, origin = rows["creatures.png"]
+    assert size == str(len(BINARY))
+    assert digest == library.hashlib.sha256(BINARY).hexdigest()
+    assert origin == SHEET
+    assert rows["pack/tiles/wall.png"][2] == f"{PACK}, unpacked from pack.zip"
+    assert (entry / "_origin" / "page.html").read_bytes() == PAGE_HTML, "the licence wording as it was"
 
 
 def test_asset_keep_archives_stores_the_archive_unopened(tmp_path, capsys):
@@ -1131,7 +1158,7 @@ def test_asset_records_failures_and_resume_fetches_only_what_is_missing(tmp_path
 
 def test_asset_refuses_a_pack_member_that_would_land_outside_the_entry(tmp_path, capsys):
     store = make_store(tmp_path)
-    pages = {SHEET: BINARY, PACK: zip_bytes({"../escape.png": BINARY})}
+    pages = {PAGE: PAGE_HTML, SHEET: BINARY, PACK: zip_bytes({"../escape.png": BINARY})}
     with pytest.raises(library.LibraryError):
         library.cmd_asset(asset_args(store), FakeGit(), fetch=FakeSvn(pages))
     capsys.readouterr()
@@ -1154,10 +1181,14 @@ def test_asset_stores_files_already_downloaded_and_records_no_local_path(tmp_pat
     staged = tmp_path / "staged"
     staged.mkdir()
     (staged / "pack.zip").write_bytes(zip_bytes({"pack/sheet.png": BINARY}))
+    signed = "https://cdn.example.org/pack.zip?sig=abc"
+    (staged / "pack.zip.origin.json").write_text(f'{{"download_url": "{signed}"}}', encoding="utf-8")
     (staged / "single.png").write_bytes(BINARY)
+    (staged / "page.html").write_bytes(PAGE_HTML)
     argv = ["asset", str(staged / "pack.zip"), str(staged / "single.png"), "--page", PAGE, "--license", "CC0"]
     args = library.build_parser().parse_args([*argv, "--root", str(store)])
-    payload = library.cmd_asset(args, FakeGit(), fetch=FakeSvn({}))
+    fetch = FakeSvn({})
+    payload = library.cmd_asset(args, FakeGit(), fetch=fetch)
     capsys.readouterr()
     entry = store / "assets" / "art.example.org--one-bit-tileset-16x24"
 
@@ -1168,6 +1199,57 @@ def test_asset_stores_files_already_downloaded_and_records_no_local_path(tmp_pat
     assert str(staged) not in source, "a local path names this machine, not the source"
     assert "downloads:" not in source
     assert "2 file(s) downloaded from the page through a browser" in source
+
+    rows = manifest_rows(entry)
+    assert rows["pack/sheet.png"][2] == f"browser download {signed}, unpacked from pack.zip"
+    assert "no origin record" in rows["single.png"][2]
+    assert str(staged) not in (entry / "MANIFEST.tsv").read_text(encoding="utf-8")
+    assert (entry / "_origin" / "pack.zip.origin.json").is_file()
+    assert (entry / "_origin" / "page.html").read_bytes() == PAGE_HTML
+    assert fetch.calls == [], "the browser's own snapshot is kept, not a later fetch"
+
+
+def test_check_reports_an_asset_entry_whose_files_drifted_from_its_manifest(tmp_path, capsys):
+    store = make_store(tmp_path)
+    library.cmd_asset(asset_args(store), FakeGit(), fetch=FakeSvn(asset_pages()))
+    capsys.readouterr()
+    entry = store / "assets" / "art.example.org--one-bit-tileset-16x24"
+    (entry / "added-by-hand.png").write_bytes(BINARY)
+    (entry / "creatures.png").write_bytes(BINARY + b"edited")
+
+    findings = library.check_entry(FakeGit(), store, entry)["findings"]
+    assert any("not in MANIFEST.tsv" in f for f in findings)
+    assert any("changed size" in f for f in findings)
+
+    args = library.build_parser().parse_args(["manifest", entry.name, "--verify", "--root", str(store)])
+    assert library.cmd_manifest(args, FakeGit())["records"][0]["changed"] == ["creatures.png"]
+
+
+def test_manifest_backfills_an_old_entry_inferring_origins_from_its_downloads(tmp_path, capsys):
+    """Entries stored before manifests existed: their `downloads` field still says where each came from."""
+    store = make_store(tmp_path)
+    entry = store / "assets" / "art.example.org--old"
+    (entry / "pack" / "tiles").mkdir(parents=True)
+    (entry / "creatures.png").write_bytes(BINARY)
+    (entry / "pack" / "tiles" / "wall.png").write_bytes(BINARY)
+    (entry / "mystery.png").write_bytes(BINARY)
+    (entry / "SOURCE.md").write_text(
+        f"url: {PAGE}\nkind: asset-pack\nref: r\nfetched: f\nlicense: CC0\ndownloads: {SHEET} {PACK}\n",
+        encoding="utf-8",
+    )
+    assert any("no MANIFEST.tsv" in f for f in library.check_entry(FakeGit(), store, entry)["findings"])
+
+    args = library.build_parser().parse_args(["manifest", entry.name, "--capture-page", "--root", str(store)])
+    library.cmd_manifest(args, FakeGit(), fetch=FakeSvn({PAGE: PAGE_HTML}))
+    capsys.readouterr()
+    rows = manifest_rows(entry)
+
+    assert rows["creatures.png"][2] == SHEET
+    assert rows["pack/tiles/wall.png"][2] == f"{PACK}, unpacked from pack.zip"
+    assert rows["mystery.png"][2] == library.UNRECORDED
+    assert len(list((entry / "_origin").glob("page-captured-*.html"))) == 1, "dated, not passed off as the original"
+    findings = library.check_entry(FakeGit(), store, entry)["findings"]
+    assert findings == ["1 file(s) have no recorded origin (stored before origins were tracked)"]
 
 
 def test_asset_from_a_file_needs_the_page_and_an_existing_file(tmp_path):

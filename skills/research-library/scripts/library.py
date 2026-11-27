@@ -51,6 +51,7 @@ if sys.version_info[:2] < (3, 11):  # noqa: UP036 — runs exactly where require
     sys.exit(f"library.py needs Python 3.11 or newer; this is {sys.version.split()[0]} ({sys.executable})")
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -1105,6 +1106,8 @@ def check_entry(runner: Runner, root: Path, entry: Path, remote: bool = False) -
                 f"an {ASSET_KIND} with no {LICENSE_FIELD} — nobody can tell what the files may be used for; "
                 "record it, or `license: unknown` if the page states none"
             )
+        if fields.get("kind") == ASSET_KIND and entry.is_dir():
+            findings.extend(_manifest_findings(entry))
 
     if entry.parent.name != "repos":
         return record
@@ -1120,6 +1123,31 @@ def check_entry(runner: Runner, root: Path, entry: Path, remote: bool = False) -
     findings.extend(_sparse_findings(runner, entry))
     findings.extend(_refresh_findings(runner, entry, remote=remote))
     return record
+
+
+def _manifest_findings(entry: Path) -> list[str]:
+    """Whether the manifest still describes the entry, by path and size. Hashes are not recomputed
+    here: `check` stays fast, and `library.py manifest <entry> --verify` is the deep comparison."""
+    if not (entry / MANIFEST).is_file():
+        return [f"no {MANIFEST} — the files' origins are not recorded; `library.py manifest {entry.name}` writes one"]
+    listed: dict[str, int] = {}
+    for line in (entry / MANIFEST).read_text(encoding="utf-8").splitlines()[1:]:
+        parts = line.split("\t")
+        if len(parts) == 4 and parts[1].isdigit():
+            listed[parts[0]] = int(parts[1])
+    present = {p.relative_to(entry).as_posix(): p.stat().st_size for p in _content_files(entry)}
+    findings: list[str] = []
+    if unlisted := sorted(set(present) - set(listed)):
+        findings.append(f"{len(unlisted)} file(s) not in {MANIFEST}, e.g. {unlisted[0]}")
+    if gone := sorted(set(listed) - set(present)):
+        findings.append(f"{len(gone)} file(s) in {MANIFEST} are missing, e.g. {gone[0]}")
+    if changed := sorted(p for p in set(listed) & set(present) if listed[p] != present[p]):
+        findings.append(f"{len(changed)} file(s) changed size since {MANIFEST} was written, e.g. {changed[0]}")
+    if unrecorded := sum(
+        1 for line in (entry / MANIFEST).read_text(encoding="utf-8").splitlines() if UNRECORDED in line
+    ):
+        findings.append(f"{unrecorded} file(s) have no recorded origin (stored before origins were tracked)")
+    return findings
 
 
 def _sparse_findings(runner: Runner, entry: Path) -> list[str]:
@@ -1625,11 +1653,120 @@ def is_web_url(source: str) -> bool:
     return urllib.parse.urlsplit(source).scheme in ("http", "https")
 
 
+# Origin records, so anything later used from the library can be traced back to where it came from
+# and under what terms. Added 2026-11-28 at the user's request: "make sure the research library has
+# a clear record of origin for everything, in case we need to trace what we used".
+#
+# - `MANIFEST.tsv` lists every file in an asset entry with its size, sha256 and origin: the URL it
+#   was fetched from, the archive it was unpacked out of, or the browser download it arrived as.
+# - `_origin/` keeps the evidence: the page as it was when the files were taken (`page.html`, which
+#   is where the licence wording lives and can change later), and for a browser download the
+#   `<file>.origin.json` that `browser_download.py` wrote beside it (page, final download URL,
+#   clicks, time).
+MANIFEST = "MANIFEST.tsv"
+ORIGIN_DIR = "_origin"
+SIDECAR_SUFFIX = ".origin.json"
+MANIFEST_HEADER = "path\tbytes\tsha256\torigin"
+UNRECORDED = "unrecorded (stored before origins were tracked)"
+OWN_FILES = frozenset({PROVENANCE, MANIFEST})
+
+
+def _source_label(source: str) -> str:
+    """What the manifest calls a source: the URL itself, or for a file already on disk the download
+    URL its sidecar recorded. Never the local path, which names this machine and not the origin."""
+    if is_web_url(source):
+        return source
+    sidecar = Path(source + SIDECAR_SUFFIX)
+    if sidecar.is_file():
+        try:
+            record = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            record = {}
+        url = record.get("download_url") if isinstance(record, dict) else None
+        if isinstance(url, str) and url:
+            return f"browser download {url}"
+    return f"browser download {Path(source).name} (no origin record beside it)"
+
+
+def _content_files(target: Path) -> list[Path]:
+    """Every stored file, leaving out the entry's own records."""
+    return sorted(
+        p
+        for p in target.rglob("*")
+        if p.is_file() and p.name not in OWN_FILES and ORIGIN_DIR not in p.relative_to(target).parts
+    )
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def read_manifest(target: Path) -> dict[str, str]:
+    """`path -> origin` from an existing manifest, so a resumed run keeps what an earlier one knew."""
+    path = target / MANIFEST
+    if not path.is_file():
+        return {}
+    origins: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines()[1:]:
+        parts = line.split("\t")
+        if len(parts) == 4:
+            origins[parts[0]] = parts[3]
+    return origins
+
+
+def write_manifest(target: Path, origins: dict[str, str]) -> int:
+    """Rewrite `MANIFEST.tsv` over every file now in the entry; returns how many it lists."""
+    known = read_manifest(target) | origins
+    rows = [MANIFEST_HEADER]
+    files = _content_files(target)
+    for path in files:
+        relative = path.relative_to(target).as_posix()
+        origin = known.get(relative, UNRECORDED).replace("\t", " ")
+        rows.append(f"{relative}\t{path.stat().st_size}\t{_sha256(path)}\t{origin}")
+    (target / MANIFEST).write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return len(files)
+
+
+def keep_evidence(target: Path, sources: Sequence[str], page: str, fetch: Fetcher | None) -> list[str]:
+    """Copy each browser download's sidecar and the page snapshot into `_origin/`; fetch the page
+    when nothing captured it. An existing snapshot is kept: the first one is the one that counts."""
+    evidence = target / ORIGIN_DIR
+    evidence.mkdir(exist_ok=True)
+    notes: list[str] = []
+    for source in sources:
+        if is_web_url(source):
+            continue
+        local = Path(source)
+        sidecar = Path(source + SIDECAR_SUFFIX)
+        if sidecar.is_file():
+            shutil.copyfile(sidecar, evidence / sidecar.name)
+        for snapshot in ("page.html", "page.txt"):
+            staged = local.parent / snapshot
+            if staged.is_file() and not (evidence / snapshot).exists():
+                shutil.copyfile(staged, evidence / snapshot)
+    if not (evidence / "page.html").exists() and fetch is not None and is_web_url(page):
+        try:
+            (evidence / "page.html").write_bytes(fetch(page))
+        except OSError as error:
+            notes.append(f"page snapshot failed: {error}")
+    return notes
+
+
 def _store_download(
-    url: str, target: Path, fetch: Fetcher, tally: Tally, unpacked: list[str], keep_archives: bool
+    url: str,
+    target: Path,
+    fetch: Fetcher,
+    tally: Tally,
+    unpacked: list[str],
+    keep_archives: bool,
+    origins: dict[str, str],
 ) -> None:
     """One URL, or one file already downloaded, into the entry: skipped if an earlier run stored
-    it, unpacked whole if an archive."""
+    it, unpacked whole if an archive. Every file it writes gets its origin in `origins`."""
     web = is_web_url(url)
     relative = _download_name(url) if web else safe_relative(Path(url).name)
     if relative is None:
@@ -1644,8 +1781,10 @@ def _store_download(
     except OSError as error:
         tally.fail(f"{url}: {error}")
         return
+    label = _source_label(url)
     if not (stem and _archive_kind(data)):
         write_member(target, relative, data, tally)
+        origins[relative.as_posix()] = label
         return
     unpacked.append(stem)
     try:
@@ -1655,6 +1794,9 @@ def _store_download(
         return
     if (target / stem).is_dir():  # absent when every member was refused
         hoist_single_directory(target / stem)
+        for path in (target / stem).rglob("*"):
+            if path.is_file():
+                origins[path.relative_to(target).as_posix()] = f"{label}, unpacked from {relative.name}"
 
 
 def _asset_sources(sources: Sequence[str], page: str | None) -> tuple[list[str], list[str]]:
@@ -1705,11 +1847,15 @@ def cmd_asset(args: argparse.Namespace, runner: Runner, fetch: Fetcher | None = 
     target.mkdir(parents=True, exist_ok=True)
     tally = Tally()
     unpacked: list[str] = []
+    origins: dict[str, str] = {}
     for url in args.urls:
-        _store_download(url, target, fetch, tally, unpacked, keep_archives=args.keep_archives)
+        _store_download(url, target, fetch, tally, unpacked, args.keep_archives, origins)
+    for problem in keep_evidence(target, args.urls, page, fetch):
+        tally.fail(problem)
 
     (target / PROVENANCE).write_text(provenance, encoding="utf-8")
-    payload |= {"provenance": provenance, "unpacked": unpacked, **tally.as_dict()}
+    listed = write_manifest(target, origins)
+    payload |= {"provenance": provenance, "unpacked": unpacked, "manifest_files": listed, **tally.as_dict()}
     if not args.json:
         _print_tally(f"stored {len(args.urls)} download(s) in {target}", tally)
         for folder in unpacked:
@@ -1718,6 +1864,76 @@ def cmd_asset(args: argparse.Namespace, runner: Runner, fetch: Fetcher | None = 
         # After the provenance file, as in `svn`: the entry is real and says where it came from.
         raise LibraryError(f"{len(tally.failed)} download(s) failed — rerun the same command with --resume")
     return payload
+
+
+def infer_origins(target: Path) -> dict[str, str]:
+    """For an entry stored before manifests existed: match its files to the URLs its provenance's
+    `downloads` field lists — a file named like a URL's last segment came from that URL, and files
+    under a folder named like an archive's stem were unpacked from it."""
+    fields = parse_provenance((target / PROVENANCE).read_text(encoding="utf-8", errors="replace"))
+    origins: dict[str, str] = {}
+    for url in fields.get(DOWNLOADS_FIELD, "").split():
+        name = _download_name(url)
+        if name is None:
+            continue
+        stem = _archive_stem(name.name)
+        for path in _content_files(target):
+            relative = path.relative_to(target)
+            if relative.as_posix() == name.as_posix():
+                origins[relative.as_posix()] = url
+            elif stem and relative.parts[0] == stem:
+                origins[relative.as_posix()] = f"{url}, unpacked from {name.name}"
+    return origins
+
+
+def cmd_manifest(args: argparse.Namespace, runner: Runner, fetch: Fetcher | None = None) -> dict[str, Any]:
+    """Write or verify `MANIFEST.tsv` for entries stored without one, and optionally capture the
+    page now, under a dated name so nobody mistakes it for the page as it was at download time."""
+    root = store_root(args.root)
+    names = args.entry or [p.name for p in sorted((root / "assets").iterdir()) if p.is_dir()]
+    records: list[dict[str, Any]] = []
+    for name in names:
+        target = root / "assets" / name
+        if not (target / PROVENANCE).is_file():
+            records.append({"entry": name, "error": "no such asset entry"})
+            continue
+        if args.verify:
+            records.append({"entry": name, "changed": _verify_manifest(target)})
+            continue
+        listed = write_manifest(target, infer_origins(target) if not (target / MANIFEST).is_file() else {})
+        record: dict[str, Any] = {"entry": name, "files": listed}
+        url = parse_provenance((target / PROVENANCE).read_text(encoding="utf-8")).get("url", "")
+        if args.capture_page and is_web_url(url) and not list((target / ORIGIN_DIR).glob("page*.html")):
+            fetch = fetch or LiveFetcher()
+            try:
+                (target / ORIGIN_DIR).mkdir(exist_ok=True)
+                (target / ORIGIN_DIR / f"page-captured-{today()}.html").write_bytes(fetch(url))
+                record["page"] = "captured"
+            except OSError as error:
+                record["page"] = f"failed: {error}"
+        records.append(record)
+    payload: dict[str, Any] = {"root": str(root), "records": records}
+    if not args.json:
+        for record in records:
+            detail = record.get("error") or (
+                f"{len(record['changed'])} changed" if "changed" in record else f"{record['files']} files listed"
+            )
+            page = f", page {record['page']}" if "page" in record else ""
+            print(f"{record['entry']}: {detail}{page}")
+    return payload
+
+
+def _verify_manifest(target: Path) -> list[str]:
+    """Paths whose hash no longer matches the manifest, or that are gone."""
+    changed: list[str] = []
+    for line in (target / MANIFEST).read_text(encoding="utf-8").splitlines()[1:]:
+        parts = line.split("\t")
+        if len(parts) != 4:
+            continue
+        path = target / parts[0]
+        if not path.is_file() or _sha256(path) != parts[2]:
+            changed.append(parts[0])
+    return changed
 
 
 def _print_tally(headline: str, tally: Tally) -> None:
@@ -1853,6 +2069,15 @@ def build_parser() -> argparse.ArgumentParser:
     asset.add_argument("--resume", action="store_true", help="continue into an existing entry, fetching what it lacks")
     asset.add_argument("--dry-run", action="store_true", help="name the entry and print its provenance, fetch nothing")
 
+    manifest = subparsers.add_parser(
+        "manifest", parents=[common], help="write or verify the per-file origin record (MANIFEST.tsv) of asset entries"
+    )
+    manifest.add_argument("entry", nargs="*", help="entry names under assets/ (default: every asset entry)")
+    manifest.add_argument("--verify", action="store_true", help="recompute every hash and report what changed")
+    manifest.add_argument(
+        "--capture-page", action="store_true", help="save the page now, as _origin/page-captured-<date>.html"
+    )
+
     check = subparsers.add_parser("check", parents=[common], help="every entry against the store's conventions")
     check.add_argument("--strict", action="store_true", help="exit 1 when any entry has a finding")
     check.add_argument(
@@ -1875,6 +2100,7 @@ COMMANDS = {
     "unpack": cmd_unpack,
     "svn": cmd_svn,
     "asset": cmd_asset,
+    "manifest": cmd_manifest,
 }
 
 

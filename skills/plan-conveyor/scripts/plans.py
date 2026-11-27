@@ -4340,7 +4340,10 @@ def cmd_where(args: argparse.Namespace, ws: Workspace) -> int:
         for store in cfg.stores():
             print(f"store:   {store.tier:<10} {store.path} (from {store.source})")
     else:
-        print("device:  work — one organisation, so one store and no tier to choose")
+        # Two devices keep one store, for opposite reasons; naming the wrong one tells a personal
+        # machine it is bound by sanctioned_remotes, which it is not.
+        why = "one organisation" if cfg.device == WORK else "only your own work"
+        print(f"device:  {cfg.device} — {why}, so one store and no tier to choose")
         print(f"store:   {cfg.store.path} (from {cfg.store.source})")
     return 0 if routing.verdict == "ok" and not routing.writes_refused else NEEDS_DECISION
 
@@ -8414,6 +8417,7 @@ def _print_join_preview(root: Path, url: str, branch: str | None, preview: JoinP
 DEVICE_JOIN_NOTES = {
     CONTRACTOR: "this is the shareable store; the sensitive one never joins anything",
     WORK: "this machine's one store, which may only join a destination in sanctioned_remotes",
+    PERSONAL_DEVICE: "this machine's one store, holding only your own work, so any remote you confirm",
 }
 
 

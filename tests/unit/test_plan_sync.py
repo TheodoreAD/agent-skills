@@ -458,6 +458,20 @@ def test_join_refuses_a_store_already_tied_to_another_remote(machines, capsys):
     assert "Which one is right is your call" in capsys.readouterr().err
 
 
+def test_a_personal_device_names_itself_and_joins_any_confirmed_remote(machines, capsys, monkeypatch):
+    """`personal` came with activities after `join` and `where` were written, and both knew only the
+    other two: `join` raised a KeyError on its first line and `where` called the machine `work`."""
+    monkeypatch.setenv("PLAN_CONVEYOR_DEVICE", "personal")
+    local_store(machines)
+    machines.configure()
+    capsys.readouterr()
+
+    machines.run("where")
+    assert "device:  personal — only your own work" in capsys.readouterr().out
+    assert machines.run("join", str(machines.remote), "--dry-run") == 0
+    assert capsys.readouterr().out.splitlines()[0].startswith("device:    personal")
+
+
 def test_join_on_a_work_device_needs_a_sanctioned_destination(machines, capsys, monkeypatch):
     monkeypatch.setenv("PLAN_CONVEYOR_DEVICE", "work")
     local_store(machines)

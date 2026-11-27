@@ -278,3 +278,26 @@ Implement in phases, each committed on its own and passing the gate:
   flow rule through three tested copies. [DECISION: an exported transcript named by path outside
   `~/.claude/projects` is not filtered — no project owns it, and naming it is the caller's explicit
   choice.] The `~/.agents/AGENTS.md` rule was handed to the PULSE session, which owns that file.
+
+## Migrated to
+
+- **Design rationale**: `skills/plan-conveyor/references/design-rationale.md`, "Why a machine is
+  classified by activity and ownership (2026-11-25)". It carries the four problems that started
+  this, the two axes and the secrets rule, the compartment flow table, every `[DECISION:]` above
+  with the alternative it beat, what the first config sketch got wrong, and the one-time store
+  rename.
+- **Usage**: `skills/plan-conveyor/SKILL.md` already documents activities and root classification,
+  the three machine shapes, onboarding and its gating, ownership routing, the flow scan, secrets,
+  client stores, identity folders, `links rename` and, since `ab6310f`, the flat layout.
+  session-harvest's, session-bash-audit's and skill-fitness's SKILL.md each disclose the config they
+  read.
+- **Code and tests**: `plans.py`, the three `Compartments` copies, `tests/unit/test_plan_store.py`
+  and `tests/unit/test_compartments.py`.
+- **Open work**: `plans/2026-11-27-private-content-flow-detection.md` takes the fingerprinting
+  question (still UNVERIFIED) and per-repo visibility inside an `own` root, which was designed here
+  and never built.
+- **Owned elsewhere**: the home AGENTS.md rule for client roots is PULSE's (`5cddccc`).
+
+Deliberately not migrated: the per-phase commit list and the Progress narrative. Each phase's
+commits carry its reasoning, and the landing dates are in `git log`. The "How repos are organised on
+disk" section is advice the rationale's flow table and SKILL.md's machine shapes already imply.

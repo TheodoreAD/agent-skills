@@ -1190,6 +1190,101 @@ and has synced since. Two days later `join` was found to raise a KeyError on a `
 kind added after `join` was written. Why the Windows join did not hit it is not established. Fixed
 with a test in `3106b68`.
 
+### Why a machine is classified by activity and ownership (2026-11-25)
+
+Setting up a second machine exposed four problems at once. **Nothing was asked**: an earlier session
+had run `install` on the defaults, so the machine looked set up while the user had decided nothing.
+**The classification was too coarse**: the only question was which roots were public or shareable,
+and nothing asked what a root _is_. **Nothing recorded that onboarding finished**, so every later
+command read the skeleton as a decision. **The shared store carried one machine's layout**: folders
+were named after the projects root of whichever machine filed first, so two machines were in effect
+forced to share directory names. The user's words: "we can't be forced to have the same directory
+names in both places", and the user should "be asked what is personal, sensitive, work, etc on each
+machine setup rather than assume".
+
+**The user's classification is two independent axes plus one universal rule.** Activity is per
+machine, one or several: `public` (redact only secrets), `private` (names may appear in other plans,
+contents may not leave the repo), `contractor` (each client's root insulated from every other, its
+own repos not insulated from each other) and `corporate` (one organisation owns everything, so it
+must stand alone). Ownership is per root and is read from the remote: `own` (an account you own,
+whose repos may keep plans in-repo by explicit per-repo choice) or `shared` (an organisation you
+contribute to, whose plans go to the store). Secrets are never published from any activity, so
+detecting them belongs to no activity: it runs on every scan, with no ignore list.
+
+The flow rules reduce to compartments, which is the unit every check reasons about:
+
+| from             | names may reach              | contents may reach           |
+| ---------------- | ---------------------------- | ---------------------------- |
+| **public**       | anywhere                     | anywhere                     |
+| **private**      | any `own` or `public` plan   | only the repo it belongs to  |
+| **contractor R** | only repos and plans under R | only repos and plans under R |
+| **corporate**    | anywhere on the machine      | anywhere on the machine      |
+
+Decisions the user made while this was being built, each of which an implementation could plausibly
+have guessed the other way:
+
+- **The two combinations the classification does not name.** `own` + `contractor`, an account made
+  for one client, behaves as `contractor` for that root. `shared` + `private`, someone else's
+  private repo you collaborate on personally, behaves as `private`, with its plans in the store.
+- **Private repo names do not flow into a client's compartment**, although `private` allows names
+  "in other plans": a client repo is read by the client.
+- **Each client keeps its own term list** (`[private_terms]`) rather than one machine-wide list, so
+  a check inside one root can allow that client's ticket prefix between its own repos while refusing
+  it everywhere else.
+- **An `own` root is not asked its activity.** The user's question while onboarding was "i have a
+  root with mixed public and private stuff, but do we have to separate by root?" No: one account
+  holds both, so the root implies `private`, the cautious one. It is still asked where `contractor`
+  is an activity, because an account made for one client is then possible. Per-repo visibility
+  inside such a root was designed and not built. It is open in
+  `plans/2026-11-27-private-content-flow-detection.md`.
+- **No `contractor` and no `corporate` derives a third device, `personal`**: one store that may have
+  a remote and no `sanctioned_remotes` question. The user asked what `~/plans-sensitive` was for on
+  a machine with no client work, and the answer was nothing, so it was deleted.
+- **On an onboarded machine, an empty term list is an answer, not a gap**, so `scan` passes and
+  `sync` publishes. Before this, the onboarded personal machine could not publish at all.
+- **Per-repo `plans = repo | store` is asked lazily**, the first time an `own` repo gets a plan,
+  never at setup. Asking for every clone up front is one question per repo, which the 2026-09-07
+  report against the flat layout had already rejected. A committed `plans/`, or plans already in the
+  store, counts as the earlier choice in either direction, so only repos with no plans anywhere are
+  asked.
+- **A flat layout's repos are classified at setup anyway, one by one** (`66532e6`, 2026-11-27).
+  Classification decides where a repo's plans and words may go, not only its route, so a client repo
+  cloned straight into `~/projects` would otherwise have no compartment at all. One answer for the
+  whole flat tree was rejected because it cannot tell your repo from a client's beside it. `doctor`
+  counts the open questions rather than listing them, which keeps the 2026-09-07 rule against a
+  per-clone roster.
+- **The per-client term question is shown in the same pass as the root's classification.** Asked
+  only after `contractor` was recorded, it reopened onboarding the moment one pass finished, which
+  the test that walks the walkthrough caught 2026-11-26. "strong onboarding and very few questions
+  afterwards" was the user's stated priority, and that is what this protects.
+- **research-library needs no restriction.** It holds public information by definition.
+- **The transcript readers count everything and quote only what may reach the destination.** A rate
+  carries no content, so session-bash-audit and skill-fitness read every transcript for their
+  numbers. An example line is a quote and goes through the filter. The filter is duplicated in each
+  skill rather than shared, because skills install individually, and
+  `tests/unit/test_compartments.py` runs one flow table against all three copies so they cannot
+  drift. A transcript exported to a path outside `~/.claude/projects` is not filtered, because no
+  project owns it and naming it is the caller's explicit choice. Claude Code's own transcript tree
+  is not compartmented at all, and the control available there is an agent rule in the home
+  `AGENTS.md`.
+
+**What the first sketch got wrong, and what was kept instead.** The sketch nested everything under
+`[machine]` and `[roots.<name>]` tables and retired `device`, `public_roots`, `shareable_roots` and
+`[tiers]`. What shipped is flat top-level tables (`activities`, `[ownership]`, `[activity]`,
+`[answered]`, `[private_terms]`, `onboarded`) beside the old keys. `device` is derived from
+`activities`, and the classification answers `public_roots` and `shareable_roots` wherever a root is
+classified. The old keys stay readable, so an unclassified config keeps its meaning and nothing
+needs migrating the day the code lands. The sketch also replaced the tier split with one store per
+compartment group. What shipped keeps the split on a contractor device and adds one store per client
+under `~/plans-clients/<root>`, so the isolation between clients is physical: a session in one
+client's root has no store path that reaches another's.
+
+**The shared store's folders were moved onto identities once, from one machine.** `links rename`
+moved the 8 folders the first machine had named after its own root to `<host>/<owner>/<repo>` on
+2026-11-26. The other machine read them through `repos.toml` when it pulled. It was deferred until
+both machines ran the new code, because the old version names every new link's folder after the
+clone path.
+
 ## What it costs to ask what is open
 
 Every command here is read by an agent that pays for the output in context, so the shape of the

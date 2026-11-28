@@ -53,10 +53,16 @@ none of the above was checked there. Whether the shadowing result holds on Linux
 From a session on the Linux machine, in agent-skills:
 
 1. Pull, so the `.gitignore` entries arrive before anything is installed.
-2. Re-run the survey: for each repo, the authored skills against `.agents/skills/`,
-   `.claude/skills/` and `skills-lock.json`, whether each copy matches its source, and whether the
-   three targets are gitignored.
+2. Re-run the survey with the attached script,
+   `python3 plans/2026-11-27-repo-skill-installs-across-the-family/survey_skill_installs.py [ROOT]`:
+   for each repo, the authored skills against `.agents/skills/`, `.claude/skills/` and
+   `skills-lock.json`, whether each copy matches its source, and whether the three targets are
+   gitignored. Any `STALE`, `NOT INSTALLED` or `no .claude/skills entry` line is a fix.
 3. Fix what it finds the way this machine did: `inv agents.install-skills` where repo-tasks is
    present, the repo's AGENTS.md line elsewhere, and a plan filed with `new --for` for any repo
    other than the session's.
 4. Repeat the shadowing probe once, then retire this plan.
+
+## Attachments
+
+- `survey_skill_installs.py` — committed, 3 KB, attached 2026-11-28

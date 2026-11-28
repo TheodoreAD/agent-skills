@@ -24,6 +24,13 @@ harness-specific rules directory — does not belong in this repo even as a conv
 ## Build & test
 
 - `inv dev-env.setup` once after cloning — creates `.venv` and wires direnv to it.
+- **A session here reads this working tree's skills, not the published ones**, once
+  `inv agents.install-skills` has run (part of `inv dev-env.setup`; re-run it after editing a
+  skill). The installed project copy shadows the user-wide install of the same name, and the listing
+  shows it once rather than twice — probed 2026-11-28 on Windows with Claude Code, by marking the
+  project copy's description and asking a fresh headless session what it saw. Every other repo's
+  sessions still get the published version, so an edit reaches them only after a push and
+  `skills update -g`.
 - `inv quality.precommit` before considering a change done. Markdown is not exempt: `dprint` reflows
   prose, and a `SKILL.md` reflow is the most common CI failure in this repo family.
 - `pytest` — `tests/unit/test_skill_layout.py` validates every skill's frontmatter and layout. It is
